@@ -13,6 +13,7 @@ namespace Aaris.MapReview
         [SerializeField] private Terrain[] terrains;
         [SerializeField] private bool releaseTerrainPaintCpuCopies = true;
         [SerializeField] private int targetFrameRate = 60;
+        [SerializeField] private bool tuneForLowRamAndroid = true;
         private readonly float[] frameTimes = new float[180];
         private readonly float[] sortedTimes = new float[180];
         private int frameIndex, frameCount;
@@ -21,12 +22,14 @@ namespace Aaris.MapReview
         private AsyncOperation unloading;
         private string logPath;
         private long releasedPaintBytes;
+        private string graphicsTier = "unchanged";
         private string lastError = "";
         public static string LatestReport { get; private set; } = "Starting map...";
 
         private void Awake()
         {
             Application.targetFrameRate = targetFrameRate;
+            ConfigureMemoryTier();
             Application.lowMemory += OnLowMemory;
             Application.logMessageReceived += OnLog;
             try
@@ -41,6 +44,45 @@ namespace Aaris.MapReview
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             { Debug.LogWarning("Aaris diagnostics file unavailable: " + e.Message); logPath = null; }
             Record("start");
+        }
+
+
+        // Memory capacity is a coarse starting tier, not a substitute for GPU profiling.
+        // Keep the saved 600 m tree draw distance so distant canopy silhouettes remain visible.
+        // Only foliage detail and texture streaming are reduced; collision, houses and roads stay intact.
+        private void ConfigureMemoryTier()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (!tuneForLowRamAndroid) return;
+            int ramMB = SystemInfo.systemMemorySize;
+            if (ramMB <= 0) { graphicsTier = "ram-unknown"; return; }
+            if (ramMB <= 2560)
+                ApplyBudget("android-2gb", 96f, 45f, 0.42f, 60f, 18, 10f, 300f);
+            else if (ramMB <= 3584)
+                ApplyBudget("android-3gb", 160f, 70f, 0.55f, 85f, 32, 7f, 350f);
+#endif
+        }
+
+        private void ApplyBudget(string name, float mipBudgetMB, float grassDistanceM,
+            float grassDensity, float billboardDistanceM, int fullLodTrees,
+            float heightmapPixelError, float basemapDistanceM)
+        {
+            graphicsTier = name;
+            // Texture streaming only affects textures imported with mip streaming enabled.
+            QualitySettings.streamingMipmapsMemoryBudget =
+                Mathf.Min(QualitySettings.streamingMipmapsMemoryBudget, mipBudgetMB);
+            Terrain[] candidates = terrains != null && terrains.Length > 0 ? terrains : Terrain.activeTerrains;
+            foreach (Terrain terrain in candidates)
+            {
+                if (terrain == null || terrain.terrainData == null) continue;
+                terrain.detailObjectDistance = Mathf.Min(terrain.detailObjectDistance, grassDistanceM);
+                terrain.detailObjectDensity = Mathf.Min(terrain.detailObjectDensity, grassDensity);
+                terrain.treeBillboardDistance = Mathf.Min(terrain.treeBillboardDistance, billboardDistanceM);
+                terrain.treeMaximumFullLODCount = Mathf.Min(terrain.treeMaximumFullLODCount, fullLodTrees);
+                terrain.heightmapPixelError = Mathf.Max(terrain.heightmapPixelError, heightmapPixelError);
+                terrain.basemapDistance = Mathf.Min(terrain.basemapDistance, basemapDistanceM);
+                // Do not lower treeDistance or turn off terrain collision / instancing.
+            }
         }
 
         private IEnumerator Start()
@@ -87,6 +129,10 @@ namespace Aaris.MapReview
             if (lowMemoryPending)
             {
                 lowMemoryPending = false;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                if (tuneForLowRamAndroid)
+                    ApplyBudget("memory-pressure", 64f, 30f, 0.32f, 45f, 12, 12f, 260f);
+#endif
                 Record("low-memory");
                 if (Time.unscaledTime >= unloadAfter && (unloading == null || unloading.isDone))
                 {
@@ -115,9 +161,9 @@ namespace Aaris.MapReview
         [Serializable]
         private sealed class Sample
         {
-            public string reason, utc, version, buildGuid, device, gpu, api, lastError;
+            public string reason, utc, version, buildGuid, device, gpu, api, lastError, graphicsTier;
             public int systemRamMB, targetFps, warningCount;
-            public float seconds, averageFps, p95FrameMs;
+            public float seconds, averageFps, p95FrameMs, mipStreamingBudgetMB;
             public long unityAllocatedBytes, unityReservedBytes, managedBytes, androidPssKB;
             public ulong textureBytes, desiredTextureBytes;
             public long terrainCpuPaintBytesReleased;
@@ -133,6 +179,7 @@ namespace Aaris.MapReview
                 reason = reason, utc = DateTime.UtcNow.ToString("O"), version = Application.version, buildGuid = Application.buildGUID,
                 device = SystemInfo.deviceModel, gpu = SystemInfo.graphicsDeviceName, api = SystemInfo.graphicsDeviceType.ToString(),
                 systemRamMB = SystemInfo.systemMemorySize, targetFps = Application.targetFrameRate,
+                graphicsTier = graphicsTier, mipStreamingBudgetMB = QualitySettings.streamingMipmapsMemoryBudget,
                 seconds = Time.unscaledTime, averageFps = total > 0 ? frameCount / total : 0,
                 p95FrameMs = frameCount > 0 ? sortedTimes[Mathf.Clamp(Mathf.CeilToInt(frameCount * .95f) - 1, 0, frameCount - 1)] * 1000 : 0,
                 unityAllocatedBytes = Profiler.GetTotalAllocatedMemoryLong(), unityReservedBytes = Profiler.GetTotalReservedMemoryLong(),

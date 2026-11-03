@@ -65,9 +65,12 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (target == null) return;
-            if ((target.position - lastPosition).sqrMagnitude >= 4 || Time.unscaledTime >= nextCheck) RefreshNow();
+            if ((target.position - lastPosition).sqrMagnitude >= 4 || Time.unscaledTime >= nextCheck) RefreshNow(false);
         }
-        public void RefreshNow()
+        // Explicit refreshes (e.g. player teleport) still synchronize even if the collider set is unchanged.
+        public void RefreshNow() { RefreshNow(true); }
+
+        private void RefreshNow(bool forceSync)
         {
             if (target == null || worldBounds == null) return;
             lastPosition = target.position;
@@ -76,6 +79,7 @@ namespace Aaris.MapReview
             if (query == int.MaxValue) { Array.Clear(visited, 0, visited.Length); Array.Clear(wanted, 0, wanted.Length); query = 0; }
             query++;
             nextActive.Clear();
+            bool changed = false;
             for (int xCell = Cell(lastPosition.x - activationDistance); xCell <= Cell(lastPosition.x + activationDistance); xCell++)
                 for (int zCell = Cell(lastPosition.z - activationDistance); zCell <= Cell(lastPosition.z + activationDistance); zCell++)
             {
@@ -91,15 +95,17 @@ namespace Aaris.MapReview
                     float dx = q.x - lastPosition.x, dz = q.z - lastPosition.z;
                     if (dx * dx + dz * dz > limit) continue;
                     wanted[i] = query;
-                    if (!c.enabled) c.enabled = true;
+                    if (!c.enabled) { c.enabled = true; changed = true; }
                     nextActive.Add(i);
                 }
             }
             foreach (int i in active)
-                if (wanted[i] != query && obstacles[i] != null) obstacles[i].enabled = false;
+                if (wanted[i] != query && obstacles[i] != null && obstacles[i].enabled)
+                { obstacles[i].enabled = false; changed = true; }
             List<int> swap = active; active = nextActive; nextActive = swap;
-            // A teleported CharacterController/camera must see the newly enabled shapes immediately.
-            Physics.SyncTransforms();
+            // Periodic stationary checks should not force an expensive physics-wide synchronization.
+            // Explicit refreshes must still synchronize after teleports for immediate camera/support queries.
+            if (changed || forceSync) Physics.SyncTransforms();
         }
         private void OnDisable()
         {
