@@ -99,8 +99,10 @@ def complete_prefab(root,name,factor):
     scene.transforms[tr]['m_LocalScale']=vec(factor,factor,factor)
     old_id=next(i for c,i,n,d in old if n=='LODGroup')
     scene.next_id=max(scene.next_id,old_id+1)
-    levels=[{'screenRelativeHeight':.22,'fadeTransitionWidth':.12,'renderers':[{'renderer':ref(scene.renderers[-1])}]}]
-    for level,threshold in ((1,.07),(2,.0025)):
+    # Match the saved low-memory residential authoring policy; other types retain original LODs.
+    near_height,mid_height=(.28,.095) if name in HOMES else (.22,.07)
+    levels=[{'screenRelativeHeight':near_height,'fadeTransitionWidth':.12,'renderers':[{'renderer':ref(scene.renderers[-1])}]}]
+    for level,threshold in ((1,mid_height),(2,.0025)):
         scene.model(f'{name}_LOD{level}',guid(f'Assets/AarisWorld/Models/{name}/Geometry_LOD{level}.asset'),mats,parent=tr,collider=False,lod=False)
         levels.append({'screenRelativeHeight':threshold,'fadeTransitionWidth':.12,'renderers':[{'renderer':ref(scene.renderers[-1])}]})
     fields={k:v for k,v in lod.items() if k not in ('m_GameObject','m_ObjectHideFlags','m_CorrespondingSourceObject','m_PrefabInstance','m_PrefabAsset')}

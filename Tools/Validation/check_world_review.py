@@ -31,7 +31,8 @@ def check(native=False):
         root=next(d for c,i,n,d in objects if n=='Transform' and d['m_Father']['fileID']==0)
         assert list(root['m_LocalScale'].values())==[model['prefab_scale']]*3
         lod=next(d for c,i,n,d in objects if n=='LODGroup')
-        assert [l['screenRelativeHeight'] for l in lod['m_LODs']]==[.22,.07,.0025]
+        expected_lods=[.28,.095,.0025] if name in HOMES else [.22,.07,.0025]
+        assert [l['screenRelativeHeight'] for l in lod['m_LODs']]==expected_lods,(name,'Unexpected saved LOD thresholds')
         renderers={i:d for c,i,n,d in objects if n=='MeshRenderer'};assert len(renderers)==3
         assert all(len(d['m_Materials'])==model['submeshes'] for d in renderers.values()),(name,'Material slots changed')
         for level in lod['m_LODs']:assert len(level['renderers'])==1 and level['renderers'][0]['renderer']['fileID']in renderers
