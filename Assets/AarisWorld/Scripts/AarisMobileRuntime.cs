@@ -13,6 +13,10 @@ namespace Aaris.MapReview
         [SerializeField] private Terrain[] terrains;
         [SerializeField] private bool releaseTerrainPaintCpuCopies = true;
         [SerializeField] private int targetFrameRate = 60;
+        // Non-serialized so older saved scenes always receive the Android safeguard.
+        private bool adaptiveAndroidVisualBudget = true;
+        private string mobileVisualProfile = "authored";
+        private bool emergencyBudgetApplied;
         private readonly float[] frameTimes = new float[180];
         private readonly float[] sortedTimes = new float[180];
         private int frameIndex, frameCount;
@@ -27,6 +31,7 @@ namespace Aaris.MapReview
         private void Awake()
         {
             Application.targetFrameRate = targetFrameRate;
+            ConfigureAndroidVisualBudget();
             Application.lowMemory += OnLowMemory;
             Application.logMessageReceived += OnLog;
             try
@@ -41,6 +46,68 @@ namespace Aaris.MapReview
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             { Debug.LogWarning("Aaris diagnostics file unavailable: " + e.Message); logPath = null; }
             Record("start");
+        }
+
+
+        // Android-only budgets preserve the authored terrain, house meshes, and far tree
+        // visibility. Near trees stay 3D; distant instances use the existing billboard LOD.
+        // No new textures, procedural meshes or per-frame render scans are created.
+        private void ConfigureAndroidVisualBudget()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (!adaptiveAndroidVisualBudget) return;
+            int ramMB = SystemInfo.systemMemorySize;
+            if (ramMB <= 0 || ramMB > 3500) return; // Do not guess on unknown RAM.
+            bool twoGB = ramMB <= 2500; // Android reports usable RAM, not marketing capacity.
+            mobileVisualProfile = twoGB ? "2gb-balanced" : "3gb-balanced";
+            if (SystemInfo.supportsMipStreaming && QualitySettings.streamingMipmapsActive)
+            {
+                QualitySettings.streamingMipmapsMemoryBudget = Mathf.Min(
+                    QualitySettings.streamingMipmapsMemoryBudget, twoGB ? 192f : 256f);
+                QualitySettings.streamingMipmapsMaxLevelReduction = Mathf.Max(
+                    QualitySettings.streamingMipmapsMaxLevelReduction, twoGB ? 3 : 2);
+            }
+            QualitySettings.shadowDistance = Mathf.Min(QualitySettings.shadowDistance, twoGB ? 55f : 70f);
+            if (terrains == null) return;
+            foreach (Terrain terrain in terrains)
+            {
+                if (terrain == null) continue;
+                // Do not change treeDistance: the distant silhouette remains present.
+                if (terrain.treeBillboardDistance > 0f)
+                    terrain.treeBillboardDistance = Mathf.Min(terrain.treeBillboardDistance, twoGB ? 100f : 140f);
+                if (terrain.treeMaximumFullLODCount > 0)
+                    terrain.treeMaximumFullLODCount = Mathf.Min(terrain.treeMaximumFullLODCount, twoGB ? 96 : 144);
+                if (terrain.detailObjectDistance > 0f)
+                    terrain.detailObjectDistance = Mathf.Min(terrain.detailObjectDistance, twoGB ? 45f : 60f);
+            }
+#endif
+        }
+
+        // Only called when Android actually reports memory pressure, never each frame.
+        private void ApplyMemoryPressureBudget()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (!adaptiveAndroidVisualBudget || emergencyBudgetApplied) return;
+            emergencyBudgetApplied = true;
+            mobileVisualProfile = "memory-pressure";
+            if (SystemInfo.supportsMipStreaming && QualitySettings.streamingMipmapsActive)
+            {
+                QualitySettings.streamingMipmapsMemoryBudget = Mathf.Min(QualitySettings.streamingMipmapsMemoryBudget, 128f);
+                QualitySettings.streamingMipmapsMaxLevelReduction = Mathf.Max(QualitySettings.streamingMipmapsMaxLevelReduction, 4);
+            }
+            QualitySettings.shadowDistance = Mathf.Min(QualitySettings.shadowDistance, 35f);
+            if (terrains == null) return;
+            foreach (Terrain terrain in terrains)
+            {
+                if (terrain == null) continue;
+                if (terrain.treeBillboardDistance > 0f)
+                    terrain.treeBillboardDistance = Mathf.Min(terrain.treeBillboardDistance, 75f);
+                if (terrain.treeMaximumFullLODCount > 0)
+                    terrain.treeMaximumFullLODCount = Mathf.Min(terrain.treeMaximumFullLODCount, 64);
+                if (terrain.detailObjectDistance > 0f)
+                    terrain.detailObjectDistance = Mathf.Min(terrain.detailObjectDistance, 35f);
+            }
+#endif
         }
 
         private IEnumerator Start()
@@ -87,6 +154,7 @@ namespace Aaris.MapReview
             if (lowMemoryPending)
             {
                 lowMemoryPending = false;
+                ApplyMemoryPressureBudget();
                 Record("low-memory");
                 if (Time.unscaledTime >= unloadAfter && (unloading == null || unloading.isDone))
                 {
@@ -115,9 +183,9 @@ namespace Aaris.MapReview
         [Serializable]
         private sealed class Sample
         {
-            public string reason, utc, version, buildGuid, device, gpu, api, lastError;
+            public string reason, utc, version, buildGuid, device, gpu, api, lastError, mobileVisualProfile;
             public int systemRamMB, targetFps, warningCount;
-            public float seconds, averageFps, p95FrameMs;
+            public float seconds, averageFps, p95FrameMs, textureStreamingBudgetMB, shadowDistanceM;
             public long unityAllocatedBytes, unityReservedBytes, managedBytes, androidPssKB;
             public ulong textureBytes, desiredTextureBytes;
             public long terrainCpuPaintBytesReleased;
@@ -132,6 +200,8 @@ namespace Aaris.MapReview
             var s = new Sample {
                 reason = reason, utc = DateTime.UtcNow.ToString("O"), version = Application.version, buildGuid = Application.buildGUID,
                 device = SystemInfo.deviceModel, gpu = SystemInfo.graphicsDeviceName, api = SystemInfo.graphicsDeviceType.ToString(),
+                mobileVisualProfile = this.mobileVisualProfile, textureStreamingBudgetMB = QualitySettings.streamingMipmapsMemoryBudget,
+                shadowDistanceM = QualitySettings.shadowDistance,
                 systemRamMB = SystemInfo.systemMemorySize, targetFps = Application.targetFrameRate,
                 seconds = Time.unscaledTime, averageFps = total > 0 ? frameCount / total : 0,
                 p95FrameMs = frameCount > 0 ? sortedTimes[Mathf.Clamp(Mathf.CeilToInt(frameCount * .95f) - 1, 0, frameCount - 1)] * 1000 : 0,

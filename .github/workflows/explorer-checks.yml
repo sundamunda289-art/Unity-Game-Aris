@@ -11,6 +11,8 @@ on:
       - 'Packages/manifest.json'
       - 'Tools/Validation/check_explorer.py'
       - 'Tools/Validation/check_mobile_review.py'
+      - 'Tools/Validation/check_mobile_visual_budget.py'
+      - 'Assets/TerrainDemoScene_URP/Prefabs/Trees/Cypress/Cypress_Forest_Desktop.prefab'
       - 'Assets/AarisWorld/Props/**'
       - 'Docs/MOBILE_REVIEW_REPORT.json'
       - 'Docs/ROCK_CLUSTER_ADDITIONS_20261103.json'
@@ -54,5 +56,7 @@ jobs:
         run: python Tools/Validation/check_material_import.py
       - name: Check mobile saved bindings, props and preserved visual settings
         run: python Tools/Validation/check_mobile_review.py
+      - name: Check low-RAM visual budgets, tree LOD shape and gated physics
+        run: python Tools/Validation/check_mobile_visual_budget.py
       - name: Verify saved companion rocks, LODs, positions and gated colliders
         run: python Tools/Validation/check_rock_clusters.py

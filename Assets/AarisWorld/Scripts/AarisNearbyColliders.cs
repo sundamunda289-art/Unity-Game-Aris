@@ -65,9 +65,13 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (target == null) return;
-            if ((target.position - lastPosition).sqrMagnitude >= 4 || Time.unscaledTime >= nextCheck) RefreshNow();
+            if ((target.position - lastPosition).sqrMagnitude >= 4 || Time.unscaledTime >= nextCheck) RefreshInternal(false);
         }
-        public void RefreshNow()
+        // Explicit calls (for example HOME teleport) still force a physics sync.
+        // Periodic queries sync only when collider enablement actually changes.
+        public void RefreshNow() { RefreshInternal(true); }
+
+        private void RefreshInternal(bool forceSync)
         {
             if (target == null || worldBounds == null) return;
             lastPosition = target.position;
@@ -76,6 +80,7 @@ namespace Aaris.MapReview
             if (query == int.MaxValue) { Array.Clear(visited, 0, visited.Length); Array.Clear(wanted, 0, wanted.Length); query = 0; }
             query++;
             nextActive.Clear();
+            bool colliderStateChanged = false;
             for (int xCell = Cell(lastPosition.x - activationDistance); xCell <= Cell(lastPosition.x + activationDistance); xCell++)
                 for (int zCell = Cell(lastPosition.z - activationDistance); zCell <= Cell(lastPosition.z + activationDistance); zCell++)
             {
@@ -91,15 +96,16 @@ namespace Aaris.MapReview
                     float dx = q.x - lastPosition.x, dz = q.z - lastPosition.z;
                     if (dx * dx + dz * dz > limit) continue;
                     wanted[i] = query;
-                    if (!c.enabled) c.enabled = true;
+                    if (!c.enabled) { c.enabled = true; colliderStateChanged = true; }
                     nextActive.Add(i);
                 }
             }
             foreach (int i in active)
-                if (wanted[i] != query && obstacles[i] != null) obstacles[i].enabled = false;
+                if (wanted[i] != query && obstacles[i] != null && obstacles[i].enabled)
+                { obstacles[i].enabled = false; colliderStateChanged = true; }
             List<int> swap = active; active = nextActive; nextActive = swap;
             // A teleported CharacterController/camera must see the newly enabled shapes immediately.
-            Physics.SyncTransforms();
+            if (forceSync || colliderStateChanged) Physics.SyncTransforms();
         }
         private void OnDisable()
         {
