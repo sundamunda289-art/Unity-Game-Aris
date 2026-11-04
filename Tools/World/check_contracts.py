@@ -12,7 +12,10 @@ from capabilities import schema as automation_schema
 
 root=Path(__file__).resolve().parents[2]
 parser=tree_sitter.Parser(tree_sitter.Language(tree_sitter_c_sharp.language()))
-for path in list((root/'Assets/AarisWorld/Editor').glob('World*.cs'))+[root/'Assets/AarisWorld/Scripts/AarisMobileRuntime.cs']:
+for path in list((root/'Assets/AarisWorld/Editor').glob('World*.cs')) + [
+    root/'Assets/AarisWorld/Scripts/AarisMobileRuntime.cs',
+    root/'Assets/AarisWorld/Scripts/AarisThirdPersonPlayer.cs',
+]:
     tree=parser.parse(path.read_bytes())
     assert not tree.root_node.has_error, str(path)+' C# syntax error'
     assert Path(str(path)+'.meta').is_file(), str(path)+' requires stable metadata'
