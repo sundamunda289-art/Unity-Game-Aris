@@ -51,6 +51,33 @@ def preserved_tree_lod_only(root, path, expected_sha):
     groups = [d for d in docs if d["kind"] == "LODGroup"]
     if len(groups) != 1:
         return False
+    # Normalize only the reviewed far-shadow optimization before the historical
+    # exact-SHA guard. Never allow arbitrary geometry, transforms, GUID or LOD edits.
+    objects = {doc["file_id"]: doc["data"].get("m_Name", "")
+               for doc in docs if doc["kind"] == "GameObject"}
+    far = {}
+    for doc in docs:
+        if doc["kind"] != "MeshRenderer":
+            continue
+        owner = doc["data"].get("m_GameObject", {}).get("fileID")
+        name = objects.get(owner, "")
+        if name.endswith("_LOD2") or name.endswith("_LOD3"):
+            suffix = name.rsplit("_LOD", 1)[-1]
+            if suffix in far:
+                return False
+            far[suffix] = doc
+    if set(far) != {"2", "3"}:
+        return False
+    flags = [far[k]["data"].get("m_CastShadows") for k in ("2", "3")]
+    if flags == [0, 0]:
+        for doc in sorted(far.values(), key=lambda item: item["body_start"], reverse=True):
+            body = text[doc["body_start"]:doc["end"]]
+            if body.count("  m_CastShadows: 0\n") != 1 or doc["data"].get("m_ReceiveShadows") != 1:
+                return False
+            body = body.replace("  m_CastShadows: 0\n", "  m_CastShadows: 1\n", 1)
+            text = text[:doc["body_start"]] + body + text[doc["end"]:]
+    elif flags != [1, 1]:
+        return False
     d = groups[0]
     old, new = REVIEWED_TREE_LODS[key]
     if [lod["screenRelativeHeight"] for lod in d["data"]["m_LODs"]] != new:
