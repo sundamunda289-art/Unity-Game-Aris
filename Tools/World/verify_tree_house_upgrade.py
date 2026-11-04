@@ -62,7 +62,22 @@ HEAVY_COMPOUND_SOURCE_PREFABS = frozenset(
 )
 
 
-# Strict scene LOD correction: reverse 79 residential/rock pairs and 3 compound scalars.
+# These civic sources have verified LOD1 -> LOD2 triangle reductions of
+# TownHall 17925->4431, Harbour 23527->2714, ParcelDepot 6632->2916.
+# Only their LOD1 switch is raised (7% to 9.5% screen height).
+# Preserve exact historical hashes by reversing this specific scalar in memory.
+CIVIC_DISTANCE_LOD_SCENE_NAMES = frozenset((
+    'ClockTowerTown_TownHall_01',
+    'EasternPort_Harbour_01',
+    'FreightDistrict_ParcelDepot_01',
+))
+CIVIC_DISTANCE_LOD_SOURCE_PREFABS = frozenset(
+    f'Assets/AarisWorld/Models/{name}/{name}.prefab'
+    for name in ('TownHall', 'Harbour', 'ParcelDepot')
+)
+
+# Strict scene LOD correction: reverse 79 residential/rock pairs, 3 compounds
+# and 3 civic distance-LOD scalars.
 SCENE_MOBILE_LOD_PATH = 'Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity'
 MOBILE_LOD_HOME_TYPES = frozenset((
     'a_frame_cabin', 'bungalow_house', 'detached_two_storey_house',
@@ -83,7 +98,7 @@ def restore_scene_mobile_lod(source):
             name = re.search(r'^  m_Name: ([^\r\n]+)', chunk, re.M)
             if name:
                 names[match.group(1)] = name.group(1)
-    counts = {'home': 0, 'rock': 0, 'heavy': 0, 'untouched': 0}
+    counts = {'home': 0, 'rock': 0, 'heavy': 0, 'civic': 0, 'untouched': 0}
     result = []
     for chunk in chunks:
         if not re.match(r'--- !u!205 &', chunk):
@@ -94,7 +109,8 @@ def restore_scene_mobile_lod(source):
         home = any(re.search(r'_' + re.escape(t) + r'_\d+$', name) for t in MOBILE_LOD_HOME_TYPES)
         rock = re.fullmatch(r'RockCover_\d+', name) is not None
         heavy = name in HEAVY_COMPOUND_SCENE_NAMES
-        if not (home or rock or heavy):
+        civic = name in CIVIC_DISTANCE_LOD_SCENE_NAMES
+        if not (home or rock or heavy or civic):
             counts['untouched'] += 1
             result.append(chunk)
             continue
@@ -106,6 +122,13 @@ def restore_scene_mobile_lod(source):
                                         '  - screenRelativeHeight: 0.07\n', 1))
             counts['heavy'] += 1
             continue
+        if civic:
+            if thresholds != ['0.22', '0.095', '0.0025'] or chunk.count('  - screenRelativeHeight: 0.095\n') != 1:
+                return None
+            result.append(chunk.replace('  - screenRelativeHeight: 0.095\n',
+                                        '  - screenRelativeHeight: 0.07\n', 1))
+            counts['civic'] += 1
+            continue
         if thresholds != ['0.28', '0.095', '0.0025']:
             return None
         if chunk.count('  - screenRelativeHeight: 0.28\n') != 1 or chunk.count('  - screenRelativeHeight: 0.095\n') != 1:
@@ -114,7 +137,7 @@ def restore_scene_mobile_lod(source):
         original = original.replace('  - screenRelativeHeight: 0.095\n', '  - screenRelativeHeight: 0.07\n', 1)
         counts['home' if home else 'rock'] += 1
         result.append(original)
-    if counts != {'home': 47, 'rock': 32, 'heavy': 3, 'untouched': 19}:
+    if counts != {'home': 47, 'rock': 32, 'heavy': 3, 'civic': 3, 'untouched': 16}:
         return None
     return ''.join(result).encode('utf-8')
 
@@ -127,6 +150,11 @@ def preserved_or_reviewed_lod_only(root,path,expected_sha):
         return restored is not None and hashlib.sha256(restored).hexdigest() == expected_sha
     if path in HEAVY_COMPOUND_SOURCE_PREFABS:
         marker = b'  - screenRelativeHeight: 0.11\n'
+        if source.count(marker) != 1:return False
+        original = source.replace(marker, b'  - screenRelativeHeight: 0.07\n', 1)
+        return hashlib.sha256(original).hexdigest() == expected_sha
+    if path in CIVIC_DISTANCE_LOD_SOURCE_PREFABS:
+        marker = b'  - screenRelativeHeight: 0.095\n'
         if source.count(marker) != 1:return False
         original = source.replace(marker, b'  - screenRelativeHeight: 0.07\n', 1)
         return hashlib.sha256(original).hexdigest() == expected_sha

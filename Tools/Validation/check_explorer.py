@@ -52,7 +52,8 @@ def check(require_native=False):
     lods=[d for c,i,n,d in objects if n=='LODGroup' and names[d['m_GameObject']['fileID']] in building_names]
     assert len(lods)==59 and all(len(d['m_LODs'])==3 for d in lods)
     # 47 houses and 32 rocks use 0.28 / 0.095; 3 very heavy district compounds
-    # switch to saved LOD2 at 0.11. All other civic assets retain 0.22 / 0.07.
+    # switch to saved LOD2 at 0.11. Three high-savings civic landmarks use
+    # 0.22 / 0.095 / 0.0025; other civic assets retain 0.22 / 0.07.
     # Guard the entire scene against unrelated edits via exact protected SHA256.
     sys.path.insert(0, str(ROOT/'Tools/World'))
     from verify_tree_house_upgrade import SCENE_MOBILE_LOD_PATH, preserved_or_reviewed_lod_only
@@ -67,8 +68,12 @@ def check(require_native=False):
     actual_heavy={names[d['m_GameObject']['fileID']] for d in lods
         if [l['screenRelativeHeight'] for l in d['m_LODs']]==[.22,.11,.0025]}
     assert actual_heavy==heavy_names, 'Heavy compound scene LOD owner mismatch'
+    from verify_tree_house_upgrade import CIVIC_DISTANCE_LOD_SCENE_NAMES
+    actual_civic={names[d['m_GameObject']['fileID']] for d in lods
+        if [l['screenRelativeHeight'] for l in d['m_LODs']]==[.22,.095,.0025]}
+    assert actual_civic==CIVIC_DISTANCE_LOD_SCENE_NAMES, 'Civic distance LOD owner mismatch'
     assert all([l['screenRelativeHeight'] for l in d['m_LODs']] in
-        ([.28,.095,.0025], [.22,.07,.0025], [.22,.11,.0025])
+        ([.28,.095,.0025], [.22,.07,.0025], [.22,.11,.0025], [.22,.095,.0025])
         for d in lods), 'Unreviewed building LOD settings'
     sky=next(d for c,i,n,d in documents(ROOT/'Assets/TerrainDemoScene_URP/Prefabs/Skybox/Materials/Sky.mat') if n=='Material')
     assert sky['m_Shader']['fileID']==106 and sky['m_ShaderKeywords']=='_SUNDISK_HIGH_QUALITY'

@@ -32,8 +32,10 @@ def check(native=False):
         assert list(root['m_LocalScale'].values())==[model['prefab_scale']]*3
         lod=next(d for c,i,n,d in objects if n=='LODGroup')
         heavy_compounds={'Airfield','CanalTown','HanokVillage'}
+        civic_distance_lod={'TownHall','Harbour','ParcelDepot'}
         expected_lods=([.28,.095,.0025] if name in HOMES else
-            [.22,.11,.0025] if name in heavy_compounds else [.22,.07,.0025])
+            [.22,.11,.0025] if name in heavy_compounds else
+            [.22,.095,.0025] if name in civic_distance_lod else [.22,.07,.0025])
         assert [l['screenRelativeHeight'] for l in lod['m_LODs']]==expected_lods,(name,'Unexpected LOD profile')
         renderers={i:d for c,i,n,d in objects if n=='MeshRenderer'};assert len(renderers)==3
         assert all(len(d['m_Materials'])==model['submeshes'] for d in renderers.values()),(name,'Material slots changed')

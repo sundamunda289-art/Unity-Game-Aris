@@ -1,4 +1,4 @@
-"""Exact scene-integrity proof for 47 residential and 32 rock-cover LOD groups.
+"""Exact scene-integrity proof for residential, rock, compound and civic LOD groups.
 
 These checks validate serialized YAML only, not rendered image quality or Android FPS.
 """
@@ -27,9 +27,9 @@ class SavedSceneMobileLodIntegrity(unittest.TestCase):
         expected = self.contract['preserved_files'][SCENE_MOBILE_LOD_PATH]
         self.assertEqual(hashlib.sha256(original).hexdigest(), expected)
         self.assertEqual(self.scene.count(b'  - screenRelativeHeight: 0.28\n'), 79)
-        self.assertEqual(self.scene.count(b'  - screenRelativeHeight: 0.095\n'), 79)
+        self.assertEqual(self.scene.count(b'  - screenRelativeHeight: 0.095\n'), 82)
         self.assertEqual(self.scene.count(b'  - screenRelativeHeight: 0.22\n'), 22)
-        self.assertEqual(self.scene.count(b'  - screenRelativeHeight: 0.07\n'), 19)
+        self.assertEqual(self.scene.count(b'  - screenRelativeHeight: 0.07\n'), 16)
         self.assertEqual(self.scene.count(b'  - screenRelativeHeight: 0.11\n'), 3)
         self.assertEqual(self.scene.count(b'  - screenRelativeHeight: 0.0025\n'), 101)
 
@@ -53,6 +53,33 @@ class SavedSceneMobileLodIntegrity(unittest.TestCase):
         changed = self.scene.replace(b'  - screenRelativeHeight: 0.11\n',
                                      b'  - screenRelativeHeight: 0.12\n', 1)
         self.assertIsNone(restore_scene_mobile_lod(changed))
+
+    def test_three_civic_prefabs_restore_protected_hashes(self):
+        from verify_tree_house_upgrade import (
+            CIVIC_DISTANCE_LOD_SOURCE_PREFABS, CIVIC_DISTANCE_LOD_SCENE_NAMES,
+            preserved_or_reviewed_lod_only,
+        )
+        self.assertEqual(len(CIVIC_DISTANCE_LOD_SOURCE_PREFABS), 3)
+        self.assertEqual(len(CIVIC_DISTANCE_LOD_SCENE_NAMES), 3)
+        for path in sorted(CIVIC_DISTANCE_LOD_SOURCE_PREFABS):
+            with self.subTest(path=path):
+                source = (ROOT / path).read_bytes()
+                self.assertEqual(source.count(b'  - screenRelativeHeight: 0.095\n'), 1)
+                self.assertEqual(source.count(b'  - screenRelativeHeight: 0.22\n'), 1)
+                self.assertEqual(source.count(b'  - screenRelativeHeight: 0.0025\n'), 1)
+                original = source.replace(b'  - screenRelativeHeight: 0.095\n',
+                                          b'  - screenRelativeHeight: 0.07\n', 1)
+                expected = self.contract['preserved_files'][path]
+                self.assertEqual(hashlib.sha256(original).hexdigest(), expected)
+                self.assertTrue(preserved_or_reviewed_lod_only(ROOT, path, expected))
+                # Another prefab property must not slip through the scalar-only guard.
+                tampered = source.replace(b'  m_FadeMode: 1\n',
+                                          b'  m_FadeMode: 0\n', 1)
+                self.assertNotEqual(tampered, source)
+                restored_tampered = tampered.replace(
+                    b'  - screenRelativeHeight: 0.095\n',
+                    b'  - screenRelativeHeight: 0.07\n', 1)
+                self.assertNotEqual(hashlib.sha256(restored_tampered).hexdigest(), expected)
 
     def test_modified_scene_geometry_or_metadata_cannot_pass(self):
         modified = self.scene.replace(b'  m_Fog: 1\n', b'  m_Fog: 0\n', 1)
