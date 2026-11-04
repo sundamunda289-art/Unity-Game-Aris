@@ -6,7 +6,7 @@ import math
 import re
 from pathlib import Path
 
-from unity_data import WorldError, documents
+from unity_data import WorldError
 
 THRESHOLD = re.compile(r"(?m)^(  - screenRelativeHeight: )([^\r\n]+)$")
 
@@ -44,17 +44,27 @@ def preserved_tree_lod_only(root, path, expected_sha):
     source = (Path(root)/path).read_bytes()
     if hashlib.sha256(source).hexdigest() == expected_sha:
         return True
+    # A completed explicit bake preserves geometry in native assets and retires
+    # only source tags/mesh references. Reverse those exact hash-bound changes
+    # before checking this older LOD-only migration. No callback is required.
+    from bake_tree_core import CONTRACT, preserved_source_bytes
+    if (Path(root)/CONTRACT).exists():
+        source = preserved_source_bytes(root, path, source)
+        if source is None:
+            return False
+        if hashlib.sha256(source).hexdigest() == expected_sha:
+            return True
     key = path.removeprefix(TREE_PREFIX).removesuffix(".prefab")
     if not path.startswith(TREE_PREFIX) or not path.endswith(".prefab") or key not in REVIEWED_TREE_LODS:
         return False
-    text, docs = documents(Path(root)/path)
-    groups = [d for d in docs if d["kind"] == "LODGroup"]
+    text = source.decode('utf-8')
+    groups = list(re.finditer(r'(?ms)^--- !u!205 &[^\r\n]+\r?\n(.*?)(?=^--- !u!|\Z)', text))
     if len(groups) != 1:
         return False
-    d = groups[0]
+    group = groups[0]
     old, new = REVIEWED_TREE_LODS[key]
-    if [lod["screenRelativeHeight"] for lod in d["data"]["m_LODs"]] != new:
+    if [float(m[2]) for m in THRESHOLD.finditer(group[1])] != new:
         return False
-    body = rewrite_thresholds(text[d["body_start"]:d["end"]], old)
-    restored = text[:d["body_start"]] + body + text[d["end"]:]
+    body = rewrite_thresholds(group[1], old)
+    restored = text[:group.start(1)] + body + text[group.end(1):]
     return hashlib.sha256(restored.encode()).hexdigest() == expected_sha

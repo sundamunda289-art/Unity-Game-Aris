@@ -1,0 +1,130 @@
+name: Bake saved tree core assets
+on:
+  push:
+    branches: [ai/bake-tree-core-20261104]
+    paths:
+      - '.github/workflows/tree-core-bake.yml'
+      - 'Tools/World/bake_tree_core.py'
+      - 'Tools/World/UnityTreeCoreBake.cs'
+      - 'Tools/World/tests/test_tree_core_bake.py'
+      - 'Tools/World/lod_profiles.py'
+  pull_request:
+    paths:
+      - '.github/workflows/tree-core-bake.yml'
+      - 'Tools/World/bake_tree_core.py'
+      - 'Tools/World/UnityTreeCoreBake.cs'
+      - 'Tools/World/tests/test_tree_core_bake.py'
+      - 'Tools/World/lod_profiles.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-snapshot:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          lfs: true
+      - name: Prepare an exact source snapshot for the local authoring Editor
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, pathlib, subprocess, tarfile
+          paths = [p for p in subprocess.check_output(['git','ls-files','-z']).decode().split('\0') if p]
+          total = sum(pathlib.Path(p).stat().st_size for p in paths)
+          assert total <= 8*1024**3, 'Bounded source snapshot exceeded 8 GiB'
+          for path in paths:
+              p = pathlib.Path(path)
+              assert p.is_file() and not p.is_symlink(), 'Regular tracked source files required'
+              with p.open('rb') as stream:
+                  assert not stream.read(80).startswith(b'version https://git-lfs.github.com/spec/v1'), 'Unmaterialized LFS source: '+path
+          manifest = {'head_sha':os.environ['GITHUB_SHA'],'files':{},'source_bytes':total}
+          for path in paths:
+              h = hashlib.sha256()
+              with pathlib.Path(path).open('rb') as stream:
+                  for block in iter(lambda:stream.read(1024*1024),b''):h.update(block)
+              manifest['files'][path] = h.hexdigest()
+          out = pathlib.Path(os.environ['RUNNER_TEMP'])/'tree-core-source'
+          out.mkdir()
+          (out/'snapshot.json').write_text(json.dumps(manifest))
+          with tarfile.open(out/'source.tar.gz','w:gz',compresslevel=1) as archive:
+              for path in paths:archive.add(path,arcname=path,recursive=False)
+          print(json.dumps({'source_files':len(paths),'materialized_source_bytes':total,'archive_bytes':(out/'source.tar.gz').stat().st_size,'includes_git_credentials':False,'core_source_changed':False}))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tree-core-source-${{ github.sha }}
+          path: ${{ runner.temp }}/tree-core-source
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+  source-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          lfs: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r Tools/World/requirements.txt tree-sitter==0.26.0 tree-sitter-c-sharp==0.23.5
+      - run: git lfs pull --include="Assets/AarisWorld/**/*.asset,Assets/TerrainDemoScene_URP/Terrain/Data/*.asset" --exclude=""
+      - run: python -m unittest discover -s Tools/World/tests -v
+      - run: python Tools/World/check_contracts.py
+      - run: python Tools/World/verify_tree_house_upgrade.py
+      - run: python Tools/World/native_smoke.py
+  editor-availability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Require an actual matching licensed Unity execution route
+        env:
+          UNITY_RUNNER_LABEL: ${{ vars.WORLD_UNITY_RUNNER }}
+          UNITY_EDITOR_EXECUTABLE: ${{ vars.UNITY_EDITOR_PATH }}
+        run: |
+          python - <<'PY'
+          import json, os
+          runner = bool(os.environ.get('UNITY_RUNNER_LABEL'))
+          editor = bool(os.environ.get('UNITY_EDITOR_EXECUTABLE'))
+          print(json.dumps({'matchingUnityVersion': '6000.3.26f1', 'runnerLabelConfigured': runner, 'editorPathConfigured': editor, 'bakeExecuted': False}))
+          if not (runner and editor):
+              raise SystemExit('Actual native bake blocked: configure WORLD_UNITY_RUNNER and a licensed UNITY_EDITOR_PATH. No source asset or importer was changed.')
+          PY
+  engine-preview:
+    needs: [source-checks, editor-availability]
+    if: github.event_name != 'pull_request' && vars.WORLD_UNITY_RUNNER != '' && vars.UNITY_EDITOR_PATH != ''
+    runs-on: [self-hosted, linux, '${{ vars.WORLD_UNITY_RUNNER }}']
+    timeout-minutes: 90
+    concurrency:
+      group: aaris-unity-automation
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          lfs: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r Tools/World/requirements.txt
+      - name: Bake and verify a completely cold import in disposable projects
+        env:
+          UNITY_EDITOR_PATH: ${{ vars.UNITY_EDITOR_PATH }}
+          AARIS_WORLD_TEMP: ${{ runner.temp }}
+        run: |
+          python -u Tools/World/bake_tree_core.py prepare --out "$RUNNER_TEMP/aaris-tree-core-bundle" > "$RUNNER_TEMP/aaris-tree-core-preview.json"
+          python - <<'PY'
+          import json, os, pathlib
+          report = json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'aaris-tree-core-bundle/review.json').read_text())
+          print(json.dumps({k:report[k] for k in ('unity_version','sources','unity_bake_and_cold_import_passed','written_to_source')}, indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tree-core-bake-review-${{ github.sha }}
+          path: ${{ runner.temp }}/aaris-tree-core-bundle
+          retention-days: 1
+          if-no-files-found: error
+      - name: Remove temporary bundle
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/aaris-tree-core-bundle" "$RUNNER_TEMP/aaris-tree-core-preview.json"
