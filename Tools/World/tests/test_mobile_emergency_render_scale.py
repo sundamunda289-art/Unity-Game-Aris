@@ -18,7 +18,7 @@ class EmergencyRenderScaleSourceTests(unittest.TestCase):
     def test_low_ram_android_profile_only(self):
         s = self.source
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR\n            ApplyMobileMemoryProfile();", s)
-        self.assertIn("if (systemRamMb <= 0 || systemRamMb > 3584) return;", s)
+        self.assertIn("if (systemRamMb <= 0 || systemRamMb > 4096) return;", s)
         self.assertIn("emergencyRenderScaleFloor = constrained ? 0.90f : 0.94f;", s)
         self.assertIn("allowEmergencyRenderScale = true;", s)
 

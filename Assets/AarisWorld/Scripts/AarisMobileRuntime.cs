@@ -16,7 +16,7 @@ namespace Aaris.MapReview
         [SerializeField] private bool releaseTerrainPaintCpuCopies = true;
         [SerializeField] private int targetFrameRate = 60;
         [SerializeField] private bool adaptDetailsToFrameTime = true;
-        // Emergency GPU pixel-cost fallback; no effect on non-Android or >3.5 GB devices.
+        // Emergency GPU pixel-cost fallback; Android devices up to the 4 GB RAM class only.
         [SerializeField] private bool allowEmergencyRenderScale = true;
         private readonly float[] frameTimes = new float[180];
         private readonly float[] sortedTimes = new float[180];
@@ -174,7 +174,7 @@ namespace Aaris.MapReview
         private void ApplyMobileMemoryProfile()
         {
             int systemRamMb = SystemInfo.systemMemorySize;
-            if (systemRamMb <= 0 || systemRamMb > 3584) return;
+            if (systemRamMb <= 0 || systemRamMb > 4096) return;
 
             originalStreamingBudget = QualitySettings.streamingMipmapsMemoryBudget;
             mobilePipeline = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
@@ -237,7 +237,7 @@ namespace Aaris.MapReview
                     constrained ? 400f : 550f);
             }
             profileShadowDistance = mobilePipeline != null ? mobilePipeline.shadowDistance : 0f;
-            mobileProfile = constrained ? "ram-2gb" : "ram-3gb";
+            mobileProfile = constrained ? "ram-2gb" : systemRamMb <= 3584 ? "ram-3gb" : "ram-4gb";
             CaptureStaticLodFadeBaseline();
             mobileProfileApplied = true;
         }

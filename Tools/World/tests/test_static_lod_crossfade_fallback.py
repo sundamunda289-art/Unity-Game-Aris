@@ -18,7 +18,7 @@ class StaticLodCrossFadeFallbackTests(unittest.TestCase):
     def test_low_ram_only_and_sustained_pressure_gated(self):
         s = self.source
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR\n            ApplyMobileMemoryProfile();", s)
-        self.assertIn("if (systemRamMb <= 0 || systemRamMb > 3584) return;", s)
+        self.assertIn("if (systemRamMb <= 0 || systemRamMb > 4096) return;", s)
         self.assertIn("CaptureStaticLodFadeBaseline();", s)
         self.assertIn("suppressStaticLodCrossFadeUnderPressure = true;", s)
         self.assertIn("SetStaticLodCrossFadeSuppressed(suppressStaticLodCrossFadeUnderPressure &&\n                performanceLevel >= 2);", s)

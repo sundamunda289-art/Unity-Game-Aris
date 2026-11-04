@@ -18,7 +18,7 @@ class AdaptiveTreeMeshPressureContracts(unittest.TestCase):
     def test_only_low_ram_android_profile_is_affected(self):
         s = self.src
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR\n            ApplyMobileMemoryProfile();", s)
-        self.assertIn("if (systemRamMb <= 0 || systemRamMb > 3584) return;", s)
+        self.assertIn("if (systemRamMb <= 0 || systemRamMb > 4096) return;", s)
         self.assertIn("profileTreeBillboardDistance = constrained ? 100f : 140f;", s)
         self.assertIn("profileMaxFullLodTrees = constrained ? 28 : 44;", s)
         self.assertIn("if (!mobileProfileApplied) return;", s)
