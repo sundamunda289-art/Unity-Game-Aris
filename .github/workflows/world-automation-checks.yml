@@ -4,6 +4,7 @@ on:
     paths:
       - 'Tools/World/**'
       - 'Assets/AarisWorld/Editor/World*.cs*'
+      - 'Assets/AarisWorld/Editor/AarisResidentialRoutePhysicsAudit.cs*'
       - '.github/workflows/world-*.yml'
       - 'AGENTS.md'
       - 'Docs/WORLD_AUTOMATION.md'

@@ -1,0 +1,523 @@
+{
+  "schema": 1,
+  "original_commit": "7e6150848257fa014866695ffac99b5ca7496b7a",
+  "source_layout": "Docs/MAP_LAYOUT.json",
+  "notes": "Exact saved 2D corridor simulation: 17 garage vehicle marker positions and corresponding 17 absolute-coordinate asphalt Apron GameObject offsets; road exit anchors stay unchanged, original vehicle-to-house bounding clearances preserved. No native LFS, parking-car physics or terrain instance locations altered.",
+  "initial_marker_count": 45,
+  "unchanged_marker_count": 28,
+  "changed_marker_count": 17,
+  "changed_apron_count": 17,
+  "minimum_neighbor_gap_m": 2,
+  "rows": [
+    {
+      "spawn_name": "VehicleSpawnPoint_03",
+      "house_name": "ClockTowerTown_garage_apartment_06",
+      "model": "garage_apartment",
+      "shift_z_m": 0.7029343688964861,
+      "old_spawn_position_m": [
+        350,
+        -11.936767578125,
+        179.78299980163575
+      ],
+      "new_spawn_position_m": [
+        350,
+        -11.936767578125,
+        180.48593417053223
+      ],
+      "road_exit_xz_m": [
+        350,
+        200
+      ],
+      "before_clearance_m": 0.462040023803695,
+      "after_clearance_m": 0.462040023803695,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: 350.0, y: -11.936767578125, z: 179.78299980163575}",
+        "updated_line": "  m_LocalPosition: {x: 350.0, y: -11.936767578125, z: 180.48593417053223}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.7029343688964861}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_06",
+      "house_name": "HighlandObservatory_garage_apartment_04",
+      "model": "garage_apartment",
+      "shift_z_m": 0.7029343688964782,
+      "old_spawn_position_m": [
+        522,
+        23.758773803710938,
+        -660.9170001983642
+      ],
+      "new_spawn_position_m": [
+        522,
+        23.758773803710938,
+        -660.2140658294678
+      ],
+      "road_exit_xz_m": [
+        522,
+        -650
+      ],
+      "before_clearance_m": 0.46204002380375186,
+      "after_clearance_m": 0.46204002380375186,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: 522.0, y: 23.758773803710938, z: -660.9170001983642}",
+        "updated_line": "  m_LocalPosition: {x: 522.0, y: 23.758773803710938, z: -660.2140658294678}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.7029343688964782}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_07",
+      "house_name": "HighlandObservatory_two_bedroom_garage_house_05",
+      "model": "two_bedroom_garage_house",
+      "shift_z_m": 1.4748987700224014,
+      "old_spawn_position_m": [
+        618,
+        23.758773803710938,
+        -658.3749999046325
+      ],
+      "new_spawn_position_m": [
+        618,
+        23.758773803710938,
+        -656.9001011346102
+      ],
+      "road_exit_xz_m": [
+        618,
+        -650
+      ],
+      "before_clearance_m": 0.26237498998636966,
+      "after_clearance_m": 0.26237498998636966,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: 618.0, y: 23.758773803710938, z: -658.3749999046325}",
+        "updated_line": "  m_LocalPosition: {x: 618.0, y: 23.758773803710938, z: -656.9001011346102}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 1.4748987700224014}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_10",
+      "house_name": "EasternPort_garage_apartment_02",
+      "model": "garage_apartment",
+      "shift_z_m": -0.7029343688964861,
+      "old_spawn_position_m": [
+        798.4,
+        -31.07855224609375,
+        362.51700019836426
+      ],
+      "new_spawn_position_m": [
+        798.4,
+        -31.07855224609375,
+        361.8140658294678
+      ],
+      "road_exit_xz_m": [
+        798.4,
+        330
+      ],
+      "before_clearance_m": 0.462040023803695,
+      "after_clearance_m": 0.462040023803695,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: 798.4, y: -31.07855224609375, z: 362.51700019836426}",
+        "updated_line": "  m_LocalPosition: {x: 798.4, y: -31.07855224609375, z: 361.8140658294678}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: -0.7029343688964861}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_11",
+      "house_name": "EasternPort_two_bedroom_garage_house_03",
+      "model": "two_bedroom_garage_house",
+      "shift_z_m": -1.4748987700223906,
+      "old_spawn_position_m": [
+        881.6,
+        -31.07855224609375,
+        359.97499990463257
+      ],
+      "new_spawn_position_m": [
+        881.6,
+        -31.07855224609375,
+        358.5001011346102
+      ],
+      "road_exit_xz_m": [
+        881.6,
+        330
+      ],
+      "before_clearance_m": 0.2623749899864265,
+      "after_clearance_m": 0.2623749899864265,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: 881.6, y: -31.07855224609375, z: 359.97499990463257}",
+        "updated_line": "  m_LocalPosition: {x: 881.6, y: -31.07855224609375, z: 358.5001011346102}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: -1.4748987700223906}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_18",
+      "house_name": "FreightDistrict_garage_apartment_04",
+      "model": "garage_apartment",
+      "shift_z_m": 0.7029343688964821,
+      "old_spawn_position_m": [
+        495,
+        -1.07183837890625,
+        -195.51700019836426
+      ],
+      "new_spawn_position_m": [
+        495,
+        -1.07183837890625,
+        -194.81406582946778
+      ],
+      "road_exit_xz_m": [
+        495,
+        -180
+      ],
+      "before_clearance_m": 0.46204002380372344,
+      "after_clearance_m": 0.46204002380372344,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: 495.0, y: -1.07183837890625, z: -195.51700019836426}",
+        "updated_line": "  m_LocalPosition: {x: 495.0, y: -1.07183837890625, z: -194.81406582946778}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.7029343688964821}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_19",
+      "house_name": "FreightDistrict_two_bedroom_garage_house_05",
+      "model": "two_bedroom_garage_house",
+      "shift_z_m": 1.4748987700223906,
+      "old_spawn_position_m": [
+        602,
+        -1.07183837890625,
+        -192.97499990463257
+      ],
+      "new_spawn_position_m": [
+        602,
+        -1.07183837890625,
+        -191.5001011346102
+      ],
+      "road_exit_xz_m": [
+        602,
+        -180
+      ],
+      "before_clearance_m": 0.2623749899864265,
+      "after_clearance_m": 0.2623749899864265,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: 602.0, y: -1.07183837890625, z: -192.97499990463257}",
+        "updated_line": "  m_LocalPosition: {x: 602.0, y: -1.07183837890625, z: -191.5001011346102}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 1.4748987700223906}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_22",
+      "house_name": "CanalMarket_garage_apartment_03",
+      "model": "garage_apartment",
+      "shift_z_m": -0.7029343688964782,
+      "old_spawn_position_m": [
+        -68.8,
+        -31.07855224609375,
+        662.5170001983643
+      ],
+      "new_spawn_position_m": [
+        -68.8,
+        -31.07855224609375,
+        661.8140658294678
+      ],
+      "road_exit_xz_m": [
+        -68.8,
+        630
+      ],
+      "before_clearance_m": 0.46204002380375186,
+      "after_clearance_m": 0.46204002380375186,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: -68.8, y: -31.07855224609375, z: 662.5170001983643}",
+        "updated_line": "  m_LocalPosition: {x: -68.8, y: -31.07855224609375, z: 661.8140658294678}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: -0.7029343688964782}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_23",
+      "house_name": "CanalMarket_two_bedroom_garage_house_04",
+      "model": "two_bedroom_garage_house",
+      "shift_z_m": 1.4748987700224014,
+      "old_spawn_position_m": [
+        -171.2,
+        -31.07855224609375,
+        621.6250000953675
+      ],
+      "new_spawn_position_m": [
+        -171.2,
+        -31.07855224609375,
+        623.0998988653898
+      ],
+      "road_exit_xz_m": [
+        -171.2,
+        630
+      ],
+      "before_clearance_m": 0.26237498998636966,
+      "after_clearance_m": 0.26237498998636966,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: -171.2, y: -31.07855224609375, z: 621.6250000953675}",
+        "updated_line": "  m_LocalPosition: {x: -171.2, y: -31.07855224609375, z: 623.0998988653898}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 1.4748987700224014}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_26",
+      "house_name": "OldVillage_two_bedroom_garage_house_02",
+      "model": "two_bedroom_garage_house",
+      "shift_z_m": -1.4748987700224014,
+      "old_spawn_position_m": [
+        -587.6,
+        1.7115249633789062,
+        -580.0250000953674
+      ],
+      "new_spawn_position_m": [
+        -587.6,
+        1.7115249633789062,
+        -581.4998988653898
+      ],
+      "road_exit_xz_m": [
+        -587.6,
+        -610
+      ],
+      "before_clearance_m": 0.26237498998636966,
+      "after_clearance_m": 0.26237498998636966,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: -587.6, y: 1.7115249633789062, z: -580.0250000953674}",
+        "updated_line": "  m_LocalPosition: {x: -587.6, y: 1.7115249633789062, z: -581.4998988653898}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: -1.4748987700224014}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_27",
+      "house_name": "OldVillage_garage_apartment_06",
+      "model": "garage_apartment",
+      "shift_z_m": 0.7029343688964782,
+      "old_spawn_position_m": [
+        -530,
+        1.7115249633789062,
+        -620.9170001983642
+      ],
+      "new_spawn_position_m": [
+        -530,
+        1.7115249633789062,
+        -620.2140658294678
+      ],
+      "road_exit_xz_m": [
+        -530,
+        -610
+      ],
+      "before_clearance_m": 0.46204002380375186,
+      "after_clearance_m": 0.46204002380375186,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: -530.0, y: 1.7115249633789062, z: -620.9170001983642}",
+        "updated_line": "  m_LocalPosition: {x: -530.0, y: 1.7115249633789062, z: -620.2140658294678}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.7029343688964782}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_32",
+      "house_name": "ValleySettlement_garage_apartment_04",
+      "model": "garage_apartment",
+      "shift_z_m": 0.7029343688964861,
+      "old_spawn_position_m": [
+        -474.4,
+        15.408645629882812,
+        -244.01700019836426
+      ],
+      "new_spawn_position_m": [
+        -474.4,
+        15.408645629882812,
+        -243.31406582946778
+      ],
+      "road_exit_xz_m": [
+        -474.4,
+        -230
+      ],
+      "before_clearance_m": 0.462040023803695,
+      "after_clearance_m": 0.462040023803695,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: -474.4, y: 15.408645629882812, z: -244.01700019836426}",
+        "updated_line": "  m_LocalPosition: {x: -474.4, y: 15.408645629882812, z: -243.31406582946778}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.7029343688964861}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_33",
+      "house_name": "ValleySettlement_two_bedroom_garage_house_05",
+      "model": "two_bedroom_garage_house",
+      "shift_z_m": 1.4748987700223906,
+      "old_spawn_position_m": [
+        -365.6,
+        15.408645629882812,
+        -241.47499990463257
+      ],
+      "new_spawn_position_m": [
+        -365.6,
+        15.408645629882812,
+        -240.0001011346102
+      ],
+      "road_exit_xz_m": [
+        -365.6,
+        -230
+      ],
+      "before_clearance_m": 0.2623749899864265,
+      "after_clearance_m": 0.2623749899864265,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: -365.6, y: 15.408645629882812, z: -241.47499990463257}",
+        "updated_line": "  m_LocalPosition: {x: -365.6, y: 15.408645629882812, z: -240.0001011346102}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 1.4748987700223906}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_34",
+      "house_name": "ValleySettlement_garage_apartment_06",
+      "model": "garage_apartment",
+      "shift_z_m": 0.7029343688964861,
+      "old_spawn_position_m": [
+        -420,
+        15.408645629882812,
+        -244.01700019836426
+      ],
+      "new_spawn_position_m": [
+        -420,
+        15.408645629882812,
+        -243.31406582946778
+      ],
+      "road_exit_xz_m": [
+        -420,
+        -230
+      ],
+      "before_clearance_m": 0.462040023803695,
+      "after_clearance_m": 0.462040023803695,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: -420.0, y: 15.408645629882812, z: -244.01700019836426}",
+        "updated_line": "  m_LocalPosition: {x: -420.0, y: 15.408645629882812, z: -243.31406582946778}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.7029343688964861}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_37",
+      "house_name": "NorthernRidgeTown_garage_apartment_02",
+      "model": "garage_apartment",
+      "shift_z_m": -0.7029343688964782,
+      "old_spawn_position_m": [
+        242.4,
+        -30.83440399169922,
+        662.5170001983643
+      ],
+      "new_spawn_position_m": [
+        242.4,
+        -30.83440399169922,
+        661.8140658294678
+      ],
+      "road_exit_xz_m": [
+        242.4,
+        630
+      ],
+      "before_clearance_m": 0.46204002380375186,
+      "after_clearance_m": 0.46204002380375186,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: 242.4, y: -30.83440399169922, z: 662.5170001983643}",
+        "updated_line": "  m_LocalPosition: {x: 242.4, y: -30.83440399169922, z: 661.8140658294678}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: -0.7029343688964782}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_38",
+      "house_name": "NorthernRidgeTown_two_bedroom_garage_house_03",
+      "model": "two_bedroom_garage_house",
+      "shift_z_m": -1.4748987700224014,
+      "old_spawn_position_m": [
+        357.6,
+        -30.83440399169922,
+        659.9749999046326
+      ],
+      "new_spawn_position_m": [
+        357.6,
+        -30.83440399169922,
+        658.5001011346102
+      ],
+      "road_exit_xz_m": [
+        357.6,
+        630
+      ],
+      "before_clearance_m": 0.26237498998636966,
+      "after_clearance_m": 0.26237498998636966,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: 357.6, y: -30.83440399169922, z: 659.9749999046326}",
+        "updated_line": "  m_LocalPosition: {x: 357.6, y: -30.83440399169922, z: 658.5001011346102}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: -1.4748987700224014}"
+      }
+    },
+    {
+      "spawn_name": "VehicleSpawnPoint_39",
+      "house_name": "NorthernRidgeTown_garage_apartment_06",
+      "model": "garage_apartment",
+      "shift_z_m": 0.7029343688964782,
+      "old_spawn_position_m": [
+        300,
+        -30.83440399169922,
+        615.9829998016357
+      ],
+      "new_spawn_position_m": [
+        300,
+        -30.83440399169922,
+        616.6859341705322
+      ],
+      "road_exit_xz_m": [
+        300,
+        630
+      ],
+      "before_clearance_m": 0.46204002380375186,
+      "after_clearance_m": 0.46204002380375186,
+      "marker": {
+        "original_line": "  m_LocalPosition: {x: 300.0, y: -30.83440399169922, z: 615.9829998016357}",
+        "updated_line": "  m_LocalPosition: {x: 300.0, y: -30.83440399169922, z: 616.6859341705322}"
+      },
+      "apron": {
+        "original_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.0}",
+        "updated_line": "  m_LocalPosition: {x: 0.0, y: 0.0, z: 0.7029343688964782}"
+      }
+    }
+  ]
+}

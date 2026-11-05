@@ -1,0 +1,760 @@
+{
+  "schema": 1,
+  "reason": "Recenter/rescale 47 original absolute-vertex Foundation planes to cover enlarged houses with preserved 1m exterior margin; asset bytes & meta remain untouched.",
+  "originalSceneBranchCommit": "0bb23b331fd9289e09d0323aa6eb1ad54fff2f09",
+  "foundationSource": "Tools/MapBuild/world_review.py:save_native / surfaces.py:rect",
+  "changes": [
+    {
+      "name": "ClockTowerTown_a_frame_cabin_02",
+      "model": "a_frame_cabin",
+      "scaleX": "1.15710364",
+      "scaleZ": "1.16705845",
+      "positionX": "-45.43437194",
+      "positionZ": "-40.92932043",
+      "footprintBefore": [
+        7.324799957275445,
+        10.142719726562518
+      ],
+      "footprintAfter": [
+        8.789759948730534,
+        12.171263671875021
+      ]
+    },
+    {
+      "name": "ClockTowerTown_bungalow_house_03",
+      "model": "bungalow_house",
+      "scaleX": "1.2635214",
+      "scaleZ": "1.2633015",
+      "positionX": "-108.25459105",
+      "positionZ": "-64.50886653",
+      "footprintBefore": [
+        14.447999572753929,
+        14.349440307617215
+      ],
+      "footprintAfter": [
+        18.782399444580108,
+        18.65427239990238
+      ]
+    },
+    {
+      "name": "ClockTowerTown_pitched_roof_cottage_04",
+      "model": "pitched_roof_cottage",
+      "scaleX": "1.14991979",
+      "scaleZ": "1.1579809",
+      "positionX": "-43.35680183",
+      "positionZ": "-26.43020417",
+      "footprintBefore": [
+        9.96799957275391,
+        14.349440307617215
+      ],
+      "footprintAfter": [
+        11.762239495849615,
+        16.93233956298831
+      ]
+    },
+    {
+      "name": "ClockTowerTown_detached_two_storey_house_05",
+      "model": "detached_two_storey_house",
+      "scaleX": "1.10331331",
+      "scaleZ": "1.10697804",
+      "positionX": "-42.44110733",
+      "positionZ": "-17.89742548",
+      "footprintBefore": [
+        12.382719726562527,
+        16.430400085449207
+      ],
+      "footprintAfter": [
+        13.868646093750032,
+        18.402048095703115
+      ]
+    },
+    {
+      "name": "ClockTowerTown_garage_apartment_06",
+      "model": "garage_apartment",
+      "scaleX": "1.11806193",
+      "scaleZ": "1.11674789",
+      "positionX": "-41.32167458",
+      "positionZ": "-19.53192253",
+      "footprintBefore": [
+        10.76319961547847,
+        10.041919555664094
+      ],
+      "footprintAfter": [
+        12.270047561645455,
+        11.447788293457066
+      ]
+    },
+    {
+      "name": "HighlandObservatory_pitched_roof_cottage_02",
+      "model": "pitched_roof_cottage",
+      "scaleX": "1.14991979",
+      "scaleZ": "1.1579809",
+      "positionX": "-78.25812778",
+      "positionZ": "95.57844306",
+      "footprintBefore": [
+        9.967999572753797,
+        14.349440307617215
+      ],
+      "footprintAfter": [
+        11.76223949584948,
+        16.93233956298831
+      ]
+    },
+    {
+      "name": "HighlandObservatory_detached_two_storey_house_03",
+      "model": "detached_two_storey_house",
+      "scaleX": "1.10331331",
+      "scaleZ": "1.10697804",
+      "positionX": "-63.84762495",
+      "positionZ": "64.72171199",
+      "footprintBefore": [
+        12.382719726562527,
+        16.430400085449264
+      ],
+      "footprintAfter": [
+        13.868646093750032,
+        18.40204809570318
+      ]
+    },
+    {
+      "name": "HighlandObservatory_garage_apartment_04",
+      "model": "garage_apartment",
+      "scaleX": "1.11806193",
+      "scaleZ": "1.11674789",
+      "positionX": "-61.62832609",
+      "positionZ": "78.61803126",
+      "footprintBefore": [
+        10.76319961547847,
+        10.04191955566398
+      ],
+      "footprintAfter": [
+        12.270047561645455,
+        11.447788293456936
+      ]
+    },
+    {
+      "name": "HighlandObservatory_two_bedroom_garage_house_05",
+      "model": "two_bedroom_garage_house",
+      "scaleX": "1.16838514",
+      "scaleZ": "1.168317",
+      "positionX": "-104.06201847",
+      "positionZ": "113.34466781",
+      "footprintBefore": [
+        15.580500421523993,
+        15.525250210762124
+      ],
+      "footprintAfter": [
+        18.54079550161355,
+        18.475047750806926
+      ]
+    },
+    {
+      "name": "EasternPort_garage_apartment_02",
+      "model": "garage_apartment",
+      "scaleX": "1.11806193",
+      "scaleZ": "1.11674789",
+      "positionX": "-94.26064282",
+      "positionZ": "-43.78045994",
+      "footprintBefore": [
+        10.76319961547847,
+        10.041919555664094
+      ],
+      "footprintAfter": [
+        12.270047561645455,
+        11.447788293457066
+      ]
+    },
+    {
+      "name": "EasternPort_two_bedroom_garage_house_03",
+      "model": "two_bedroom_garage_house",
+      "scaleX": "1.16838514",
+      "scaleZ": "1.168317",
+      "positionX": "-148.4483422",
+      "positionZ": "-63.11887501",
+      "footprintBefore": [
+        15.580500421523993,
+        15.52525021076201
+      ],
+      "footprintAfter": [
+        18.54079550161355,
+        18.47504775080679
+      ]
+    },
+    {
+      "name": "EasternPort_row_three_townhouses_04",
+      "model": "row_three_townhouses",
+      "scaleX": "1.09129163",
+      "scaleZ": "1.08720442",
+      "positionX": "-72.88723399",
+      "positionZ": "-26.19620844",
+      "footprintBefore": [
+        20.966399230956995,
+        13.630400085449196
+      ],
+      "footprintAfter": [
+        23.063039154052696,
+        14.993440093994117
+      ]
+    },
+    {
+      "name": "EasternPort_a_frame_cabin_05",
+      "model": "a_frame_cabin",
+      "scaleX": "1.15710364",
+      "scaleZ": "1.16705845",
+      "positionX": "-138.50256675",
+      "positionZ": "-50.1843586",
+      "footprintBefore": [
+        7.324799957275445,
+        10.142719726562518
+      ],
+      "footprintAfter": [
+        8.789759948730534,
+        12.171263671875021
+      ]
+    },
+    {
+      "name": "SouthernAirfield_garage_apartment_03",
+      "model": "garage_apartment",
+      "scaleX": "1.11806193",
+      "scaleZ": "1.11674789",
+      "positionX": "-33.52958738",
+      "positionZ": "45.29818255",
+      "footprintBefore": [
+        10.76319961547847,
+        10.041919555664094
+      ],
+      "footprintAfter": [
+        12.270047561645455,
+        11.447788293457066
+      ]
+    },
+    {
+      "name": "FreightDistrict_garage_apartment_04",
+      "model": "garage_apartment",
+      "scaleX": "1.11806193",
+      "scaleZ": "1.11674789",
+      "positionX": "-58.44065405",
+      "positionZ": "24.28356178",
+      "footprintBefore": [
+        10.76319961547847,
+        10.041919555664037
+      ],
+      "footprintAfter": [
+        12.270047561645455,
+        11.447788293457002
+      ]
+    },
+    {
+      "name": "FreightDistrict_two_bedroom_garage_house_05",
+      "model": "two_bedroom_garage_house",
+      "scaleX": "1.16838514",
+      "scaleZ": "1.168317",
+      "positionX": "-101.36785618",
+      "positionZ": "35.009936",
+      "footprintBefore": [
+        15.580500421523993,
+        15.52525021076201
+      ],
+      "footprintAfter": [
+        18.54079550161355,
+        18.47504775080679
+      ]
+    },
+    {
+      "name": "CanalMarket_detached_two_storey_house_02",
+      "model": "detached_two_storey_house",
+      "scaleX": "1.10331331",
+      "scaleZ": "1.10697804",
+      "positionX": "17.6872385",
+      "positionZ": "-72.21017454",
+      "footprintBefore": [
+        12.382719726562527,
+        16.430400085449264
+      ],
+      "footprintAfter": [
+        13.868646093750032,
+        18.40204809570318
+      ]
+    },
+    {
+      "name": "CanalMarket_garage_apartment_03",
+      "model": "garage_apartment",
+      "scaleX": "1.11806193",
+      "scaleZ": "1.11674789",
+      "positionX": "8.1226606",
+      "positionZ": "-78.80482789",
+      "footprintBefore": [
+        10.76319961547852,
+        10.04191955566398
+      ],
+      "footprintAfter": [
+        12.270047561645512,
+        11.447788293456936
+      ]
+    },
+    {
+      "name": "CanalMarket_two_bedroom_garage_house_04",
+      "model": "two_bedroom_garage_house",
+      "scaleX": "1.16838514",
+      "scaleZ": "1.168317",
+      "positionX": "28.82753651",
+      "positionZ": "-102.10109221",
+      "footprintBefore": [
+        15.58050042152405,
+        15.525250210762124
+      ],
+      "footprintAfter": [
+        18.54079550161362,
+        18.475047750806926
+      ]
+    },
+    {
+      "name": "CanalMarket_row_three_townhouses_05",
+      "model": "row_three_townhouses",
+      "scaleX": "1.09129163",
+      "scaleZ": "1.08720442",
+      "positionX": "6.28086385",
+      "positionZ": "-52.89820252",
+      "footprintBefore": [
+        20.96639923095703,
+        13.63040008544931
+      ],
+      "footprintAfter": [
+        23.063039154052735,
+        14.993440093994241
+      ]
+    },
+    {
+      "name": "OldVillage_two_bedroom_garage_house_02",
+      "model": "two_bedroom_garage_house",
+      "scaleX": "1.16838514",
+      "scaleZ": "1.168317",
+      "positionX": "98.94311011",
+      "positionZ": "95.09910501",
+      "footprintBefore": [
+        15.580500421523993,
+        15.525250210762124
+      ],
+      "footprintAfter": [
+        18.54079550161355,
+        18.475047750806926
+      ]
+    },
+    {
+      "name": "OldVillage_row_three_townhouses_03",
+      "model": "row_three_townhouses",
+      "scaleX": "1.09129163",
+      "scaleZ": "1.08720442",
+      "positionX": "43.126164",
+      "positionZ": "49.27049856",
+      "footprintBefore": [
+        20.966399230956995,
+        13.63040008544931
+      ],
+      "footprintAfter": [
+        23.063039154052696,
+        14.993440093994241
+      ]
+    },
+    {
+      "name": "OldVillage_a_frame_cabin_04",
+      "model": "a_frame_cabin",
+      "scaleX": "1.15710364",
+      "scaleZ": "1.16705845",
+      "positionX": "92.31409735",
+      "positionZ": "105.8148227",
+      "footprintBefore": [
+        7.324799957275445,
+        10.142719726562518
+      ],
+      "footprintAfter": [
+        8.789759948730534,
+        12.171263671875021
+      ]
+    },
+    {
+      "name": "OldVillage_bungalow_house_05",
+      "model": "bungalow_house",
+      "scaleX": "1.2635214",
+      "scaleZ": "1.2633015",
+      "positionX": "124.48750928",
+      "positionZ": "166.77516759",
+      "footprintBefore": [
+        14.447999572753929,
+        14.349440307617215
+      ],
+      "footprintAfter": [
+        18.782399444580108,
+        18.65427239990238
+      ]
+    },
+    {
+      "name": "OldVillage_garage_apartment_06",
+      "model": "garage_apartment",
+      "scaleX": "1.11806193",
+      "scaleZ": "1.11674789",
+      "positionX": "62.57282151",
+      "positionZ": "73.94811553",
+      "footprintBefore": [
+        10.76319961547847,
+        10.04191955566398
+      ],
+      "footprintAfter": [
+        12.270047561645455,
+        11.447788293456936
+      ]
+    },
+    {
+      "name": "LakesideHamlet_pitched_roof_cottage_01",
+      "model": "pitched_roof_cottage",
+      "scaleX": "1.14991979",
+      "scaleZ": "1.1579809",
+      "positionX": "107.94224522",
+      "positionZ": "-14.21828079",
+      "footprintBefore": [
+        9.967999572753797,
+        14.349440307617186
+      ],
+      "footprintAfter": [
+        11.76223949584948,
+        16.93233956298828
+      ]
+    },
+    {
+      "name": "LakesideHamlet_a_frame_cabin_02",
+      "model": "a_frame_cabin",
+      "scaleX": "1.15710364",
+      "scaleZ": "1.16705845",
+      "positionX": "119.65013026",
+      "positionZ": "-15.03526057",
+      "footprintBefore": [
+        7.324799957275445,
+        10.14271972656249
+      ],
+      "footprintAfter": [
+        8.789759948730534,
+        12.171263671874987
+      ]
+    },
+    {
+      "name": "LakesideHamlet_bungalow_house_03",
+      "model": "bungalow_house",
+      "scaleX": "1.2635214",
+      "scaleZ": "1.2633015",
+      "positionX": "178.77291765",
+      "positionZ": "-23.69713464",
+      "footprintBefore": [
+        14.447999572753815,
+        14.349440307617186
+      ],
+      "footprintAfter": [
+        18.782399444579962,
+        18.654272399902343
+      ]
+    },
+    {
+      "name": "LakesideHamlet_pitched_roof_cottage_04",
+      "model": "pitched_roof_cottage",
+      "scaleX": "1.14991979",
+      "scaleZ": "1.1579809",
+      "positionX": "114.17890827",
+      "positionZ": "-4.88160974",
+      "footprintBefore": [
+        9.967999572753797,
+        14.349440307617186
+      ],
+      "footprintAfter": [
+        11.76223949584948,
+        16.93233956298828
+      ]
+    },
+    {
+      "name": "LakesideHamlet_detached_two_storey_house_05",
+      "model": "detached_two_storey_house",
+      "scaleX": "1.10331331",
+      "scaleZ": "1.10697804",
+      "positionX": "70.08774882",
+      "positionZ": "-3.30562132",
+      "footprintBefore": [
+        12.382719726562527,
+        16.43040008544922
+      ],
+      "footprintAfter": [
+        13.868646093750032,
+        18.40204809570313
+      ]
+    },
+    {
+      "name": "ValleySettlement_row_three_townhouses_01",
+      "model": "row_three_townhouses",
+      "scaleX": "1.09129163",
+      "scaleZ": "1.08720442",
+      "positionX": "38.34248281",
+      "positionZ": "16.13281811",
+      "footprintBefore": [
+        20.966399230956995,
+        13.630400085449196
+      ],
+      "footprintAfter": [
+        23.063039154052696,
+        14.993440093994117
+      ]
+    },
+    {
+      "name": "ValleySettlement_pitched_roof_cottage_02",
+      "model": "pitched_roof_cottage",
+      "scaleX": "1.14991979",
+      "scaleZ": "1.1579809",
+      "positionX": "71.12194601",
+      "positionZ": "29.22646606",
+      "footprintBefore": [
+        9.96799957275391,
+        14.349440307617215
+      ],
+      "footprintAfter": [
+        11.762239495849615,
+        16.93233956298831
+      ]
+    },
+    {
+      "name": "ValleySettlement_detached_two_storey_house_03",
+      "model": "detached_two_storey_house",
+      "scaleX": "1.10331331",
+      "scaleZ": "1.10697804",
+      "positionX": "37.77134577",
+      "positionZ": "19.79093672",
+      "footprintBefore": [
+        12.382719726562527,
+        16.430400085449207
+      ],
+      "footprintAfter": [
+        13.868646093750032,
+        18.402048095703115
+      ]
+    },
+    {
+      "name": "ValleySettlement_garage_apartment_04",
+      "model": "garage_apartment",
+      "scaleX": "1.11806193",
+      "scaleZ": "1.11674789",
+      "positionX": "56.00857835",
+      "positionZ": "29.9458346",
+      "footprintBefore": [
+        10.76319961547847,
+        10.041919555664094
+      ],
+      "footprintAfter": [
+        12.270047561645455,
+        11.447788293457066
+      ]
+    },
+    {
+      "name": "ValleySettlement_two_bedroom_garage_house_05",
+      "model": "two_bedroom_garage_house",
+      "scaleX": "1.16838514",
+      "scaleZ": "1.168317",
+      "positionX": "61.56160833",
+      "positionZ": "43.1733105",
+      "footprintBefore": [
+        15.580500421523993,
+        15.52525021076201
+      ],
+      "footprintAfter": [
+        18.54079550161355,
+        18.47504775080679
+      ]
+    },
+    {
+      "name": "ValleySettlement_garage_apartment_06",
+      "model": "garage_apartment",
+      "scaleX": "1.11806193",
+      "scaleZ": "1.11674789",
+      "positionX": "49.5860095",
+      "positionZ": "29.9458346",
+      "footprintBefore": [
+        10.76319961547847,
+        10.041919555664094
+      ],
+      "footprintAfter": [
+        12.270047561645455,
+        11.447788293457066
+      ]
+    },
+    {
+      "name": "NorthernRidgeTown_detached_two_storey_house_01",
+      "model": "detached_two_storey_house",
+      "scaleX": "1.10331331",
+      "scaleZ": "1.10697804",
+      "positionX": "-30.9939927",
+      "positionZ": "-72.21017454",
+      "footprintBefore": [
+        12.382719726562527,
+        16.430400085449264
+      ],
+      "footprintAfter": [
+        13.868646093750032,
+        18.40204809570318
+      ]
+    },
+    {
+      "name": "NorthernRidgeTown_garage_apartment_02",
+      "model": "garage_apartment",
+      "scaleX": "1.11806193",
+      "scaleZ": "1.11674789",
+      "positionX": "-28.6182112",
+      "positionZ": "-78.80482789",
+      "footprintBefore": [
+        10.763199615478527,
+        10.04191955566398
+      ],
+      "footprintAfter": [
+        12.27004756164552,
+        11.447788293456936
+      ]
+    },
+    {
+      "name": "NorthernRidgeTown_two_bedroom_garage_house_03",
+      "model": "two_bedroom_garage_house",
+      "scaleX": "1.16838514",
+      "scaleZ": "1.168317",
+      "positionX": "-60.21452719",
+      "positionZ": "-113.61397501",
+      "footprintBefore": [
+        15.580500421523993,
+        15.525250210762124
+      ],
+      "footprintAfter": [
+        18.54079550161355,
+        18.475047750806926
+      ]
+    },
+    {
+      "name": "NorthernRidgeTown_row_three_townhouses_04",
+      "model": "row_three_townhouses",
+      "scaleX": "1.09129163",
+      "scaleZ": "1.08720442",
+      "positionX": "-22.12909008",
+      "positionZ": "-52.62786881",
+      "footprintBefore": [
+        20.96639923095705,
+        13.63040008544931
+      ],
+      "footprintAfter": [
+        23.06303915405276,
+        14.993440093994241
+      ]
+    },
+    {
+      "name": "NorthernRidgeTown_a_frame_cabin_05",
+      "model": "a_frame_cabin",
+      "scaleX": "1.15710364",
+      "scaleZ": "1.16705845",
+      "positionX": "-56.18026074",
+      "positionZ": "-100.81977502",
+      "footprintBefore": [
+        7.324799957275445,
+        10.142719726562518
+      ],
+      "footprintAfter": [
+        8.789759948730534,
+        12.171263671875021
+      ]
+    },
+    {
+      "name": "NorthernRidgeTown_garage_apartment_06",
+      "model": "garage_apartment",
+      "scaleX": "1.11806193",
+      "scaleZ": "1.11674789",
+      "positionX": "-35.41857821",
+      "positionZ": "-70.45735353",
+      "footprintBefore": [
+        10.76319961547847,
+        10.04191955566398
+      ],
+      "footprintAfter": [
+        12.270047561645455,
+        11.447788293456936
+      ]
+    },
+    {
+      "name": "CoastalHamlet_bungalow_house_01",
+      "model": "bungalow_house",
+      "scaleX": "1.2635214",
+      "scaleZ": "1.2633015",
+      "positionX": "-171.28890989",
+      "positionZ": "-177.72850982",
+      "footprintBefore": [
+        14.447999572753815,
+        14.349440307617215
+      ],
+      "footprintAfter": [
+        18.782399444579962,
+        18.65427239990238
+      ]
+    },
+    {
+      "name": "CoastalHamlet_row_three_townhouses_02",
+      "model": "row_three_townhouses",
+      "scaleX": "1.09129163",
+      "scaleZ": "1.08720442",
+      "positionX": "-54.95755869",
+      "positionZ": "-58.862985",
+      "footprintBefore": [
+        20.966399230956995,
+        13.63040008544931
+      ],
+      "footprintAfter": [
+        23.063039154052696,
+        14.993440093994241
+      ]
+    },
+    {
+      "name": "CoastalHamlet_a_frame_cabin_03",
+      "model": "a_frame_cabin",
+      "scaleX": "1.15710364",
+      "scaleZ": "1.16705845",
+      "positionX": "-109.65833892",
+      "positionZ": "-112.76445425",
+      "footprintBefore": [
+        7.324799957275445,
+        10.142719726562518
+      ],
+      "footprintAfter": [
+        8.789759948730534,
+        12.171263671875021
+      ]
+    },
+    {
+      "name": "CoastalHamlet_bungalow_house_04",
+      "model": "bungalow_house",
+      "scaleX": "1.2635214",
+      "scaleZ": "1.2633015",
+      "positionX": "-158.6398827",
+      "positionZ": "-159.71868749",
+      "footprintBefore": [
+        14.447999572753815,
+        14.349440307617215
+      ],
+      "footprintAfter": [
+        18.782399444579962,
+        18.65427239990238
+      ]
+    },
+    {
+      "name": "CoastalHamlet_pitched_roof_cottage_05",
+      "model": "pitched_roof_cottage",
+      "scaleX": "1.14991979",
+      "scaleZ": "1.1579809",
+      "positionX": "-104.64400995",
+      "positionZ": "-95.8312125",
+      "footprintBefore": [
+        9.967999572753797,
+        14.349440307617215
+      ],
+      "footprintAfter": [
+        11.76223949584948,
+        16.93233956298831
+      ]
+    }
+  ]
+}

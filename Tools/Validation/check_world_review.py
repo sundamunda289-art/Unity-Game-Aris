@@ -43,7 +43,22 @@ def check(native=False):
         prefab_checks.append(name)
     objects=documents(ROOT/SCENE);names={i:d['m_Name'] for c,i,n,d in objects if n=='GameObject'}
     transforms={names[d['m_GameObject']['fileID']]:d for c,i,n,d in objects if n=='Transform'}
-    for b in layout['buildings']:assert list(transforms[b['name']]['m_LocalScale'].values())==b['scale']
+    # The historical layout retains the reviewed pre-2026-11-05 footprints.
+    # The actual scene intentionally enlarges only these 47 residential roots.
+    # Keep the native scene SHA restoration guard; do not rewrite old reports.
+    sys.path.insert(0,str(ROOT/'Tools/World'))
+    from verify_tree_house_upgrade import REVIEWED_RESIDENTIAL_SCALES
+    reviewed_count=0
+    for b in layout['buildings']:
+        actual=list(transforms[b['name']]['m_LocalScale'].values())
+        if b['model'] in REVIEWED_RESIDENTIAL_SCALES:
+            old,new,_=REVIEWED_RESIDENTIAL_SCALES[b['model']]
+            assert b['scale']==[float(old)]*3,(b['name'],'Historical pre-scale footprint drifted')
+            assert actual==[float(new)]*3,(b['name'],'Unreviewed live residential scale')
+            reviewed_count+=1
+        else:
+            assert actual==b['scale'],(b['name'],'Non-residential scale drifted')
+    assert reviewed_count==47,'Unexpected residential scene count'
     assert list(transforms['AarisPlayer']['m_LocalPosition'].values())==report['safe_spawn_m']
     assert 15<report['nearest_residential_footprint_m']<35
     player=next(d for c,i,n,d in objects if n=='MonoBehaviour' and names.get(d['m_GameObject']['fileID'])=='AarisPlayer')
