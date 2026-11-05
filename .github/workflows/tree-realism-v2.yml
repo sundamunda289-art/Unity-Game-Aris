@@ -42,6 +42,7 @@ jobs:
           python -m py_compile Tools/World/verify_tree_realism_v2.py Tools/World/verify_tree_house_upgrade.py Tools/World/tree_shapes.py
           python Tools/World/verify_tree_realism_v2.py
           python -m unittest discover -s Tools/World/tests -p test_tree_realism_v2.py -v
+          python -m unittest discover -s Tools/World/tests -p test_tree_taper_v3.py -v
           python -m unittest discover -s Tools/World/tests -p test_tree_shapes.py -v
       - name: Detect accidental binary SpeedTree or GUID source modifications
         run: |
@@ -52,6 +53,6 @@ jobs:
           tree_paths=[p for p in changed if p.startswith('Assets/TerrainDemoScene_URP/Prefabs/Trees/')]
           allowed={r['prefab'] for r in reviewed['profiles']}|{r['source_meta'] for r in reviewed['profiles']}
           assert set(tree_paths)<=allowed,'Unexpected tree asset edited: '+repr(set(tree_paths)-allowed)
-          assert len(tree_paths)==12,'Incomplete v2 prototype set'
-          print('Six source trees reviewed, no SpeedTree .st binary or .prefab.meta touched')
+          assert len(tree_paths) in (0,12),'Partial v2 tree prototype mutation'
+          print('Only reviewed prototype assets permitted; importer-only v3 updates do not rewrite source SpeedTree blobs')
           PY

@@ -13,14 +13,14 @@ namespace Aaris.WorldAutomation
     // into the crown. Bark, branches and foliage receive the same continuous deformation.
     public sealed class AarisTreeShapeImporter : AssetPostprocessor
     {
-        public override uint GetVersion() { return 2; }
+        public override uint GetVersion() { return 3; }
 
         private void OnPostprocessSpeedTree(GameObject root)
         {
             if (!assetPath.StartsWith("Assets/TerrainDemoScene_URP/Prefabs/Trees/", StringComparison.Ordinal)) return;
             string[] fields = (assetImporter.userData ?? "").Split('|');
-            // v1 remains valid for old imported prototypes; v2 is the reviewed
-            // stronger lower-trunk taper with only modest crown widening.
+            // v1/v2 source profiles remain valid. Import v3 reshapes only the
+            // mid-trunk taper, retaining reviewed base/crown widths and height.
             if (fields.Length == 0 ||
                 (fields[0] != "aaris-tree-shape-v1" &&
                  fields[0] != "aaris-tree-shape-v2")) return;
@@ -62,11 +62,31 @@ namespace Aaris.WorldAutomation
 
         private static bool Finite(float value) { return !float.IsNaN(value) && !float.IsInfinity(value); }
 
+        // Deterministic, species-aware mid-trunk fullness. A monotonically
+        // increasing taper coordinate stays within [0,1], so neither the reviewed
+        // root envelope nor the crown envelope grows. No added vertices, random
+        // instance widths, new UVs or runtime per-frame mesh processing.
+        // Use exactly the same profile for positions, SpeedTree morph/wind anchors,
+        // normals and tangents; their derivatives must agree to avoid LOD pops.
+        private static void RadialProfile(float y, float height, float lower, float upper,
+            out float radial, out float derivative)
+        {
+            float u = Mathf.Clamp01(y / height);
+            float smooth = u * u * (3f - 2f * u);
+            float contrast = Mathf.Clamp01(lower / upper - 1f);
+            float bias = Mathf.Lerp(0.35f, 0.60f, contrast);
+            float shaped = smooth - bias * smooth * (1f - smooth);
+            radial = Mathf.Lerp(lower, upper, shaped);
+            derivative = (u > 0f && u < 1f)
+                ? (upper - lower) * (1f - bias + 2f * bias * smooth) *
+                  6f * u * (1f - u) / height
+                : 0f;
+        }
+
         private static Vector3 WarpPoint(Vector3 point, Matrix4x4 toRoot, Matrix4x4 toMesh, float height, float lower, float upper)
         {
             Vector3 p = toRoot.MultiplyPoint3x4(point);
-            float u = Mathf.Clamp01(p.y / height);
-            float radial = Mathf.Lerp(lower, upper, u * u * (3 - 2 * u));
+            RadialProfile(p.y, height, lower, upper, out float radial, out _);
             return toMesh.MultiplyPoint3x4(new Vector3(p.x * radial, p.y, p.z * radial));
         }
 
@@ -108,10 +128,7 @@ namespace Aaris.WorldAutomation
                     m.x = morph.x; m.y = morph.y; m.z = morph.z;
                     uv1[i] = a; uv2[i] = m;
                 }
-                float u = Mathf.Clamp01(p.y / height);
-                float smooth = u * u * (3 - 2 * u);
-                float radial = Mathf.Lerp(lower, upper, smooth);
-                float derivative = p.y > 0 && p.y < height ? (upper - lower) * 6 * u * (1 - u) / height : 0;
+                RadialProfile(p.y, height, lower, upper, out float radial, out float derivative);
                 Vector3 n = normalToRoot.MultiplyVector(normals[i]);
                 Vector3 warpedNormal = new Vector3(n.x / radial,
                     n.y - derivative * (p.x * n.x + p.z * n.z) / radial, n.z / radial);

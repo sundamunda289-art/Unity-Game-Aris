@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "transaction_id": "aaris-natural-trunks-20261105-v2",
-  "importer_version": 2,
+  "importer_version": 3,
   "preview_only_in_code": false,
-  "notes": "Approved source-only SpeedTree taper, matching prefab BoxCollider x/z and cautious LOD bounds. Do not touch original SpeedTree .st or prefab .meta GUIDs. Existing height factor and wind/UV LOD remain unchanged.",
+  "notes": "Reviewed v2 SpeedTree source profile with a version 3 mid-trunk taper import. No source .st or prefab .meta GUID edits. Base/crown/height and collider/LOD limits remain v2-reviewed; wind/morph UVs are warped consistently.",
   "profiles": [
     {
       "key": "Conifer/Conifer",

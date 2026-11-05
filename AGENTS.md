@@ -1,3 +1,18 @@
+## NEW: SpeedTree natural mid-trunk geometry v3 (2026-11-05)
+
+Read `Docs/TREE_GEOMETRY_TAPER_V3.md`. The six hash-reviewed v2
+SpeedTree prototypes on main retain their approved base/crown widths,
+height, colliders, four LODs, GUIDs, native tree positions and wind data.
+`Assets/AarisWorld/Editor/AarisTreeShapeImporter.cs` now uses importer
+version 3 and a species-aware monotone mid-trunk shaping curve, making
+lower/middle trunks fuller without globally scaling all TreeInstances
+or swelling crowns. Do not modify proprietary `.st`, protected native
+TerrainData, the original dirty Codespace source or LFS blobs to reapply
+this importer. Source math checks alone do not prove actual Unity rendering,
+physics or Android performance; reimport and inspect in isolated scratch.
+
+---
+
 ## Tree trunk realism v2 — six reviewed native SpeedTree prototypes (2026-11-05)
 
 **See `Docs/TREE_REALISM_V2.md` and

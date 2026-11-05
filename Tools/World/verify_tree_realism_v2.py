@@ -116,14 +116,17 @@ def verify(root=PARENT):
                        "crown_multiplier":round(crown/old_c,4),
                        "height_preserved":True,"collider_active":True,
                        "lod_count":len(thresholds)})
+    if manifest.get("importer_version")!=3:
+        raise TreeRealismError("Expected reviewed mid-trunk taper importer v3")
     importer=(root/"Assets/AarisWorld/Editor/AarisTreeShapeImporter.cs").read_text()
-    if ("public override uint GetVersion() { return 2; }" not in importer
-            or '"aaris-tree-shape-v2"' not in importer):
+    if ("public override uint GetVersion() { return 3; }" not in importer
+            or '"aaris-tree-shape-v2"' not in importer
+            or "RadialProfile(p.y, height, lower, upper" not in importer):
         raise TreeRealismError("Unity v2 SpeedTree importer activation missing")
     return {"verified_source":True,"species":result,"approved_files":len(reviewed),
             "speedtree_binary_modified":False,
             "prefab_guids_modified":False,
-            "actual_unity_import_and_render_verified":False}
+            "actual_unity_import_and_render_verified":False,"importer_version":3}
 
 
 if __name__=="__main__":
