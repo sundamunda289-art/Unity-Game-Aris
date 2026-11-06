@@ -92,7 +92,7 @@ def main():
         print("Unity ULF XML validation / protected export selftest PASS")
         return
     safe_status("waiting_for_valid_unity_ulf")
-    deadline = time.monotonic() + min(max(args.watch_seconds, 20), 5400)
+    deadline = time.monotonic() + min(max(args.watch_seconds, 20), 18600)
     while time.monotonic() < deadline:
         data = capture_from_container()
         if data is not None:

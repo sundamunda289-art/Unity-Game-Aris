@@ -17,6 +17,7 @@ import sys
 import time
 
 from live_camera_server import validate, STATE
+from ai_intents import parse_ai, selftest as ai_selftest
 
 ISSUE = int(os.getenv("AARIS_CAMERA_ISSUE", "77"))
 REPO = os.getenv("GITHUB_REPOSITORY", "sundamunda289-art/Unity-Game-Aris")
@@ -79,6 +80,74 @@ def publish_photo(comment_id, photo):
     url = f"https://github.com/{REPO}/releases/download/{RELEASE}/{filename}"
     return url
 
+
+def publish_ai_asset(comment_id, asset, kind):
+    """Publish only predetermined bounded Unity outputs, never arbitrary paths."""
+    expected = {
+        "report": f"ai-report-{comment_id}.json",
+        "photo": f"ai-photo-{comment_id}.png",
+        "blueprint": f"ai-blueprint-{comment_id}.ply",
+    }[kind]
+    if asset != expected:
+        raise ValueError("Unexpected artifact name")
+    path = STATE / expected
+    if not path.is_file() or path.stat().st_size < 20 or path.stat().st_size > 2_000_000:
+        raise RuntimeError("AI artifact missing or unreasonably large")
+    prefix = path.read_bytes()[:16]
+    if kind == "photo" and not prefix.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise RuntimeError("No real Unity PNG")
+    if kind == "blueprint" and not prefix.startswith(b"ply\nformat ascii"):
+        raise RuntimeError("Not a PLY geometry point cloud")
+    if kind == "report" and not prefix.startswith(b"{"):
+        raise RuntimeError("Not a JSON report")
+    ensure_release()
+    gh("release", "upload", RELEASE, str(path), "--repo", REPO, "--clobber")
+    return f"https://github.com/{REPO}/releases/download/{RELEASE}/{expected}"
+
+def process_ai(comment_id, body):
+    try:
+        data = parse_ai(body)
+    except ValueError as exc:
+        issue_comment(f"AI request #{comment_id} rejected: {str(exc)[:160]}")
+        return "ai-rejected"
+    data["nonce"] = comment_id
+    # Serialized command queue; the relay processes one request at a time.
+    temporary = STATE / "ai-command.tmp"
+    temporary.write_text(json.dumps(data, separators=(",", ":")))
+    os.replace(temporary, STATE / "ai-command.json")
+    report_file = STATE / f"ai-report-{comment_id}.json"
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline:
+        if report_file.is_file():
+            break
+        time.sleep(1)
+    if not report_file.is_file():
+        issue_comment(f"AI request #{comment_id}: Unity Editor did not respond in 120 seconds. "
+                      "Confirm that Unity is licensed, imported and running.")
+        return "ai-timeout"
+    try:
+        report = json.loads(report_file.read_text())
+        if report.get("nonce") != comment_id:
+            raise RuntimeError("Stale report nonce")
+        if not report.get("ok"):
+            reason = str(report.get("error", "unknown"))[:180]
+            issue_comment(f"AI request #{comment_id}: Unity rejected the operation: {reason}")
+            return "ai-unity-error"
+        links = [publish_ai_asset(comment_id, f"ai-report-{comment_id}.json", "report")]
+        for kind in ("photo", "blueprint"):
+            if report.get(kind):
+                links.append(publish_ai_asset(comment_id, report[kind], kind))
+        status = ("Native scene/TerrainData changed inside this ephemeral runner. "
+                  "A review PR must be created for persistence."
+                  if report.get("changed") else "Read-only inspection completed.")
+        issue_comment(f"AI request #{comment_id}: {report.get('op', '')} succeeded.\n"
+                      + "\n".join(links) + "\n" + status)
+        return "ai-published"
+    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
+        issue_comment(f"AI request #{comment_id}: output publish failed ({type(exc).__name__}).")
+        return "ai-publish-failed"
+
+
 def process(comment):
     author = comment.get("user") or {}
     if author.get("login") != OWNER:
@@ -127,6 +196,8 @@ def process(comment):
         issue_comment(f"Activation request #{comment_id}: Docker could not launch "
                       "the authorized Unity CLI activation process.")
         return "activation-launch-failed"
+    if isinstance(comment.get("body"), str) and comment["body"].startswith("AI "):
+        return process_ai(comment_id, comment["body"])
     try:
         camera = parse(comment.get("body", ""))
     except ValueError:
@@ -179,6 +250,7 @@ def main():
                 pass
             else:
                 raise AssertionError("Unsafe camera intent was accepted")
+        ai_selftest()
         assert "ACTIVATE_UNITY" != "ACTIVATE_UNITY 15"
         assert parse("CAMERA -420 22 -210 0 20 22")["distance"] == 22
         print("GitHub issue camera and explicit license retry parser selftest: PASS")
@@ -193,7 +265,7 @@ def main():
         if re.fullmatch(r"https://[a-z0-9-]+\.trycloudflare\.com", live_url):
             run_id = os.getenv("GITHUB_RUN_ID", "")
             mins = os.getenv("SESSION_MINUTES", "15")
-            if run_id.isdigit() and mins in ("15", "45", "90"):
+            if run_id.isdigit() and mins in ("15", "45", "90", "180", "300"):
                 try:
                     issue_comment(f"AARIS_LIVE_DESKTOP run_id={run_id} "
                                   f"session_minutes={mins} url={live_url}")
@@ -212,7 +284,7 @@ def main():
         "unity_activation_requires_attention", "editor_starting",
         "fetching_unity_editor"
     }
-    until = time.monotonic() + max(15, min(args.seconds, 5400))
+    until = time.monotonic() + max(15, min(args.seconds, 18600))
     while time.monotonic() < until:
         try:
             # Public GitHub issue gets only a fixed, non-sensitive state name.

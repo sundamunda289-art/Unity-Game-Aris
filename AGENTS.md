@@ -91,3 +91,27 @@ Personal license. No machine identity spoofing or token caching is used.
 Verified repo-level unit test for command handler and the workflow's
 issue_comment path ran in GitHub Actions. An actual successful Unity
 license activation and true scene PNG have NOT yet been verified.
+
+
+## AI developer hands and eyes — review-branch workbench (2026-11-06)
+
+The **single Unity-facing editor API** is \`Assets/AarisWorld/Editor/AarisAIWorkbench.cs\`.
+The **single validation contract** is \`Tools/CI/ai_intents.py\`.
+\`Tools/CI/issue_camera_bridge.py\` relays authenticated owner comments; no duplicate editor automation framework is needed. See \`Docs/AI_UNITY_WORKBENCH.md\` for the complete protocol and examples.
+
+**Owner-controlled queue:** On public GitHub Issue #77, only comments authored by
+\`sundamunda289-art\` are processed by the active live runner. Post exactly
+\`AI {"op":"scan","x":-420,"z":-210,"radius":50}\` to discover scene paths and
+native Terrain tree indices. Then choose an exact path from the report:
+- \`AI {"op":"inspect","target":"Village/House_01"}\` — bounds, transform and renderer metadata
+- \`AI {"op":"blueprint","target":"Tree_01"}\` — sampled, world-space 3D surface points in .ply (not a full watertight mesh)
+- \`AI {"op":"photo","target":"Tree_01"}\` — real framed Unity PNG (licensed graphics Editor required)
+- \`AI {"op":"move","target":"Tree_01","x":-2,"y":0,"z":3}\` — bounded relative translation
+- \`AI {"op":"resize","target":"House_01/Wall","width":4,"height":3,"depth":0.4}\` — target world AABB dimensions
+- \`AI {"op":"tree","target":"TerrainTileName","index":5,"width":1.3,"height":0.9}\` — edit native Terrain tree widthScale/heightScale (multipliers, not metres)
+
+The paths above are **examples**, not assertions that those exact objects exist in the checked-in scene. Always run \`scan\` to obtain real names; ambiguous names are rejected. A native tree from scan is identified by \`terrain-tree:TerrainTileName:index\`; it may be moved with \`move\` (zero Y), inspected, photographed and exported. Native tree prototype vertices are sampled when readable; otherwise the PLY is an explicit approximation. A tree's per-instance widthScale/heightScale is not its physical trunk diameter, leaf density or precise canopy dimensions.
+
+**Authoritative persistence:** The Unity Editor writes only into the current runner's working tree, not directly to \`main\`. An opt-in session can run for 15/45/90/180/300 minutes (up to five hours, leaving shutdown headroom before the six-hour GitHub runner cap). At normal session shutdown, the workflow attempts to push the changed native assets to \`ci/ai-editor-<run-id>\` and open a PR for review. Check Git LFS hydration, file diffs, Unity compile, collisions and visual rendering before merging. A hard 6h runner termination/cancellation can skip cleanup and lose unsaved work; do not claim checkpoint success until a branch/PR actually exists. A new runner restores source from Git and optional Unity Library cache; transient noVNC, Docker and Cloudflare URL are **never** persistent.
+
+**Security:** Issue comments may ONLY invoke the strict schema; shell, arbitrary code execution, arbitrary file paths, repository credential reads, and automatic merges are forbidden. Public reports/images/PLY must never contain tokens, licenses or private data. The Cloudflare PIN-gated browser is for the human's live desktop; ChatGPT can inspect discrete GitHub results, not a continuous video stream. If Unity activation is missing, the editor operations remain blocked regardless of successful Python validation.

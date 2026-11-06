@@ -9,6 +9,13 @@ on:
       - '.github/workflows/aaris-parallel-qa.yml'
       - 'Assets/AarisWorld/Editor/**'
       - 'Docs/MAP_LAYOUT.json'
+  pull_request:
+    paths:
+      - 'Tools/CI/**'
+      - 'Assets/AarisWorld/Editor/**'
+      - '.github/workflows/aaris-live-unity.yml'
+      - '.github/workflows/aaris-parallel-qa.yml'
+      - 'AGENTS.md'
   workflow_dispatch:
 
 permissions:
@@ -49,7 +56,10 @@ jobs:
       - name: Test Python API, camera bounds, WebSocket configuration
         run: |
           set -euo pipefail
-          python3 -m py_compile Tools/CI/live_camera_server.py Tools/CI/issue_camera_bridge.py
+          python3 -m py_compile Tools/CI/live_camera_server.py Tools/CI/issue_camera_bridge.py Tools/CI/ai_intents.py
+          python3 Tools/CI/ai_intents.py
+          test -s Assets/AarisWorld/Editor/AarisAIWorkbench.cs
+          test -s Assets/AarisWorld/Editor/AarisAIWorkbench.cs.meta
           python3 Tools/CI/issue_camera_bridge.py --selftest
           node --check Tools/CI/cloudflare_live_hub.mjs
           python3 - <<'PY'

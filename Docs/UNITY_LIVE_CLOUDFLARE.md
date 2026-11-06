@@ -16,7 +16,7 @@ can authenticate, so secure that email account.
 ## Start on phone
 1. Ensure your UNITY_EMAIL Secret contains the mailbox that receives PINs.
 2. Open https://github.com/sundamunda289-art/Unity-Game-Aris/actions/workflows/aaris-live-unity.yml
-3. Tap Run workflow (main) and choose 15, 45 or 90 minutes.
+3. Tap Run workflow (main) and choose 15, 45, 90, 180 or 300 minutes. Longer sessions are opt-in and cannot guarantee Quick Tunnel uptime.
 4. Read the live-desktop job's "Start Cloudflare email-protected temporary
    tunnel" step log. It prints the temporary HTTPS URL and job summary.
 5. Open the URL, authenticate with the email PIN, and use the web desktop.

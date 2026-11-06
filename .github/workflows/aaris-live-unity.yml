@@ -7,11 +7,14 @@ on:
       - '.github/workflows/aaris-live-unity.yml'
       - 'Tools/CI/live_camera_server.py'
       - 'Tools/CI/issue_camera_bridge.py'
+      - 'Tools/CI/ai_intents.py'
       - 'Tools/CI/unity_personal_bootstrap.py'
       - 'Tools/CI/license_reuse.py'
       - 'Tools/CI/runner_storage.sh'
       - 'Assets/AarisWorld/Editor/AarisLiveCameraBridge.cs'
       - 'Assets/AarisWorld/Editor/AarisLiveCameraBridge.cs.meta'
+      - 'Assets/AarisWorld/Editor/AarisAIWorkbench.cs'
+      - 'Assets/AarisWorld/Editor/AarisAIWorkbench.cs.meta'
   issue_comment:
     types: [created]
   workflow_dispatch:
@@ -21,7 +24,7 @@ on:
         type: choice
         required: true
         default: '45'
-        options: ['15', '45', '90']
+        options: ['15', '45', '90', '180', '300']
       license_export_recipient:
         description: 'Optional age1 public key for encrypted license artifact (NO private key)'
         type: string
@@ -31,6 +34,7 @@ on:
 permissions:
   contents: write
   issues: write
+  pull-requests: write
 
 concurrency:
   group: aaris-one-live-editor-${{ github.event_name }}
@@ -47,7 +51,9 @@ jobs:
           lfs: false
       - name: Verify camera API rejects unsafe inputs
         run: |
-          python3 -m py_compile Tools/CI/live_camera_server.py Tools/CI/issue_camera_bridge.py Tools/CI/unity_personal_bootstrap.py
+          python3 -m py_compile Tools/CI/live_camera_server.py Tools/CI/issue_camera_bridge.py Tools/CI/ai_intents.py Tools/CI/unity_personal_bootstrap.py
+          python3 Tools/CI/ai_intents.py
+          test -s Assets/AarisWorld/Editor/AarisAIWorkbench.cs
           python3 Tools/CI/unity_personal_bootstrap.py --selftest
           python3 Tools/CI/license_reuse.py --selftest
           python3 Tools/CI/issue_camera_bridge.py --selftest
@@ -74,7 +80,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 77 && github.event.comment.user.login == 'sundamunda289-art' && (startsWith(github.event.comment.body, 'START_DESKTOP ') || startsWith(github.event.comment.body, 'ACTIVATE_UNITY ')))
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 140
+    timeout-minutes: 355
     env:
       UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
       UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -108,13 +114,13 @@ jobs:
           # Github issue comments are untrusted text: never put this value in a shell command.
           # Only these exact three commands from the repository owner can start a runner.
           case "$SESSION_MINUTES" in
-            "START_DESKTOP 15"|"START_DESKTOP 45"|"START_DESKTOP 90")
+            "START_DESKTOP 15"|"START_DESKTOP 45"|"START_DESKTOP 90"|"START_DESKTOP 180"|"START_DESKTOP 300")
               SESSION_MINUTES="${SESSION_MINUTES#START_DESKTOP }" ;;
-            "ACTIVATE_UNITY 15"|"ACTIVATE_UNITY 45"|"ACTIVATE_UNITY 90")
+            "ACTIVATE_UNITY 15"|"ACTIVATE_UNITY 45"|"ACTIVATE_UNITY 90"|"ACTIVATE_UNITY 180"|"ACTIVATE_UNITY 300")
               SESSION_MINUTES="${SESSION_MINUTES#ACTIVATE_UNITY }" ;;
           esac
-          case "$SESSION_MINUTES" in 15|45|90) ;; *)
-            echo '::error::Invalid session length. Allowed: 15, 45, 90 minutes.'
+          case "$SESSION_MINUTES" in 15|45|90|180|300) ;; *)
+            echo '::error::Invalid session length. Allowed: 15, 45, 90, 180, 300 minutes.'
             exit 1 ;;
           esac
           echo "SESSION_MINUTES=$SESSION_MINUTES" >> "$GITHUB_ENV"
@@ -354,6 +360,29 @@ jobs:
         run: |
           echo "Cloudflare session is active for $SESSION_MINUTES minutes."
           sleep "$((SESSION_MINUTES*60))"
+      - name: Propose persisted AI Unity edits as a review-only PR
+        if: always()
+        run: |
+          set -euo pipefail
+          # Workbench saves only scene/TerrainData, never auth files.
+          # GitHub source history (not Library/cache) is the next runner's truth.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- Assets/AarisWorld Assets/TerrainDemoScene_URP/Scenes Assets/TerrainDemoScene_URP/Terrain
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No saved Unity project changes this session.'
+            exit 0
+          fi
+          branch="ci/ai-editor-$GITHUB_RUN_ID"
+          git switch -c "$branch"
+          git commit -m "ci(ai): propose reviewed Editor scene/TerrainData changes"
+          git push origin "HEAD:refs/heads/$branch"
+          echo "AI saved changes: https://github.com/$GITHUB_REPOSITORY/tree/$branch" >> "$GITHUB_STEP_SUMMARY"
+          gh pr create --base main --head "$branch" \
+            --title "AI workbench: review Unity scene and native terrain edits" \
+            --body "Owner-commanded live Editor operations; review geometry/collisions and LFS diffs. No automatic merge or publish. Unity screenshots prove only rendered frames, not complete gameplay QA." \
+            || echo "::warning::Review branch pushed but automatic PR creation was not permitted. Open PR manually."
       - name: Upload last available Unity camera photo only
         if: always()
         uses: actions/upload-artifact@v4
