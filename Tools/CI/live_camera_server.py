@@ -50,6 +50,16 @@ target="_blank" rel="noopener" style="color:#6fead7">Open full-screen noVNC</a><
 <p id="connection">Testing VNC/WebSocket...</p>
 <p id="result">Opening session...</p>
 <iframe src="/vnc/vnc.html?autoconnect=true&resize=remote&path=/vnc/websockify"></iframe>
+<section style="border:1px solid #456;padding:12px;border-radius:8px;margin:12px 0">
+<strong>AI World Agent / 3D outline</strong>
+<p><small>Issue #77 controls edits. Live page shows the last real Unity Editor result; unlicensed sessions have no 3D snapshot.</small></p>
+<a href="/api/agent/report" target="_blank" style="color:#6fead7">AI-readable scene report (JSON)</a> |
+<a href="/api/agent/photo" target="_blank" style="color:#6fead7">Latest AI object photo (PNG)</a>
+<div><label>Orbit <input id="orbit" type="range" min="0" max="360" value="30" oninput="drawCloud()"></label>
+<button onclick="loadCloud()">Draw mesh exterior dots</button></div>
+<canvas id="cloud" width="850" height="420" style="width:100%;max-width:850px;background:#142636;border-radius:8px"></canvas>
+<p id="cloudstate">No 3D sample loaded.</p>
+</section>
 <p><a style="color:#6fead7" href="/api/photo" target="_blank">Latest genuine Unity PNG</a></p>
 <script>
 async function go(){let data={};for(let k of ['x','y','z','yaw','pitch','distance'])
@@ -92,6 +102,47 @@ document.getElementById('connection').textContent=
 }catch(e){document.getElementById('connection').textContent='Health check unavailable: '+e.message;}
 }
 setInterval(checkConnection,8000);checkConnection();
+
+let cloudDots=[],cloudCenter=[0,0,0];
+async function loadCloud(){
+ try{
+  const r=await fetch('/api/agent/report',{credentials:'same-origin',cache:'no-store'});
+  if(!r.ok)throw Error('No licensed Unity Agent result: HTTP '+r.status);
+  const data=await r.json();
+  if(data.state!=='ok')throw Error(data.note||'Unity agent not ready');
+  cloudDots=(data.outer_surface_points_m||[]).map(p=>[p.x,p.y,p.z]);
+  cloudCenter=data.selected?[data.selected.bounds_center_m.x,
+   data.selected.bounds_center_m.y,data.selected.bounds_center_m.z]:[0,0,0];
+  document.getElementById('cloudstate').textContent=
+   cloudDots.length+' external mesh dots in Unity metres. '+(data.note||'');
+  drawCloud();
+ }catch(e){document.getElementById('cloudstate').textContent=String(e);}
+}
+function drawCloud(){
+ const canvas=document.getElementById('cloud'), ctx=canvas.getContext('2d');
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+ ctx.fillStyle='#bed8e2';ctx.font='17px system-ui';
+ ctx.fillText('AI 3D exterior blueprint / mesh vertices',16,26);
+ if(!cloudDots.length)return;
+ let a=Number(document.getElementById('orbit').value)*Math.PI/180;
+ const cos=Math.cos(a),sin=Math.sin(a),tilt=.35;
+ const points=cloudDots.map(p=>{
+  const x=p[0]-cloudCenter[0],y=p[1]-cloudCenter[1],z=p[2]-cloudCenter[2];
+  const rx=cos*x-sin*z,rz=sin*x+cos*z;
+  return [rx, .94*y-.34*rz, rz];
+ });
+ const maxR=Math.max(1,...points.map(p=>Math.hypot(p[0],p[1])));
+ const zoom=Math.min(canvas.width*.43,canvas.height*.42)/maxR;
+ ctx.strokeStyle='#3e6c7b';
+ ctx.beginPath();ctx.moveTo(0,210);ctx.lineTo(850,210);
+ ctx.moveTo(425,30);ctx.lineTo(425,420);ctx.stroke();
+ points.sort((a,b)=>a[2]-b[2]);
+ for(const p of points){const x=425+p[0]*zoom,y=210-p[1]*zoom;
+  ctx.beginPath();ctx.arc(x,y,2.6,0,Math.PI*2);
+  ctx.fillStyle='#60e0cc';ctx.fill();
+ }
+}
+
 setInterval(status,7000);status();
 setInterval(licenseStatus,3000);licenseStatus();
 </script></html>"""
@@ -204,6 +255,27 @@ class Handler(BaseHTTPRequestHandler):
             status = STATE / "status.json"
             data = json.loads(status.read_text()) if status.exists() else {"state": "Waiting for Unity Editor camera bridge"}
             return self.send(200, data)
+        if path == "/api/agent/report":
+            target = STATE / "agent-report.json"
+            if not target.is_file():
+                return self.send(404, {"error": "Real Unity AI scene report not ready"})
+            try:
+                if target.stat().st_size > 250000:
+                    raise ValueError("Agent result too large")
+                report = json.loads(target.read_text())
+                if report.get("source") != "licensed_unity_editor_scene":
+                    raise ValueError("Not a genuine Unity Editor report")
+                return self.send(200, report)
+            except (OSError, ValueError):
+                return self.send(503, {"error": "Unity agent report invalid"})
+        if path == "/api/agent/photo":
+            target = STATE / "agent-latest.png"
+            if not target.is_file():
+                return self.send(404, {"error": "Real Unity object photo not ready"})
+            data = target.read_bytes()
+            if len(data) < 5000 or not data.startswith(bytes.fromhex("89504e470d0a1a0a")):
+                return self.send(503, {"error": "Unity object PNG invalid"})
+            return self.send(200, data, "image/png")
         if path == "/api/photo":
             photo = STATE / "latest.png"
             if not photo.exists():

@@ -12,6 +12,13 @@ on:
       - 'Tools/CI/runner_storage.sh'
       - 'Assets/AarisWorld/Editor/AarisLiveCameraBridge.cs'
       - 'Assets/AarisWorld/Editor/AarisLiveCameraBridge.cs.meta'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/aaris-live-unity.yml'
+      - 'Tools/CI/issue_camera_bridge.py'
+      - 'Assets/AarisWorld/Editor/AarisLiveCameraBridge.cs'
+      - 'AGENTS.md'
   issue_comment:
     types: [created]
   workflow_dispatch:
@@ -45,6 +52,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           lfs: false
+          fetch-depth: 0
       - name: Verify camera API rejects unsafe inputs
         run: |
           python3 -m py_compile Tools/CI/live_camera_server.py Tools/CI/issue_camera_bridge.py Tools/CI/unity_personal_bootstrap.py
@@ -52,6 +60,14 @@ jobs:
           python3 Tools/CI/license_reuse.py --selftest
           python3 Tools/CI/issue_camera_bridge.py --selftest
           node --check Tools/CI/cloudflare_live_hub.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('Assets/AarisWorld/Editor/AarisLiveCameraBridge.cs').read_text()
+          assert 'RenderPipeline.SupportsRenderRequest(cam, request)' in source
+          assert 'RenderPipeline.SubmitRenderRequest(cam, request)' in source
+          assert 'UniversalAdditionalCameraData' in source
+          print('URP offscreen capture source contract: PASS (not a Unity compile)')
+          PY
           python3 - <<'PY'
           import sys
           sys.path.insert(0,"Tools/CI")
@@ -87,6 +103,26 @@ jobs:
       - uses: actions/checkout@v4
         with:
           lfs: false
+      - name: Recover AI map draft branch without replacing newer main scenes
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          if git ls-remote --exit-code --heads origin ai-map-draft >/dev/null 2>&1; then
+            git fetch origin "+refs/heads/ai-map-draft:refs/remotes/origin/ai-map-draft"
+            git switch -c ai-map-draft --track origin/ai-map-draft
+            if ! git merge --ff-only origin/main; then
+              echo '::error::Saved AI draft diverged from main; resolve or merge its PR rather than overwrite native assets.'
+              exit 1
+            fi
+            echo 'Restored prior AI map edits from ai-map-draft Git branch.'
+          else
+            git switch -c ai-map-draft
+            echo 'Fresh ai-map-draft started from main.'
+          fi
+          git lfs install --local
+          echo "AI draft revision: $(git rev-parse --short HEAD)"
       - name: Free cloud runner disk before Unity Docker / native map import
         run: |
           bash Tools/CI/runner_storage.sh selftest
@@ -137,8 +173,10 @@ jobs:
           DISPLAY=:99 openbox > /tmp/aaris-openbox.log 2>&1 &
           DISPLAY=:99 x11vnc -display :99 -rfbport 5900 -localhost -forever \
             -shared -nopw -noxdamage -quiet > /tmp/aaris-x11vnc.log 2>&1 &
+          echo "$!" > /tmp/aaris-x11vnc.pid
           websockify --web /usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900 \
             > /tmp/aaris-websockify.log 2>&1 &
+          echo "$!" > /tmp/aaris-websockify.pid
           python3 Tools/CI/live_camera_server.py > /tmp/aaris-api.log 2>&1 &
           echo "$!" > /tmp/aaris-api.pid
           cat >/tmp/aaris-nginx.conf <<'CONF'
@@ -227,7 +265,9 @@ jobs:
           echo 'Camera commands: https://github.com/sundamunda289-art/Unity-Game-Aris/issues/77'
           echo 'Only owner-issued CAMERA x y z yaw pitch distance commands are accepted.'
       - name: Start real Unity Editor with authorized ULF or Unity CLI Personal sign-in
-        continue-on-error: true
+        # Do not mask Git LFS, Docker or Editor bootstrap failures as a green step.
+        # A missing authorized Unity license is handled by the bootstrap status file,
+        # without falsely claiming a successful screenshot.
         timeout-minutes: 35
         run: |
           set -euo pipefail
@@ -354,12 +394,102 @@ jobs:
         run: |
           echo "Cloudflare session is active for $SESSION_MINUTES minutes."
           sleep "$((SESSION_MINUTES*60))"
+      - name: Checkpoint map edits and generate safe step-by-step diagnostics
+        if: always()
+        run: |
+          mkdir -p ci-diagnostics ci-logs ci-live-control
+          if [[ "$(git branch --show-current)" == "ai-map-draft" ]]; then
+            python3 Tools/CI/issue_camera_bridge.py --checkpoint \
+              > ci-diagnostics/checkpoint.log 2>&1 || echo 'Git draft checkpoint FAILED (see safe report)'
+          fi
+          python3 - <<'PY'
+          import json, pathlib, subprocess, os, shutil, datetime
+          root=pathlib.Path(".")
+          state=root/"ci-live-control"
+          safe_states={"installing_official_unity_cli","starting_unity_oauth",
+              "waiting_for_mobile_unity_signin","activating_unity_personal",
+              "unity_personal_activation_succeeded","license_secret_installed",
+              "unity_activation_requires_attention","editor_starting","fetching_unity_editor"}
+          def load(path):
+              try: return json.loads(path.read_text())
+              except (OSError,ValueError): return {}
+          license=load(state/"license-status.json")
+          def alive(filename):
+              try:
+                  pid=int(pathlib.Path(filename).read_text().strip())
+                  os.kill(pid,0)
+                  return True
+              except (OSError,ValueError): return False
+          scene=root/"Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity"
+          try:
+              pointer=scene.read_bytes()[:80].startswith(b"version https://git-lfs.github.com/spec")
+          except OSError: pointer=None
+          def docker():
+              try:
+                  p=subprocess.run(["docker","inspect","--format","{{.State.Running}}",
+                      "aaris-unity-live"],capture_output=True,text=True,timeout=5)
+                  return p.returncode==0 and p.stdout.strip()=="true"
+              except (OSError,subprocess.TimeoutExpired): return False
+          def photo(path):
+              try:
+                  data=path.read_bytes()
+                  return {"present":True,"bytes":len(data),
+                      "png_signature_ok":data.startswith(bytes.fromhex("89504e470d0a1a0a"))}
+              except OSError:return {"present":False}
+          report={
+             "utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+             "source":"github_actions_host_diagnostics",
+             "runner":{"cpu_threads":os.cpu_count(),
+                       "disk_free_gib":round(shutil.disk_usage(".").free/1073741824,2)},
+             "steps_reached":{"virtual_screen":alive("/tmp/aaris-xvfb.pid"),
+                 "vnc_server":alive("/tmp/aaris-x11vnc.pid") if pathlib.Path("/tmp/aaris-x11vnc.pid").exists() else None,
+                 "novnc_websocket":alive("/tmp/aaris-websockify.pid"),
+                 "nginx_proxy":alive("/tmp/aaris-nginx.pid"),
+                 "camera_api":alive("/tmp/aaris-api.pid"),
+                 "tunnel":alive("/tmp/aaris-tunnel.pid"),
+                 "editor_container":docker()},
+             "unity_license_state":license.get("state") if license.get("state") in safe_states else "unknown",
+             "native_scene":{"exists":scene.is_file(),"still_lfs_pointer":pointer},
+             "camera":photo(state/"latest.png"),
+             "agent_camera":photo(state/"agent-latest.png"),
+             "agent_report_state":load(state/"agent-report.json").get("state","unavailable"),
+             "draft_branch":subprocess.run(["git","branch","--show-current"],
+                                capture_output=True,text=True).stdout.strip(),
+             "checkpoint_result":(root/"ci-diagnostics/checkpoint.log").read_text()[:700]
+                 if (root/"ci-diagnostics/checkpoint.log").exists() else "not_started"
+          }
+          problems=[]
+          if not report["steps_reached"]["virtual_screen"]:problems.append("Xvfb not running")
+          if not report["steps_reached"]["camera_api"]:problems.append("Local camera API not running")
+          if not report["steps_reached"]["novnc_websocket"]:problems.append("noVNC WebSocket proxy not running")
+          if not report["steps_reached"]["nginx_proxy"]:problems.append("Local nginx proxy not running")
+          if not report["steps_reached"]["tunnel"]:problems.append("Cloudflare tunnel unavailable")
+          if pointer:problems.append("Unity scene is an LFS pointer")
+          if not report["steps_reached"]["editor_container"]:problems.append("Editor Docker container not running")
+          if report["unity_license_state"]=="unity_activation_requires_attention":
+              problems.append("Unity requires valid authorized activation")
+          report["diagnostic_findings"]=problems
+          pathlib.Path("ci-diagnostics/report.json").write_text(json.dumps(report,indent=2)+"\n")
+          print("Safe diagnostics (no OAuth URLs or licenses):", json.dumps(report))
+          PY
+      - name: Upload secure-safe troubleshooting report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-live-diagnostics
+          path: |
+            ci-diagnostics/
+            ci-storage-reports/
+          retention-days: 7
+          if-no-files-found: warn
       - name: Upload last available Unity camera photo only
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: aaris-live-camera-last-photo
-          path: ci-live-control/latest.png
+          path: |
+            ci-live-control/latest.png
+            ci-live-control/agent-latest.png
           retention-days: 7
           if-no-files-found: ignore
       - name: Stop temporary Unity session
