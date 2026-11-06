@@ -1,6 +1,13 @@
 name: Aaris Live Unity Desktop via Cloudflare (Email PIN)
 
 on:
+  pull_request:
+    paths:
+      - 'Tools/CI/ai_unity_ops.py'
+      - 'Tools/CI/issue_camera_bridge.py'
+      - 'Tools/CI/ai_unity_ops.py'
+      - 'Assets/AarisWorld/Editor/AarisLiveCameraBridge.cs'
+      - '.github/workflows/aaris-live-unity.yml'
   push:
     branches: [main]
     paths:
@@ -31,6 +38,7 @@ on:
 permissions:
   contents: write
   issues: write
+  pull-requests: write
 
 concurrency:
   group: aaris-one-live-editor-${{ github.event_name }}
@@ -47,7 +55,8 @@ jobs:
           lfs: false
       - name: Verify camera API rejects unsafe inputs
         run: |
-          python3 -m py_compile Tools/CI/live_camera_server.py Tools/CI/issue_camera_bridge.py Tools/CI/unity_personal_bootstrap.py
+          python3 -m py_compile Tools/CI/live_camera_server.py Tools/CI/issue_camera_bridge.py Tools/CI/ai_unity_ops.py Tools/CI/unity_personal_bootstrap.py
+          python3 Tools/CI/ai_unity_ops.py selftest
           python3 Tools/CI/unity_personal_bootstrap.py --selftest
           python3 Tools/CI/license_reuse.py --selftest
           python3 Tools/CI/issue_camera_bridge.py --selftest
@@ -91,6 +100,7 @@ jobs:
         run: |
           bash Tools/CI/runner_storage.sh selftest
           bash Tools/CI/runner_storage.sh cleanup
+          python3 Tools/CI/ai_unity_ops.py stage storage_cleaned
       - name: Restore safe Unity import cache (not authentication)
         uses: actions/cache@v4
         with:
@@ -190,6 +200,7 @@ jobs:
               raise SystemExit("noVNC WebSocket handshake through nginx failed")
           print("noVNC WebSocket handshake passed")
           PY
+          python3 Tools/CI/ai_unity_ops.py stage vnc_ready
       - name: Start Cloudflare email-protected temporary tunnel
         run: |
           set -euo pipefail
@@ -218,6 +229,7 @@ jobs:
           echo "Open: $url" >> "$GITHUB_STEP_SUMMARY"
           echo 'Cloudflare PIN is sent to the email stored in UNITY_EMAIL.' >> "$GITHUB_STEP_SUMMARY"
           echo "Session length: $SESSION_MINUTES minutes" >> "$GITHUB_STEP_SUMMARY"
+          python3 Tools/CI/ai_unity_ops.py stage cloudflare_ready
       - name: Start owner-authorized issue camera bridge
         run: |
           mkdir -p ci-logs ci-live-control
@@ -225,7 +237,8 @@ jobs:
             > ci-logs/issue-camera-relay.log 2>&1) &
           echo "$!" > /tmp/aaris-issue-bridge.pid
           echo 'Camera commands: https://github.com/sundamunda289-art/Unity-Game-Aris/issues/77'
-          echo 'Only owner-issued CAMERA x y z yaw pitch distance commands are accepted.'
+          echo 'Owner-only CAMERA and AI JSON scene commands are accepted.'
+          python3 Tools/CI/ai_unity_ops.py stage issue_relay_ready
       - name: Start real Unity Editor with authorized ULF or Unity CLI Personal sign-in
         continue-on-error: true
         timeout-minutes: 35
@@ -260,6 +273,7 @@ jobs:
           echo 'Unity license bootstrap started inside the same container as the real Editor.'
           echo 'Sign-in links, if necessary, are shown only on the Cloudflare email-PIN gated control page.'
           echo 'Neither an email/password Secret nor a Unity service-account Secret bypasses user licensing.'
+          python3 Tools/CI/ai_unity_ops.py stage unity_container_started
       - name: Watch for one-time private Unity ULF export
         run: |
           mkdir -p ci-logs ci-live-control
@@ -291,6 +305,7 @@ jobs:
           if docker inspect -f '{{.State.Running}}' aaris-unity-live 2>/dev/null | grep -qx false; then
             echo '::warning::Unity container exited. Check the secure browser license status and correct the activation prerequisite.'
           fi
+          python3 Tools/CI/ai_unity_ops.py stage unity_bootstrap_checked
       - name: Export authorized Unity license as phone-encrypted artifact
         if: github.event_name == 'workflow_dispatch' && inputs.license_export_recipient != ''
         timeout-minutes: 13
@@ -354,14 +369,41 @@ jobs:
         run: |
           echo "Cloudflare session is active for $SESSION_MINUTES minutes."
           sleep "$((SESSION_MINUTES*60))"
-      - name: Upload last available Unity camera photo only
+          python3 Tools/CI/ai_unity_ops.py stage session_finished
+      - name: Checkpoint edited native Unity assets into a Git LFS review PR
+        if: always()
+        continue-on-error: true
+        run: |
+          if [[ -f ci-live-control/ai-mutated.marker ]]; then
+            python3 Tools/CI/ai_unity_ops.py checkpoint
+          else
+            echo 'No AI asset edits require a checkpoint.'
+          fi
+          python3 Tools/CI/ai_unity_ops.py stage checkpoint_attempted
+      - name: Upload AI report and last genuine photo
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: aaris-live-camera-last-photo
-          path: ci-live-control/latest.png
+          path: |
+            ci-live-control/latest.png
+            ci-live-control/ai-report-*.json
+            ci-live-control/ai-result.json
           retention-days: 7
           if-no-files-found: ignore
+      - name: Generate sanitized Unity AI stage-by-stage debug report
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 Tools/CI/ai_unity_ops.py diagnostics
+      - name: Upload downloadable AI debug report (no secrets or OAuth links)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-ai-debug-report
+          path: ci-diagnostics/ai-debug-report.json
+          retention-days: 7
+          if-no-files-found: warn
       - name: Stop temporary Unity session
         if: always()
         run: |

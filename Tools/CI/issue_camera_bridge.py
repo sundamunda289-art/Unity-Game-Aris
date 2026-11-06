@@ -127,6 +127,9 @@ def process(comment):
         issue_comment(f"Activation request #{comment_id}: Docker could not launch "
                       "the authorized Unity CLI activation process.")
         return "activation-launch-failed"
+    if comment.get("body", "").strip().startswith("AI "):
+        from ai_unity_ops import handle
+        return handle(comment, issue_comment, publish_photo)
     try:
         camera = parse(comment.get("body", ""))
     except ValueError:
@@ -181,7 +184,9 @@ def main():
                 raise AssertionError("Unsafe camera intent was accepted")
         assert "ACTIVATE_UNITY" != "ACTIVATE_UNITY 15"
         assert parse("CAMERA -420 22 -210 0 20 22")["distance"] == 22
-        print("GitHub issue camera and explicit license retry parser selftest: PASS")
+        from ai_unity_ops import selftest as ai_selftest
+        ai_selftest()
+        print("GitHub issue camera and AI/activation parser selftest: PASS")
         return
     if REPO != "sundamunda289-art/Unity-Game-Aris" or ISSUE != 77:
         raise RuntimeError("Issue queue is restricted to the configured Aaris repository")

@@ -91,3 +91,39 @@ Personal license. No machine identity spoofing or token caching is used.
 Verified repo-level unit test for command handler and the workflow's
 issue_comment path ran in GitHub Actions. An actual successful Unity
 license activation and true scene PNG have NOT yet been verified.
+
+
+## AI hands and eyes (2026-11-07)
+
+**Start here:** Docs/AI_UNITY_AGENT.md is the current authoritative AI command
+protocol for an existing licensed live Actions Editor. Read it before an edit.
+Keep the existing world/scene build and camera/Cloudflare workflow intact.
+
+- Main AI tool: Tools/CI/ai_unity_ops.py; Unity main-thread executor:
+  Assets/AarisWorld/Editor/AarisLiveCameraBridge.cs.
+- Public GitHub Issue #77 is an **owner-only, bounded intent** channel:
+  issue comments START_DESKTOP 45 and AI {"action":"inspect",...}.
+  AI JSON can only request inspect, outline, capture, move, scale,
+  resize, explicitly opted-in shared-material tint or prefab part scale, or save.
+- ALWAYS inspect target by name/location, read exact IDs and actual dimensions,
+  then issue a small reversible change; inspect and photograph again.
+  OUTLINE returns sampled 3D vertices + bounding corners, not full
+  photogrammetry or guaranteed leaf-level detail. Native tree instance
+  transforms and scene objects have different persistence semantics.
+- All map modifications save to native scene/TerrainData/material assets and
+  only commit to an AI run-specific Git LFS review branch on SAVE or on
+  best-effort normal workflow shutdown. Review PR before merging to main.
+  No direct main edits, arbitrary shell, untracked meta, secrets or auth
+  artifacts may be committed.
+- Unity Editor / real screenshot is **BLOCKED without authorized licensing**.
+  Verify a live-desktop job, Editor license state, Unity console and real PNG.
+  A successful syntax test, Docker/Cloudflare startup or black screen is NOT
+  success. The live noVNC is for the phone, while ChatGPT reads discrete
+  image/JSON reports through GitHub; it cannot watch a continuous stream.
+- The runner and tunnel are ephemeral. Rehydrate Git LFS and safe Unity Library
+  cache on each session; do not persist token/ULF/Hub state in public artifacts.
+  Force termination may lose unsaved changes. Never promise a cold start
+  or capture will complete within seconds.
+- Tests: python3 Tools/CI/ai_unity_ops.py selftest and
+  python3 Tools/CI/issue_camera_bridge.py --selftest. Also check CI runs
+  and real Unity compilation before calling this feature production-ready.
