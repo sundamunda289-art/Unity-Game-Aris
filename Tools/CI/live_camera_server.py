@@ -12,6 +12,9 @@ import os
 import time
 import socket
 import base64
+import shutil
+import subprocess
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 STATE = ROOT / "ci-live-control"
@@ -51,6 +54,9 @@ target="_blank" rel="noopener" style="color:#6fead7">Open full-screen noVNC</a><
 <p id="result">Opening session...</p>
 <iframe src="/vnc/vnc.html?autoconnect=true&resize=remote&path=/vnc/websockify"></iframe>
 <p><a style="color:#6fead7" href="/api/photo" target="_blank">Latest genuine Unity PNG</a></p>
+<p><a style="color:#6fead7" href="/api/desktop.png" target="_blank" rel="noopener">Capture protected desktop screen (including pre-license black screen)</a></p>
+<p><a style="color:#6fead7" href="/api/diagnostics" target="_blank" rel="noopener">View sanitized runner diagnostics</a></p>
+<small>Desktop screenshots may contain Unity Hub sign-in details. Never publish them in GitHub comments or Releases.</small>
 <script>
 async function go(){let data={};for(let k of ['x','y','z','yaw','pitch','distance'])
 data[k]=Number(document.getElementById(k).value);
@@ -146,6 +152,80 @@ def host_service_health():
         out["unity_container"] = "unknown"
     return out
 
+PUBLIC_LICENSE_STATES = {
+    "bootstrap_not_started", "fetching_unity_editor", "installing_unity_hub_prerequisites",
+    "installing_official_unity_hub", "starting_unity_hub_gui",
+    "waiting_for_unity_hub_signin", "unity_hub_window_not_visible",
+    "unity_hub_window_check_unavailable", "unity_hub_license_detected",
+    "editor_starting", "editor_process_ended",
+    "unity_activation_requires_attention", "license_secret_installed",
+    "unity_personal_activation_succeeded", "activating_unity_personal",
+    "installing_official_unity_cli", "starting_unity_oauth",
+    "waiting_for_mobile_unity_signin",
+}
+
+def public_diagnostics():
+    """Read-only diagnostics: never include URLs, credentials or log bodies."""
+    health = host_service_health()
+    try:
+        status = STATE / "license-status.json"
+        raw = json.loads(status.read_text()) if status.exists() else {}
+        phase = raw.get("state", "bootstrap_not_started")
+        if phase not in PUBLIC_LICENSE_STATES:
+            phase = "unknown"
+    except (OSError, ValueError, TypeError):
+        phase = "unreadable"
+    scene = ROOT / "Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity"
+    try:
+        with scene.open("rb") as stream:
+            lfs_ready = b"git-lfs.github.com/spec" not in stream.read(96)
+    except OSError:
+        lfs_ready = False
+    editor = False
+    hub = False
+    inspected = False
+    if health["unity_container"] == "running":
+        try:
+            proc = subprocess.run(["docker", "exec", "aaris-unity-live", "ps", "-eo", "comm"],
+                text=True, capture_output=True, timeout=4, check=False)
+            if proc.returncode == 0:
+                names = {n.strip().lower() for n in proc.stdout.splitlines()}
+                editor = "unity" in names
+                hub = "unityhub" in names or "unity hub" in names
+                inspected = True
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    photo_ok = False
+    try:
+        photo = STATE / "latest.png"
+        if photo.is_file() and photo.stat().st_size > 5000:
+            with photo.open("rb") as stream:
+                photo_ok = stream.read(8) == bytes.fromhex("89504e470d0a1a0a")
+    except OSError:
+        pass
+    if health["unity_container"] != "running":
+        next_action = "Start live desktop; inspect Unity container bootstrap"
+    elif phase in {"waiting_for_unity_hub_signin", "starting_unity_hub_gui"}:
+        next_action = "Complete official Unity Hub sign-in in PIN-protected noVNC"
+    elif phase in {"unity_hub_window_not_visible", "unity_hub_window_check_unavailable"}:
+        next_action = "Open private desktop snapshot; Unity Hub window needs repair"
+    elif phase in {"unity_activation_requires_attention", "editor_process_ended"}:
+        next_action = "Inspect private license status, then retry authorized activation"
+    elif photo_ok:
+        next_action = "Genuine Editor PNG ready; use AI scene commands"
+    elif editor:
+        next_action = "Editor process exists; wait for scene import or request AI photo"
+    else:
+        next_action = "Check protected license state before requesting a real render"
+    return {
+        "license_phase": phase, "vnc_backend": health["vnc_backend"],
+        "vnc_websocket": health["vnc_proxy"], "container": health["unity_container"],
+        "process_inspection": inspected, "unity_editor_process": editor,
+        "unity_hub_process": hub, "lfs_scene_hydrated": bool(lfs_ready),
+        "genuine_unity_photo_present": photo_ok, "next_action": next_action,
+        "screenshot_note": "Private desktop snapshot is not a genuine Unity render.",
+    }
+
 class Handler(BaseHTTPRequestHandler):
     def send(self, code, body, mimetype="application/json"):
         if isinstance(body, (dict, list)):
@@ -167,6 +247,28 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, HTML, "text/html; charset=utf-8")
         if path == "/api/health":
             return self.send(200, host_service_health())
+        if path == "/api/diagnostics":
+            return self.send(200, public_diagnostics())
+        if path == "/api/desktop.png":
+            # Cloudflare --allowed-mail protects this private live GUI snapshot.
+            # It may contain sign-in screens: NEVER upload to public GitHub.
+            if shutil.which("scrot") is None:
+                return self.send(503, {"error": "Desktop screenshot utility unavailable"})
+            try:
+                with tempfile.TemporaryDirectory(prefix="aaris-screen-") as folder:
+                    destination = Path(folder) / "desktop.png"
+                    proc = subprocess.run(["scrot", "-q", "75", str(destination)],
+                        env={**os.environ, "DISPLAY": ":99"},
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        timeout=8, check=False)
+                    if proc.returncode != 0 or not destination.is_file():
+                        return self.send(503, {"error": "Virtual desktop not ready"})
+                    data = destination.read_bytes()
+                    if len(data) < 90 or len(data) > 8 * 1024 * 1024 or not data.startswith(bytes.fromhex("89504e470d0a1a0a")):
+                        return self.send(503, {"error": "Desktop snapshot invalid"})
+                    return self.send(200, data, "image/png")
+            except (OSError, subprocess.TimeoutExpired):
+                return self.send(503, {"error": "Desktop capture failed or timed out"})
         if path == "/api/license":
             status = STATE / "license-status.json"
             try:

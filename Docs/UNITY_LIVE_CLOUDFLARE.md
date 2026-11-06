@@ -26,6 +26,35 @@ can authenticate, so secure that email account.
    downloadable from the live page if the real Unity Editor is running.
 7. The last actual PNG is uploaded to the workflow's Actions artifact.
 
+## Phone-only Unity Personal Hub activation (no PC)
+
+The editor bootstrap has an **official Unity Hub GUI fallback** when the
+`UNITY_LICENSE` GitHub Secret is empty. Store `UNITY_EMAIL` once in repository
+Actions Secrets for the email-PIN protected browser session.
+
+Start a live desktop and open the **temporary** Cloudflare URL on the phone.
+Select **Open full-screen noVNC**. When the cloud installs Unity Hub, its
+desktop window should appear on this same screen. Sign in using Unity's
+normal, authorized UI and activate Personal there. Do not type a password into
+a public GitHub Issue, comment, workflow input or URL. The bridge detects a
+valid-looking ULF issued in the container, then tries to start the same
+container's Unity Editor; **only a real Editor launch and actual PNG** prove
+success. The Hub can require browser OAuth/approval, and some minimal cloud
+images may be missing graphical/browser integration; such failures are
+reported, never passed off as active Unity.
+
+A `UNITY_PASSWORD` Secret **does not** automatically activate Unity Personal:
+Unity 6000.3 requires the Hub; the secret is not passed to the Hub or Editor.
+On a *new* GitHub-hosted machine, Unity may still require login again or reject
+a previously issued, machine-bound ULF. This workflow cannot promise perpetual
+automatic Personal activation, or copy Hub session cookies across runners.
+The source map itself persists through Git/LFS, not through the ephemeral
+licensed desktop.
+
+Supported official sources:
+- https://docs.unity.com/en-us/engine/6000.3/manual/get-started/install-and-upgrade/licenses-and-activation/license-activation-methods
+- https://docs.unity.com/en-us/hub/install-hub-linux
+
 ## Licensing / authentication
 
 UNITY_LICENSE is OPTIONAL for starting the Linux desktop, but a valid
@@ -195,3 +224,17 @@ Personal license. No machine identity spoofing or token caching is used.
 Verified repo-level unit test for command handler and the workflow's
 issue_comment path ran in GitHub Actions. An actual successful Unity
 license activation and true scene PNG have NOT yet been verified.
+
+## 2026-11-07 update (authoritative for the AI workbench branch)
+
+The no-ULF fallback changed from the experimental Unity CLI Personal command
+to **official Unity Hub GUI**. In the pinned Docker container the script installs
+Unity Hub from its signed official APT repository and opens its login window on
+DISPLAY=:99. The existing Cloudflare PIN / noVNC viewer is the input surface.
+The official Hub may need a fresh browser login on each runner; `UNITY_EMAIL`
+controls the protected remote desktop and `UNITY_PASSWORD` is **not** fed
+to Hub. A candidate ULF alone is not proof of acceptance; the real Editor and
+actual scene capture must still be independently validated.
+
+Latest automation changes are pending review on PR #79 and have not been
+claimed as an end-to-end Unity activation success.

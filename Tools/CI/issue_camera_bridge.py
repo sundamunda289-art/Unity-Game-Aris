@@ -16,7 +16,8 @@ import subprocess
 import sys
 import time
 
-from live_camera_server import validate, STATE
+from live_camera_server import validate, STATE, public_diagnostics
+import ai_intents
 
 ISSUE = int(os.getenv("AARIS_CAMERA_ISSUE", "77"))
 REPO = os.getenv("GITHUB_REPOSITORY", "sundamunda289-art/Unity-Game-Aris")
@@ -79,6 +80,17 @@ def publish_photo(comment_id, photo):
     url = f"https://github.com/{REPO}/releases/download/{RELEASE}/{filename}"
     return url
 
+def publish_ai_file(comment_id, path):
+    """Publish only validated AI reports, blueprints or genuine Editor PNG files."""
+    if not path.is_file() or path.stat().st_size > 6 * 1024 * 1024:
+        raise RuntimeError("AI result absent or too large")
+    if not re.fullmatch(r"ai-(?:result-\d+\.json|blueprint-\d+\.(?:svg|ply)|photo-\d+\.png)", path.name):
+        raise RuntimeError("Unexpected AI report filename")
+    ensure_release()
+    gh("release", "upload", RELEASE, str(path), "--repo", REPO)
+    return f"https://github.com/{REPO}/releases/download/{RELEASE}/{path.name}"
+
+
 def process(comment):
     author = comment.get("user") or {}
     if author.get("login") != OWNER:
@@ -86,7 +98,28 @@ def process(comment):
     comment_id = comment.get("id")
     if type(comment_id) is not int or comment_id <= 0:
         return "ignored-invalid-comment-id"
-    if comment.get("body", "").strip() == "ACTIVATE_UNITY":
+    body = comment.get("body", "")
+    if isinstance(body, str) and body.strip() == "DIAGNOSE":
+        # Works before Unity licensing or C# compilation. Public reply only
+        # contains allowlisted states/booleans, never logs or sign-in URLs.
+        report = public_diagnostics()
+        STATE.mkdir(parents=True, exist_ok=True)
+        path = STATE / f"ai-diagnostics-{comment_id}.json"
+        path.write_text(json.dumps(report, indent=2, sort_keys=True))
+        issue_comment(f"DIAGNOSE #{comment_id}: sanitized runner report (no credentials):\n\n"
+                      + json.dumps(report, sort_keys=True))
+        return "diagnosed"
+    if isinstance(body, str) and body.startswith("AI "):
+        try:
+            return ai_intents.handle(body, comment_id, STATE, Path.cwd(),
+                                     issue_comment, publish_ai_file)
+        except ValueError as error:
+            issue_comment(f"AI request #{comment_id}: validation rejected: {str(error)[:200]}")
+            return "invalid-ai-intent"
+        except (RuntimeError, OSError, subprocess.CalledProcessError) as error:
+            issue_comment(f"AI request #{comment_id}: operation failed ({type(error).__name__}).")
+            return "ai-operation-failed"
+    if body.strip() == "ACTIVATE_UNITY":
         license_state = {}
         private_file = STATE / "license-status.json"
         if private_file.exists():
@@ -97,6 +130,8 @@ def process(comment):
         if license_state.get("state") in {
             "installing_official_unity_cli", "starting_unity_oauth",
             "waiting_for_mobile_unity_signin", "activating_unity_personal",
+            "installing_unity_hub_prerequisites",
+        "installing_official_unity_hub", "waiting_for_unity_hub_signin",
             "editor_starting"
         }:
             issue_comment(f"Activation request #{comment_id}: Unity is already at "
@@ -125,7 +160,7 @@ def process(comment):
                           "may still be required.")
             return "activation-requested"
         issue_comment(f"Activation request #{comment_id}: Docker could not launch "
-                      "the authorized Unity CLI activation process.")
+                      "the authorized Unity Hub bootstrap process.")
         return "activation-launch-failed"
     try:
         camera = parse(comment.get("body", ""))
@@ -168,6 +203,13 @@ def main():
     parser.add_argument("--seconds", type=int, default=4800)
     args = parser.parse_args()
     if args.selftest:
+        ai_intents.selftest()
+        check = public_diagnostics()
+        assert set(check) == {"license_phase", "vnc_backend", "vnc_websocket",
+                              "container", "process_inspection", "unity_editor_process",
+                              "unity_hub_process", "lfs_scene_hydrated",
+                              "genuine_unity_photo_present", "next_action", "screenshot_note"}
+        assert "auth_url" not in check and "detail" not in check
         sample = parse("CAMERA -420 22 -210 0 20 22")
         assert sample["x"] == -420 and sample["pitch"] == 20
         for body in ("CAMERA 9999 22 -210 0 20 22",
@@ -193,14 +235,14 @@ def main():
         if re.fullmatch(r"https://[a-z0-9-]+\.trycloudflare\.com", live_url):
             run_id = os.getenv("GITHUB_RUN_ID", "")
             mins = os.getenv("SESSION_MINUTES", "15")
-            if run_id.isdigit() and mins in ("15", "45", "90"):
+            if run_id.isdigit() and mins in ("15", "45", "90", "240", "300"):
                 try:
                     issue_comment(f"AARIS_LIVE_DESKTOP run_id={run_id} "
                                   f"session_minutes={mins} url={live_url}")
                     print("Protected tunnel announced to GitHub issue (PIN required)", flush=True)
                 except subprocess.CalledProcessError:
                     print("Could not announce live tunnel; camera polling still available", flush=True)
-    print("Starting owner-only camera polling on active Unity session", flush=True)
+    print("Starting owner-only camera + AI intent polling on live Unity session", flush=True)
     start = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     since = start
     seen = set()
@@ -209,10 +251,14 @@ def main():
         "installing_official_unity_cli", "starting_unity_oauth",
         "waiting_for_mobile_unity_signin", "activating_unity_personal",
         "unity_personal_activation_succeeded", "license_secret_installed",
+        "installing_unity_hub_prerequisites", "installing_official_unity_hub",
+        "starting_unity_hub_gui", "waiting_for_unity_hub_signin",
+        "unity_hub_window_not_visible", "unity_hub_window_check_unavailable",
+        "unity_hub_license_detected", "editor_process_ended",
         "unity_activation_requires_attention", "editor_starting",
         "fetching_unity_editor"
     }
-    until = time.monotonic() + max(15, min(args.seconds, 5400))
+    until = time.monotonic() + max(15, min(args.seconds, 18000))
     while time.monotonic() < until:
         try:
             # Public GitHub issue gets only a fixed, non-sensitive state name.
