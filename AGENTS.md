@@ -91,3 +91,58 @@ Personal license. No machine identity spoofing or token caching is used.
 Verified repo-level unit test for command handler and the workflow's
 issue_comment path ran in GitHub Actions. An actual successful Unity
 license activation and true scene PNG have NOT yet been verified.
+
+## 2026-11-07: AI hands & eyes — owner-validated native Unity world control
+
+**Current canonical repository:** sundamunda289-art/Unity-Game-Aris (transferred from Aaris-khan-don); only modify this repository. AI should first inspect and understand the real scene, then propose bounded edits and verify, then publish a review PR. No direct edits to main. All operations require a genuinely running, licensed Unity Editor.
+
+### Three entrypoints (do not proliferate scripts)
+
+1. **GitHub Actions host:** `.github/workflows/aaris-live-unity.yml` runs a disposable GitHub-hosted Linux desktop, Xvfb/noVNC, current pinned Unity Docker Editor, Git LFS hydration, safe source checkpoint restore, Cloudflare email-PIN Quick Tunnel, and a periodic public-safe source checkpoint. Valid sessions: 15, 45, 90, **300** minutes, with a job budget below the six-hour hosted-runner cap. The runner always expires; there is no permanent interactive computer.
+2. **Authenticated AI command relay:** `Tools/CI/issue_camera_bridge.py` reads owner-authored comments on [issue #77](https://github.com/sundamunda289-art/Unity-Game-Aris/issues/77), strictly validates a small JSON action schema, writes local command files, waits for the Unity Editor, posts factual results and optional public geometry/photo Release links. No shell/code execution or credentials in these intents.
+3. **Native Unity eyes/hands:** `Assets/AarisWorld/Editor/AarisLiveCameraBridge.cs` contains the existing CAMERA flow plus `AarisWorldAgentBridge`. This opens the checked-in scene, inspects actual renderer world-space bounds and mesh exterior support points, focuses a temporary photo camera, and modifies scene transforms or native TerrainData tree instances. Scene and TerrainData edits are saved to the runner; publishing a PR is a **separate explicit step**.
+
+Supporting infrastructure (not additional AI commands): `Tools/CI/unity_personal_bootstrap.py` activates only via authorized Unity processes; `Tools/CI/session_store.py` verifies source checkpoint SHA-256 and requires an exact source-commit match; `Tools/CI/runner_storage.sh` handles temporary disk pressure.
+
+### AI workflow through connected GitHub
+
+- To start: post exactly `START_DESKTOP 15`, `START_DESKTOP 45`, `START_DESKTOP 90` or `START_DESKTOP 300` on issue #77 as **sundamunda289-art**. You can also post `ACTIVATE_UNITY 15` (or 45/90/300) to request an authorized bootstrap on a new runner. `ACTIVATE_UNITY` without a number retries on an existing running Unity container.
+- Wait for a runner comment with a temporary email-PIN-gated Cloudflare URL and a sanitized license state. A connected AI cannot watch a continuous live video; it can read issue results and request fresh captures. The human can view noVNC in their browser.
+- On an active licensed session, post **a single-line comment beginning `AI `** followed by one JSON object. Use these exact examples:
+
+```text
+AI {"op":"status"}
+AI {"op":"nearby","value":[-420,22,-210],"radius":35}
+AI {"op":"inspect","target":"tree:0:12"}
+AI {"op":"parts","target":"tree:0:12"}
+AI {"op":"outline","target":"tree:0:12"}
+AI {"op":"photo","target":"tree:0:12"}
+AI {"op":"move","target":"tree:0:12","value":[2,0,0]}
+AI {"op":"scale","target":"tree:0:12","value":[1.2,0.95,1.2]}
+AI {"op":"part_scale","target":"tree:0:12","part":"Leaves","value":[1.1,1,1.1],"scope":"prototype"}
+AI {"op":"inspect","target":"scene:Root/Building/WallNorth"}
+AI {"op":"parts","target":"scene:Root/Building"}
+AI {"op":"scale","target":"scene:Root/Building/WallNorth","value":[1,1,1.1]}
+AI {"op":"part_scale","target":"scene:Root/Building","part":"WindowFrame","value":[1.1,1,1]}
+AI {"op":"photo","target":"scene:Root/Building"}
+AI {"op":"save"}
+```
+
+**These are syntax examples, not verified object IDs.** First call `AI {"op":"status"}` on an active issue #77 session: it reports allowlisted Unity bootstrap state, Docker running status, local noVNC TCP accessibility, last camera/AI response and remaining disk, with no license file, OAuth URL, token, password or private logs. It is handled by the Python relay and works even before Unity has activated; it does not start a new cloud runner or establish that the Unity Editor has rendered. Then use `nearby` to get real targets. `tree:tile:index` selects an actual native TerrainData tree; tiles sort by world X then Z. These indices can change if source tree instances are regenerated. Scene targets must be unique names or an exact `scene:Root/Child` hierarchy; ambiguous names are refused. Coordinates are Unity world metres. Move is a **relative delta** per axis, bounded to 100m per call; scale is a **multiplicative** local factor, bounded to 0.25..3. For native Terrain trees width X and Z factors must match. Child `part_scale` works for scene-object Transform children. For native Terrain trees, it is permitted ONLY on an editable `.prefab` child and ONLY with `"scope":"prototype"`: **all** tree instances using that prefab will change. Imported `.fbx` models are explicitly rejected. Confirm the child hierarchy and review all affected trees before saving. This changes leaf/branch scale, not actual mesh leaf count or density.
+
+**Expected responses:** `inspect` includes position, rotation, local scale and approximate actual renderer X/Y/Z world bounds (metres); `parts` enumerates up to 80 exact relative child paths plus local scale and per-child renderer dimensions, with a total count, so AI can identify actual leaf, branch, wall and window paths rather than guessing; any larger parts inventory is supplied as a JSON Release asset (PUBLIC); `nearby` lists up to 30 nearest scene objects/tree IDs; `outline` exports up to 256 world-space surface support dots in JSON, a standard 3D PLY point cloud and an isometric dotted SVG projection (not a watertight triangulated 3D mesh); `photo` produces a genuine 1280×720 Unity camera PNG or a clear render error. Meshes with readback disabled use their renderer bounds as an explicit fallback; wind, LOD, invisible colliders and tree prototype differences may affect the visible silhouette.
+
+**Save and review:** Unity writes real scene/TerrainData assets locally and reports `saved:true`; `AI {"op":"save"}` pushes only whitelisted native Assets to a new `ai/live-review-<runid>` Git LFS-backed branch and creates a PR for review. Do NOT mistake a runner-local save or a Release checkpoint for a merge into main. Review actual geometry, terrain boundaries, tree/road collisions, materials, camera render, Unity compilation and Git LFS before merging. A 7-minute temporary checkpoint plus best-effort end checkpoint may recover work on a subsequent runner with **the same base Git commit**; a forced stop can lose the most recent interval. Git PR is the durable persistence path.
+
+### Diagnostics, failure conditions and trust boundaries
+
+- The live workflow's `verify` job and PR static checks test Python validation; a green `verify` does **not** prove that the licensed Unity Editor ever opened. Cloud desktop and Unity editor are separate stages.
+- The `aaris-desktop-startup-<run-id>` Actions artifact contains an early screenshot of the Xvfb desktop, specifically **NOT a Unity render**. A status terminal remains visible until minimized; this avoids an unexplained black VNC viewport during imports. `aaris-runner-debug-<run-id>` contains only sanitized workflow stage, Docker running state, disk free space and photo/agent-result existence, with no OAuth links/license contents.
+- If Cloudflare protected Quick Tunnel login loops or noVNC fails, request `AI {"op":"status"}` on issue #77 while an Actions session is active, then consult the runner diagnostics and step logs. A VNC TCP success only proves an open endpoint, not an authorized or functioning Unity Editor. Cloudflare protected Quick Tunnels can have provider-side login/session problems; never remove email protection as a quick fix. Do not disable `--allowed-mail` to work around an authentication problem; use owner-only GitHub command inspection or restore verified tunnel authentication instead.
+- Actual Editor operation requires a legitimate entitlement. Existing Unity Personal bootstrap and PIN-based OAuth are attempts, not automatic activation guarantees. Never claim a genuine Unity screenshot unless its file was created by Unity and successfully audited.
+- No arbitrary issue text is interpreted as terminal code. Never export passwords, `.ulf`, OAuth URLs, browser cookies, Git credentials or private Editor logs to a **public** Release, issue comment, artifact or checkpoint. Source geometry and photographs published to the `live-photos` Release are PUBLIC.
+- GitHub workflows run in ephemeral machines; cold boot, Docker pulling, LFS hydration and import time are not guaranteed to take seconds. A successful established Editor request should respond quickly but tool timeouts are reported rather than faking outputs.
+
+### Tests for AI tool changes
+
+Run `python3 Tools/CI/issue_camera_bridge.py --selftest` (including status/parts schema tests), `python3 -m py_compile Tools/CI/issue_camera_bridge.py Tools/CI/live_camera_server.py` and repository `Tools/Validation/check_explorer.py` C# parsing checks on a PR. The workflow's `verify` job runs those on PRs. Real Editor compile, TerrainData write/read, photo/audit, and Cloudflare PIN sessions must be separately verified on a genuinely licensed runner. Never mark those end-to-end stages as passed based solely on static checks.

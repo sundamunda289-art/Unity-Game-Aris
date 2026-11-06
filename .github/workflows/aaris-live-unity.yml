@@ -10,8 +10,16 @@ on:
       - 'Tools/CI/unity_personal_bootstrap.py'
       - 'Tools/CI/license_reuse.py'
       - 'Tools/CI/runner_storage.sh'
+      - 'Tools/CI/session_store.py'
       - 'Assets/AarisWorld/Editor/AarisLiveCameraBridge.cs'
       - 'Assets/AarisWorld/Editor/AarisLiveCameraBridge.cs.meta'
+  pull_request:
+    paths:
+      - '.github/workflows/aaris-live-unity.yml'
+      - 'Tools/CI/issue_camera_bridge.py'
+      - 'Tools/CI/live_camera_server.py'
+      - 'Tools/CI/session_store.py'
+      - 'Assets/AarisWorld/Editor/AarisLiveCameraBridge.cs'
   issue_comment:
     types: [created]
   workflow_dispatch:
@@ -21,7 +29,7 @@ on:
         type: choice
         required: true
         default: '45'
-        options: ['15', '45', '90']
+        options: ['15', '45', '90', '300']
       license_export_recipient:
         description: 'Optional age1 public key for encrypted license artifact (NO private key)'
         type: string
@@ -31,6 +39,7 @@ on:
 permissions:
   contents: write
   issues: write
+  pull-requests: write
 
 concurrency:
   group: aaris-one-live-editor-${{ github.event_name }}
@@ -74,7 +83,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 77 && github.event.comment.user.login == 'sundamunda289-art' && (startsWith(github.event.comment.body, 'START_DESKTOP ') || startsWith(github.event.comment.body, 'ACTIVATE_UNITY ')))
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 140
+    timeout-minutes: 355
     env:
       UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
       UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -108,13 +117,13 @@ jobs:
           # Github issue comments are untrusted text: never put this value in a shell command.
           # Only these exact three commands from the repository owner can start a runner.
           case "$SESSION_MINUTES" in
-            "START_DESKTOP 15"|"START_DESKTOP 45"|"START_DESKTOP 90")
+            "START_DESKTOP 15"|"START_DESKTOP 45"|"START_DESKTOP 90"|"START_DESKTOP 300")
               SESSION_MINUTES="${SESSION_MINUTES#START_DESKTOP }" ;;
-            "ACTIVATE_UNITY 15"|"ACTIVATE_UNITY 45"|"ACTIVATE_UNITY 90")
+            "ACTIVATE_UNITY 15"|"ACTIVATE_UNITY 45"|"ACTIVATE_UNITY 90"|"ACTIVATE_UNITY 300")
               SESSION_MINUTES="${SESSION_MINUTES#ACTIVATE_UNITY }" ;;
           esac
-          case "$SESSION_MINUTES" in 15|45|90) ;; *)
-            echo '::error::Invalid session length. Allowed: 15, 45, 90 minutes.'
+          case "$SESSION_MINUTES" in 15|45|90|300) ;; *)
+            echo '::error::Invalid session length. Allowed: 15, 45, 90, 300 minutes.'
             exit 1 ;;
           esac
           echo "SESSION_MINUTES=$SESSION_MINUTES" >> "$GITHUB_ENV"
@@ -127,7 +136,7 @@ jobs:
           # whole session. Reuse preinstalled packages on GitHub runners.
           sudo timeout 90 apt-get update -qq
           sudo timeout 160 env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-            --no-install-recommends xvfb x11vnc novnc websockify nginx \
+            --no-install-recommends xvfb x11vnc novnc websockify nginx xterm scrot zstd \
             openbox git-lfs libgl1-mesa-dri libglu1-mesa age
           git lfs install --local
           mkdir -p ci-live-control ci-logs ci-photos
@@ -135,6 +144,29 @@ jobs:
           echo "$!" > /tmp/aaris-xvfb.pid
           sleep 2
           DISPLAY=:99 openbox > /tmp/aaris-openbox.log 2>&1 &
+          # This visible status window makes a slow or unlicensed Editor obvious.
+          cat >/tmp/aaris-desktop-stage.sh <<'STAGE'
+          #!/bin/bash
+          while true; do
+            clear
+            echo "AARIS UNITY CLOUD RUNNER"
+            echo "Linux desktop ready. Unity Editor may still be loading."
+            echo "Repository: sundamunda289-art/Unity-Game-Aris"
+            echo
+            if [[ -f ci-live-control/license-status.json ]]; then
+              python3 -c 'import json; from pathlib import Path; v=json.loads(Path("ci-live-control/license-status.json").read_text()); print("Unity stage:", v.get("state","unknown"))' 2>/dev/null || true
+            else
+              echo "Unity stage: waiting for bootstrap"
+            fi
+            echo
+            echo "Issue #77 accepts owner-authored AI commands."
+            echo "Minimize this window when the Unity Editor opens."
+            sleep 7
+          done
+          STAGE
+          chmod +x /tmp/aaris-desktop-stage.sh
+          DISPLAY=:99 xterm -title 'Aaris Unity starting' -geometry 100x18+25+25 -e /tmp/aaris-desktop-stage.sh > /tmp/aaris-stage-window.log 2>&1 &
+          echo "$!" > /tmp/aaris-stage-window.pid
           DISPLAY=:99 x11vnc -display :99 -rfbport 5900 -localhost -forever \
             -shared -nopw -noxdamage -quiet > /tmp/aaris-x11vnc.log 2>&1 &
           websockify --web /usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900 \
@@ -165,6 +197,9 @@ jobs:
           sudo nginx -c /tmp/aaris-nginx.conf
           curl --retry 8 --retry-delay 1 --retry-connrefused -fsS http://127.0.0.1:8080/api/status
           curl --retry 8 --retry-delay 1 --retry-connrefused -fsS http://127.0.0.1:8080/vnc/vnc.html -o /dev/null
+          # Only a startup desktop diagnostic, not a Unity scene render.
+          DISPLAY=:99 scrot ci-live-control/desktop-startup.png
+          test -s ci-live-control/desktop-startup.png
 
           python3 - <<'PY'
           import base64, os, socket, time
@@ -190,6 +225,13 @@ jobs:
               raise SystemExit("noVNC WebSocket handshake through nginx failed")
           print("noVNC WebSocket handshake passed")
           PY
+      - name: Upload immediate VNC desktop diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-desktop-startup-${{ github.run_id }}
+          path: ci-live-control/desktop-startup.png
+          retention-days: 7
+          if-no-files-found: warn
       - name: Start Cloudflare email-protected temporary tunnel
         run: |
           set -euo pipefail
@@ -233,6 +275,13 @@ jobs:
           set -euo pipefail
           printf '{"state":"fetching_unity_editor","detail":"Preparing pinned Editor and native scene."}\n' > ci-live-control/license-status.json
           git lfs pull --include="Assets/**" --exclude=""
+          # Recover only a checksum-verified checkpoint tied to this exact SHA.
+          # If there is no matching checkpoint, keep the clean Git LFS checkout.
+          if python3 Tools/CI/session_store.py restore project; then
+            echo 'Verified previous unsaved world edits restored.'
+          else
+            echo '::notice::No compatible checkpoint. Using checked-in project.'
+          fi
           if head -c 80 Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity |
             grep -q 'git-lfs.github.com/spec'; then
             echo '::error::Native Unity scene is still a Git LFS pointer.'
@@ -349,11 +398,66 @@ jobs:
           path: ci-license-encrypted/Unity_lic.ulf.age
           if-no-files-found: warn
           retention-days: 1
+      - name: Start periodic Git-source checkpoints
+        if: env.LICENSE_EXPORT_RECIPIENT == ''
+        run: |
+          mkdir -p ci-logs
+          (while sleep 420; do
+            python3 Tools/CI/session_store.py save project >>ci-logs/project-checkpoints.log 2>&1 || true
+          done) &
+          echo "$!" > /tmp/aaris-checkpoint.pid
+          echo 'Project edits checkpointed every seven minutes; AI SAVE pushes a review PR.'
       - name: Keep temporary desktop session online
         if: env.LICENSE_EXPORT_RECIPIENT == ''
         run: |
           echo "Cloudflare session is active for $SESSION_MINUTES minutes."
           sleep "$((SESSION_MINUTES*60))"
+      - name: Final best-effort source checkpoint
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 12
+        run: |
+          if [[ -f /tmp/aaris-checkpoint.pid ]]; then
+            kill "$(cat /tmp/aaris-checkpoint.pid)" 2>/dev/null || true
+          fi
+          python3 Tools/CI/session_store.py save project
+      - name: Write secret-free runner stage diagnostic
+        if: always()
+        run: |
+          python3 - <<'DIAG'
+          import json, os, shutil, subprocess
+          from pathlib import Path
+          folder = Path('ci-live-control')
+          folder.mkdir(exist_ok=True)
+          try:
+              state = json.loads((folder/'license-status.json').read_text()).get('state','unknown')
+          except (OSError, ValueError):
+              state = 'not_started'
+          docker = subprocess.run(['docker','inspect','--format','{{.State.Running}}',
+                                   'aaris-unity-live'], capture_output=True, text=True, check=False)
+          total, used, free = shutil.disk_usage('.')
+          details = {
+              'workflow_run_id': os.getenv('GITHUB_RUN_ID', ''),
+              'session_minutes': os.getenv('SESSION_MINUTES', ''),
+              'unity_state': state if isinstance(state,str) and state.replace('_','').isalnum() else 'unknown',
+              'unity_container_running': docker.returncode == 0 and docker.stdout.strip() == 'true',
+              'vnc_startup_screenshot': (folder/'desktop-startup.png').is_file(),
+              'real_camera_photo_exists': (folder/'latest.png').is_file(),
+              'ai_result_exists': (folder/'ai-result.json').is_file(),
+              'disk_free_gib': round(free / 1024**3, 2),
+              'notice': 'Sanitized report. No license, OAuth URLs, tokens, or private Unity logs.'
+          }
+          (folder/'diagnostic.json').write_text(json.dumps(details,indent=2)+'\n')
+          print(json.dumps(details, indent=2))
+          DIAG
+      - name: Upload secret-free debug report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-runner-debug-${{ github.run_id }}
+          path: ci-live-control/diagnostic.json
+          retention-days: 14
+          if-no-files-found: warn
       - name: Upload last available Unity camera photo only
         if: always()
         uses: actions/upload-artifact@v4
@@ -371,6 +475,9 @@ jobs:
           fi
           if [[ -f /tmp/aaris-issue-bridge.pid ]]; then
             kill "$(cat /tmp/aaris-issue-bridge.pid)" 2>/dev/null || true
+          fi
+          if [[ -f /tmp/aaris-stage-window.pid ]]; then
+            kill "$(cat /tmp/aaris-stage-window.pid)" 2>/dev/null || true
           fi
           if [[ -f /tmp/aaris-license-watch.pid ]]; then
             kill "$(cat /tmp/aaris-license-watch.pid)" 2>/dev/null || true
