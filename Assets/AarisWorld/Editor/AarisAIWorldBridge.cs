@@ -23,7 +23,25 @@ namespace Aaris.MapReview.Editor
             public int index, samples;
         }
         [Serializable] private class Point { public float x, y, z; public Point(Vector3 p) { x=p.x; y=p.y; z=p.z; } }
+        // A heartbeat is only written by successfully compiled, running Unity
+        // Editor code (unlike a Linux desktop or an unlicensed Docker process).
+        [Serializable] private class Heartbeat
+        {
+            public long unixSeconds;
+            public string unityVersion, scene, graphicsDevice;
+            public bool nativeSceneOpen;
+        }
         [Serializable] private class Size { public Vector3 center, extents, size; }
+        // Every renderer/submesh is independently measurable. Paths identify leaves,
+        // trunks, walls and roof children rather than confusing their parent bounds.
+        [Serializable] private class Part
+        {
+            public string path, rendererType;
+            public Size bounds;
+            public string[] materials;
+            public int meshVertices;
+            public bool meshReadable;
+        }
         [Serializable] private class Item { public string path, prototype; public Vector3 position; public float distance; public int index; public float widthScale, heightScale; }
         [Serializable] private class Result
         {
@@ -34,12 +52,15 @@ namespace Aaris.MapReview.Editor
             public Size bounds;
             public string[] materials;
             public Item[] objects;
+            public Part[] parts;
             public Point[] points;
-            public int meshVertices, sampledVertices, index, matches;
+            public string blueprintSampling;
+            public int meshVertices, sampledVertices, boundsFallbackPoints, index, matches;
             public float treeWidthScale, treeHeightScale;
         }
         private static readonly string State = Path.Combine(Directory.GetCurrentDirectory(), "ci-live-control");
         private static double nextPoll;
+        private static double nextHeartbeat;
         static AarisAIWorldBridge() { EditorApplication.update += Poll; }
 
         private static void Poll()
@@ -47,6 +68,7 @@ namespace Aaris.MapReview.Editor
             if (EditorApplication.timeSinceStartup < nextPoll) return;
             nextPoll = EditorApplication.timeSinceStartup + 0.7;
             if (EditorApplication.isCompiling || EditorApplication.isUpdating || EditorApplication.isPlaying) return;
+            PublishHeartbeat();
             string input = Path.Combine(State, "ai-command.json");
             if (!File.Exists(input)) return;
             Intent request = null;
@@ -86,6 +108,29 @@ namespace Aaris.MapReview.Editor
                 }
                 catch (Exception error) { Debug.LogError("[Aaris AI world status] " + error); }
             }
+        }
+
+        private static void PublishHeartbeat()
+        {
+            if (EditorApplication.timeSinceStartup < nextHeartbeat) return;
+            nextHeartbeat = EditorApplication.timeSinceStartup + 10;
+            try
+            {
+                Directory.CreateDirectory(State);
+                var beat = new Heartbeat {
+                    unixSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    unityVersion = Application.unityVersion,
+                    scene = SceneManager.GetActiveScene().path,
+                    graphicsDevice = SystemInfo.graphicsDeviceType.ToString(),
+                    nativeSceneOpen = SceneManager.GetActiveScene().path == AarisExplorerBuild.ScenePath
+                };
+                var tmp = Path.Combine(State, "editor-heartbeat.tmp");
+                File.WriteAllText(tmp, JsonUtility.ToJson(beat));
+                var path = Path.Combine(State, "editor-heartbeat.json");
+                if (File.Exists(path)) File.Delete(path);
+                File.Move(tmp, path);
+            }
+            catch (Exception e) { Debug.LogWarning("[Aaris AI heartbeat] " + e.GetType().Name); }
         }
 
         private static bool Finite(float n) { return !float.IsNaN(n) && !float.IsInfinity(n); }
@@ -168,6 +213,66 @@ namespace Aaris.MapReview.Editor
             reply.materials = t.GetComponentsInChildren<Renderer>(true)
                 .SelectMany(r => r.sharedMaterials).Where(m => m != null)
                 .Select(m => m.name).Distinct().Take(100).ToArray();
+            reply.parts = SceneParts(t);
+        }
+
+        private static Size DescribeBounds(Bounds b)
+        {
+            return new Size { center = b.center, size = b.size, extents = b.extents };
+        }
+
+        private static Part[] SceneParts(Transform root)
+        {
+            return root.GetComponentsInChildren<Renderer>(true).Take(128).Select(renderer =>
+            {
+                var filter = renderer.GetComponent<MeshFilter>();
+                Mesh mesh = filter != null ? filter.sharedMesh :
+                    (renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : null);
+                return new Part {
+                    path = PathOf(renderer.transform), rendererType = renderer.GetType().Name,
+                    bounds = DescribeBounds(renderer.bounds),
+                    meshVertices = mesh == null ? 0 : mesh.vertexCount,
+                    meshReadable = mesh != null && mesh.isReadable,
+                    materials = renderer.sharedMaterials.Where(m => m != null)
+                        .Select(m => m.name).Take(16).ToArray()
+                };
+            }).ToArray();
+        }
+
+        private static Bounds TransformBounds(Bounds local, Matrix4x4 matrix)
+        {
+            bool first = true;
+            Bounds b = new Bounds(Vector3.zero, Vector3.zero);
+            for (int x = -1; x <= 1; x += 2)
+            for (int y = -1; y <= 1; y += 2)
+            for (int z = -1; z <= 1; z += 2)
+            {
+                var corner = matrix.MultiplyPoint3x4(local.center +
+                    Vector3.Scale(local.extents, new Vector3(x, y, z)));
+                if (first) { b = new Bounds(corner, Vector3.zero); first = false; }
+                else b.Encapsulate(corner);
+            }
+            return b;
+        }
+
+        private static Part[] TreeParts(Transform root, Matrix4x4 worldOverride)
+        {
+            return root.GetComponentsInChildren<MeshFilter>(true).Take(128)
+                .Where(filter => filter.sharedMesh != null).Select(filter =>
+                {
+                    Mesh mesh = filter.sharedMesh;
+                    var renderer = filter.GetComponent<Renderer>();
+                    Bounds b = TransformBounds(mesh.bounds,
+                        worldOverride * filter.transform.localToWorldMatrix);
+                    return new Part {
+                        path = PathOf(filter.transform), rendererType = "MeshFilter",
+                        bounds = DescribeBounds(b),
+                        meshVertices = mesh.vertexCount, meshReadable = mesh.isReadable,
+                        materials = renderer == null ? new string[0] :
+                            renderer.sharedMaterials.Where(m => m != null)
+                                .Select(m => m.name).Take(16).ToArray()
+                    };
+                }).ToArray();
         }
 
         private static void Execute(Intent r, Result reply)
@@ -311,6 +416,7 @@ namespace Aaris.MapReview.Editor
             reply.materials = prefab.GetComponentsInChildren<Renderer>(true)
                 .SelectMany(renderer => renderer.sharedMaterials).Where(material => material != null)
                 .Select(material => material.name).Distinct().Take(100).ToArray();
+            reply.parts = TreeParts(prefab.transform, overrideMatrix);
             if (r.op == "tree_photo")
             {
                 reply.photo = "ai-photo.png";
@@ -340,17 +446,10 @@ namespace Aaris.MapReview.Editor
             {
                 Mesh mesh = filter.sharedMesh;
                 if (mesh == null) continue;
-                Bounds local = mesh.bounds;
-                Matrix4x4 matrix = worldOverride * filter.transform.localToWorldMatrix;
-                for (int x = -1; x <= 1; x += 2)
-                for (int y = -1; y <= 1; y += 2)
-                for (int z = -1; z <= 1; z += 2)
-                {
-                    Vector3 corner = matrix.MultiplyPoint3x4(local.center + Vector3.Scale(
-                        local.extents, new Vector3(x, y, z)));
-                    if (!hasMesh) { combined = new Bounds(corner, Vector3.zero); hasMesh = true; }
-                    else combined.Encapsulate(corner);
-                }
+                Bounds local = TransformBounds(mesh.bounds,
+                    worldOverride * filter.transform.localToWorldMatrix);
+                if (!hasMesh) { combined = local; hasMesh = true; }
+                else combined.Encapsulate(local);
             }
             if (!hasMesh)
                 throw new InvalidOperationException("Tree prototype lacks MeshFilter geometry");
@@ -375,16 +474,35 @@ namespace Aaris.MapReview.Editor
                     for (int i = 0; i < vertices.Length && cloud.Count < limit; i += step)
                         cloud.Add(new Point(matrix.MultiplyPoint3x4(vertices[i])));
                 }
-                catch (UnityException) { /* Non-readable meshes still report renderer bounds. */ }
+                catch (UnityException)
+                {
+                    // Imported meshes frequently have Read/Write disabled. Do not
+                    // claim exact surface vertices; provide labelled coarse AABB
+                    // corner samples as a useful measurable fallback instead.
+                    var b = mesh.bounds;
+                    var matrix = worldOverride * filter.transform.localToWorldMatrix;
+                    for (int x = -1; x <= 1; x += 2)
+                    for (int y = -1; y <= 1; y += 2)
+                    for (int z = -1; z <= 1; z += 2)
+                    {
+                        if (cloud.Count >= limit) break;
+                        var local = b.center + Vector3.Scale(b.extents, new Vector3(x, y, z));
+                        cloud.Add(new Point(matrix.MultiplyPoint3x4(local)));
+                        reply.boundsFallbackPoints++;
+                    }
+                }
                 if (cloud.Count >= limit) break;
             }
+            reply.blueprintSampling = reply.boundsFallbackPoints > 0
+                ? "mixed_mesh_vertices_and_approximate_bounds_corners"
+                : "sampled_mesh_surface_vertices";
         }
         private static void WritePly(string path, List<Point> points)
         {
             Directory.CreateDirectory(State);
             using (var stream = new StreamWriter(path))
             {
-                stream.WriteLine("ply\nformat ascii 1.0\ncomment Aaris world-space mesh vertex samples in metres");
+                stream.WriteLine("ply\nformat ascii 1.0\ncomment Aaris world-space sample points in metres; inspect JSON blueprintSampling for bounds fallback");
                 stream.WriteLine("element vertex " + points.Count);
                 stream.WriteLine("property float x\nproperty float y\nproperty float z\nend_header");
                 foreach (Point p in points)

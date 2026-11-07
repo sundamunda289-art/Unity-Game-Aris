@@ -61,11 +61,12 @@ jobs:
           lfs: false
       - name: Verify camera API rejects unsafe inputs
         run: |
-          python3 -m py_compile Tools/CI/live_camera_server.py Tools/CI/issue_camera_bridge.py Tools/CI/ai_world_commands.py Tools/CI/unity_personal_bootstrap.py
+          python3 -m py_compile Tools/CI/live_camera_server.py Tools/CI/issue_camera_bridge.py Tools/CI/ai_world_commands.py Tools/CI/unity_personal_bootstrap.py Tools/CI/editor_runtime_diagnostics.py
           python3 Tools/CI/ai_world_commands.py
           python3 Tools/CI/unity_personal_bootstrap.py --selftest
           python3 Tools/CI/license_reuse.py --selftest
           python3 Tools/CI/issue_camera_bridge.py --selftest
+          python3 Tools/CI/editor_runtime_diagnostics.py --selftest
           node --check Tools/CI/cloudflare_live_hub.mjs
           python3 - <<'PY'
           import sys
@@ -401,6 +402,35 @@ jobs:
               python3 Tools/CI/session_store.py save project || \
               echo '::warning::Project checkpoint failed; check diagnostic artifact.'
           fi
+      - name: Report editor readiness and generate safe diagnostics
+        if: always()
+        run: |
+          python3 Tools/CI/editor_runtime_diagnostics.py
+          python3 Tools/CI/issue_camera_bridge.py --diagnose
+          python3 - <<'PY'
+          import json, os
+          report=json.load(open("ci-live-control/ai-diagnostics-safe.json", encoding="utf-8"))
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a",encoding="utf-8") as summary:
+              summary.write("\n### Unity AI readiness (verified facts)\n")
+              summary.write(f"- License stage: {report['stage']}\n")
+              summary.write(f"- Container running: {report['unity_container_running']}\n")
+              summary.write(f"- Real Editor response verified: {report['unity_editor_confirmed']}\n")
+              summary.write(f"- Native map scene open: {report['native_scene_open']}\n")
+              summary.write(f"- Verified real PNG capture: {report['real_camera_photo_confirmed']}\n")
+              summary.write(f"- Free cloud disk (GiB): {report['free_disk_gb']}\n")
+              runtime=report["runtime"]
+              summary.write(f"- Editor process detected at final check: {runtime['editor_process_detected']}\n")
+              summary.write(f"- Editor process exited: {runtime['editor_exit_recorded']}\n")
+              summary.write(f"- Editor exit code: {runtime['editor_exit_code']}\n")
+              summary.write(f"- Classified Editor/activation errors: {runtime['logs']}\n")
+              summary.write("- See aaris-ai-diagnostics artifact for the sanitized details.\n")
+          if not report["unity_editor_confirmed"]:
+              print("::error::No verified Unity Editor heartbeat or completed command. A live Linux desktop is NOT evidence of an active Unity license, imported scene, or a camera capture.")
+              print("::error::Check the protected /api/license status and ai-diagnostics-safe.json. This session cannot be called a successful Unity Editor run.")
+              raise SystemExit(1)
+          if not report["real_camera_photo_confirmed"]:
+              print("::warning::Unity Editor was responsive, but a genuine PNG camera capture has not been confirmed this session.")
+          PY
       - name: Upload AI bridge diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -409,6 +439,10 @@ jobs:
           path: |
             ci-logs/issue-camera-relay.log
             ci-logs/project-auto-checkpoint.log
+            ci-live-control/ai-diagnostics-safe.json
+            ci-live-control/editor-runtime.json
+            ci-live-control/editor-runtime-diagnostics-safe.json
+            ci-live-control/editor-heartbeat.json
             ci-live-control/status.json
             ci-live-control/ai-result.json
           retention-days: 7

@@ -18,6 +18,7 @@ import time
 
 from live_camera_server import validate, STATE
 from ai_world_commands import parse as parse_world, selftest as world_selftest, EDIT_OPS
+from editor_runtime_diagnostics import snapshot as editor_runtime_snapshot
 
 ISSUE = int(os.getenv("AARIS_CAMERA_ISSUE", "77"))
 REPO = os.getenv("GITHUB_REPOSITORY", "sundamunda289-art/Unity-Game-Aris")
@@ -93,6 +94,92 @@ def publish_world_asset(comment_id, filename, suffix):
     gh("release", "upload", RELEASE, str(dest), "--repo", REPO)
     return f"https://github.com/{REPO}/releases/download/{RELEASE}/{dest.name}"
 
+def heartbeat_current(record, now=None):
+    """Require fresh, actual Editor-emitted evidence and a real graphics backend."""
+    if not isinstance(record, dict):
+        return False
+    stamp = record.get("unixSeconds")
+    if type(stamp) is not int:
+        return False
+    graphics = record.get("graphicsDevice")
+    if not isinstance(graphics, str) or graphics in ("", "Null"):
+        return False
+    current = time.time() if now is None else now
+    return 0 <= current - stamp <= 45
+
+
+def diagnostic_snapshot():
+    """Public-safe, actionable stage report; never copy Unity OAuth URLs or logs."""
+    safe_states = {
+        "fetching_unity_editor", "installing_official_unity_cli",
+        "starting_unity_oauth", "waiting_for_mobile_unity_signin",
+        "activating_unity_personal", "unity_personal_activation_succeeded",
+        "license_secret_installed", "unity_activation_requires_attention",
+        "editor_starting", "editor_exited", "editor_launch_failed", "editor_ready"
+    }
+    private = STATE / "license-status.json"
+    try:
+        raw_state = json.loads(private.read_text()).get("state") if private.exists() else None
+    except (OSError, ValueError, TypeError):
+        raw_state = None
+    license_state = raw_state if isinstance(raw_state, str) and raw_state in safe_states else "unavailable"
+    try:
+        docker = subprocess.run(
+            ["docker", "inspect", "--format", "{{.State.Running}}", "aaris-unity-live"],
+            capture_output=True, text=True, timeout=8, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        docker = None
+    try:
+        last_world = json.loads((STATE / "ai-result.json").read_text())
+    except (OSError, ValueError, TypeError):
+        last_world = {}
+    try:
+        disk_gb = round(shutil.disk_usage(".").free / (1024 ** 3), 2)
+    except OSError:
+        disk_gb = None
+    try:
+        heartbeat = json.loads((STATE / "editor-heartbeat.json").read_text())
+    except (OSError, ValueError, TypeError):
+        heartbeat = {}
+    if not isinstance(heartbeat, dict):
+        heartbeat = {}
+    if not isinstance(last_world, dict):
+        last_world = {}
+    editor_responding = heartbeat_current(heartbeat)
+    camera_captured = "Camera moved and real Unity PNG saved" in str(camera_health().get("state", ""))
+    world_photo = (last_world.get("ok") is True and
+                   last_world.get("op") in ("photo", "tree_photo"))
+    git = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                         capture_output=True, text=True, timeout=8, check=False)
+    return {
+        "schema": 1,
+        "runtime": editor_runtime_snapshot(),
+        "run_id": os.environ.get("GITHUB_RUN_ID", "") if
+                  os.environ.get("GITHUB_RUN_ID", "").isdigit() else "",
+        "source_commit": git.stdout.strip() if git.returncode == 0 else "",
+        "stage": license_state,
+        "license_secret_configured": bool(os.getenv("UNITY_LICENSE", "")),
+        "cloudflare_tunnel_started": Path("/tmp/aaris-tunnel-url").is_file(),
+        "unity_container_running": bool(docker is not None and
+                                   docker.returncode == 0 and docker.stdout.strip() == "true"),
+        "unity_editor_confirmed": bool(editor_responding or
+                                      last_world.get("ok") is True or camera_captured),
+        "native_scene_open": bool(editor_responding and
+                                  heartbeat.get("nativeSceneOpen") is True),
+        "real_camera_photo_confirmed": bool(camera_captured or world_photo),
+        "unity_editor_heartbeat_age_sec": round(time.time() - heartbeat["unixSeconds"], 1)
+             if editor_responding else None,
+        "last_world_op": str(last_world.get("op", ""))[:40] if
+                         isinstance(last_world.get("op"), str) else "",
+        "last_world_success": last_world.get("ok") is True,
+        "map_session_saved_to_git": (STATE / "session-saved-to-git").is_file(),
+        "free_disk_gb": disk_gb,
+        "guidance": ("Unity license has not been confirmed; use protected "
+                     "/api/license and authorized activation, not a screenshot "
+                     "of the empty Linux desktop.")
+    }
+
+
 def process_world(comment_id, body):
     try:
         request = parse_world(body)
@@ -132,13 +219,16 @@ def process_world(comment_id, body):
         attachments = [f"Inspector JSON / coordinates: {result_link}"]
         if reply.get("blueprint"):
             cloud = publish_world_asset(comment_id, "ai-blueprint.ply", "ply")
-            attachments.append(f"3D mesh-vertex point cloud (PLY): {cloud}")
+            attachments.append(f"3D point samples (PLY; JSON identifies approximation): {cloud}")
         if reply.get("photo"):
             photo = publish_world_asset(comment_id, "ai-photo.png", "png")
             attachments.append(f"Genuine Unity object screenshot: {photo}")
         details = {key: reply.get(key) for key in (
             "op", "path", "matches", "meshVertices", "sampledVertices",
+            "boundsFallbackPoints", "blueprintSampling",
             "treeWidthScale", "treeHeightScale", "treePrototype") if key in reply}
+        if isinstance(reply.get("parts"), list):
+            details["measurable_parts"] = len(reply["parts"])
         issue_comment("AI map request #" + str(comment_id) +
                       ": executed by licensed Unity Editor.\n" +
                       "Summary: " + json.dumps(details, ensure_ascii=True)[:1100] +
@@ -249,6 +339,10 @@ def process(comment):
                       "the authorized Unity CLI activation process.")
         return "activation-launch-failed"
     body = comment.get("body", "").strip()
+    if body == "MAP_STATUS":
+        issue_comment("AARIS_MAP_STATUS #" + str(comment_id) + "\n" +
+                      json.dumps(diagnostic_snapshot(), indent=2))
+        return "world-status-reported"
     if body == "MAP_SAVE":
         try:
             return process_save(comment_id)
@@ -297,8 +391,18 @@ def process(comment):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--selftest", action="store_true")
+    parser.add_argument("--diagnose", action="store_true",
+                        help="Write sanitized Actions debug artifact without secrets")
     parser.add_argument("--seconds", type=int, default=4800)
     args = parser.parse_args()
+    if args.diagnose:
+        STATE.mkdir(parents=True, exist_ok=True)
+        report = diagnostic_snapshot()
+        target = STATE / "ai-diagnostics-safe.json"
+        target.write_text(json.dumps(report, indent=2) + "\n")
+        print("Sanitized Unity AI diagnostics written; Editor confirmed:",
+              report["unity_editor_confirmed"])
+        return
     if args.selftest:
         world_selftest()
         sample = parse("CAMERA -420 22 -210 0 20 22")
@@ -314,6 +418,15 @@ def main():
                 raise AssertionError("Unsafe camera intent was accepted")
         assert "ACTIVATE_UNITY" != "ACTIVATE_UNITY 15"
         assert parse("CAMERA -420 22 -210 0 20 22")["distance"] == 22
+        snapshot = diagnostic_snapshot()
+        assert isinstance(snapshot["unity_editor_confirmed"], bool)
+        assert "auth_url" not in json.dumps(snapshot)
+        assert "UNITY_PASSWORD" not in json.dumps(snapshot)
+        assert "free_disk_gb" in snapshot
+        assert not heartbeat_current({"unixSeconds":1,"graphicsDevice":"OpenGLCore"},now=100)
+        assert not heartbeat_current({"unixSeconds":100,"graphicsDevice":"Null"},now=100)
+        assert heartbeat_current({"unixSeconds":100,"graphicsDevice":"OpenGLCore"},now=101)
+        assert snapshot["real_camera_photo_confirmed"] in (True, False)
         print("GitHub issue camera and explicit license retry parser selftest: PASS")
         return
     if REPO != "sundamunda289-art/Unity-Game-Aris" or ISSUE != 77:
@@ -326,7 +439,7 @@ def main():
         if re.fullmatch(r"https://[a-z0-9-]+\.trycloudflare\.com", live_url):
             run_id = os.getenv("GITHUB_RUN_ID", "")
             mins = os.getenv("SESSION_MINUTES", "15")
-            if run_id.isdigit() and mins in ("15", "45", "90"):
+            if run_id.isdigit() and mins in ("15", "45", "90", "240", "300"):
                 try:
                     issue_comment(f"AARIS_LIVE_DESKTOP run_id={run_id} "
                                   f"session_minutes={mins} url={live_url}")
@@ -343,7 +456,7 @@ def main():
         "waiting_for_mobile_unity_signin", "activating_unity_personal",
         "unity_personal_activation_succeeded", "license_secret_installed",
         "unity_activation_requires_attention", "editor_starting",
-        "fetching_unity_editor"
+        "editor_exited", "editor_launch_failed", "fetching_unity_editor"
     }
     until = time.monotonic() + max(15, min(args.seconds, 18000))
     while time.monotonic() < until:

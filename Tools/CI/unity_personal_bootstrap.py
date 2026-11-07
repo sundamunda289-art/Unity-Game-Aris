@@ -205,7 +205,21 @@ def run_editor() -> int:
     # GUI mode: no -batchmode or -nographics; graphics via Xvfb/Mesa.
     cmd = [editor, "-projectPath", str(PROJECT),
            "-logFile", str(logfile), "-force-glcore"]
-    return subprocess.call(cmd)
+    # A running container does NOT prove a running Editor. Save process lifecycle
+    # evidence separately, without publishing raw command lines or private logs.
+    runtime = STATE_DIR / "editor-runtime.json"
+    proc = subprocess.Popen(cmd)
+    runtime.write_text(json.dumps({"started": True, "finished": False,
+                                   "exit_code": None}))
+    try:
+        code = proc.wait()
+    finally:
+        code = proc.returncode
+        runtime.write_text(json.dumps({"started": True, "finished": True,
+                                       "exit_code": code}))
+        private_status("editor_exited",
+                       detail="Unity Editor process exited; consult sanitized runtime diagnostics.")
+    return code
 
 def selftest() -> None:
     assert allowed_auth_url("https://id.unity.com/sign-in")
@@ -250,8 +264,13 @@ def main() -> int:
         return run_editor()
     except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
         msg = str(error)
-        private_status("unity_activation_requires_attention", detail=msg)
-        print("Unity license bootstrap incomplete:", msg, flush=True)
+        try:
+            previous = json.loads((STATE_DIR / "license-status.json").read_text()).get("state")
+        except (OSError, ValueError):
+            previous = ""
+        stage = "editor_launch_failed" if previous == "editor_starting" else "unity_activation_requires_attention"
+        private_status(stage, detail=msg)
+        print("Unity bootstrap failure (no tokens or login URLs):", type(error).__name__, flush=True)
         # Keep Docker alive so protected VNC and local status remain available.
         time.sleep(5)
         return 1
