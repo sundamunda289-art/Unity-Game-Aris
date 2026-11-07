@@ -116,8 +116,27 @@ def process_world(comment_id, body):
         if reply.get("nonce") == comment_id:
             break
     if reply.get("nonce") != comment_id:
-        issue_comment(f"AI map request #{comment_id}: timed out. A licensed Unity Editor "
-                      "must be running and the native scene fully imported.")
+        queued = STATE / "ai-command.json"
+        stage = "queued_not_read_by_editor" if queued.is_file() else "read_by_editor_result_missing"
+        # Public issues contain only a known status label, NEVER private OAuth links.
+        safe_states = {"fetching_unity_editor", "editor_starting",
+                       "installing_unity_hub_prerequisites",
+                       "waiting_for_unity_hub_signin",
+                       "waiting_for_mobile_unity_signin", "activating_unity_personal",
+                       "unity_personal_activation_succeeded", "license_secret_installed",
+                       "unity_activation_requires_attention"}
+        license_state = "unknown"
+        try:
+            status = json.loads((STATE / "license-status.json").read_text())
+            candidate = status.get("state")
+            if candidate in safe_states:
+                license_state = candidate
+        except (OSError, ValueError, TypeError):
+            pass
+        issue_comment(f"AI map request #{comment_id}: timed out waiting for the Editor. "
+                      f"Stage={stage}; UnityLicense={license_state}. "
+                      "Do not repeat a MOVE/SCALE blindly: if the command was read, "
+                      "it could still complete. First INSPECT the object after Editor recovery.")
         return "world-editor-timeout"
     if not reply.get("ok"):
         issue_comment(f"AI map request #{comment_id}: Unity reported an error: "
@@ -137,8 +156,9 @@ def process_world(comment_id, body):
             photo = publish_world_asset(comment_id, "ai-photo.png", "png")
             attachments.append(f"Genuine Unity object screenshot: {photo}")
         details = {key: reply.get(key) for key in (
-            "op", "path", "matches", "meshVertices", "sampledVertices",
-            "treeWidthScale", "treeHeightScale", "treePrototype") if key in reply}
+            "op", "path", "position", "bounds", "partCount", "matches",
+            "meshVertices", "sampledVertices", "treeWidthScale",
+            "treeHeightScale", "treePrototype") if key in reply}
         issue_comment("AI map request #" + str(comment_id) +
                       ": executed by licensed Unity Editor.\n" +
                       "Summary: " + json.dumps(details, ensure_ascii=True)[:1100] +
@@ -326,7 +346,7 @@ def main():
         if re.fullmatch(r"https://[a-z0-9-]+\.trycloudflare\.com", live_url):
             run_id = os.getenv("GITHUB_RUN_ID", "")
             mins = os.getenv("SESSION_MINUTES", "15")
-            if run_id.isdigit() and mins in ("15", "45", "90"):
+            if run_id.isdigit() and mins in ("15", "45", "90", "240", "300"):
                 try:
                     issue_comment(f"AARIS_LIVE_DESKTOP run_id={run_id} "
                                   f"session_minutes={mins} url={live_url}")
@@ -343,6 +363,7 @@ def main():
         "waiting_for_mobile_unity_signin", "activating_unity_personal",
         "unity_personal_activation_succeeded", "license_secret_installed",
         "unity_activation_requires_attention", "editor_starting",
+        "installing_unity_hub_prerequisites", "waiting_for_unity_hub_signin",
         "fetching_unity_editor"
     }
     until = time.monotonic() + max(15, min(args.seconds, 18000))

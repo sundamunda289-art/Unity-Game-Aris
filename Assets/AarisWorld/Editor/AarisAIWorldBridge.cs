@@ -24,6 +24,14 @@ namespace Aaris.MapReview.Editor
         }
         [Serializable] private class Point { public float x, y, z; public Point(Vector3 p) { x=p.x; y=p.y; z=p.z; } }
         [Serializable] private class Size { public Vector3 center, extents, size; }
+        // A separate, measurable world-space bounding box for each child mesh.
+        [Serializable] private class MeshPart
+        {
+            public string path, mesh, kind;
+            public int vertexCount;
+            public Size bounds;
+            public string[] materials;
+        }
         [Serializable] private class Item { public string path, prototype; public Vector3 position; public float distance; public int index; public float widthScale, heightScale; }
         [Serializable] private class Result
         {
@@ -35,6 +43,8 @@ namespace Aaris.MapReview.Editor
             public string[] materials;
             public Item[] objects;
             public Point[] points;
+            public MeshPart[] parts;
+            public int partCount;
             public int meshVertices, sampledVertices, index, matches;
             public float treeWidthScale, treeHeightScale;
         }
@@ -99,7 +109,7 @@ namespace Aaris.MapReview.Editor
                 throw new ArgumentException("Non-finite numbers are forbidden");
             if (Mathf.Abs(r.x) > 2000 || Mathf.Abs(r.y) > 2000 || Mathf.Abs(r.z) > 2000)
                 throw new ArgumentException("Coordinate or delta outside safe world limits");
-            if (r.samples < 0 || r.samples > 2048 || r.radius < 0 || r.radius > 250)
+            if (r.samples < 0 || r.samples > 8192 || r.radius < 0 || r.radius > 250)
                 throw new ArgumentException("Sample/radius outside allowed range");
             if ((r.target ?? "").Length > 200 || (r.terrain ?? "").Length > 200)
                 throw new ArgumentException("Target too long");
@@ -168,6 +178,65 @@ namespace Aaris.MapReview.Editor
             reply.materials = t.GetComponentsInChildren<Renderer>(true)
                 .SelectMany(r => r.sharedMaterials).Where(m => m != null)
                 .Select(m => m.name).Distinct().Take(100).ToArray();
+            reply.parts = DescribeMeshes(t, Matrix4x4.identity);
+            reply.partCount = reply.parts.Length;
+        }
+
+
+        private static Size DescribeBounds(Bounds b)
+        {
+            return new Size { center = b.center, size = b.size, extents = b.extents };
+        }
+
+        // Transform eight corners of the *actual mesh-local bounds* into Unity metres.
+        // These are AABBs and not a watertight CAD reconstruction or exact leaf contour.
+        private static Bounds WorldBounds(Bounds local, Matrix4x4 matrix)
+        {
+            Vector3 first = matrix.MultiplyPoint3x4(local.min);
+            Bounds result = new Bounds(first, Vector3.zero);
+            for (int x = -1; x <= 1; x += 2)
+            for (int y = -1; y <= 1; y += 2)
+            for (int z = -1; z <= 1; z += 2)
+                result.Encapsulate(matrix.MultiplyPoint3x4(local.center +
+                    Vector3.Scale(local.extents, new Vector3(x, y, z))));
+            return result;
+        }
+
+        private static MeshPart DescribePart(Transform transform, string mesh,
+            int vertices, Bounds localBounds, Matrix4x4 matrix, Renderer renderer, string kind)
+        {
+            string[] materials = renderer == null ? new string[0] :
+                renderer.sharedMaterials.Where(m => m != null)
+                    .Select(m => m.name).Distinct().Take(32).ToArray();
+            return new MeshPart {
+                path = PathOf(transform), mesh = mesh, kind = kind,
+                vertexCount = vertices,
+                bounds = DescribeBounds(WorldBounds(localBounds, matrix)), materials = materials
+            };
+        }
+
+        private static MeshPart[] DescribeMeshes(Transform root, Matrix4x4 worldOverride)
+        {
+            var pieces = new List<MeshPart>();
+            // Bound JSON cost on a large imported Unity hierarchy; never enumerate all trees.
+            foreach (MeshFilter filter in root.GetComponentsInChildren<MeshFilter>(true).Take(128))
+            {
+                Mesh mesh = filter.sharedMesh;
+                if (mesh == null) continue;
+                pieces.Add(DescribePart(filter.transform, mesh.name, mesh.vertexCount,
+                    mesh.bounds, worldOverride * filter.transform.localToWorldMatrix,
+                    filter.GetComponent<Renderer>(), "MeshFilter"));
+            }
+            foreach (SkinnedMeshRenderer skinned in
+                root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Take(128 - pieces.Count))
+            {
+                Mesh mesh = skinned.sharedMesh;
+                if (mesh == null) continue;
+                pieces.Add(DescribePart(skinned.transform, mesh.name, mesh.vertexCount,
+                    skinned.localBounds, worldOverride * skinned.transform.localToWorldMatrix,
+                    skinned, "SkinnedMeshRenderer"));
+            }
+            return pieces.ToArray();
         }
 
         private static void Execute(Intent r, Result reply)
@@ -311,6 +380,8 @@ namespace Aaris.MapReview.Editor
             reply.materials = prefab.GetComponentsInChildren<Renderer>(true)
                 .SelectMany(renderer => renderer.sharedMaterials).Where(material => material != null)
                 .Select(material => material.name).Distinct().Take(100).ToArray();
+            reply.parts = DescribeMeshes(prefab.transform, overrideMatrix);
+            reply.partCount = reply.parts.Length;
             if (r.op == "tree_photo")
             {
                 reply.photo = "ai-photo.png";
@@ -330,30 +401,16 @@ namespace Aaris.MapReview.Editor
             }
         }
 
-        // Outer surface AABB from all child mesh subparts; includes trunk and leaves.
-        // This does not substitute for physical collision geometry or a watertight mesh.
+        // Native Terrain tree prototypes also expose per-child dimensions.
+        // Combine measurable mesh/skin bounds without mutating any source prefab.
         private static Bounds MeasureMeshBounds(Transform root, Matrix4x4 worldOverride, Vector3 origin)
         {
-            bool hasMesh = false;
-            Bounds combined = new Bounds(origin, Vector3.zero);
-            foreach (MeshFilter filter in root.GetComponentsInChildren<MeshFilter>(true).Take(128))
-            {
-                Mesh mesh = filter.sharedMesh;
-                if (mesh == null) continue;
-                Bounds local = mesh.bounds;
-                Matrix4x4 matrix = worldOverride * filter.transform.localToWorldMatrix;
-                for (int x = -1; x <= 1; x += 2)
-                for (int y = -1; y <= 1; y += 2)
-                for (int z = -1; z <= 1; z += 2)
-                {
-                    Vector3 corner = matrix.MultiplyPoint3x4(local.center + Vector3.Scale(
-                        local.extents, new Vector3(x, y, z)));
-                    if (!hasMesh) { combined = new Bounds(corner, Vector3.zero); hasMesh = true; }
-                    else combined.Encapsulate(corner);
-                }
-            }
-            if (!hasMesh)
-                throw new InvalidOperationException("Tree prototype lacks MeshFilter geometry");
+            MeshPart[] pieces = DescribeMeshes(root, worldOverride);
+            if (pieces.Length == 0)
+                throw new InvalidOperationException("Tree prototype lacks measurable mesh geometry");
+            Bounds combined = new Bounds(pieces[0].bounds.center, pieces[0].bounds.size);
+            for (int i = 1; i < pieces.Length; i++)
+                combined.Encapsulate(new Bounds(pieces[i].bounds.center, pieces[i].bounds.size));
             return combined;
         }
 

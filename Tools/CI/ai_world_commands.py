@@ -48,7 +48,7 @@ def validate(data):
                     or any(ord(c) < 32 or ord(c) == 127 for c in value)):
                 raise ValueError("Unsafe object name/path")
         elif key in ("index", "samples"):
-            if type(value) is not int or not 0 <= value <= (2048 if key == "samples" else 1000000):
+            if type(value) is not int or not 0 <= value <= (8192 if key == "samples" else 1000000):
                 raise ValueError("Invalid index/samples")
         else:
             if type(value) not in (int, float) or not math.isfinite(value):
@@ -73,7 +73,7 @@ def selftest():
     a=parse('MAP {"op":"move","target":"House/Wall","x":2,"y":0,"z":-3}')
     assert a["x"] == 2
     assert validate({"op":"tree_scale","terrain":"Terrain","index":42,"width":1.2,"height":0.9})
-    assert validate({"op":"blueprint","target":"Tree","samples":2048})
+    assert validate({"op":"blueprint","target":"Tree","samples":8192})
     assert validate({"op":"tree_photo","terrain":"Terrain","index":10})
     assert validate({"op":"tree_nearby","terrain":"Terrain","x":-420,"y":20,"z":-210,"radius":40})
     bad=[
@@ -85,6 +85,7 @@ def selftest():
         'MAP {"op":"scale","target":"Tree","x":0,"y":1,"z":1}',
         'MAP {"op":"nearby","x":NaN,"y":0,"z":0,"radius":50}',
         'MAP {"op":"tree_inspect","terrain":"Terrain","index":-1}',
+        'MAP {"op":"blueprint","target":"Tree","samples":8193}',
     ]
     for raw in bad:
         try: parse(raw)
