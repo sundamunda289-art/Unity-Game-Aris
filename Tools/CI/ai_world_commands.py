@@ -15,18 +15,19 @@ import re
 
 OPS = {
     "find": ("target",), "nearby": ("x", "y", "z", "radius"),
-    "inspect": ("target",), "blueprint": ("target",), "photo": ("target",),
+    "inspect": ("target",), "blueprint": ("target",), "outline": ("target",), "photo": ("target",),
     "move": ("target", "x", "y", "z"),
     "rotate": ("target", "x", "y", "z"),
     "scale": ("target", "x", "y", "z"),
     "tree_nearby": ("terrain", "x", "y", "z", "radius"),
     "tree_inspect": ("terrain", "index"),
     "tree_blueprint": ("terrain", "index"),
+    "tree_outline": ("terrain", "index"),
     "tree_photo": ("terrain", "index"),
     "tree_move": ("terrain", "index", "x", "z"),
     "tree_scale": ("terrain", "index", "width", "height"),
 }
-OPTIONAL = {"blueprint": {"samples"}, "tree_blueprint": {"samples"}}
+OPTIONAL = {name: {"samples"} for name in ("blueprint", "tree_blueprint", "outline", "tree_outline")}
 EDIT_OPS = {"move", "rotate", "scale", "tree_move", "tree_scale"}
 
 def validate(data):
@@ -74,6 +75,8 @@ def selftest():
     assert a["x"] == 2
     assert validate({"op":"tree_scale","terrain":"Terrain","index":42,"width":1.2,"height":0.9})
     assert validate({"op":"blueprint","target":"Tree","samples":2048})
+    assert validate({"op":"outline","target":"House/Wall","samples":1024})
+    assert validate({"op":"tree_outline","terrain":"Terrain","index":12,"samples":1024})
     assert validate({"op":"tree_photo","terrain":"Terrain","index":10})
     assert validate({"op":"tree_nearby","terrain":"Terrain","x":-420,"y":20,"z":-210,"radius":40})
     bad=[

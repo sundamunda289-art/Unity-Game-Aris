@@ -24,6 +24,12 @@ namespace Aaris.MapReview.Editor
         }
         [Serializable] private class Point { public float x, y, z; public Point(Vector3 p) { x=p.x; y=p.y; z=p.z; } }
         [Serializable] private class Size { public Vector3 center, extents, size; }
+        // Approximate exterior footprint of sampled geometry in 16 vertical bands (metres).
+        [Serializable] private class OutlineBand
+        {
+            public float minY, maxY, minX, maxX, minZ, maxZ, width, depth;
+            public int sampleCount;
+        }
         [Serializable] private class Item { public string path, prototype; public Vector3 position; public float distance; public int index; public float widthScale, heightScale; }
         [Serializable] private class Result
         {
@@ -35,6 +41,8 @@ namespace Aaris.MapReview.Editor
             public string[] materials;
             public Item[] objects;
             public Point[] points;
+            public OutlineBand[] outline;
+            public string outlineQuality;
             public int meshVertices, sampledVertices, index, matches;
             public float treeWidthScale, treeHeightScale;
         }
@@ -91,8 +99,9 @@ namespace Aaris.MapReview.Editor
         private static bool Finite(float n) { return !float.IsNaN(n) && !float.IsInfinity(n); }
         private static void Validate(Intent r)
         {
-            string[] valid = { "find", "nearby", "inspect", "blueprint", "photo",
-                "move", "rotate", "scale", "tree_nearby", "tree_inspect", "tree_blueprint", "tree_photo", "tree_move", "tree_scale" };
+            string[] valid = { "find", "nearby", "inspect", "blueprint", "outline", "photo",
+                "move", "rotate", "scale", "tree_nearby", "tree_inspect", "tree_blueprint",
+                "tree_outline", "tree_photo", "tree_move", "tree_scale" };
             if (r.nonce <= 0 || !valid.Contains(r.op)) throw new ArgumentException("Unknown op or nonce");
             if (!Finite(r.x) || !Finite(r.y) || !Finite(r.z) ||
                 !Finite(r.width) || !Finite(r.height) || !Finite(r.radius))
@@ -213,10 +222,12 @@ namespace Aaris.MapReview.Editor
                     throw new IOException("Unity scene save failed");
             }
             Fill(tform, reply);
-            if (r.op == "blueprint")
+            if (r.op == "blueprint" || r.op == "outline")
             {
                 var cloud = new List<Point>();
-                SampleMeshes(tform, Matrix4x4.identity, r.samples == 0 ? 512 : r.samples, cloud, reply);
+                SampleMeshes(tform, Matrix4x4.identity, r.samples == 0 ? 1024 : r.samples, cloud, reply);
+                if (r.op == "outline")
+                    CompleteOutline(cloud, BoundsOf(tform), reply, true);
                 if (cloud.Count == 0)
                     throw new InvalidOperationException("No readable mesh vertices; cannot generate PLY blueprint");
                 reply.points = cloud.ToArray();
@@ -316,11 +327,13 @@ namespace Aaris.MapReview.Editor
                 reply.photo = "ai-photo.png";
                 Capture(measured, Path.Combine(State, reply.photo));
             }
-            if (r.op == "tree_blueprint")
+            if (r.op == "tree_blueprint" || r.op == "tree_outline")
             {
                 var cloud = new List<Point>();
                 SampleMeshes(prefab.transform, overrideMatrix,
-                    r.samples == 0 ? 512 : r.samples, cloud, reply);
+                    r.samples == 0 ? 1024 : r.samples, cloud, reply);
+                if (r.op == "tree_outline")
+                    CompleteOutline(cloud, measured, reply, true);
                 if (cloud.Count == 0)
                     throw new InvalidOperationException("Tree has no readable mesh vertices for PLY");
                 reply.points = cloud.ToArray();
@@ -379,6 +392,52 @@ namespace Aaris.MapReview.Editor
                 if (cloud.Count >= limit) break;
             }
         }
+        // Mesh-vertex samples describe approximate surface geometry, NOT watertight
+        // volumes. When mesh CPU-read is disabled, return an explicit AABB proxy
+        // rather than silently claiming a real per-leaf outline.
+        private static void CompleteOutline(List<Point> cloud, Bounds measured,
+            Result reply, bool allowBoxFallback)
+        {
+            if (cloud.Count == 0)
+            {
+                if (!allowBoxFallback)
+                    throw new InvalidOperationException("No available geometry for outline");
+                for (int layer = 0; layer <= 16; ++layer)
+                {
+                    float y = Mathf.Lerp(measured.min.y, measured.max.y, layer / 16f);
+                    for (int x = -1; x <= 1; x += 2)
+                    for (int z = -1; z <= 1; z += 2)
+                        cloud.Add(new Point(new Vector3(
+                            measured.center.x + measured.extents.x * x, y,
+                            measured.center.z + measured.extents.z * z)));
+                }
+                reply.outlineQuality = "bounds-only-proxy-not-real-mesh";
+            }
+            else
+                reply.outlineQuality = "sampled-mesh-vertices-not-exact-surface";
+            float minY = cloud.Min(p => p.y);
+            float maxY = cloud.Max(p => p.y);
+            float span = Mathf.Max(0.00001f, maxY - minY);
+            var bands = new List<OutlineBand>();
+            for (int band = 0; band < 16; ++band)
+            {
+                int index = band;
+                Point[] points = cloud.Where(p => Mathf.Min(15,
+                    Mathf.FloorToInt((p.y - minY) / span * 16f)) == index).ToArray();
+                if (points.Length == 0) continue;
+                float xMin = points.Min(p => p.x), xMax = points.Max(p => p.x);
+                float zMin = points.Min(p => p.z), zMax = points.Max(p => p.z);
+                bands.Add(new OutlineBand {
+                    minY = minY + span * band / 16f,
+                    maxY = minY + span * (band + 1) / 16f,
+                    minX = xMin, maxX = xMax, minZ = zMin, maxZ = zMax,
+                    width = xMax - xMin, depth = zMax - zMin,
+                    sampleCount = points.Length
+                });
+            }
+            reply.outline = bands.ToArray();
+        }
+
         private static void WritePly(string path, List<Point> points)
         {
             Directory.CreateDirectory(State);

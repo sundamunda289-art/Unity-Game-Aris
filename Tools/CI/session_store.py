@@ -159,6 +159,11 @@ def save(kind):
         files = ["Library"]
     else:
         files = project_paths()
+        # A pristine fresh runner must never replace a useful Release checkpoint
+        # with a zero-file manifest. This can otherwise destroy recovery state.
+        if not files:
+            print("No changed project files; keeping the previous checkpoint intact.")
+            return 0
     tag = TAGS[kind]
     with tempfile.TemporaryDirectory(prefix="aaris-save-") as temp:
         folder = Path(temp)
@@ -238,6 +243,11 @@ def restore(kind):
         elif data.get("source_sha") != head():
             print("Project checkpoint based on different Git commit; refusing stale overlay.")
             return 3
+        elif not data.get("files") or not data.get("parts"):
+            # Older versions could publish empty manifests. They are not
+            # successful recoveries and must not mask a cold checkout.
+            print("Empty legacy project checkpoint; no changes to restore.")
+            return 3
         parts = []
         for part in data["parts"]:
             name = part["name"]
@@ -255,6 +265,10 @@ def restore(kind):
         return 0
 
 def selftest():
+    from unittest.mock import patch
+    with patch(__name__ + ".project_paths", return_value=[]), \
+         patch(__name__ + ".ensure_release", side_effect=AssertionError("Empty checkpoint uploaded")):
+        assert save("project") == 0
     if shutil.which("zstd") is None:
         raise RuntimeError("Install zstd before selftest.")
     with tempfile.TemporaryDirectory(prefix="aaris-test-") as temp:

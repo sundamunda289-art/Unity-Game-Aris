@@ -133,3 +133,26 @@ MAP_SAVE
 - For an interrupted run, a background checkpoint and final `if: always()` step attempt to save changed project assets to the checksummed `project-checkpoint` Release. A fresh runner checks out and hydrates source LFS, then restores the checkpoint **only if its source Git commit SHA matches**. If a Git PR has been saved, the durable edit lives on that branch until reviewed/merged; the checkpoint is not a replacement for merging it. A hard runner kill may interrupt checkpointing. Unity's `Library/` cache is only an import accelerator; no license/password/HUB state is stored.
 - For failures, check `aaris-ai-diagnostics` Actions artifact (`issue-camera-relay.log`, `ai-result.json`, cache logs), the job summary, and the PIN-protected `/api/license` page. Never paste private OAuth URLs or license files into issues. If Editor did not activate, output an explicit failure rather than claiming screenshots or edits occurred.
 - Keep object edits narrow. Avoid unnecessary modifications to `.meta`, materials, prefabs or LFS scenes. Do not auto-commit generated files from `Library/`, `Temp/`, `ci-live-control/`, license locations or private folders. Validate the actual Editor compilation/scene before declaring the automation production-ready.
+
+## 2026-11-07: Surface-outline inspection, safer recovery and failure evidence
+
+These enhancements extend the **existing** three-layer AI control system; no new per-object script is required. The canonical on-demand pipeline stays at `.github/workflows/aaris-live-unity.yml`, requests are validated by `Tools/CI/ai_world_commands.py`, and the Unity adapter is `Assets/AarisWorld/Editor/AarisAIWorldBridge.cs`.
+
+**AI can request a 3D outline before making edits:**
+
+```text
+MAP {"op":"find","target":"Tree"}
+MAP {"op":"tree_nearby","terrain":"Terrain","x":-420,"y":20,"z":-210,"radius":40}
+MAP {"op":"inspect","target":"Root/House/Wall"}
+MAP {"op":"outline","target":"Root/House/Wall","samples":2048}
+MAP {"op":"tree_inspect","terrain":"Terrain","index":12}
+MAP {"op":"tree_outline","terrain":"Terrain","index":12,"samples":2048}
+```
+
+`outline` and `tree_outline` publish a world-space PLY point cloud and inspector JSON. JSON includes `bounds.size` (the world-axis bounding-box dimensions in metres), `outline` (up to 16 vertical bands with `minY`, `maxY`, `minX`, `maxX`, `minZ`, `maxZ`, `width`, `depth`, and `sampleCount`), and `outlineQuality`. Sample counts may be 1–2048; omit `samples` for the default 1024. The profile is derived from **sampled mesh vertices**, not guaranteed outermost topology; it is NOT exact CAD, accurate leaf-area measurement, trunk-diameter certification, or physical colliders. If Unity mesh CPU-reading is disabled, a visibly declared `bounds-only-proxy-not-real-mesh` outline may be generated instead. Never use a proxy to assert actual wall thickness or individual leaf geometry. A rotated wall's world AABB is not its local wall thickness.
+
+**Reliable editing protocol:** Discover hierarchy or native terrain-tree index, inspect/outline the exact target, edit only the child element of interest (wall, leaves, trunk, tree instance), request a genuine `photo`/`tree_photo`, then issue `MAP_SAVE` once a related group of changes is satisfactory. Keep a reviewable Git PR instead of merging blindly. Numeric commands never permit arbitrary Unity script execution or shell commands.
+
+**Session/recovery diagnosis:** A fresh Actions runner hydrates Git LFS and restores a SHA-256 verified checkpoint only when its source commit matches the current checkout. A clean, zero-delta runner now **preserves** the previous non-empty recovery checkpoint rather than publishing an empty manifest. `MAP_SAVE` is the durable Git-branch/PR route across changes to `main`. See the `aaris-ai-diagnostics` Actions artifact, especially `ci-logs/safe-diagnostics.json`, which reports runner disk space, Unity container/editor-process detection, scene LFS pointer status, source SHA, modified asset paths and **allowlisted license state only**. It deliberately excludes private OAuth URLs, ULF data and raw authentication logs. Workflow success from the *verify* job or a healthy Linux/noVNC desktop does **not** prove a valid Unity Editor license or actual rendered map photo. Use a real PNG evidence link for that claim.
+
+Long session commands `START_DESKTOP 240` and `START_DESKTOP 300` now also publish their temporary PIN-gated Cloudflare tunnel link. Such sessions are not permanent; a runner can be interrupted, and final checkpoint hooks are best-effort.

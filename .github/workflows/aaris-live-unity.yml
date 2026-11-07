@@ -61,8 +61,19 @@ jobs:
           lfs: false
       - name: Verify camera API rejects unsafe inputs
         run: |
-          python3 -m py_compile Tools/CI/live_camera_server.py Tools/CI/issue_camera_bridge.py Tools/CI/ai_world_commands.py Tools/CI/unity_personal_bootstrap.py
+          python3 -m py_compile Tools/CI/live_camera_server.py Tools/CI/issue_camera_bridge.py Tools/CI/ai_world_commands.py Tools/CI/session_store.py Tools/CI/unity_personal_bootstrap.py
           python3 Tools/CI/ai_world_commands.py
+          # A clean runner MUST NOT clobber an existing recovery checkpoint.
+          python3 - <<'PY'
+          import sys
+          from unittest.mock import patch
+          sys.path.insert(0, "Tools/CI")
+          import session_store
+          with patch.object(session_store, "project_paths", return_value=[]), \
+               patch.object(session_store, "ensure_release", side_effect=AssertionError("Empty release upload")):
+              assert session_store.save("project") == 0
+          print("Empty recovery checkpoint rejection: PASS")
+          PY
           python3 Tools/CI/unity_personal_bootstrap.py --selftest
           python3 Tools/CI/license_reuse.py --selftest
           python3 Tools/CI/issue_camera_bridge.py --selftest
@@ -401,6 +412,64 @@ jobs:
               python3 Tools/CI/session_store.py save project || \
               echo '::warning::Project checkpoint failed; check diagnostic artifact.'
           fi
+      - name: Capture safe live editor diagnostics
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import datetime, json, shutil, subprocess
+          from pathlib import Path
+          Path("ci-logs").mkdir(exist_ok=True)
+          def success(args):
+              try:
+                  return subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                        timeout=5, check=False).returncode == 0
+              except (OSError, subprocess.TimeoutExpired):
+                  return False
+          def safe_license_state():
+              allowed = {
+                  "installing_official_unity_cli", "starting_unity_oauth",
+                  "waiting_for_mobile_unity_signin", "activating_unity_personal",
+                  "unity_personal_activation_succeeded", "license_secret_installed",
+                  "unity_activation_requires_attention", "editor_starting",
+                  "fetching_unity_editor",
+              }
+              try:
+                  state = json.loads(Path("ci-live-control/license-status.json").read_text()).get("state")
+                  return state if state in allowed else "unavailable_or_unrecognized"
+              except (OSError, ValueError, TypeError):
+                  return "unavailable"
+          path = Path("Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity")
+          try:
+              with path.open("rb") as src:
+                  is_pointer = b"git-lfs.github.com/spec" in src.read(100)
+          except OSError:
+              is_pointer = None
+          disk = shutil.disk_usage(".")
+          try:
+              changed = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", "Assets/"],
+                                       capture_output=True, text=True, timeout=8, check=False)
+              modified = changed.stdout.splitlines()[:100] if changed.returncode == 0 else []
+          except (OSError, subprocess.TimeoutExpired):
+              modified = []
+          report = {
+              "report_schema": 1,
+              "utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "session_run_id": str(__import__("os").environ.get("GITHUB_RUN_ID", "")),
+              "source_commit": str(__import__("os").environ.get("GITHUB_SHA", "")),
+              "license_state": safe_license_state(),
+              "unity_container_alive": success(["docker", "exec", "aaris-unity-live", "true"]),
+              "unity_editor_process_detected": success(["docker", "exec", "aaris-unity-live", "pgrep", "-x", "Unity"]),
+              "native_scene_present": path.is_file(),
+              "native_scene_is_lfs_pointer": is_pointer,
+              "disk_free_gib": round(disk.free / 1024**3, 2),
+              "latest_photo_exists": Path("ci-live-control/latest.png").is_file(),
+              "ai_result_exists": Path("ci-live-control/ai-result.json").is_file(),
+              "modified_asset_paths": modified,
+              "note": "State-only public-safe diagnostics. No OAuth URL, license bytes, or auth logs.",
+          }
+          Path("ci-logs/safe-diagnostics.json").write_text(json.dumps(report, indent=2) + "\n")
+          print("Safe report: ci-logs/safe-diagnostics.json")
+          PY
       - name: Upload AI bridge diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -409,6 +478,7 @@ jobs:
           path: |
             ci-logs/issue-camera-relay.log
             ci-logs/project-auto-checkpoint.log
+            ci-logs/safe-diagnostics.json
             ci-live-control/status.json
             ci-live-control/ai-result.json
           retention-days: 7
