@@ -130,6 +130,11 @@ assert 'close_editor' in (r/'.github/workflows/aaris-codespaces-control.yml').re
 assert 'close_editor' in (r/'Tools/Codespaces/issue_response.py').read_text()
 recovery=(r/'Tools/Codespaces/editor_process_recovery.sh').read_text()
 assert 'UNITY_EDITOR_PROCESS_DIAG_READY' in recovery
+assert 'UNITY_EDITOR_CPU_ACTIVITY_' in recovery
+assert 'UNITY_EDITOR_LOG_AGE_' in recovery
+assert 'UNITY_EDITOR_LOG_FLAG_' in recovery
+assert 'log.read_bytes()[-250000:]' in recovery
+assert 'time.sleep(2)' in recovery
 assert 'UNITY_EDITOR_RECOVER_TERM_CONFIRMED' in recovery
 assert 'UNITY_EDITOR_RECOVER_BLOCKED_VISIBLE_WINDOW' in recovery
 assert 'signal.SIGTERM' in recovery
