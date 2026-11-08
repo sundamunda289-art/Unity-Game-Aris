@@ -10,6 +10,12 @@ on:
       - 'Assets/AarisWorld/Editor/**'
       - 'Docs/MAP_LAYOUT.json'
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Tools/CI/map_static_check.py'
+      - 'Tools/Validation/test_map_safety.py'
+      - 'Docs/MAP_LAYOUT.json'
+      - '.github/workflows/aaris-parallel-qa.yml'
 
 permissions:
   contents: read
@@ -80,6 +86,7 @@ jobs:
           set -euo pipefail
           python3 -m py_compile Tools/CI/map_static_check.py Tools/CI/layout_preview.py
           python3 Tools/CI/map_static_check.py audit --out /tmp/aaris-map-report.json
+          python3 Tools/Validation/test_map_safety.py
           python3 Tools/CI/map_static_check.py inspect --x=-420 --z=-210 --out /tmp/aaris-map-inspect.json
           python3 - <<'PY'
           import json

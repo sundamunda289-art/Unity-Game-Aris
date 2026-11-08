@@ -4,7 +4,7 @@
   "sourceLayout": "Docs/MAP_LAYOUT.json",
   "strategy": "offline-verified-district-fill",
   "targetGameScene": "Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity",
-  "siteCount": 15,
+  "siteCount": 21,
   "sites": [
     {
       "name": "ARX_01_OldVillage_detached",
@@ -200,6 +200,90 @@
       "depth": 6.887,
       "height": 14.083,
       "style": "local_original_LOD_prefab"
+    },
+    {
+      "district": "LakesideHamlet",
+      "prefabKey": "watchtower",
+      "x": -700.22,
+      "z": 81.44,
+      "groundReferenceY": -2.6589,
+      "yaw": 0,
+      "width": 9.553,
+      "depth": 6.887,
+      "height": 14.083,
+      "style": "local_original_LOD_prefab",
+      "name": "ARX_16_LakesideHamlet_watchtower",
+      "designRole": "waterfront orientation/landmark"
+    },
+    {
+      "district": "FreightDistrict",
+      "prefabKey": "watchtower",
+      "x": 564.78,
+      "z": -215.56,
+      "groundReferenceY": -1.0718,
+      "yaw": 0,
+      "width": 9.553,
+      "depth": 6.887,
+      "height": 14.083,
+      "style": "local_original_LOD_prefab",
+      "name": "ARX_17_FreightDistrict_watchtower",
+      "designRole": "cargo district landmark and cover"
+    },
+    {
+      "district": "OldVillage",
+      "prefabKey": "cottage",
+      "x": -559.02,
+      "z": -580.83,
+      "groundReferenceY": 1.7115,
+      "yaw": 0,
+      "width": 9.968,
+      "depth": 14.349,
+      "height": 7.517,
+      "style": "local_original_LOD_prefab",
+      "name": "ARX_18_OldVillage_cottage",
+      "designRole": "low-rise cover and habitation"
+    },
+    {
+      "district": "NorthernRidgeTown",
+      "prefabKey": "bungalow",
+      "x": 273.22,
+      "z": 658.17,
+      "groundReferenceY": -30.8344,
+      "yaw": 0,
+      "width": 14.448,
+      "depth": 14.349,
+      "height": 6.673,
+      "style": "local_original_LOD_prefab",
+      "name": "ARX_19_NorthernRidgeTown_bungalow",
+      "designRole": "residential profile variation"
+    },
+    {
+      "district": "ValleySettlement",
+      "prefabKey": "cottage",
+      "x": -448.02,
+      "z": -201.83,
+      "groundReferenceY": 15.4086,
+      "yaw": 0,
+      "width": 9.968,
+      "depth": 14.349,
+      "height": 7.517,
+      "style": "local_original_LOD_prefab",
+      "name": "ARX_20_ValleySettlement_cottage",
+      "designRole": "route-side cover"
+    },
+    {
+      "district": "CoastalHamlet",
+      "prefabKey": "detached",
+      "x": 649.19,
+      "z": 656.22,
+      "groundReferenceY": -18.2116,
+      "yaw": 0,
+      "width": 12.383,
+      "depth": 16.43,
+      "height": 10.244,
+      "style": "local_original_LOD_prefab",
+      "name": "ARX_21_CoastalHamlet_detached",
+      "designRole": "two-storey silhouette variation"
     }
   ]
 }

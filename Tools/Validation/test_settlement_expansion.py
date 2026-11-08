@@ -59,9 +59,9 @@ class ExpansionIntegrity(unittest.TestCase):
         self.assertEqual(p["targetGameScene"],
                          "Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity")
         self.assertEqual(p["siteCount"], len(p["sites"]))
-        self.assertEqual(len(p["sites"]), 15)
-        self.assertEqual(sum(s["prefabKey"] == "watchtower" for s in p["sites"]), 3)
-        self.assertEqual(sum(s["prefabKey"] != "watchtower" for s in p["sites"]), 12)
+        self.assertEqual(len(p["sites"]), 21)
+        self.assertEqual(sum(s["prefabKey"] == "watchtower" for s in p["sites"]), 5)
+        self.assertEqual(sum(s["prefabKey"] != "watchtower" for s in p["sites"]), 16)
         self.assertGreaterEqual(len(set(s["district"] for s in p["sites"])), 10)
         self.assertEqual(len(set(s["name"] for s in p["sites"])), len(p["sites"]))
 
@@ -91,7 +91,7 @@ class ExpansionIntegrity(unittest.TestCase):
             total_lod0 += self.world["models"][model]["triangles"]
         # New buildings are rendered with their ORIGINAL THREE-LEVEL LOD,
         # not 15 freshly duplicated high-poly mesh assets.
-        self.assertLess(total_lod0, 200_000)
+        self.assertLess(total_lod0, 240_000)
         for model in set(MODELS.values()):
             path = ROOT / "Assets" / "AarisWorld" / "Models" / model / f"{model}.prefab"
             text = path.read_text(encoding="utf-8")
@@ -171,7 +171,7 @@ class ExpansionIntegrity(unittest.TestCase):
 
     def test_no_unsafe_changes_to_native_map_or_network(self):
         script = SCRIPT.read_text(encoding="utf-8")
-        for required in ["Terrain.activeTerrains", "SampleHeight", "GetSteepness",
+        for required in ["Terrain.activeTerrains", "GetInterpolatedHeight", "GetSteepness",
                          "TreeInstance", "Physics.OverlapBoxNonAlloc",
                          "Resources.Load<AarisExpansionCatalog>",
                          "Resources.Load<TextAsset>",
@@ -180,6 +180,14 @@ class ExpansionIntegrity(unittest.TestCase):
         for banned in ["Unity.Netcode", "NetworkBehaviour", "Application.OpenURL",
                        "WebRequest", "TerrainData.SetHeights", "DestroyImmediate"]:
             self.assertNotIn(banned, script)
+        self.assertIn("height = origin.y + t.terrainData.GetInterpolatedHeight(", script)
+        self.assertIn("if (TreesBlock(site, terrains))", script)
+        self.assertIn("foreach (Terrain terrain in all)", script)
+        self.assertIn("float.IsNaN(site.width)", script)
+        self.assertIn("FootprintHalfExtents(site, ObstacleMargin", script)
+        self.assertIn("FootprintHalfExtents(site, VegetationMargin", script)
+        self.assertIn("float cos = Mathf.Abs(Mathf.Cos(yaw))", script)
+        self.assertIn("float sin = Mathf.Abs(Mathf.Sin(yaw))", script)
         self.assertTrue((ROOT / "Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity").is_file())
 
 

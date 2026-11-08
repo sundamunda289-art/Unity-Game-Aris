@@ -5,12 +5,14 @@ on:
       - 'Assets/TerrainDemoScene_URP/Prefabs/Trees/**'
       - 'Docs/FOREST_PLANTING_PLAN.json'
       - 'Tools/Validation/test_tree_proportions.py'
+      - 'Assets/TerrainDemoScene_URP/Prefabs/Details/Materials/Bush_Red.mat'
       - 'Tools/Validation/test_mobile_tree_shadows.py'
       - '.github/workflows/aaris-tree-proportions.yml'
   push:
     paths:
       - 'Assets/TerrainDemoScene_URP/Prefabs/Trees/**'
       - 'Tools/Validation/test_tree_proportions.py'
+      - 'Assets/TerrainDemoScene_URP/Prefabs/Details/Materials/Bush_Red.mat'
       - 'Tools/Validation/test_mobile_tree_shadows.py'
   workflow_dispatch:
 jobs:

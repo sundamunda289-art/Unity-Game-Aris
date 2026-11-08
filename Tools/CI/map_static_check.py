@@ -39,7 +39,11 @@ def inspect(layout, x, z):
                       "height_m":b["world_dimensions_m"][1],
                       "distance_m":round(dpos(b),2)}
                      for b in nearest_buildings],
-        "vehicle_spawns":[{"name":s["name"],"distance_m":round(dpos(s),2)}
+        "vehicle_spawns":[{"name":s["name"],"distance_m":round(dpos(s),2),
+                           "exit_world_xz_m":s["exit_world_xz_m"],
+                           "road_exit_distance_m":round(min(
+                               road_distance(road, *s["exit_world_xz_m"])
+                               for road in layout["roads"]),2)}
                           for s in nearest_spawns],
         "roads":[{"name":road["name"],
                   "distance_m":round(road_distance(road,x,z),2)}
@@ -75,6 +79,37 @@ def check(layout):
     assert_check("spawn_district_references",
                  all(s["district"] in district_names for s in spawns),
                  len(spawns))
+    def finite_vector(values, length):
+        return (isinstance(values, list) and len(values) == length
+                and all(type(v) in (int, float) and math.isfinite(v)
+                        for v in values))
+    # Validate before geometric queries: NaN silently defeats comparisons and
+    # empty/degenerate road centerlines can make nearest-road queries crash.
+    assert_check("building_geometry_finite",
+                 all(finite_vector(b.get("position_m"), 3) and
+                     finite_vector(b.get("aabb_xz_m"), 4) and
+                     finite_vector(b.get("world_dimensions_m"), 3) and
+                     finite_vector([b.get("yaw_degrees")], 1) and
+                     b["aabb_xz_m"][0] < b["aabb_xz_m"][2] and
+                     b["aabb_xz_m"][1] < b["aabb_xz_m"][3] and
+                     all(v > 0 for v in b["world_dimensions_m"])
+                     for b in buildings),len(buildings))
+    assert_check("vehicle_spawn_geometry_finite",
+                 all(finite_vector(s.get("position_m"), 3) and
+                     finite_vector(s.get("exit_world_xz_m"), 2) and
+                     finite_vector(s.get("reserved_size_m"), 2) and
+                     finite_vector([s.get("yaw_degrees")], 1) and
+                     all(v > 0 for v in s["reserved_size_m"])
+                     for s in spawns),len(spawns))
+    assert_check("road_centerlines_drivable",
+                 all(isinstance(road.get("points"), list) and
+                     len(road["points"]) >= 2 and
+                     all(finite_vector(p, 3) for p in road["points"]) and
+                     finite_vector([road.get("width")], 1) and
+                     3 <= road["width"] <= 25 and
+                     all(math.hypot(b[0]-a[0], b[2]-a[2]) > 0.001
+                         for a,b in zip(road["points"],road["points"][1:]))
+                     for road in roads),len(roads))
     def point_in_bounds(x,z):
         return x0<=x<=x1 and z0<=z<=z1
     assert_check("building_centers_in_bounds",
@@ -87,6 +122,13 @@ def check(layout):
                  all(point_in_bounds(p[0],p[2]) and all(math.isfinite(a) for a in p)
                      for road in roads for p in road["points"]),
                  len(roads))
+    # A parked car must have an authored drive-out point on a real paved
+    # centerline, not only a nominal spawn coordinate near a road.
+    assert_check("vehicle_exits_connect_to_roads",
+                 all(point_in_bounds(*spawn["exit_world_xz_m"]) and
+                     min(road_distance(road, *spawn["exit_world_xz_m"])
+                         for road in roads) <= 1.0
+                     for spawn in spawns),len(spawns))
     overlap=[]
     for i,a in enumerate(buildings):
         q=a["aabb_xz_m"]

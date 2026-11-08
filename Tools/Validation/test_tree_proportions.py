@@ -80,6 +80,23 @@ class NaturalTreePrefabTests(unittest.TestCase):
                 self.assertEqual("  - EFFECT_BILLBOARD" in keywords, is_billboard)
                 self.assertIn(f"    - _BillboardKwToggle: {int(is_billboard)}", source)
 
+    def test_red_bush_preserves_textures_and_alpha_cutout(self):
+        # No geometry or .meta changes: make the old HDRP shader load in URP
+        # while retaining authored foliage textures, cutout and low specularity.
+        material = ROOT / "Assets/TerrainDemoScene_URP/Prefabs/Details/Materials/Bush_Red.mat"
+        source = material.read_text(encoding="utf-8")
+        self.assertIn("m_Shader: {fileID: 4800000, guid: 933532a4fcc9baf4fa0491de14d08ed7, type: 3}", source)
+        self.assertNotIn("dfa3b96612ed4df4a97b7fd06217ba23", source)
+        self.assertIn("  - _ALPHATEST_ON", source)
+        self.assertIn("  - _NORMALMAP", source)
+        self.assertIn("    - _AlphaClip: 1", source)
+        self.assertIn("    - _Cull: 0", source)
+        self.assertIn("    - _Cutoff: 0.5", source)
+        self.assertIn("    - _Smoothness: 0.25", source)
+        self.assertIn("    - _BaseMap:\\n        m_Texture: {fileID: 2800000, guid: 1933fb8bd6eed9d429dd93c5de2f061c, type: 3}".replace("\\n", "\n"), source)
+        self.assertIn("    - _BumpMap:\\n        m_Texture: {fileID: 2800000, guid: 90a6b9df8334d6040b2ae1928aaab244, type: 3}".replace("\\n", "\n"), source)
+        self.assertTrue(material.with_suffix(".mat.meta").is_file())
+
     def test_mobile_foliage_quality_without_extra_meshes(self):
         # Species keep exactly their original SpeedTree meshes, texture GUIDs,
         # billboards and native TerrainData instances. Tuning happens on the
