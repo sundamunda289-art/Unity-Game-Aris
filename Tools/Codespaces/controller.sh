@@ -49,6 +49,7 @@ if test -n "$ISSUE"; then
     'CS SCENE RENDER') OP=scene_render ;;
     'CS SCENE PLAY') OP=scene_play ;;
     'CS DROP VIDEO') OP=drop_video ;;
+    'CS DROP FRAMES') OP=drop_frames ;;
     'CS PLAY DIAG') OP=play_diag ;;
     'CS FOLIAGE DIAG') OP=foliage_diag ;;
     'CS PHOTO '*) OP=photo ;;
@@ -65,7 +66,7 @@ if test -n "$ISSUE"; then
   esac
 fi
 case "$OP" in
-  machines|info|quota|start|fresh|fresh_ssh|rebuild|status|logs|sync|lfs|lfs_report|changes|install|deps|cli_diag|editor|editor_diag|license|auth|probe|shot|accept_terms|safe_mode|compile_report|refresh|close_editor|editor_process|editor_recover|scene_render|scene_play|drop_video|photo|play_diag|foliage_diag|test|stop) ;;
+  machines|info|quota|start|fresh|fresh_ssh|rebuild|status|logs|sync|lfs|lfs_report|changes|install|deps|cli_diag|editor|editor_diag|license|auth|probe|shot|accept_terms|safe_mode|compile_report|refresh|close_editor|editor_process|editor_recover|scene_render|scene_play|drop_video|drop_frames|photo|play_diag|foliage_diag|test|stop) ;;
   *) DETAIL="unsupported_operation"; exit 2 ;;
 esac
 if test "$OP" = photo; then
@@ -264,6 +265,7 @@ case "$OP" in
   editor) REMOTE_TIMEOUT=350 ;;
   scene_render|scene_play|photo|foliage_diag) REMOTE_TIMEOUT=1800 ;;
   drop_video) REMOTE_TIMEOUT=2100 ;;
+  drop_frames) REMOTE_TIMEOUT=420 ;;
 esac
 if test "$OP" = auth; then
   # Intercept the remote Unity OAuth URL, keep it OFF all public logs/artifacts.
@@ -278,6 +280,10 @@ SCRIPT_FILE="$GITHUB_WORKSPACE/Tools/Codespaces/remote.sh"
 REMOTE_SHELL="bash -s -- $OP"
 if test "$OP" = drop_video; then
   SCRIPT_FILE="$GITHUB_WORKSPACE/Tools/Codespaces/offline_drop_probe.sh"
+  REMOTE_SHELL="bash -s"
+fi
+if test "$OP" = drop_frames; then
+  SCRIPT_FILE="$GITHUB_WORKSPACE/Tools/Codespaces/offline_drop_collect.sh"
   REMOTE_SHELL="bash -s"
 fi
 if test "$OP" = deps; then
@@ -338,7 +344,33 @@ for attempt in 1 2; do
       < "$SCRIPT_FILE" \
       > "$OUT/terminal.txt" 2>"$PRIVATE_ERRORS"; then
     rm -f "$PRIVATE_ERRORS"
-    if test "$OP" = drop_video; then
+    if test "$OP" = drop_frames; then
+      if ! timeout 360 gh codespace ssh -c "$CS" --           'base64 /tmp/aaris-codespaces/offline-drop-probe/evidence.tar.gz'           > "$OUT/drop-frames.tar.gz.b64" 2>"$PRIVATE_ERRORS"; then
+        DETAIL="drop_frame_transfer_failed"; safe_error_summary; exit 42
+      fi
+      if ! base64 --decode "$OUT/drop-frames.tar.gz.b64" > "$OUT/drop-frames.tar.gz"; then
+        DETAIL="drop_frame_invalid_base64"; exit 43
+      fi
+      rm -f "$OUT/drop-frames.tar.gz.b64"
+      if ! python3 - "$OUT/drop-frames.tar.gz" <<'PYCHECK'
+import re,sys,tarfile,pathlib
+path=pathlib.Path(sys.argv[1])
+try:
+    if path.stat().st_size>180*1024*1024:raise ValueError()
+    with tarfile.open(path,"r:gz") as archive:
+        members=archive.getmembers()
+    if not members or len(members)>810: raise ValueError()
+    for item in members:
+        safe=bool(re.fullmatch(r"frames/frame_[0-9]{5}\.jpg|shots/(InPlane|Freefall|Opening|Gliding|Landed)\.png|report\.json",item.name))
+        if not item.isfile() or item.size>8*1024*1024 or not safe:raise ValueError()
+except (OSError,ValueError,tarfile.TarError):
+    sys.exit(1)
+PYCHECK
+      then
+        DETAIL="drop_frame_archive_invalid"; exit 44
+      fi
+      DETAIL="real_unity_frames_archived"
+    elif test "$OP" = drop_video; then
       # Download genuine Unity camera video/report from the SAME Codespace;
       # do not transfer private Unity Editor logs or original working files.
       for BASENAME in drop.mp4 report.json; do

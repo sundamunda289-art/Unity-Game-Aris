@@ -28,7 +28,7 @@ on:
         type: choice
         required: true
         default: machines
-        options: [machines, info, quota, start, fresh, fresh_ssh, rebuild, status, logs, sync, lfs, lfs_report, changes, install, deps, cli_diag, editor, editor_diag, license, auth, probe, shot, accept_terms, safe_mode, compile_report, refresh, close_editor, editor_process, editor_recover, scene_render, scene_play, drop_video, photo, play_diag, foliage_diag, test, stop]
+        options: [machines, info, quota, start, fresh, fresh_ssh, rebuild, status, logs, sync, lfs, lfs_report, changes, install, deps, cli_diag, editor, editor_diag, license, auth, probe, shot, accept_terms, safe_mode, compile_report, refresh, close_editor, editor_process, editor_recover, scene_render, scene_play, drop_video, drop_frames, photo, play_diag, foliage_diag, test, stop]
       machine:
         description: 'Optional exact machine name, from machines result'
         type: string
