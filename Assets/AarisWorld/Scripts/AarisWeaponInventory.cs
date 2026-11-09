@@ -54,7 +54,8 @@ namespace Aaris.MapReview
             var root = new GameObject("Aaris Equipped " + incoming.Spec.id);
             root.transform.SetParent(transform, false);
             var visible = Instantiate(prefab, root.transform);
-            if (visible.GetComponentInChildren<Renderer>(true) == null)
+            var renderers = visible.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0)
             {
                 Destroy(root);
                 Debug.LogError("Aaris: gun has no visible mesh: " + incoming.Spec.id);
@@ -63,9 +64,14 @@ namespace Aaris.MapReview
             foreach (var collider in visible.GetComponentsInChildren<Collider>(true))
                 collider.enabled = false;
             var mesh = visible.transform;
-            var renderer = visible.GetComponentInChildren<Renderer>(true);
-            float longest = Mathf.Max(renderer.bounds.size.x,
-                renderer.bounds.size.y, renderer.bounds.size.z);
+            // Imported firearms can have separate receiver, magazine, stock
+            // and optic renderers. Measuring only the first mesh made the
+            // entire equipped gun enormous or tiny for some FBX imports.
+            Bounds combined = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+                combined.Encapsulate(renderers[i].bounds);
+            float longest = Mathf.Max(combined.size.x,
+                combined.size.y, combined.size.z);
             if (longest < 0.001f)
             {
                 Destroy(root);

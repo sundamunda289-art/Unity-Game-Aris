@@ -131,13 +131,33 @@ namespace Aaris.MapReview
             return found;
         }
 
+        private static IAarisDamageable DamageReceiver(Collider collider)
+        {
+            if (collider == null) return null;
+            for (Transform node = collider.transform; node != null; node = node.parent)
+            {
+                foreach (var component in node.GetComponents<MonoBehaviour>())
+                    if (component is IAarisDamageable damageable)
+                        return damageable;
+            }
+            return null;
+        }
+
         private static bool SameTarget(Collider a, Collider b)
         {
             if (a == null || b == null) return false;
             if (a == b) return true;
             if (a.attachedRigidbody != null && a.attachedRigidbody == b.attachedRigidbody)
                 return true;
-            return a.transform.IsChildOf(b.transform) || b.transform.IsChildOf(a.transform);
+            if (a.transform.IsChildOf(b.transform) ||
+                b.transform.IsChildOf(a.transform)) return true;
+            // Some offline bots and destructible objects have separate
+            // sibling hitbox Colliders without one shared Rigidbody. The
+            // camera and muzzle can hit different parts of the SAME target.
+            // Compare the actual damage recipient, never a generic root
+            // transform (which might also own unrelated cover/walls).
+            IAarisDamageable recipient = DamageReceiver(a);
+            return recipient != null && ReferenceEquals(recipient, DamageReceiver(b));
         }
 
         public bool TryFire(Camera camera, GameObject owner)
@@ -196,16 +216,8 @@ namespace Aaris.MapReview
 
         internal static void ApplyDamage(Collider collider, float amount, GameObject attacker)
         {
-            if (collider == null) return;
-            for (Transform node = collider.transform; node != null; node = node.parent)
-            {
-                foreach (var component in node.GetComponents<MonoBehaviour>())
-                    if (component is IAarisDamageable damageable)
-                    {
-                        damageable.ApplyDamage(amount, attacker);
-                        return;
-                    }
-            }
+            IAarisDamageable damageable = DamageReceiver(collider);
+            if (damageable != null) damageable.ApplyDamage(amount, attacker);
         }
     }
 

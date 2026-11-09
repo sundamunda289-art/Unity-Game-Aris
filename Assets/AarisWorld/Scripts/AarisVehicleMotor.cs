@@ -24,6 +24,23 @@ namespace Aaris.MapReview
         private float nextTelemetryAt;
         public string VehicleId { get; private set; }
         public bool IsOccupied => driver != null;
+        // Never attach the player/camera to a rolling, spinning, flipped or
+        // airborne vehicle. This is a separate, stricter entry precondition
+        // from the exit safety test below.
+        public bool IsSafeToEnter
+        {
+            get
+            {
+                if (body == null || body.linearVelocity.magnitude >= 1.5f ||
+                    body.angularVelocity.magnitude >= .8f ||
+                    Vector3.Dot(transform.up, Vector3.up) < .72f)
+                    return false;
+                int grounded = 0;
+                foreach (var wheel in wheels)
+                    if (wheel != null && wheel.isGrounded) grounded++;
+                return grounded >= 2;
+            }
+        }
         public bool CanPark => !IsOccupied && body != null &&
             body.linearVelocity.sqrMagnitude < .20f &&
             body.angularVelocity.sqrMagnitude < .16f;
@@ -166,8 +183,7 @@ namespace Aaris.MapReview
 
         public bool TryTakeDriver(AarisVehicleSession session)
         {
-            if (session == null || IsOccupied || body == null ||
-                body.linearVelocity.magnitude > 2f) return false;
+            if (session == null || IsOccupied || !IsSafeToEnter) return false;
             driver = session;
             forward = steering = smoothSteer = 0f;
             return true;

@@ -36,7 +36,34 @@ namespace Aaris.MapReview
                 Bounds local;
                 if (c is MeshCollider mc && mc.sharedMesh != null) local = mc.sharedMesh.bounds;
                 else if (c is BoxCollider box) local = new Bounds(box.center, box.size);
-                else { c.enabled = true; worldBounds[i] = c.bounds; continue; }
+                else if (c is SphereCollider sphere)
+                {
+                    // Unity spheres use the largest lossy-scale axis. A locally
+                    // transformed ellipsoid would underestimate their extent.
+                    float radius = sphere.radius * Mathf.Max(
+                        Mathf.Abs(c.transform.lossyScale.x),
+                        Mathf.Abs(c.transform.lossyScale.y),
+                        Mathf.Abs(c.transform.lossyScale.z));
+                    worldBounds[i] = new Bounds(c.transform.TransformPoint(sphere.center),
+                        Vector3.one * (2f * radius));
+                    RegisterCells(i, worldBounds[i]);
+                    c.enabled = false;
+                    continue;
+                }
+                else if (c is CapsuleCollider capsule)
+                {
+                    float diameter = 2f * capsule.radius;
+                    Vector3 size = Vector3.one * diameter;
+                    size[capsule.direction] = Mathf.Max(diameter, capsule.height);
+                    local = new Bounds(capsule.center, size);
+                }
+                else
+                {
+                    // Terrain and other specialized shapes must remain solid;
+                    // never disable a shape we cannot safely bound.
+                    c.enabled = true;
+                    continue;
+                }
                 Matrix4x4 m = c.transform.localToWorldMatrix;
                 Vector3 e = local.extents;
                 Vector3 x = m.MultiplyVector(new Vector3(e.x, 0, 0));
@@ -45,21 +72,26 @@ namespace Aaris.MapReview
                 Vector3 worldSize = 2 * new Vector3(Mathf.Abs(x.x) + Mathf.Abs(y.x) + Mathf.Abs(z.x),
                     Mathf.Abs(x.y) + Mathf.Abs(y.y) + Mathf.Abs(z.y), Mathf.Abs(x.z) + Mathf.Abs(y.z) + Mathf.Abs(z.z));
                 worldBounds[i] = new Bounds(m.MultiplyPoint3x4(local.center), worldSize);
-                Bounds bounds = worldBounds[i];
-                // An object belongs to EVERY cell touched by its bounds, not just its pivot.
-                // This keeps long piers and buildings collidable across cell boundaries.
-                for (int xCell = Cell(bounds.min.x); xCell <= Cell(bounds.max.x); xCell++)
-                    for (int zCell = Cell(bounds.min.z); zCell <= Cell(bounds.max.z); zCell++)
-                    {
-                        long key = Key(xCell, zCell);
-                        if (!cells.TryGetValue(key, out List<int> entries))
-                        { entries = new List<int>(); cells.Add(key, entries); }
-                        entries.Add(i);
-                    }
+                RegisterCells(i, worldBounds[i]);
                 c.enabled = false;
             }
             RefreshNow();
         }
+
+        private void RegisterCells(int index, Bounds bounds)
+        {
+            // Register the entire bounding box, including a shape crossing
+            // negative-grid boundaries or spanning multiple large cells.
+            for (int xCell = Cell(bounds.min.x); xCell <= Cell(bounds.max.x); xCell++)
+                for (int zCell = Cell(bounds.min.z); zCell <= Cell(bounds.max.z); zCell++)
+                {
+                    long key = Key(xCell, zCell);
+                    if (!cells.TryGetValue(key, out List<int> entries))
+                    { entries = new List<int>(); cells.Add(key, entries); }
+                    entries.Add(index);
+                }
+        }
+
         private int Cell(float value) => Mathf.FloorToInt(value / cellSize);
         private static long Key(int x, int z) => ((long)x << 32) ^ (uint)z;
         private void Update()
