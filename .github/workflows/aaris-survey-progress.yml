@@ -28,11 +28,32 @@ jobs:
             echo 'CODESPACE_PAT_NOT_CONFIGURED' > survey-progress/status.txt
             exit 1
           fi
-          CODESPACE="$(gh codespace list -R "$GITHUB_REPOSITORY" --json name,displayName,state --limit 30 | jq -r '[.[] | select(.displayName=="aaris-ai-unity-ssh")][0].name // ""')"
+          # Match Tools/Codespaces/controller.sh's exact preference order.
+          # Otherwise the monitor can incorrectly report 0 frames from another machine.
+          LIST="$(gh codespace list -R "$GITHUB_REPOSITORY" --json name,displayName,state --limit 30)"
+          PINNED="aaris-ai-unity-ssh-vp5g97jv4r4gfpjgq"
+          if jq -e --arg machine "$PINNED" 'any(.[]; .name == $machine)' <<< "$LIST" >/dev/null; then
+            CODESPACE="$PINNED"
+          else
+            MINIMAL_COUNT="$(jq '[.[] | select(.displayName=="aaris-ai-ubuntu-minimal")] | length' <<< "$LIST")"
+            if [[ "$MINIMAL_COUNT" -eq 1 ]]; then
+              CODESPACE="$(jq -r '.[] | select(.displayName=="aaris-ai-ubuntu-minimal") | .name' <<< "$LIST")"
+            elif [[ "$MINIMAL_COUNT" -gt 1 ]]; then
+              CODESPACE=""
+            else
+              SSH_COUNT="$(jq '[.[] | select(.displayName=="aaris-ai-unity-ssh")] | length' <<< "$LIST")"
+              if [[ "$SSH_COUNT" -eq 1 ]]; then
+                CODESPACE="$(jq -r '.[] | select(.displayName=="aaris-ai-unity-ssh") | .name' <<< "$LIST")"
+              else
+                CODESPACE=""
+              fi
+            fi
+          fi
           [[ "$CODESPACE" =~ ^[a-zA-Z0-9-]+$ ]] || {
-            echo 'PRESERVED_CODESPACE_NOT_FOUND' > survey-progress/status.txt
+            echo 'SELECTED_CODESPACE_MISSING_OR_AMBIGUOUS' > survey-progress/status.txt
             exit 1
           }
+          echo "AARIS_SURVEY_MACHINE=$CODESPACE" >> "$GITHUB_ENV"
           if ! timeout 100 gh codespace ssh -c "$CODESPACE" -- 'bash -s' < Tools/Codespaces/survey_readonly_status.sh > survey-progress/status.txt 2>/dev/null; then
             echo 'SURVEY_DIAG_SSH_FAILED' > survey-progress/status.txt
             exit 1
@@ -44,7 +65,8 @@ jobs:
         run: |
           set -euo pipefail
           if grep -qx 'first_six_ready=yes' survey-progress/status.txt; then
-            CS="$(gh codespace list -R "$GITHUB_REPOSITORY" --json name,displayName --limit 30 | jq -r '[.[] | select(.displayName=="aaris-ai-unity-ssh")][0].name // ""')"
+            # Reuse the same machine as the diagnostic; never export stale frames.
+            CS="${AARIS_SURVEY_MACHINE:-}"
             [[ "$CS" =~ ^[a-zA-Z0-9-]+$ ]] || exit 31
             if ! timeout 200 gh codespace ssh -c "$CS" -- 'bash -s' < Tools/Codespaces/survey_export_first_six.sh > /tmp/aaris-first-six.b64 2>/dev/null; then
               echo 'PREVIEW_TRANSFER_FAILED' >> survey-progress/status.txt
