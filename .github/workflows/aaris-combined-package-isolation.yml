@@ -1,0 +1,37 @@
+name: Isolate native Unity scene crash from packages and VFX
+on:
+  push:
+    branches: ['review/deep-forest-terrain-bake-20261109']
+    paths:
+      - 'Tools/Codespaces/combined_packages_isolation.sh'
+      - '.github/workflows/aaris-combined-package-isolation.yml'
+permissions:
+  contents: read
+  issues: write
+jobs:
+  combined-config-probe:
+    concurrency:
+      group: aaris-codespace-control
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with: {lfs: false}
+      - name: Test only disposable settings plus packages, then VFX exclusion if needed
+        id: diagnose
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          bash -n Tools/Codespaces/combined_packages_isolation.sh
+          test -n "${GH_TOKEN:-}"
+          timeout 660 gh codespace ssh -c aaris-ai-ubuntu-minimal-jrg7rgvx5rr435wpp -- 'bash -s' < Tools/Codespaces/combined_packages_isolation.sh
+      - name: Report status to owner issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ steps.diagnose.outcome }}
+        run: |
+          set -Eeuo pipefail
+          gh issue comment 77 -R "$GITHUB_REPOSITORY" -b "UNITY SETTINGS+PACKAGES/VFX IMPORT ISOLATION: ${RESULT:-inconclusive}. Only temporary test project; source and LFS untouched. [Classified evidence](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"

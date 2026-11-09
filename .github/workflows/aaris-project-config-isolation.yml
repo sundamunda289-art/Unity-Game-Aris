@@ -1,0 +1,38 @@
+name: Separate Unity project settings from package import crashes
+on:
+  push:
+    branches: ['review/deep-forest-terrain-bake-20261109']
+    paths:
+      - 'Tools/Codespaces/project_settings_package_isolation.sh'
+      - '.github/workflows/aaris-project-config-isolation.yml'
+permissions:
+  contents: read
+  issues: write
+jobs:
+  isolate-project-config:
+    concurrency:
+      group: aaris-codespace-control
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Verify and run non-mutating Unity settings/package isolation
+        id: diagnose
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          bash -n Tools/Codespaces/project_settings_package_isolation.sh
+          test -n "${GH_TOKEN:-}"
+          timeout 770 gh codespace ssh -c aaris-ai-ubuntu-minimal-jrg7rgvx5rr435wpp -- 'bash -s' < Tools/Codespaces/project_settings_package_isolation.sh
+      - name: Publish sanitized run result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ steps.diagnose.outcome }}
+        run: |
+          set -Eeuo pipefail
+          gh issue comment 77 -R "$GITHUB_REPOSITORY" -b "UNITY PROJECT SETTINGS/PACKAGES ISOLATION: ${RESULT:-inconclusive}; tested only new disposable projects. [Safe outcomes](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"

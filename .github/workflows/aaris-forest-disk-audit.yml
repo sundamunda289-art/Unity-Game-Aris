@@ -1,0 +1,75 @@
+name: Inspect isolated Unity disk cache (read only)
+on:
+  push:
+    branches: ['review/deep-forest-terrain-bake-20261109']
+    paths:
+      - '.github/workflows/aaris-forest-disk-audit.yml'
+permissions:
+  contents: read
+  issues: write
+jobs:
+  disk-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {lfs: false}
+      - name: Read capacity and audit scratch-only generated worktrees
+        id: audit
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          timeout 480 gh codespace ssh -c aaris-ai-ubuntu-minimal-jrg7rgvx5rr435wpp -- 'bash -s' <<'SH'
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,subprocess,pathlib
+          for p in ("/tmp","/workspaces","/tmp/aaris-codespaces","/tmp/aaris-native-photo-worktrees","/tmp/aaris-preserved-lfs-cache"):
+              try:
+                  d=os.statvfs(p)
+                  print("CAPACITY",p,"free_mib",d.f_bavail*d.f_frsize//(1024*1024))
+              except OSError:print("CAPACITY",p,"unavailable")
+          for base in ("/tmp/aaris-native-photo-worktrees","/tmp/aaris-tree-mass-worktrees"):
+              root=Path(base)
+              if not root.is_dir(): continue
+              children=sorted(z for z in root.iterdir() if z.is_dir() and len(z.name)==40)
+              print("WORKTREES",root.name,"count",len(children))
+              for z in children[:40]:
+                  size=subprocess.run(["du","-sm",str(z)],capture_output=True,text=True,timeout=120)
+                  mib=size.stdout.split()[0] if size.returncode==0 and size.stdout.split() else "unknown"
+                  result=subprocess.run(["git","-C",str(z),"status","--porcelain","-uno"],
+                        capture_output=True,text=True,timeout=35)
+                  modified=len([k for k in result.stdout.splitlines() if k.strip()])
+                  untracked=subprocess.run(["git","-C",str(z),"ls-files","--others","--exclude-standard"],capture_output=True,text=True,timeout=45)
+                  u=[s for s in untracked.stdout.splitlines() if s.strip()]
+                  from collections import Counter
+                  ext=Counter(pathlib.Path(k).suffix or "(none)" for k in u)
+                  lib=z/"Library"
+                  lib_size="NA"
+                  if lib.is_dir() and not lib.is_symlink():
+                      x=subprocess.run(["du","-sm",str(lib)],capture_output=True,text=True,timeout=120)
+                      lib_size=x.stdout.split()[0] if x.returncode==0 and x.stdout.split() else "unknown"
+                  print("WORKTREE_LIBRARY",z.name[:10],"present",lib.is_dir(),"symlink",lib.is_symlink(),"size_mib",lib_size)
+                  print("WORKTREE",z.name[:10],"size_mib",mib,
+                        "status_known",result.returncode==0,"tracked_changes",modified,
+                        "untracked_count",len(u),"untracked_suffixes",dict(ext.most_common(6)))
+          for p in ("/tmp/aaris-codespaces/scene-probe/UnityTemp",
+                    "/tmp/aaris-codespaces/deep-forest-bake/UnityTemp",
+                    "/tmp/aaris-codespaces/tree-mass/UnityTemp"):
+              z=Path(p)
+              if z.is_dir():
+                  x=subprocess.run(["du","-sm",str(z)],capture_output=True,text=True,timeout=120)
+                  print("TEMP_CACHE",z.parent.name,"mib",
+                        x.stdout.split()[0] if x.returncode==0 and x.stdout.split() else "unknown")
+          PY
+          SH
+      - name: Publish audit run locator
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+        run: |
+          set -euo pipefail
+          gh issue comment 77 -R "$GITHUB_REPOSITORY" -b "FOREST READ-ONLY DISK AUDIT: ${AUDIT_OUTCOME:-inconclusive}. No files were removed. [Inspect bounded audit log](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"

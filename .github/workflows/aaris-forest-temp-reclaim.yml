@@ -1,0 +1,40 @@
+# Diagnostic-only rerun 2026-11-09: reclaim exclusively preverified ignored scratch Library caches.
+name: Reclaim verified Unity temporary review worktree
+on:
+  push:
+    branches: ['review/deep-forest-terrain-bake-20261109']
+    paths:
+      - 'Tools/Codespaces/forest_temp_reclaim.sh'
+      - '.github/workflows/aaris-forest-temp-reclaim.yml'
+permissions:
+  contents: read
+  issues: write
+jobs:
+  temp-reclaim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with: {lfs: false}
+      - name: Verify and reclaim only immutable old scratch Libraries
+        id: reclaim
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          bash -n Tools/Codespaces/forest_temp_reclaim.sh
+          test -n "${GH_TOKEN:-}"
+          timeout 780 gh codespace ssh -c aaris-ai-ubuntu-minimal-jrg7rgvx5rr435wpp -- 'bash -s' \
+            < Tools/Codespaces/forest_temp_reclaim.sh
+      - name: Report bounded cache cleanup result for follow-up
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RECLAIM_OUTCOME: ${{ steps.reclaim.outcome }}
+        run: |
+          set -euo pipefail
+          case "${RECLAIM_OUTCOME:-}" in
+            success) RESULT="SUCCESS";;
+            *) RESULT="FAILED_OR_INCONCLUSIVE";;
+          esac
+          gh issue comment 77 -R "$GITHUB_REPOSITORY" -b "FOREST SCRATCH CACHE RECLAIM: $RESULT. Only exact preverified Git-ignored review-worktree Library directories are eligible; no source/LFS files deleted. [Actions run](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"

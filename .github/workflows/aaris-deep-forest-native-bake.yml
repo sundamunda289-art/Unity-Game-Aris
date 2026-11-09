@@ -1,0 +1,156 @@
+name: Native deep forest TerrainData bake and Git LFS review
+on:
+  push:
+    branches: ['review/deep-forest-terrain-bake-20261109']
+    paths:
+      - 'Assets/AarisWorld/Editor/AarisDeepForestNativeBake.cs'
+      - 'Assets/AarisWorld/Editor/AarisDeepForestNativeBake.cs.meta'
+      - 'Tools/Codespaces/deep_forest_native_bake.sh'
+      - 'Tools/Validation/test_deep_forest_native_bake.py'
+      - '.github/workflows/aaris-deep-forest-native-bake.yml'
+permissions:
+  contents: write
+  actions: read
+jobs:
+  bake-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: true
+      - name: Validate reviewed editor-only conversion contract
+        run: |
+          set -euo pipefail
+          python3 Tools/Validation/test_tree_proportions.py
+          python3 Tools/Validation/test_mobile_tree_shadows.py
+          python3 Tools/Validation/test_deep_forest_native_bake.py
+          bash -n Tools/Codespaces/deep_forest_native_bake.sh
+      - name: Preserve the active source photo job and use the verified licensed Codespace
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+          RUNNER_GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p forest-bake-review "$RUNNER_TEMP/original-lfs-tree-bake"
+          test -n "${GH_TOKEN:-}" || { echo NATIVE_FOREST_CODESPACE_TOKEN_MISSING; exit 10; }
+          # Do not race the parent's native screenshot; one licensed Editor process at a time.
+          complete=no
+          for attempt in $(seq 1 180); do
+            result="$(GH_TOKEN="$RUNNER_GITHUB_TOKEN" gh run view 42564529663 -R "$REPO" --json status,conclusion \
+              --jq '[.status,.conclusion] | @tsv')" || { echo NATIVE_FOREST_PARENT_QA_UNKNOWN; exit 11; }
+            if [[ "$result" == $'completed\tsuccess' ]]; then complete=yes; break; fi
+            if [[ "$result" == completed$'\t'* ]]; then
+              echo NATIVE_FOREST_PARENT_QA_NOT_PASSED
+              exit 12
+            fi
+            sleep 15
+          done
+          test "$complete" = yes || { echo NATIVE_FOREST_PARENT_QA_TIMEOUT; exit 13; }
+          CS=aaris-ai-ubuntu-minimal-jrg7rgvx5rr435wpp
+          gh codespace list -R "$REPO" --json name,state --limit 30 | jq -e --arg c "$CS" \
+            'any(.[]; .name==$c and .state=="Available")' >/dev/null || {
+              echo NATIVE_FOREST_CODESPACE_NOT_AVAILABLE
+              exit 14
+            }
+          FREE_MIB="$(timeout 70 gh codespace ssh -c "$CS" -- \
+            "python3 -c 'import os; x=os.statvfs(\"/tmp\"); print(x.f_bavail*x.f_frsize//1048576)'" | tr -d '\r\n')"
+          if [[ ! "$FREE_MIB" =~ ^[0-9]+$ ]] || (( FREE_MIB < 12000 )); then
+            echo NATIVE_FOREST_INSUFFICIENT_CODESPACE_SCRATCH_SPACE
+            exit 15
+          fi
+          echo "NATIVE_FOREST_TMP_FREE_MIB=$FREE_MIB"
+          GH_TOKEN="$RUNNER_GITHUB_TOKEN" gh run download 42472771253 \
+            -R "$REPO" --name aaris-codespace-42472771253 \
+            -D "$RUNNER_TEMP/original-lfs-tree-bake" >/dev/null
+          ARCHIVE="$RUNNER_TEMP/original-lfs-tree-bake/mass-package.tar.gz"
+          test "$(stat -c %s "$ARCHIVE")" = 4757727
+          test "$(sha256sum "$ARCHIVE" | cut -d ' ' -f1)" = \
+            234024b842e8cc5e1253607ce41b5a6aebec6a7abd3c9fd81837bc960a24197d
+          timeout 180 gh codespace ssh -c "$CS" -- \
+            'bash -c "umask 077; mkdir -p /tmp/aaris-codespaces/scene-probe; cat > /tmp/aaris-codespaces/scene-probe/verified-tree-mass-package.tar.gz"' \
+            < "$ARCHIVE" >/dev/null
+          CHECKSUM="$(timeout 50 gh codespace ssh -c "$CS" -- \
+            'sha256sum /tmp/aaris-codespaces/scene-probe/verified-tree-mass-package.tar.gz' | cut -d ' ' -f1 | tr -d '\r\n')"
+          test "$CHECKSUM" = 234024b842e8cc5e1253607ce41b5a6aebec6a7abd3c9fd81837bc960a24197d
+          timeout 3500 gh codespace ssh -c "$CS" -- "bash -s -- $CURRENT_SHA" \
+            < Tools/Codespaces/deep_forest_native_bake.sh >forest-bake-review/native-safe.log
+          grep -qx FOREST_BAKE_NATIVE_RENDERED_AND_PACKAGE_READY forest-bake-review/native-safe.log
+          timeout 1350 gh codespace ssh -c "$CS" -- \
+            'base64 /tmp/aaris-codespaces/deep-forest-bake/package.tar.gz' \
+            > "$RUNNER_TEMP/forest-bake-package.b64"
+          base64 --decode "$RUNNER_TEMP/forest-bake-package.b64" > "$RUNNER_TEMP/forest-bake-package.tar.gz"
+          rm -f "$RUNNER_TEMP/forest-bake-package.b64"
+          for name in forest-detail.png forest-context.png forest-photo-report.json bake-report.json; do
+            timeout 180 gh codespace ssh -c "$CS" -- \
+              "base64 /tmp/aaris-codespaces/deep-forest-bake/$name" > "$RUNNER_TEMP/$name.b64"
+            base64 --decode "$RUNNER_TEMP/$name.b64" > "forest-bake-review/$name"
+            rm -f "$RUNNER_TEMP/$name.b64"
+          done
+          python3 - "$RUNNER_TEMP/forest-bake-package.tar.gz" "$CURRENT_SHA" <<'PYVALIDATE'
+          from pathlib import Path
+          import hashlib,json,re,sys,tarfile
+          archive=Path(sys.argv[1]);sha=sys.argv[2]
+          expected_names={
+             'Assets/TerrainDemoScene_URP/Terrain/Data/Terrain_1_1_4bf22c8f-eb55-436d-84e3-dedfa85665b1.asset',
+             'Assets/TerrainDemoScene_URP/Terrain/Data/Terrain_1_2_1694bb0f-cffe-402c-b6f9-cf47692fbb78.asset',
+             'Assets/TerrainDemoScene_URP/Terrain/Data/Terrain_2_1_82fc4922-5564-4a18-858e-787f6d901556.asset',
+             'Assets/TerrainDemoScene_URP/Terrain/Data/Terrain_2_2_b6e03cf0-de91-4cae-b6af-0128d856ae43.asset'}
+          assert archive.stat().st_size<250_000_000
+          with tarfile.open(archive,'r:gz') as tf:
+              names=[m.name for m in tf.getmembers()]
+              assert all(m.isfile() and not m.issym() and not m.islnk() for m in tf.getmembers())
+              manifest=json.load(tf.extractfile('bake-manifest.json'))
+              report=json.load(tf.extractfile('bake-report.json'))
+              assert manifest['kind']=='native_deep_forest_terrain_lfs_bake'
+              assert manifest['sourceSha']==sha and report['status']=='passed'
+              assert 1<=manifest['converted']<=48 and report['converted']==manifest['converted']
+              assert report['oldTrees']==report['newTrees']
+              changed=manifest['paths']
+              assert len(changed)>0 and len(changed)<=4
+              assert len(set(e['path'] for e in changed))==len(changed)
+              assert set(e['path'] for e in changed).issubset(expected_names)
+              assert set(names)=={'bake-manifest.json','bake-report.json'}|set(e['path'] for e in changed)
+              for entry in changed:
+                  body=tf.extractfile(entry['path']).read()
+                  assert len(body)==entry['size'] and hashlib.sha256(body).hexdigest()==entry['sha256']
+                  assert body[:16]!=b'version https://'
+                  dst=Path(entry['path'])
+                  assert dst.is_file() and not dst.is_symlink()
+                  dst.write_bytes(body)
+              Path('forest-bake-review/bake-manifest.json').write_text(json.dumps(manifest,indent=2))
+              Path('forest-bake-review/asset-paths.txt').write_text(
+                  ''.join(e['path']+'\n' for e in changed))
+          for kind in ('detail','context'):
+              png=Path('forest-bake-review/forest-'+kind+'.png')
+              assert png.stat().st_size>8192 and png.read_bytes()[:8]==b'\x89PNG\r\n\x1a\n'
+          print('DEEP_FOREST_NATIVE_BAKE_ARCHIVE_AND_RENDER_VERIFIED')
+          PYVALIDATE
+          git lfs install --local
+          while IFS= read -r asset; do
+            test "$(git check-attr filter -- "$asset" | awk '{print $3}')" = lfs
+            git add -- "$asset"
+            pointer="$(git show ":$asset")"
+            [[ "$pointer" == "version https://git-lfs.github.com/spec/v1"* ]] || {
+              echo FOREST_NATIVE_NOT_LFS_STAGED
+              exit 22
+            }
+          done < forest-bake-review/asset-paths.txt
+          diff -u <(git diff --cached --name-only | sort) <(sort forest-bake-review/asset-paths.txt)
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Serialize reviewed deep-forest variant into native Unity TerrainData (Git LFS)'
+          git push origin HEAD:refs/heads/review/deep-forest-terrain-bake-20261109
+          git lfs push origin review/deep-forest-terrain-bake-20261109
+          echo FOREST_NATIVE_TERRAINDATA_GIT_LFS_PUBLISHED
+      - name: Upload before merge actual Unity evidence and bounded manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-deep-forest-native-${{ github.run_id }}
+          path: forest-bake-review/
+          if-no-files-found: warn
+          retention-days: 3

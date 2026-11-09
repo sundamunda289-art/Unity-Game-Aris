@@ -1,0 +1,178 @@
+name: Read-only deep forest Unity bake diagnosis
+on:
+  push:
+    branches: ['review/deep-forest-terrain-bake-20261109']
+    paths:
+      - '.github/workflows/aaris-deep-forest-bake-diagnostic.yml'
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Query only fixed native editor error classifications from current Codespace
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          timeout 160 gh codespace ssh -c aaris-ai-ubuntu-minimal-jrg7rgvx5rr435wpp -- 'bash -s' <<'SH'
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,pathlib,re
+          folder=pathlib.Path("/tmp/aaris-codespaces/deep-forest-bake")
+          lfs_log=folder/"private-lfs.log"
+          if lfs_log.is_file():
+            log=lfs_log.read_text(errors="replace")
+            for label,pattern in (
+              ("recovery_failed",r"AARIS_PRESERVED_LFS_RECOVERY_FAILED=([A-Z0-9_]+)"),
+              ("local_assets",r"AARIS_PRESERVED_OR_CACHED_LFS_HASH_VERIFIED=([0-9]+)"),
+              ("remote_oids",r"AARIS_REMOTE_LFS_OIDS_NEEDED=([0-9]+)"),
+              ("snapshot_verified",r"AARIS_PRESERVED_LFS_SNAPSHOT_VERIFIED=([0-9]+)"),
+              ("original_archive_verified",r"AARIS_CODESPACE_ORIGINAL_TREE_ARCHIVE_HASH_VERIFIED=([0-9]+)")):
+              v=re.search(pattern,log)
+              if v: print("lfs_"+label+"="+v.group(1))
+            print("lfs_log_bytes="+str(lfs_log.stat().st_size))
+          else:print("lfs_log_missing")
+          report=pathlib.Path("/tmp/aaris-codespaces/deep-forest-bake-report.json")
+          # Classify only the missing normalized snapshot assets. Do not print
+          # private filesystem contents or modify any workspace file.
+          import hashlib,subprocess
+          snapshot=pathlib.Path("/tmp/aaris-native-photo-worktrees/95705477adc6b81b4d76c76af99b458a73ddae55")
+          if snapshot.is_dir():
+            def git(*args):
+              return subprocess.run(["git","-C",str(snapshot),*args],
+                                    capture_output=True,timeout=120,check=True).stdout
+            try:
+              paths=git("lfs","ls-files","--name-only").decode().splitlines()
+              mismatch=[]
+              for rel in paths:
+                expected=git("show","HEAD:"+rel)
+                m=re.fullmatch(rb"version https://git-lfs.github.com/spec/v1\noid sha256:([0-9a-f]{64})\nsize ([0-9]+)\n?",expected)
+                if not m:
+                  mismatch.append(("head_not_pointer",rel));continue
+                expected_oid=m.group(1).decode(); expected_size=int(m.group(2))
+                file=snapshot/rel
+                if not file.is_file():
+                  mismatch.append(("missing",rel));continue
+                size=file.stat().st_size
+                if size!=expected_size:
+                  prefix=file.open("rb").read(100)
+                  mismatch.append(("still_pointer" if prefix.startswith(b"version https://git-lfs.github.com") else "wrong_size",rel))
+                else:
+                  h=hashlib.sha256()
+                  with file.open("rb") as fp:
+                    for part in iter(lambda:fp.read(1024*1024),b""):h.update(part)
+                  if h.hexdigest()!=expected_oid:
+                    mismatch.append(("wrong_hash",rel))
+              print("hydrated_audit_total="+str(len(paths)))
+              print("hydrated_audit_bad_count="+str(len(mismatch)))
+              from collections import Counter
+              counts=Counter((kind, pathlib.Path(rel).suffix.lower()) for kind,rel in mismatch)
+              for (kind,suffix),count in sorted(counts.items()):
+                print("hydrated_bad_group="+kind+":"+suffix+":"+str(count))
+              for kind,rel in mismatch[:3]:
+                if kind=="wrong_size":
+                  entry=snapshot/rel
+                  pointer=git("show","HEAD:"+rel)
+                  mm=re.search(rb"(?m)^size ([0-9]+)$",pointer)
+                  print("hydrated_bad_size_actual="+str(entry.stat().st_size))
+                  if mm:print("hydrated_bad_size_expected="+mm.group(1).decode())
+                  prefix=entry.open("rb").read(4)
+                  if prefix in (b"II*\\x00",b"MM\\x00*"):
+                    print("hydrated_bad_data_type=tiff")
+                  elif prefix==b"vers":
+                    print("hydrated_bad_data_type=pointer")
+                  else:
+                    print("hydrated_bad_data_type=other")
+              for k,v in mismatch[:8]:
+                print("hydrated_bad_kind="+k)
+                print("hydrated_bad_filename="+pathlib.Path(v).name[:92])
+            except (OSError,subprocess.CalledProcessError,subprocess.TimeoutExpired,ValueError):
+              print("hydrated_snapshot_audit_unavailable")
+          else:print("hydrated_failed_snapshot_not_found")
+          if report.is_file():
+            try:
+              d=json.loads(report.read_text())
+              print("bake_report_status="+(d.get("status","missing") if d.get("status") in ("passed","failed") else "other"))
+              reason=str(d.get("reason","unknown"))
+              print("bake_report_reason="+(reason if re.fullmatch("[A-Z0-9_]{1,96}",reason) else "redacted"))
+              print("bake_converted="+str(d.get("converted","unknown")))
+              print("bake_tile_count="+str(d.get("terrainTiles","unknown")))
+            except (ValueError,OSError,TypeError):print("bake_report_invalid")
+          else:print("bake_report_missing")
+          p=folder/"private-bake-editor.log"
+          if not p.is_file():
+            print("native_editor_log_missing")
+          else:
+            s=p.read_text(errors="replace")[-1000000:]
+            signatures={
+             "csharp":r"error CS\d{4}",
+             "native_crash":r"SIGSEGV|signal 11|segmentation fault|SIGABRT",
+             "unity_exception":r"AARIS_NATIVE_DEEP_FOREST_BAKE_FAILED:([A-Z_]+)",
+             "missing_method":r"executeMethod.+(not found|error)",
+             "invalid_license":r"license.+(invalid|expired|failed|missing)",
+             "missing_asset":r"asset.+(not found|missing|import failed)",
+             "terrain_error":r"TERRAIN_[A-Z_]+",
+             "early_batch_exit":r"Aborting batchmode",
+             "index_exception":r"IndexOutOfRangeException",
+             "null_exception":r"NullReferenceException",
+             "unsupported":r"NotSupportedException",
+             "argument":r"ArgumentException"
+            }
+            for name,pattern in signatures.items():
+              m=re.search(pattern,s,re.I)
+              print("editor_error_family_"+name+"="+("yes" if m else "no"))
+              if name=="unity_exception" and m:print("editor_first_bake_reason="+m.group(1)[:96])
+            print("editor_log_bytes="+str(p.stat().st_size))
+            extra={
+             "project_locked":r"another (instance|process).*using.*project|project.*already (open|in use|locked)",
+             "unity_exiting":r"Exiting batchmode|Exiting without crash|Quitting Unity",
+             "early_assembly":r"Assembly-CSharp-Editor|ScriptAssembly|assembly[- ]csharp",
+             "player_compilation":r"compilation.*(failed|errors)|scripts have compiler errors|Compiler errors",
+             "reload_failure":r"(domain reload|ReloadAssembly).*(failed|error)",
+             "editor_method":r"AarisDeepForestNativeBake|Bake bounded native deep forest|ExecuteMethod",
+             "editor_baker_class":r"AarisDeepForestNativeBake\\.Apply",
+             "install_launch_error":r"(Failed to launch|Fatal Error|Error initializing|Error while loading)",
+             "asset_import":r"AssetDatabase.*(import|refresh)|AssetImportWorker",
+             "editor_batch_error":r"Error building Player|Aborting batchmode|ExecuteMethod class",
+             "license_activation":r"(Licensing|License|Entitlement).*?(success|failed|error)",
+             "missing_symbol":r"error CS[0-9]{4}|error [A-Z]{2}[0-9]{4}",
+             "lfs_pointer":r"git-lfs.github.com/spec/v1",
+             "graphics_failed":r"(Graphics Device|GfxDevice|GLCore|OpenGL).*(failed|error|abort)",
+             "disk_failed":r"No space left|Disk full|out of disk"
+            }
+            for name,pattern in extra.items():
+                print("editor_marker_"+name+"="+("yes" if re.search(pattern,s,re.I) else "no"))
+            for source_name in ("private-bake-stderr.log","private-bake-stdout.log"):
+                q=folder/source_name
+                if not q.is_file():
+                    print(source_name.replace(".log","")+"_missing")
+                else:
+                    raw=q.read_text(errors="replace")
+                    print(source_name.replace(".log","")+"_bytes="+str(len(raw)))
+                    for name,pattern in extra.items():
+                        if re.search(pattern,raw,re.I):
+                            print(source_name.replace(".log","")+"_marker_"+name+"=yes")
+            # Last 14 meaningful lifecycle events, only predefined classes:
+            ordered=[]
+            lifecycle={
+               "editor_begin":r"Initialize engine|Initialize Asset Database|Begin MonoManager",
+               "project_import":r"AssetDatabase|AssetImportWorker|Import worker|Refresh:|Importing",
+               "compilation":r"Compiling Assembly|script compilation|Compilation finished|Bee\\\\",
+               "domain":r"Domain Reload|ReloadAssembly|ScriptAssemblies",
+               "bake_call":r"AarisDeepForestNativeBake|AARIS_NATIVE_DEEP_FOREST_BAKE",
+               "editor_failure":r"^\\s*(error|fatal|exception)|Script.*error|Aborting batchmode",
+               "editor_exit":r"Exiting|Quitting|BatchMode|Shutdown",
+            }
+            for line in s.splitlines()[-140:]:
+                for label,expr in lifecycle.items():
+                    if re.search(expr,line,re.I):
+                        ordered.append(label);break
+            print("editor_tail_lifecycle="+",".join(ordered[-14:]))
+          PY
+          SH

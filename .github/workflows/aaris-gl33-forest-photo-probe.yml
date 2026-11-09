@@ -1,0 +1,71 @@
+name: Real forest Unity GL33 diagnostic photo
+on:
+  push:
+    branches: ['review/deep-forest-terrain-bake-20261109']
+    paths:
+      - 'Tools/Codespaces/forest_gl33_capture_probe.sh'
+      - '.github/workflows/aaris-gl33-forest-photo-probe.yml'
+permissions:
+  contents: read
+  issues: write
+jobs:
+  gl33-forest-capture:
+    concurrency:
+      group: aaris-codespace-control
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Verify fixed safe capture script and run on owner's exact Codespace
+        id: capture
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          bash -n Tools/Codespaces/forest_gl33_capture_probe.sh
+          test -n "${GH_TOKEN:-}"
+          mkdir -p gl33-review
+          timeout 780 gh codespace ssh -c aaris-ai-ubuntu-minimal-jrg7rgvx5rr435wpp -- 'bash -s' \
+            < Tools/Codespaces/forest_gl33_capture_probe.sh | tee gl33-review/safe-status.txt
+          grep -qx GL33_NATIVE_TERRAIN_PHOTOS_VERIFIED gl33-review/safe-status.txt
+          for name in forest-detail.png forest-context.png photo-report.json; do
+            timeout 90 gh codespace ssh -c aaris-ai-ubuntu-minimal-jrg7rgvx5rr435wpp -- \
+              "base64 /tmp/aaris-codespaces/gl33-forest-review/$name" > "gl33-review/$name.b64"
+            base64 --decode "gl33-review/$name.b64" > "gl33-review/$name"
+            rm "gl33-review/$name.b64"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          root=Path('gl33-review')
+          report=json.loads((root/'photo-report.json').read_text())
+          assert report['status']=='passed' and report['terrainTiles']==4
+          for name in ('forest-detail.png','forest-context.png'):
+              p=root/name
+              assert p.stat().st_size>8192 and p.open('rb').read(8)==bytes.fromhex('89504e470d0a1a0a')
+          print('GL33_ACTIONS_ARTIFACT_REAL_PHOTO_VERIFIED')
+          PY
+      - name: Upload verified photos or safe diagnostic status
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-real-forest-gl33-${{ github.run_id }}
+          path: gl33-review/
+          if-no-files-found: warn
+          retention-days: 3
+      - name: Report actual execution outcome
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CAPTURE_OUTCOME: ${{ steps.capture.outcome }}
+        run: |
+          set -euo pipefail
+          if test "${CAPTURE_OUTCOME:-}" = success; then
+             MSG="GL33 real native forest photos: VERIFIED, 2 genuine frames uploaded to Actions artifact."
+          else
+             MSG="GL33 real native forest photos: FAILED/INCONCLUSIVE. No screenshot verified; safe diagnostic only."
+          fi
+          gh issue comment 77 -R "$GITHUB_REPOSITORY" -b "$MSG [Review evidence and log](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"

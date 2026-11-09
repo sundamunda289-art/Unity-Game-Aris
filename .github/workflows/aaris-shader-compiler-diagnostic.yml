@@ -1,0 +1,38 @@
+name: Read-only Unity Shader Compiler Diagnostic
+on:
+  push:
+    branches: ['review/deep-forest-terrain-bake-20261109']
+    paths:
+      - 'Tools/Codespaces/shader_compiler_diagnostic.sh'
+      - '.github/workflows/aaris-shader-compiler-diagnostic.yml'
+permissions:
+  contents: read
+  issues: write
+jobs:
+  classify-shader:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    concurrency:
+      group: aaris-codespace-control
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Check and run only reviewed sanitized shader diagnostic
+        id: diagnose
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          bash -n Tools/Codespaces/shader_compiler_diagnostic.sh
+          test -n "${GH_TOKEN:-}"
+          timeout 300 gh codespace ssh -c aaris-ai-ubuntu-minimal-jrg7rgvx5rr435wpp -- 'bash -s' < Tools/Codespaces/shader_compiler_diagnostic.sh
+      - name: Announce bounded result location on owner issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIAG_OUTCOME: ${{ steps.diagnose.outcome }}
+        run: |
+          set -euo pipefail
+          gh issue comment 77 -R "$GITHUB_REPOSITORY" -b "UNITY SHADER COMPILER READ-ONLY DIAGNOSTIC: ${DIAG_OUTCOME:-inconclusive}. No changes to assets or Unity worktrees. [Classified dependency/shader logs](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
