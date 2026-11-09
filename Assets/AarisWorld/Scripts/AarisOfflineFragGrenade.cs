@@ -44,8 +44,14 @@ namespace Aaris.MapReview
             visual.name = "LocalGrenadeModel";
             visual.transform.SetParent(grenade.transform, false);
             if (imported == null) visual.transform.localScale = Vector3.one * 0.25f;
+            // Destroy is deferred to frame end. Disable imported/model
+            // colliders immediately so one throw cannot briefly collide
+            // with its own visual or create an extra blast obstacle.
             foreach (var collider in visual.GetComponentsInChildren<Collider>(true))
+            {
+                collider.enabled = false;
                 Destroy(collider);
+            }
             if (grenadeMaterial == null)
             {
                 Shader shader = Shader.Find("Universal Render Pipeline/Lit");

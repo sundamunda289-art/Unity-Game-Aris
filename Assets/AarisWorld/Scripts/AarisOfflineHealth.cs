@@ -26,10 +26,16 @@ namespace Aaris.MapReview
         public void ApplyDamage(float amount, GameObject attacker)
         {
             if (dead || float.IsNaN(amount) || float.IsInfinity(amount) || amount <= 0f) return;
-            current = Mathf.Max(0f, current - amount);
+            float remaining = Mathf.Max(0f, current - amount);
+            if (remaining == current) return;
+            current = remaining;
+            bool lethal = remaining <= 0f;
+            // Commit death before callbacks. A HealthChanged listener may
+            // synchronously attempt a heal or another damage event.
+            // Neither must resurrect an actor nor fire Died twice.
+            if (lethal) dead = true;
             HealthChanged?.Invoke(this);
-            if (current > 0f) return;
-            dead = true;
+            if (!lethal) return;
             Died?.Invoke(this);
             Debug.Log("Aaris offline combat: combatant defeated, awaiting match state transition.");
         }

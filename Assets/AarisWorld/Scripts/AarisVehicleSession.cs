@@ -186,16 +186,17 @@ namespace Aaris.MapReview
             position = default(Vector3);
             if (car == null) return false;
             var t = car.transform;
-            Vector3[] options =
-            {
-                t.position + t.right * 3.2f,
-                t.position - t.right * 3.2f,
-                t.position - t.forward * 3.5f,
-                t.position + t.forward * 3.5f
-            };
+            Vector3 lateral = t.right * 3.2f;
+            Vector3 longitudinal = t.forward * 3.5f;
             float seaLevel = -38.07552f;
-            foreach (var option in options)
+            // Preserve the four safe-exit candidates and their priority,
+            // without allocating a managed array on every exit request.
+            for (int candidate = 0; candidate < 4; candidate++)
             {
+                Vector3 option = candidate == 0 ? t.position + lateral :
+                    candidate == 1 ? t.position - lateral :
+                    candidate == 2 ? t.position - longitudinal :
+                                     t.position + longitudinal;
                 if (Mathf.Abs(option.x) > 973f || Mathf.Abs(option.z) > 973f) continue;
                 int hits = Physics.RaycastNonAlloc(
                     new Ray(option + Vector3.up * 2.5f, Vector3.down), exitGround, 5f,

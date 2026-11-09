@@ -87,6 +87,13 @@ def test():
     assert "record.visible.CanPark" in world
     assert "(!IsDriving)" not in session  # no duplicate input owner gate
     assert "Physics.OverlapCapsuleNonAlloc" in session
+    # Four equivalent side/rear/front exit probes without a managed Vector3[].
+    assert "Vector3[] options" not in session
+    assert "for (int candidate = 0; candidate < 4; candidate++)" in session
+    assert "candidate == 0 ? t.position + lateral" in session
+    assert "candidate == 1 ? t.position - lateral" in session
+    assert "candidate == 2 ? t.position - longitudinal" in session
+    assert "t.position + longitudinal;" in session
     assert "hit.collider.transform.IsChildOf(nearbyCar.transform)" in session
     assert "if (actions != null) actions.enabled = false;" in session
     assert "if (inventory != null) inventory.enabled = false;" in session
