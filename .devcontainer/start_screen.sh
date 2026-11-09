@@ -13,3 +13,8 @@ if ! pgrep -x fluxbox >/dev/null 2>&1; then
   nohup env DISPLAY=:99 fluxbox >/tmp/aaris-codespaces/fluxbox.log 2>&1 </dev/null &
 fi
 echo 'DISPLAY_READY'
+# Optional GL readiness check: retain the exact original postStartCommand.
+# Missing Mesa must not put the entire Codespace into recovery mode.
+if ! bash Tools/Codespaces/graphics_preflight.sh; then
+  echo 'AARIS_SNAPSHOT_GL_PREFLIGHT_DEFERRED'
+fi

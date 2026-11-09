@@ -1,0 +1,71 @@
+name: One-time genuine Unity hot snapshot proof
+on:
+  push:
+    branches: [feat/portable-hot-unity-snapshots]
+    paths:
+      - '.github/workflows/aaris-hot-snapshot-native.yml'
+      - 'Tools/Codespaces/hot_snap_native_test.sh'
+  workflow_dispatch:
+jobs:
+  hot-bridge-native-qa:
+    if: github.repository == 'sundamunda289-art/Unity-Game-Aris'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: aaris-codespace-control
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Validate test runner syntax
+        run: |
+          set -Eeuo pipefail
+          bash -n Tools/Codespaces/hot_snap_native_test.sh tools/snap
+          python3 -m unittest discover -s Tools/Validation -p test_snapshots.py -v
+      - name: Live licensed Unity Editor in isolated Codespace worktree
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$GH_TOKEN" || { echo 'HOT_SNAP_CODESPACE_PAT_MISSING'; exit 32; }
+          timeout 2300 gh codespace ssh \
+            -c aaris-ai-ubuntu-minimal-jrg7rgvx5rr435wpp \
+            -- "bash -s -- $GITHUB_SHA" \
+            < Tools/Codespaces/hot_snap_native_test.sh
+      - name: Retrieve four genuine Editor PNGs
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p hot-snapshot-photos
+          timeout 240 gh codespace ssh \
+            -c aaris-ai-ubuntu-minimal-jrg7rgvx5rr435wpp \
+            -- 'base64 /tmp/aaris-codespaces/hot-snapshot-test/hot-review.tar.gz' \
+            > "$RUNNER_TEMP/hot-review.b64"
+          base64 -d "$RUNNER_TEMP/hot-review.b64" > "$RUNNER_TEMP/hot-review.tar.gz"
+          tar -xzf "$RUNNER_TEMP/hot-review.tar.gz" -C hot-snapshot-photos
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('hot-snapshot-photos')
+          data=json.loads((p/'review.json').read_text())
+          assert data['status']=='passed' and data['imageCount']==4
+          assert data['hotEditor'] and data['multiShot'] and data['recapture'] and data['legacyBridge']
+          for name in ('valley-01','clocktower-01','valley-recapture','legacy'):
+            photo=p/'images'/(name+'.png')
+            assert photo.is_file() and photo.stat().st_size>5000
+            assert photo.read_bytes()[:8]==b'\x89PNG\r\n\x1a\n'
+          print('HOT_SNAP_NATIVE_EDITOR_FOUR_PNGS_VERIFIED')
+          PY
+      - name: Save photo evidence for PR review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-hot-unity-snapshots-${{ github.run_id }}
+          path: hot-snapshot-photos/
+          if-no-files-found: warn
+          retention-days: 2

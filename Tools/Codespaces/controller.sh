@@ -8,6 +8,7 @@ OP="$REQUEST_OPERATION"
 MACHINE="$REQUEST_MACHINE"
 ISSUE="$ISSUE_COMMAND"
 PHOTO_VALUES=""
+SNAP_TOKEN=""
 STATE="FAILED"
 DETAIL="not_started"
 CS=""
@@ -67,6 +68,7 @@ if test -n "$ISSUE"; then
     'CS TREE PUBLISH') OP=tree_publish ;;
     'CS TREE REPORT') OP=tree_report ;;
     'CS PHOTO '*) OP=photo ;;
+    'CS SNAP '*) OP=snapshot ;;
     'CS ACCEPT TERMS') OP=accept_terms ;;
     'CS SAFE MODE') OP=safe_mode ;;
     'CS COMPILE REPORT') OP=compile_report ;;
@@ -80,7 +82,7 @@ if test -n "$ISSUE"; then
   esac
 fi
 case "$OP" in
-  machines|info|quota|start|fresh|fresh_ssh|fresh_minimal|rebuild|full_rebuild|status|logs|sync|recovery_sync|lfs|lfs_report|changes|preserve_assets|retry_assets|install|bootstrap|deps|cli_diag|editor|editor_diag|editor_isolate|tmp_audit|license|auth|probe|shot|accept_terms|safe_mode|compile_report|refresh|close_editor|editor_process|editor_recover|scene_render|scene_play|drop_video|drop_frames|map_verify|photo|survey|play_diag|foliage_diag|tree_audit|tree_preview|tree_publish|tree_report|test|stop) ;;
+  machines|info|quota|start|fresh|fresh_ssh|fresh_minimal|rebuild|full_rebuild|status|logs|sync|recovery_sync|lfs|lfs_report|changes|preserve_assets|retry_assets|install|bootstrap|deps|cli_diag|editor|editor_diag|editor_isolate|tmp_audit|license|auth|probe|shot|accept_terms|safe_mode|compile_report|refresh|close_editor|editor_process|editor_recover|scene_render|scene_play|drop_video|drop_frames|map_verify|photo|snapshot|survey|play_diag|foliage_diag|tree_audit|tree_preview|tree_publish|tree_report|test|stop) ;;
   *) DETAIL="unsupported_operation"; exit 2 ;;
 esac
 if test "$OP" = photo; then
@@ -89,6 +91,14 @@ if test "$OP" = photo; then
   }
   [[ "$PHOTO_VALUES" =~ ^[-0-9.[:space:]]{12,96}$ ]] || {
     DETAIL="photo_arguments_not_numeric"; exit 35
+  }
+fi
+if test "$OP" = snapshot; then
+  SNAP_TOKEN="$(python3 "$GITHUB_WORKSPACE/Tools/Codespaces/snapshot_issue_request.py" "$ISSUE" 2>/dev/null)" || {
+    DETAIL="invalid_snapshot_payload"; exit 80;
+  }
+  [[ "$SNAP_TOKEN" =~ ^[A-Za-z0-9_-]{12,16000}={0,2}$ ]] || {
+    DETAIL="snapshot_payload_unsafe"; exit 81;
   }
 fi
 if test -z "$GH_TOKEN"; then DETAIL="CODESPACE_PAT_missing"; exit 3; fi
@@ -346,6 +356,7 @@ case "$OP" in
   editor_isolate) REMOTE_TIMEOUT=650 ;;
   tmp_audit) REMOTE_TIMEOUT=240 ;;
   scene_render|scene_play|photo|foliage_diag|survey|tree_audit|tree_preview|tree_publish) REMOTE_TIMEOUT=1800 ;;
+  snapshot) REMOTE_TIMEOUT=1050 ;;
   drop_video) REMOTE_TIMEOUT=2100 ;;
   drop_frames) REMOTE_TIMEOUT=420 ;;
   map_verify) REMOTE_TIMEOUT=1800 ;;
@@ -519,12 +530,33 @@ if test "$OP" = scene_render || test "$OP" = scene_play || test "$OP" = photo ||
     REMOTE_SHELL="bash -s -- play"
   fi
 fi
+if test "$OP" = snapshot; then
+  SCRIPT_FILE="$GITHUB_WORKSPACE/Tools/Codespaces/snapshot_issue_remote.sh"
+  REMOTE_SHELL="bash -s -- $SNAP_TOKEN"
+fi
 for attempt in 1 2; do
   if timeout "$REMOTE_TIMEOUT" gh codespace ssh -c "$CS" -- "$REMOTE_SHELL" \
       < "$SCRIPT_FILE" \
       > "$OUT/terminal.txt" 2>"$PRIVATE_ERRORS"; then
     rm -f "$PRIVATE_ERRORS"
-    if test "$OP" = tree_publish; then
+    if test "$OP" = snapshot; then
+      if ! timeout 650 gh codespace ssh -c "$CS" -- 'base64 /tmp/aaris-codespaces/hot-snapshots/bundle.tar.gz' \
+          > "$OUT/hot-snapshot.bundle.b64" 2>"$PRIVATE_ERRORS"; then
+        DETAIL="snapshot_archive_transfer_failed"; safe_error_summary; exit 82
+      fi
+      if ! base64 --decode "$OUT/hot-snapshot.bundle.b64" > "$OUT/hot-snapshot.tar.gz"; then
+        DETAIL="snapshot_archive_decode_failed"; exit 83
+      fi
+      rm -f "$OUT/hot-snapshot.bundle.b64"
+      if ! python3 "$GITHUB_WORKSPACE/Tools/Codespaces/snapshot_bundle_check.py" \
+            "$OUT/hot-snapshot.tar.gz" "$OUT" >> "$OUT/terminal.txt" 2>/dev/null; then
+        DETAIL="snapshot_archive_not_verified"; exit 84
+      fi
+      if grep -q '^AARIS_SNAPSHOT_BUNDLE_SUSPECT_COUNT_' "$OUT/terminal.txt"; then
+        STATE="UNKNOWN"; DETAIL="real_photos_suspected_magenta_review_artifact"; exit 0
+      fi
+      DETAIL="real_unity_hot_snapshots_verified"
+    elif test "$OP" = tree_publish; then
       if ! timeout 900 gh codespace ssh -c "$CS" -- \
           'base64 /tmp/aaris-codespaces/tree-mass/mass-package.tar.gz' \
           > "$OUT/mass-package.tar.gz.b64" 2>"$PRIVATE_ERRORS"; then

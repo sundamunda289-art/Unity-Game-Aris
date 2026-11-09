@@ -9,7 +9,7 @@ try:
     data = json.loads((folder / 'result.json').read_text())
 except (OSError, ValueError):
     data = {}
-operations = set('machines info quota start fresh fresh_ssh fresh_minimal rebuild full_rebuild status logs sync recovery_sync lfs lfs_report changes preserve_assets retry_assets install bootstrap deps cli_diag editor editor_diag editor_isolate tmp_audit license auth probe shot accept_terms safe_mode compile_report refresh close_editor editor_process editor_recover scene_render scene_play drop_video drop_frames map_verify photo play_diag foliage_diag test stop'.split())
+operations = set('machines info quota start fresh fresh_ssh fresh_minimal rebuild full_rebuild status logs sync recovery_sync lfs lfs_report changes preserve_assets retry_assets install bootstrap deps cli_diag editor editor_diag editor_isolate tmp_audit license auth probe shot accept_terms safe_mode compile_report refresh close_editor editor_process editor_recover scene_render scene_play drop_video drop_frames map_verify photo snapshot play_diag foliage_diag test stop'.split())
 statuses = {'SUCCESS', 'FAILED', 'NO_CODESPACE', 'TARGET_UNAVAILABLE', 'UNKNOWN'}
 op = data.get('operation', 'unknown')
 state = data.get('status', 'FAILED')
@@ -85,7 +85,7 @@ if safe:
     print('```text')
     print(*safe, sep=chr(10))
     print('```')
-if op in ('scene_render', 'scene_play', 'photo', 'drop_video', 'map_verify'):
+if op in ('scene_render', 'scene_play', 'photo', 'snapshot', 'drop_video', 'map_verify'):
     print('Only verified Unity camera PNGs and completed native scene/Play tests count as evidence; a successful workflow without them is not proof.')
 else:
     print('Editor process and a nonblank image do not prove Unity Personal activation or valid scene rendering.')

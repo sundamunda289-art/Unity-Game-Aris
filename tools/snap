@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Portable one-line client. Run inside Ubuntu Codespace.
+set -Eeuo pipefail
+cd "$(dirname "$0")/.."
+exec python3 Tools/Codespaces/snapshot_cli.py "$@"
