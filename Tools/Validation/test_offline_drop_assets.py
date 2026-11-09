@@ -151,6 +151,45 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertNotIn("length, damageMask, QueryTriggerInteraction.Ignore", frag)
 
 
+    def test_aircraft_altitude_uses_world_space_terrain_height(self):
+        # Terrain.SampleHeight already includes transform.position.y. Double
+        # addition moves the plane entry altitude when tiles have Y offsets.
+        drop = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
+        flight = drop.split("private void BuildFlightPath()", 1)[1].split(
+            "private void Update()", 1
+        )[0]
+        self.assertIn("float tallest = float.NegativeInfinity;", flight)
+        self.assertIn("terrain.SampleHeight(new Vector3(x, 0f, z))", flight)
+        self.assertNotIn(
+            "terrain.SampleHeight(new Vector3(x, 0f, z)) + p.y", flight
+        )
+
+    def test_stationary_map_collider_poll_avoids_global_physics_sync(self):
+        colliders = (SCRIPTS / "AarisNearbyColliders.cs").read_text("utf-8")
+        self.assertIn("bool targetMoved =", colliders)
+        self.assertIn("bool collidersChanged = false;", colliders)
+        self.assertIn("if (!c.enabled) { c.enabled = true; collidersChanged = true; }", colliders)
+        self.assertIn("obstacles[i].enabled = false; collidersChanged = true;", colliders)
+        self.assertIn(
+            "if (targetMoved || collidersChanged) Physics.SyncTransforms();",
+            colliders,
+        )
+        self.assertEqual(colliders.count("Physics.SyncTransforms();"), 1)
+
+    def test_gloo_preview_does_not_reactivate_each_aiming_frame(self):
+        wall = (SCRIPTS / "AarisOfflineGlooWall.cs").read_text("utf-8")
+        update = wall.split("private void UpdatePlacement()", 1)[1].split(
+            "private void OnApplicationPause", 1
+        )[0]
+        self.assertIn("previewCollider.enabled = false;", wall)
+        self.assertIn("try", update)
+        self.assertIn("finally", update)
+        self.assertIn("if (ghost != null && ghost.activeSelf != placementValid)", update)
+        self.assertNotIn("ghost.SetActive(true);", update)
+        self.assertNotIn("ghost.SetActive(false);", update)
+        self.assertIn("if (blocked >= overlaps.Length) return;", update)
+        self.assertIn("if (count >= forwardHits.Length) return;", update)
+
     def test_new_unity_guids_are_distinct(self):
         files = [
             *ASSETS.joinpath("AarisDrop").glob("*.meta"),

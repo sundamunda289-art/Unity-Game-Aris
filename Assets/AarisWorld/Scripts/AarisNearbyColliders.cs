@@ -70,6 +70,10 @@ namespace Aaris.MapReview
         public void RefreshNow()
         {
             if (target == null || worldBounds == null) return;
+            // A moved/teleported player needs one sync before same-frame physics queries.
+            // Idle polling must not flush the entire physics scene four times a second.
+            bool targetMoved = (target.position - lastPosition).sqrMagnitude > 0.000001f;
+            bool collidersChanged = false;
             lastPosition = target.position;
             nextCheck = Time.unscaledTime + .25f;
             float limit = activationDistance * activationDistance;
@@ -91,15 +95,17 @@ namespace Aaris.MapReview
                     float dx = q.x - lastPosition.x, dz = q.z - lastPosition.z;
                     if (dx * dx + dz * dz > limit) continue;
                     wanted[i] = query;
-                    if (!c.enabled) c.enabled = true;
+                    if (!c.enabled) { c.enabled = true; collidersChanged = true; }
                     nextActive.Add(i);
                 }
             }
             foreach (int i in active)
-                if (wanted[i] != query && obstacles[i] != null) obstacles[i].enabled = false;
+                if (wanted[i] != query && obstacles[i] != null && obstacles[i].enabled)
+                { obstacles[i].enabled = false; collidersChanged = true; }
             List<int> swap = active; active = nextActive; nextActive = swap;
-            // A teleported CharacterController/camera must see the newly enabled shapes immediately.
-            Physics.SyncTransforms();
+            // Only sync on real target motion or actual collider activation changes.
+            // A teleported CharacterController must still see new shapes immediately.
+            if (targetMoved || collidersChanged) Physics.SyncTransforms();
         }
         private void OnDisable()
         {

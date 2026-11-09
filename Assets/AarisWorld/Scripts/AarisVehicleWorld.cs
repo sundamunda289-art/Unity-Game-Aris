@@ -299,11 +299,15 @@ namespace Aaris.MapReview
             if (!HasSupport(new Vector3(x, 0f, z), expectedY, out float y))
                 return false;
             Quaternion angle = record.rotation;
-            var forward = angle * Vector3.forward * 1.42f;
-            var right = angle * Vector3.right * .79f;
-            foreach (var delta in new[] { forward + right, forward - right,
-                -forward + right, -forward - right })
+            Vector3 forward = angle * Vector3.forward * 1.42f;
+            Vector3 right = angle * Vector3.right * .79f;
+            // The spawn stream retries candidates every few seconds. Probe all four
+            // chassis corners without allocating an array on the mobile GC heap.
+            for (int corner = 0; corner < 4; corner++)
             {
+                float frontSign = corner < 2 ? 1f : -1f;
+                float sideSign = (corner & 1) == 0 ? 1f : -1f;
+                Vector3 delta = forward * frontSign + right * sideSign;
                 var check = new Vector3(x + delta.x, 0f, z + delta.z);
                 if (!HasSupport(check, y, out float localY) ||
                     Mathf.Abs(localY - y) > .37f) return false;

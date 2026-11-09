@@ -115,7 +115,7 @@ namespace Aaris.MapReview
         {
             var terrains = Terrain.activeTerrains;
             float minX = 1000f, maxX = -1000f, minZ = 1000f, maxZ = -1000f;
-            float tallest = -50f;
+            float tallest = float.NegativeInfinity;
             if (terrains != null && terrains.Length > 0)
             {
                 foreach (var terrain in terrains)
@@ -128,7 +128,9 @@ namespace Aaris.MapReview
                         for (int b = 0; b <= 4; b++)
                         {
                             float x = p.x + s.x * (a / 4f), z = p.z + s.z * (b / 4f);
-                            tallest = Mathf.Max(tallest, terrain.SampleHeight(new Vector3(x, 0f, z)) + p.y);
+                            // SampleHeight already returns world-space elevation, including the tile's Y offset.
+                            // Adding p.y again makes the aircraft too high/low on offset Terrain tiles.
+                            tallest = Mathf.Max(tallest, terrain.SampleHeight(new Vector3(x, 0f, z)));
                         }
                 }
             }

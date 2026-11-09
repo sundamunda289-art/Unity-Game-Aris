@@ -50,6 +50,10 @@ namespace Aaris.MapReview
         {
             ghost = AarisGlooWallVisuals.Create("GlooWall_Ghost_Local", true);
             ghostRenderers = ghost.GetComponentsInChildren<Renderer>();
+            // The preview must never enter cover/ground physics queries, even
+            // during its first frame when Destroy(collider) is deferred.
+            foreach (var previewCollider in ghost.GetComponentsInChildren<Collider>(true))
+                previewCollider.enabled = false;
             ghost.SetActive(false);
         }
 
@@ -69,7 +73,7 @@ namespace Aaris.MapReview
             if (!CanUse || Time.time < nextDeployment) return;
             aiming = true;
             placementValid = false;
-            if (ghost != null) ghost.SetActive(true);
+            // UpdatePlacement alone reveals a valid, collision-free preview.
             UpdatePlacement();
         }
 
@@ -77,7 +81,7 @@ namespace Aaris.MapReview
         {
             aiming = false;
             placementValid = false;
-            if (ghost != null) ghost.SetActive(false);
+            if (ghost != null && ghost.activeSelf) ghost.SetActive(false);
         }
 
         public void ReleaseAndDeploy()
@@ -101,8 +105,9 @@ namespace Aaris.MapReview
         private void UpdatePlacement()
         {
             placementValid = false;
-            if (ghost != null) ghost.SetActive(false);
-            if (motor == null || motor.AimCamera == null) { if (ghost != null) ghost.SetActive(false); return; }
+            try
+            {
+            if (motor == null || motor.AimCamera == null) return;
             Vector3 look = motor.AimCamera.transform.forward;
             Vector3 ahead = Vector3.ProjectOnPlane(look, Vector3.up).normalized;
             if (ahead.sqrMagnitude < 0.5f) ahead = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
@@ -165,12 +170,17 @@ namespace Aaris.MapReview
             }
             placementValid = true;
             if (ghost == null) return;
-            ghost.SetActive(true);
             ghost.transform.SetPositionAndRotation(proposedPoint, proposedRotation);
-            var tint = placementValid
-                ? new Color(0.20f, 0.78f, 0.98f, 0.40f)
-                : new Color(1f, 0.2f, 0.2f, 0.45f);
-            AarisGlooWallVisuals.Tint(ghostRenderers, tint);
+            AarisGlooWallVisuals.Tint(ghostRenderers,
+                new Color(0.20f, 0.78f, 0.98f, 0.40f));
+            }
+            finally
+            {
+                // No deactivate/reactivate cycle on every aiming frame.
+                // Every invalid early return still hides a stale ghost.
+                if (ghost != null && ghost.activeSelf != placementValid)
+                    ghost.SetActive(placementValid);
+            }
         }
 
         private void OnApplicationPause(bool paused) { if (paused) CancelAim(); }

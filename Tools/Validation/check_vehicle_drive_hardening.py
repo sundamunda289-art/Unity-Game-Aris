@@ -83,6 +83,17 @@ def test():
 
     # Existing map and touchscreen interaction protections must remain.
     assert "Physics.OverlapBoxNonAlloc" in world
+    # Four-corner clearance stays symmetric but no longer allocates a Vector3[]
+    # every time a streamed car retries placement on a budget Android phone.
+    assert "for (int corner = 0; corner < 4; corner++)" in world
+    assert "float frontSign = corner < 2 ? 1f : -1f;" in world
+    assert "float sideSign = (corner & 1) == 0 ? 1f : -1f;" in world
+    assert "foreach (var delta in new[]" not in world
+    corners = [
+        (1 if corner < 2 else -1, 1 if corner % 2 == 0 else -1)
+        for corner in range(4)
+    ]
+    assert corners == [(1, 1), (1, -1), (-1, 1), (-1, -1)]
     assert "float ground = terrain.SampleHeight(" in world
     assert "record.visible.CanPark" in world
     assert "(!IsDriving)" not in session  # no duplicate input owner gate
