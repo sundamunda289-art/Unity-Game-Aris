@@ -23,6 +23,10 @@ namespace Aaris.MapReview
         private const float AntiRollStrength = 4800f;
         private float nextTelemetryAt;
         public string VehicleId { get; private set; }
+        public float TopSpeedMetresPerSecond => topSpeed;
+        public float ThrottleInput => driver == null ? 0f : forward;
+        public float LateralSlipMetresPerSecond => body == null ? 0f :
+            Mathf.Abs(Vector3.Dot(body.linearVelocity, transform.right));
         public bool IsOccupied => driver != null;
         public bool CanPark => !IsOccupied && body != null &&
             body.linearVelocity.sqrMagnitude < .20f &&
@@ -50,6 +54,13 @@ namespace Aaris.MapReview
                     if (wheel != null && wheel.isGrounded) grounded++;
                 return grounded >= 2;
             }
+        }
+
+        private void OnCollisionEnter(Collision collision)
+        {
+            if (collision != null)
+                AarisAudioDirector.VehicleCrash(transform.position,
+                    collision.relativeVelocity.magnitude);
         }
 
         public void Configure(string id, float maxSpeedMetres, float kilograms)

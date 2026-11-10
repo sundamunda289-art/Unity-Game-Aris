@@ -106,6 +106,7 @@ namespace Aaris.MapReview
             Vector3 origin = transform.position + Vector3.up * 1.45f + flat * 0.85f;
             Vector3 velocity = forward * 16f + Vector3.up * 6f;
             AarisOfflineFragGrenade.Throw(origin, velocity, gameObject);
+            AarisAudioDirector.GrenadeThrow(origin);
             fragGrenades--;
             nextThrow = Time.time + grenadeCooldown;
         }

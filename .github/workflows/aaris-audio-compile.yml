@@ -1,0 +1,65 @@
+name: Unity audio review compile on licensed Codespace
+on:
+  push:
+    branches:
+      - review/offline-mobile-audio-20261109
+    paths:
+      - .github/workflows/aaris-audio-compile.yml
+      - Tools/Audio/codespace_compile_review.sh
+      - Tools/Audio/remote_error_summary.py
+      - Assets/AarisWorld/Scripts/AarisAudioDirector.cs
+      - Assets/AarisWorld/Editor/AarisOfflineAudioClipProbe.cs
+      - Assets/AarisWorld/Scripts/AarisThirdPersonPlayer.cs
+      - Assets/AarisWorld/Scripts/AarisEquippedGun.cs
+      - Assets/AarisWorld/Scripts/AarisBattleActions.cs
+      - Assets/AarisWorld/Scripts/AarisOfflineTacticalHUD.cs
+      - Assets/AarisWorld/Scripts/AarisOfflineFragGrenade.cs
+      - Assets/AarisWorld/Scripts/AarisVehicleMotor.cs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile-audio:
+    concurrency:
+      group: aaris-codespace-control
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 38
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Check script safety and embedded audio
+        run: |
+          set -euo pipefail
+          bash -n Tools/Audio/codespace_compile_review.sh
+          python3 Tools/Audio/remote_error_summary.py --selftest
+          python3 Tools/Audio/generate_sfx.py --check
+          python3 Tools/Audio/import_cc0_kenney.py --check
+      - name: Compile audio branch on licensed Ubuntu Codespace
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -uo pipefail
+          if test -z "${GH_TOKEN:-}"; then
+            echo AARIS_AUDIO_CODESPACE_SECRET_NOT_AVAILABLE
+            exit 19
+          fi
+          set +e
+          timeout --signal=TERM 1800 gh codespace ssh \
+            -c aaris-ai-ubuntu-minimal-jrg7rgvx5rr435wpp -- "bash -s" \
+            < Tools/Audio/codespace_compile_review.sh \
+            > "$RUNNER_TEMP/aaris-audio-safe.txt" \
+            2> "$RUNNER_TEMP/aaris-audio-private.txt"
+          rc=$?
+          set -e
+          grep -E '^AARIS_AUDIO_[A-Z0-9_]+$' "$RUNNER_TEMP/aaris-audio-safe.txt" || true
+          if test "$rc" -ne 0; then
+            python3 Tools/Audio/remote_error_summary.py --github-actions
+            echo AARIS_AUDIO_EDITOR_VERIFICATION_INCOMPLETE
+            exit "$rc"
+          fi
+          grep -qx AARIS_AUDIO_NATIVE_COMPILE_EXIT_ZERO_NO_CS_ERRORS "$RUNNER_TEMP/aaris-audio-safe.txt"
+          echo AARIS_AUDIO_NATIVE_CSHARP_VERIFIED

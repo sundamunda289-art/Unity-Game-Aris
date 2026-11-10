@@ -244,6 +244,9 @@ namespace Aaris.MapReview
                 obstruction.collider != victim &&
                 !obstruction.collider.transform.IsChildOf(victim.transform))
                 return;
+            // An impact sound is not a swing sound: trigger it only if the
+            // punch actually passed overlap, reach and wall-occlusion tests.
+            AarisAudioDirector.Punch(point);
             AarisEquippedGun.ApplyDamage(victim, punchDamage, gameObject);
         }
 

@@ -168,6 +168,11 @@ namespace Aaris.MapReview
             rightLegRest = rightLeg != null ? rightLeg.localRotation : Quaternion.identity;
             lastMouse = Input.mousePosition;
             PlaceCamera(true);
+            // Runtime-created player instances might appear AFTER
+            // AfterSceneLoad bootstrap callbacks. Attach the one pooled
+            // audio director here as well; never create a second motor.
+            if (GetComponent<AarisAudioDirector>() == null)
+                gameObject.AddComponent<AarisAudioDirector>();
         }
 
         private void OnDestroy()

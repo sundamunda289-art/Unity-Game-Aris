@@ -1,0 +1,42 @@
+name: Import pinned Kenney CC0 mobile foley
+on:
+  push:
+    branches:
+      - review/offline-mobile-audio-20261109
+    paths:
+      - Tools/Audio/import_cc0_kenney.py
+      - .github/workflows/aaris-cc0-foley.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify-foley:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Guard the approved review branch
+        run: |
+          test "$GITHUB_REF_NAME" = "review/offline-mobile-audio-20261109"
+      - name: Fetch SHA-pinned Kenney CC0 source and verify Git blobs
+        run: |
+          set -euo pipefail
+          python3 Tools/Audio/import_cc0_kenney.py
+          python3 Tools/Audio/import_cc0_kenney.py --check
+          test "$(find Assets/Resources/SFX/CC0 -maxdepth 1 -name '*.ogg' | wc -l)" -eq 15
+      - name: Commit only embedded CC0 foley and metadata
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- Assets/Resources/SFX/CC0.meta Assets/Resources/SFX/CC0
+          if git diff --cached --quiet; then
+            echo "AARIS_CC0_ASSETS_ALREADY_CURRENT"
+            exit 0
+          fi
+          git commit -m "Embed pinned and verified Kenney CC0 footstep and impact sounds"
+          git push origin HEAD:refs/heads/review/offline-mobile-audio-20261109

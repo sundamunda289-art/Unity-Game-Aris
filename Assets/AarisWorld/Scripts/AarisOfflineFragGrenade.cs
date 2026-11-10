@@ -19,7 +19,7 @@ namespace Aaris.MapReview
         private readonly HashSet<IAarisDamageable> damaged = new HashSet<IAarisDamageable>();
         private Rigidbody body;
         private GameObject owner;
-        private float detonateAt;
+        private float detonateAt, lastBounceAudio = -10f;
         private bool armed, detonated;
 
         public static AarisOfflineFragGrenade Throw(Vector3 origin, Vector3 velocity, GameObject thrower)
@@ -92,10 +92,18 @@ namespace Aaris.MapReview
             if (armed && !detonated && Time.time >= detonateAt) Detonate();
         }
 
+        private void OnCollisionEnter(Collision collision)
+        {
+            if (!armed || detonated || Time.time - lastBounceAudio < 0.16f) return;
+            lastBounceAudio = Time.time;
+            AarisAudioDirector.GrenadeBounce(transform.position, collision.relativeVelocity.magnitude);
+        }
+
         private void Detonate()
         {
             detonated = true;
             armed = false;
+            AarisAudioDirector.GrenadeExplosion(transform.position);
             int count = Physics.OverlapSphereNonAlloc(transform.position, blastRadius,
                 overlaps, damageMask, QueryTriggerInteraction.Ignore);
             if (count >= overlaps.Length)

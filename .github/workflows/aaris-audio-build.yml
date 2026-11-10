@@ -1,0 +1,44 @@
+name: Build original offline mobile SFX pack
+on:
+  push:
+    branches:
+      - review/offline-mobile-audio-20261109
+    paths:
+      - Tools/Audio/generate_sfx.py
+      - .github/workflows/aaris-audio-build.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: true
+      - name: Ensure this runs only on the approved review branch
+        run: |
+          test "$GITHUB_REF_NAME" = "review/offline-mobile-audio-20261109"
+      - name: Generate and verify 27 original SFX files
+        run: |
+          set -euo pipefail
+          python3 Tools/Audio/generate_sfx.py
+          python3 Tools/Audio/generate_sfx.py --check
+          test "$(find Assets/Resources/SFX -maxdepth 1 -type f -name '*.wav' | wc -l)" -eq 27
+      - name: Save only new embedded audio assets
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- Assets/Resources/SFX.meta Assets/Resources/SFX
+          if git diff --cached --quiet; then
+            echo "AARIS_AUDIO_ALREADY_CURRENT"
+            exit 0
+          fi
+          git diff --cached --name-only | grep -vE '^Assets/Resources/SFX(/|[.]meta$)' && exit 12 || true
+          git commit -m "Embed 27 small original offline SFX and Unity audio meta"
+          git push origin HEAD:refs/heads/review/offline-mobile-audio-20261109

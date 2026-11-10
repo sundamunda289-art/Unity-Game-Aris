@@ -111,6 +111,7 @@ namespace Aaris.MapReview
                 return false;
             reloadUntil = Time.time + spec.reloadSeconds;
             reloading = true;
+            AarisAudioDirector.ReloadStarted(transform.position);
             return true;
         }
 
@@ -164,7 +165,9 @@ namespace Aaris.MapReview
                 ? Mathf.Max(0.28f, actions.CameraEyeHeight - 0.15f) : 1.3f;
             Vector3 muzzle = owner.transform.position + Vector3.up * muzzleHeight +
                 owner.transform.forward * 0.24f;
+            AarisAudioDirector.GunShot(spec.category, spec.id, muzzle);
 
+            bool impactSoundEmitted = false;
             for (int pellet = 0; pellet < spec.pellets; pellet++)
             {
                 Vector2 spread = new Vector2(AarisWeaponRandom.Next01(ref spreadSeed) * 2f - 1f,
@@ -189,7 +192,18 @@ namespace Aaris.MapReview
                         (!targetFound || !SameTarget(target.collider, muzzleHit.collider)))
                         continue;
                 }
-                if (targetFound) ApplyDamage(target.collider, spec.damage, owner);
+                if (targetFound)
+                {
+                    // A shotgun's first pellet can miss while a later one
+                    // hits. Emit one impact cue for the first genuine hit,
+                    // not only if pellet zero happens to connect.
+                    if (!impactSoundEmitted)
+                    {
+                        AarisAudioDirector.BulletImpact(target.point);
+                        impactSoundEmitted = true;
+                    }
+                    ApplyDamage(target.collider, spec.damage, owner);
+                }
             }
             var motor = owner.GetComponent<AarisThirdPersonPlayer>();
             if (motor != null) motor.ApplyWeaponRecoil(spec.recoilPitchDegrees,
