@@ -70,6 +70,9 @@ namespace Aaris.MapReview
         public void RefreshNow()
         {
             if (target == null || worldBounds == null) return;
+            // Avoid global transform synchronization when an idle refresh
+            // neither moves the player nor enables/disables any physics shapes.
+            bool needsPhysicsSync = (target.position - lastPosition).sqrMagnitude > 0.0001f;
             lastPosition = target.position;
             nextCheck = Time.unscaledTime + .25f;
             float limit = activationDistance * activationDistance;
@@ -91,15 +94,19 @@ namespace Aaris.MapReview
                     float dx = q.x - lastPosition.x, dz = q.z - lastPosition.z;
                     if (dx * dx + dz * dz > limit) continue;
                     wanted[i] = query;
-                    if (!c.enabled) c.enabled = true;
+                    if (!c.enabled) { c.enabled = true; needsPhysicsSync = true; }
                     nextActive.Add(i);
                 }
             }
             foreach (int i in active)
-                if (wanted[i] != query && obstacles[i] != null) obstacles[i].enabled = false;
+                if (wanted[i] != query && obstacles[i] != null && obstacles[i].enabled)
+                {
+                    obstacles[i].enabled = false;
+                    needsPhysicsSync = true;
+                }
             List<int> swap = active; active = nextActive; nextActive = swap;
             // A teleported CharacterController/camera must see the newly enabled shapes immediately.
-            Physics.SyncTransforms();
+            if (needsPhysicsSync) Physics.SyncTransforms();
         }
         private void OnDisable()
         {
