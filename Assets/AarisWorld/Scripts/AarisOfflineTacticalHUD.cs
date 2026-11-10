@@ -137,6 +137,7 @@ namespace Aaris.MapReview
             var button = grenadeButton.AddComponent<Button>();
             button.targetGraphic = grenadeButton.GetComponent<Image>();
             button.onClick.AddListener(ThrowFrag);
+            AarisHudGlyphs.ApplyCanvasShader(canvasObject.transform);
         }
 
         private Text CreateAction(string name, Vector2 anchor, Vector2 offset, Color color,

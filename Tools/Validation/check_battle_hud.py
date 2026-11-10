@@ -120,6 +120,23 @@ def check() -> None:
     assert "new Texture2D(Size, Size" in glyph and "Sprite.Create" in glyph
     assert "https://" not in glyph and "UnityWebRequest" not in hud
     assert "Resources.Load<Sprite>" not in hud
+    # Android UI shader must be compiled into the player instead of being
+    # reachable only through Shader.Find (which can be build-stripped).
+    shader_path = ROOT / "Assets/Resources/AarisHUDOverlay.shader"
+    shader_meta = ROOT / "Assets/Resources/AarisHUDOverlay.shader.meta"
+    shader_source = shader_path.read_text(encoding="utf-8")
+    assert shader_meta.exists(), "Missing stable ShaderImporter GUID"
+    assert 'Shader "Aaris/UI/MobileOverlay"' in shader_source
+    assert '"RenderPipeline" = "UniversalPipeline"' in shader_source
+    assert "UnityGet2DClipping" in shader_source and "Stencil" in shader_source
+    assert 'Resources.Load<Shader>("AarisHUDOverlay")' in glyph
+    assert "ApplyCanvasShader" in glyph
+    for canvas_source in (
+        "AarisBattleHUD.cs", "AarisWeaponHUD.cs", "AarisVehicleHUD.cs",
+        "AarisOfflineTacticalHUD.cs", "AarisOfflineDrop.cs",
+    ):
+        assert "AarisHudGlyphs.ApplyCanvasShader(" in text(canvas_source), canvas_source
+
     print("PASS: five mobile controls, one motor, sprint/stance/combat, "
           "visual animation hooks, all script GUIDs and original offline icons")
 

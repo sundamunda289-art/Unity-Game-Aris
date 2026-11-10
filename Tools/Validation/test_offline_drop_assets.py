@@ -103,6 +103,24 @@ class OfflineCombatAssetChecks(unittest.TestCase):
             self.assertNotIn("https://", source)
             self.assertNotIn("http://", source)
 
+    def test_parachute_model_alignment_and_android_legacy_pose(self):
+        drop = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
+        visuals = (SCRIPTS / "AarisOfflineDropVisuals.cs").read_text("utf-8")
+        motor = (SCRIPTS / "AarisThirdPersonPlayer.cs").read_text("utf-8")
+        rig = (SCRIPTS / "AarisCharacterVisual.cs").read_text("utf-8")
+        self.assertIn("wingBounds.Encapsulate(wing.bounds)", visuals)
+        self.assertIn("model.transform.position += target - wingBounds.center", visuals)
+        self.assertIn("ApplyLegacyFallbackPose(true);", drop)
+        self.assertIn("ApplyLegacyFallbackPose(false);", drop)
+        self.assertIn("RestoreLegacyAerialPose()", drop)
+        self.assertIn("SetCanopyOpeningScale(InitialCanopyScale)", drop)
+        self.assertIn("SetCanopyOpeningScale(s)", drop)
+        self.assertIn("4.35f - 2.8f * s", drop)
+        self.assertIn("HasWorkingHumanoid", rig)
+        self.assertIn("SetLegacyAerialPose(bool beneathCanopy)", motor)
+        self.assertIn("if (footMotor != null && (characterVisual == null || !characterVisual.HasWorkingHumanoid))", drop)
+        self.assertIn("footMotor.ResumeFromAerialDrop();", drop)
+
     def test_pc_combat_keys_do_not_trigger_two_actions(self):
         # Regression: V used to aim AND deploy cover; G dropped the gun
         # while throwing a grenade. Mobile touch actions remain unchanged.

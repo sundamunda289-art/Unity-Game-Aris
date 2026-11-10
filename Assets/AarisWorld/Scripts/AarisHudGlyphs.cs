@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace Aaris.MapReview
 {
@@ -13,6 +14,37 @@ namespace Aaris.MapReview
         private const int Size = 128;
         private static readonly Sprite[] Sprites = new Sprite[5];
         private static Sprite ring, knob;
+
+        // Resources holds the Shader asset in the Android player build. Shader.Find
+        // by name alone can return null after shader variant stripping on mobile.
+        // One shared material is assigned once per HUD canvas, never per frame.
+        private static Material overlayMaterial;
+        private static bool overlayChecked;
+
+        internal static void ApplyCanvasShader(Transform canvasRoot)
+        {
+            if (canvasRoot == null) return;
+            if (!overlayChecked)
+            {
+                overlayChecked = true;
+                Shader shader = Resources.Load<Shader>("AarisHUDOverlay");
+                if (shader != null && shader.isSupported)
+                {
+                    overlayMaterial = new Material(shader)
+                    {
+                        name = "Aaris Android Overlay (shared)",
+                        hideFlags = HideFlags.DontSave
+                    };
+                }
+                else
+                {
+                    Debug.LogError("Aaris UI: build-retained AarisHUDOverlay shader unavailable or unsupported.");
+                }
+            }
+            if (overlayMaterial == null) return;
+            foreach (Graphic graphic in canvasRoot.GetComponentsInChildren<Graphic>(true))
+                if (graphic != null) graphic.material = overlayMaterial;
+        }
 
         internal static Sprite Ring => ring != null ? ring : (ring = BuildDisc(true));
         internal static Sprite Knob => knob != null ? knob : (knob = BuildDisc(false));

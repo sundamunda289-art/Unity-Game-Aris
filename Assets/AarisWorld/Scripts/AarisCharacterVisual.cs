@@ -40,6 +40,7 @@ namespace Aaris.MapReview
         private AarisWeaponInventory weaponInventory;
         private float readyPoseBlend;
         private bool graphReady;
+        public bool HasWorkingHumanoid => graphReady && visual != null && animator != null;
         private float runBlend;
         private float airborneBlend;
         private float walkRunBlend;

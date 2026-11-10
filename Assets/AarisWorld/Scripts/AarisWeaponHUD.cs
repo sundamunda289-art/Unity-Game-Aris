@@ -65,6 +65,7 @@ namespace Aaris.MapReview
             Add("PICK", new Vector2(-225f, -57f), () => inventory.RequestPickup());
             Add("DROP", new Vector2(-141f, -57f), () => inventory.DropCurrent());
             Add("RELOAD", new Vector2(-57f, -57f), () => inventory.Reload());
+            AarisHudGlyphs.ApplyCanvasShader(go.transform);
             UpdateArea(true);
         }
 

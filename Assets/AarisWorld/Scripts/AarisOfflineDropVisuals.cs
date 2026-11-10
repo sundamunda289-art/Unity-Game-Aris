@@ -170,6 +170,27 @@ namespace Aaris.MapReview
                     }
                     renderer.sharedMaterials = slots;
                 }
+
+                // An imported OBJ's pivot is not guaranteed to coincide with
+                // its visible wing. Align its actual renderer bounds with the
+                // known suspension rig; otherwise some Android imports put
+                // the canopy underneath the player, making him appear to
+                // stand ON the parachute. This is one bounds pass per drop,
+                // never a per-frame mesh modification or scene change.
+                var wings = model.GetComponentsInChildren<Renderer>(true);
+                Bounds wingBounds = new Bounds();
+                bool foundWing = false;
+                foreach (var wing in wings)
+                {
+                    if (wing == null) continue;
+                    if (!foundWing) { wingBounds = wing.bounds; foundWing = true; }
+                    else wingBounds.Encapsulate(wing.bounds);
+                }
+                if (foundWing && wingBounds.size.sqrMagnitude > 0.01f)
+                {
+                    Vector3 target = rig.TransformPoint(new Vector3(0f, 4.35f, 0f));
+                    model.transform.position += target - wingBounds.center;
+                }
                 // Keep locally generated suspension lines attached to the harness.
             }
             else

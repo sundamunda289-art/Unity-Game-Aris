@@ -28,6 +28,7 @@ namespace Aaris.MapReview
         [SerializeField, Range(20f, 90f)] private float freefallFastSink = 54f;
 
         private AarisThirdPersonPlayer footMotor;
+        private AarisCharacterVisual characterVisual;
         private CharacterController capsule;
         private AarisBattleActions combat;
         private Camera view;
@@ -66,6 +67,7 @@ namespace Aaris.MapReview
         private void Awake()
         {
             footMotor = GetComponent<AarisThirdPersonPlayer>();
+            characterVisual = GetComponent<AarisCharacterVisual>();
             capsule = GetComponent<CharacterController>();
             combat = GetComponent<AarisBattleActions>();
             vehicle = GetComponent<AarisVehicleSession>();
@@ -264,7 +266,7 @@ namespace Aaris.MapReview
                 if (canopy != null)
                 {
                     float s = Mathf.SmoothStep(InitialCanopyScale, 1f, openingProgress);
-                    canopy.transform.localScale = new Vector3(s, s, s);
+                    SetCanopyOpeningScale(s);
                 }
                 if (openingProgress >= 1f) phase = DropPhase.Gliding;
             }
@@ -345,6 +347,7 @@ namespace Aaris.MapReview
             transform.position = plane.transform.position - Vector3.up * 7f;
             transform.rotation = Quaternion.Euler(0f, yaw, 0f);
             ShowPlayer();
+            ApplyLegacyFallbackPose(false);
             capsule.enabled = true;
             downwardSpeed = -3f;
             horizontalVelocity = Vector3.zero;
@@ -360,8 +363,22 @@ namespace Aaris.MapReview
             phase = DropPhase.Opening;
             openingProgress = 0f;
             canopy = AarisOfflineDropVisuals.CreateElongatedCanopy(transform);
-            canopy.transform.localScale = Vector3.one * InitialCanopyScale;
+            SetCanopyOpeningScale(InitialCanopyScale);
+            ApplyLegacyFallbackPose(true);
             if (hud != null) hud.SetAction("OPEN", false);
+        }
+
+        private void SetCanopyOpeningScale(float scale)
+        {
+            if (canopy == null) return;
+            // The suspension rig has a 4.35m canopy centre and a 1.55m
+            // base offset at full size. Scale the art while maintaining the
+            // wing ABOVE the head throughout its half-second deployment.
+            // Otherwise a just-opened 30%-scale canopy visually intersects
+            // the character, who appears to stand on the wing.
+            float s = Mathf.Clamp(scale, InitialCanopyScale, 1f);
+            canopy.transform.localScale = Vector3.one * s;
+            canopy.transform.localPosition = Vector3.up * (4.35f - 2.8f * s);
         }
 
         private void Land()
@@ -376,6 +393,7 @@ namespace Aaris.MapReview
             }
             if (plane != null) { Destroy(plane); plane = null; }
             ShowPlayer();
+            if (footMotor != null) footMotor.RestoreLegacyAerialPose();
             capsule.enabled = true;
             if (combat != null) combat.enabled = combatWasEnabled;
             if (battleCanvas != null) battleCanvas.enabled = battleCanvasWasEnabled;
@@ -386,6 +404,15 @@ namespace Aaris.MapReview
             footMotor.enabled = true;
             phase = DropPhase.Landed;
             Debug.Log("Aaris offline drop: parachute touchdown; on-foot controls restored.");
+        }
+
+        private void ApplyLegacyFallbackPose(bool underCanopy)
+        {
+            // Native Android builds may lack a valid optional imported Avatar.
+            // Preserve their animated locomotion if present, and pose only the
+            // saved lightweight placeholder if the real Humanoid failed to load.
+            if (footMotor != null && (characterVisual == null || !characterVisual.HasWorkingHumanoid))
+                footMotor.SetLegacyAerialPose(underCanopy);
         }
 
         private void HidePlayer()
@@ -537,6 +564,7 @@ namespace Aaris.MapReview
             baseStick.GetComponent<Image>().sprite = AarisHudGlyphs.Ring;
             stick = baseStick.GetComponent<AarisOfflineDropStick>();
             stick.Build();
+            AarisHudGlyphs.ApplyCanvasShader(root.transform);
         }
 
         private void ApplySafeArea()

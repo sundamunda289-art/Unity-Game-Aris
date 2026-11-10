@@ -77,6 +77,35 @@ namespace Aaris.MapReview
         public float LastLandingTime => lastLanding;
         public float LastJumpStartedTime => lastJumpStarted;
         public Camera AimCamera => followCamera;
+
+        // The original lightweight placeholder has articulated arm/leg pivots.
+        // If an Android build cannot initialize the optional Humanoid rig,
+        // never leave this visible fallback frozen in a horizontal T-pose
+        // during the airplane / parachute sequence. Visuals only: no physics.
+        internal void SetLegacyAerialPose(bool beneathCanopy)
+        {
+            // Angles fold a horizontal legacy T-pose into a suspended,
+            // riser-holding pose (or a slightly spread freefall posture).
+            float armAngle = beneathCanopy ? 48f : -38f;
+            if (leftArm != null)
+                leftArm.localRotation = leftArmRest *
+                    Quaternion.Euler(-10f, 0f, -armAngle);
+            if (rightArm != null)
+                rightArm.localRotation = rightArmRest *
+                    Quaternion.Euler(-10f, 0f, armAngle);
+            if (leftLeg != null)
+                leftLeg.localRotation = leftLegRest * Quaternion.Euler(13f, 0f, -6f);
+            if (rightLeg != null)
+                rightLeg.localRotation = rightLegRest * Quaternion.Euler(-9f, 0f, 6f);
+        }
+
+        internal void RestoreLegacyAerialPose()
+        {
+            if (leftArm != null) leftArm.localRotation = leftArmRest;
+            if (rightArm != null) rightArm.localRotation = rightArmRest;
+            if (leftLeg != null) leftLeg.localRotation = leftLegRest;
+            if (rightLeg != null) rightLeg.localRotation = rightLegRest;
+        }
         public bool IsAutoSprinting => running;
 
         public void CancelAutoSprint() => running = false;

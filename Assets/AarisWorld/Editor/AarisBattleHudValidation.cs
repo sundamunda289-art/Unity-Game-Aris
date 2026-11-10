@@ -39,6 +39,15 @@ namespace Aaris.MapReview.Editor
                     throw new InvalidOperationException("Unity failed to compile/import: " + root + file);
             }
 
+            // Unity Editor import check in addition to the static Resources
+            // path check: the exact shader needed by Android HUDs must compile.
+            Shader hudShader = AssetDatabase.LoadAssetAtPath<Shader>(
+                "Assets/Resources/AarisHUDOverlay.shader");
+            if (hudShader == null || hudShader.name != "Aaris/UI/MobileOverlay")
+                throw new InvalidOperationException("Build-retained mobile UI shader failed Unity import.");
+            if (!hudShader.isSupported)
+                throw new InvalidOperationException("Mobile UI overlay shader is unsupported by the active graphics device.");
+
             string path = "Assets/Resources/AarisCharacters/Primary/Player.fbx";
             if (!File.Exists(path)) throw new InvalidOperationException("Local male FBX missing.");
             using (var stream = File.OpenRead(path))

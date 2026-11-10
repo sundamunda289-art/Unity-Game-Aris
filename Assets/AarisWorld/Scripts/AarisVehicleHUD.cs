@@ -169,6 +169,7 @@ namespace Aaris.MapReview
             driveCaption.raycastTarget = false;
             arrowPanel.SetActive(false);
             driveButton.SetActive(false);
+            AarisHudGlyphs.ApplyCanvasShader(obj.transform);
             UpdateSafe(true);
         }
 

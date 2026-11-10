@@ -81,6 +81,7 @@ namespace Aaris.MapReview
             Add(Action.Crouch, new Vector2(1f, 0.17f), new Vector2(-78f, 0f), 86f);
             Add(Action.Prone, new Vector2(1f, 0.15f), new Vector2(-193f, 0f), 84f);
 
+            AarisHudGlyphs.ApplyCanvasShader(canvasObj.transform);
             UpdateSafeArea(true);
             Debug.Log("Aaris HUD: five original offline action buttons enabled: Fire/Punch, Jump, Crouch, Prone, Sprint.");
         }
