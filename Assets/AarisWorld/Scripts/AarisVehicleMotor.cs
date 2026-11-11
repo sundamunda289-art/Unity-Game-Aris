@@ -22,6 +22,8 @@ namespace Aaris.MapReview
         private const float ParkingBrakeTorque = 3600f;
         private const float AntiRollStrength = 4800f;
         private float nextTelemetryAt;
+        // Stop native wheel pose queries only after a parked car truly sleeps.
+        private bool sleepingWheelPoseCurrent;
         public string VehicleId { get; private set; }
         public float TopSpeedMetresPerSecond => topSpeed;
         public float ThrottleInput => driver == null ? 0f : forward;
@@ -115,6 +117,8 @@ namespace Aaris.MapReview
             sideGrip.asymptoteValue = .85f;
             sideGrip.stiffness = 1.35f;
             wheel.sidewaysFriction = sideGrip;
+            // An initially sleeping, unoccupied car still needs parking brakes.
+            wheel.brakeTorque = ParkingBrakeTorque;
             wheels[index] = wheel;
         }
 
@@ -173,7 +177,19 @@ namespace Aaris.MapReview
             }
         }
 
-        private void LateUpdate() => SyncVisibleWheels();
+        private void LateUpdate()
+        {
+            if (body == null) return;
+            // WheelCollider poses are static while an unoccupied Rigidbody sleeps.
+            // Continue every-frame synchronization whenever the car is driven,
+            // moving or awakened by a collision; never reduce active wheel FPS.
+            bool parkedSleeping = driver == null && body.IsSleeping();
+            if (parkedSleeping && sleepingWheelPoseCurrent) return;
+            SyncVisibleWheels();
+            sleepingWheelPoseCurrent = parkedSleeping;
+        }
+
+        private void OnEnable() => sleepingWheelPoseCurrent = false;
 
         public bool TryTakeDriver(AarisVehicleSession session)
         {
@@ -211,6 +227,11 @@ namespace Aaris.MapReview
         private void FixedUpdate()
         {
             if (body == null || wheels[0] == null) return;
+            // Brakes are initialized in CreateWheel and restored on exit.
+            // A sleeping unoccupied car needs no torque/steer writes, tyre
+            // contact queries, anti-roll forces or diagnostic calculations.
+            // On physics wake, processing resumes in the very next step.
+            if (driver == null && body.IsSleeping()) return;
             float speed = SpeedMetresPerSecond;
             float speedAbs = Mathf.Abs(speed);
             float throttle = driver != null ? forward : 0f;
