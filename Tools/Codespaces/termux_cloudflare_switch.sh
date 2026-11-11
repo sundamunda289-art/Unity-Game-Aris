@@ -86,7 +86,11 @@ NEW_URL="$(sed -nE 's/^AARIS_CF_BROKER=(https:\/\/[a-z0-9.-]+\.workers\.dev)$/\1
 GH_CONFIG_DIR="$MASTER" gh variable set AARIS_BROKER_URL -R "$REPO" --body "$NEW_URL"
 echo "GITHUB_BROKER_VARIABLE_UPDATED"
 # The workflow uses CODESPACE_PAT only for SSH; sync the selected Codespace account.
-GH_CONFIG_DIR="$CODESPACE_AUTH" gh auth token | GH_CONFIG_DIR="$MASTER" gh secret set CODESPACE_PAT -R "$REPO"
+if ! GH_CONFIG_DIR="$CODESPACE_AUTH" gh auth token | GH_CONFIG_DIR="$MASTER" gh secret set CODESPACE_PAT -R "$REPO"; then
+  GH_CONFIG_DIR="$MASTER" gh variable set AARIS_BROKER_URL -R "$REPO" --body "$OLD_URL"
+  echo "CODESPACE_CREDENTIAL_SYNC_FAILED_BROKER_ROLLED_BACK"
+  exit 15
+fi
 echo "STARTING_ONE_SIGNED_GITHUB_OIDC_REBOOTSTRAP"
 DISPATCHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 if ! GH_CONFIG_DIR="$MASTER" gh workflow run aaris-turbo-bootstrap.yml -R "$REPO" --ref main -f machine="$MACHINE"; then
@@ -102,7 +106,8 @@ for TRY in $(seq 1 25); do
   sleep 3
 done
 if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
-  echo "BOOTSTRAP_RUN_NOT_FOUND_NOT_CLAIMING_SUCCESS"
+  GH_CONFIG_DIR="$MASTER" gh variable set AARIS_BROKER_URL -R "$REPO" --body "$OLD_URL"
+  echo "BOOTSTRAP_RUN_NOT_FOUND_BROKER_ROLLED_BACK"
   exit 13
 fi
 echo "Verifying authenticated agent handshake: https://github.com/$REPO/actions/runs/$RUN_ID"
@@ -113,8 +118,11 @@ if ! GH_CONFIG_DIR="$MASTER" gh run watch "$RUN_ID" -R "$REPO" --exit-status; th
 fi
 echo "Cloudflare Worker: $NEW_URL"
 if command -v termux-clipboard-set >/dev/null 2>&1; then
-  printf '%s' "$NEW_URL/watch#key=$(cat "$WATCH_KEY_FILE")" | termux-clipboard-set
-  echo "PRIVATE_WATCH_LINK_COPIED_TO_CLIPBOARD_NOT_PRINTED"
+  if printf '%s' "$NEW_URL/watch#key=$(cat "$WATCH_KEY_FILE")" | termux-clipboard-set; then
+    echo "PRIVATE_WATCH_LINK_COPIED_TO_CLIPBOARD_NOT_PRINTED"
+  else
+    echo "OPTIONAL_CLIPBOARD_UNAVAILABLE"
+  fi
 fi
 echo "AARIS_CF_SWITCH_SUCCESS_VERIFIED_AGENT_HANDSHAKE"
 echo "Unity Editor was not restarted. Bootstrap passed; verify a harmless terminal command before changing assets."
