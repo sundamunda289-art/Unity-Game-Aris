@@ -15,6 +15,36 @@ say "commit=$(git rev-parse --short HEAD)"
 say "tracked_dirty_count=$(git status --porcelain --untracked-files=no | wc -l)"
 test -f "$LOG" || { say "editor_log=missing"; exit 23; }
 if DISPLAY=:99 xdpyinfo >/dev/null 2>&1; then say "x11=ready"; else say "x11=missing"; exit 24; fi
+# A previous, assistant-generated UNTRACKED Editor-only pose-capture probe
+# was truncated in transport. Repair only when its exact CS1513 signature is
+# present, and back up that scratch source first. Never touch tracked game C#.
+python3 - <<'PY'
+from pathlib import Path
+import subprocess
+p=Path('Assets/AarisWorld/Editor/AarisPoseFrames.cs')
+log=Path('/tmp/aaris-codespaces/Editor.log')
+if not p.is_file():
+    print('POSE_SCRATCH=ABSENT')
+elif subprocess.run(['git','ls-files','--error-unmatch','--',str(p)],
+                    stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode == 0:
+    print('POSE_SCRATCH=TRACKED_DO_NOT_EDIT')
+elif 'AarisPoseFrames.cs(99,2): error CS1513' not in log.read_text(errors='replace'):
+    print('POSE_SCRATCH=NO_EXACT_COMPILER_SIGNATURE')
+else:
+    source=p.read_text()
+    balance=source.count('{')-source.count('}')
+    if source.count('class AarisPoseFrames')==1 and 1<=balance<=3:
+        backup=Path('/tmp/aaris-unity-recovery/AarisPoseFrames-before-brace-repair.cs')
+        backup.write_text(source)
+        p.write_text(source.rstrip()+'\n'+'}\n'*balance)
+        print('POSE_SCRATCH_BRACES_APPENDED='+str(balance))
+        print('POSE_SCRATCH_BACKUP=created')
+    else:
+        print('POSE_SCRATCH_UNEXPECTED_BALANCE='+str(balance))
+PY
+# Ask the original Editor to re-import this one new source file; if stalled,
+# the bounded restart below will take over without touching Library or LFS.
+DISPLAY=:99 xdotool key --clearmodifiers ctrl+r 2>/dev/null || true
 pid="$(pgrep -f '[E]ditor/Unity.*-projectPath /workspaces/Unity-Game-Aris' | head -1 || true)"
 age=$(($(date +%s)-$(stat -c %Y "$LOG")))
 say "editor_pid_present=$([[ -n "$pid" ]] && echo yes || echo no)"
