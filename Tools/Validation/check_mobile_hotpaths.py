@@ -123,8 +123,9 @@ def audit():
     assert "if (settled && legacyIdlePoseApplied) return;" in idle
     assert "legacyIdlePoseApplied = settled;" in idle
     assert idle.index("if (settled && legacyIdlePoseApplied) return;") < idle.index("gait += travelSpeed")
-    for transition in ("SetLegacyAerialPose(", "RestoreLegacyAerialPose(",
-                       "ResumeFromAerialDrop()", "ResetCameraAfterVehicle()", "ResetPlayer()"):
+    for transition in ("internal void SetLegacyAerialPose(", "internal void RestoreLegacyAerialPose(",
+                       "public void ResumeFromAerialDrop()", "public void ResetCameraAfterVehicle()",
+                       "private void ResetPlayer()"):
         start = motor.index(transition)
         end = motor.find("\n        }", start)
         assert "legacyIdlePoseApplied = false;" in motor[start:end], transition
