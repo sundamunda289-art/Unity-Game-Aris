@@ -24,6 +24,8 @@ namespace Aaris.MapReview
         private readonly Collider[] overlaps = new Collider[48];
         private AarisThirdPersonPlayer motor;
         private AarisOfflineDrop drop;
+        private AarisVehicleSession vehicle;
+        private float nextOptionalComponentRefresh;
         private GameObject ghost;
         private Renderer[] ghostRenderers;
         private Vector3 proposedPoint;
@@ -37,18 +39,32 @@ namespace Aaris.MapReview
         {
             get
             {
-                if (drop == null) drop = GetComponent<AarisOfflineDrop>();
-                var vehicle = GetComponent<AarisVehicleSession>();
-                return enabled && carriedWalls > 0 && (drop == null || drop.HasLanded) &&
+                if (!isActiveAndEnabled || carriedWalls <= 0) return false;
+                RefreshOptionalComponents();
+                return (drop == null || drop.HasLanded) &&
                     (vehicle == null || !vehicle.IsDriving);
             }
+        }
+
+        // CanUse is polled by mobile HUD and held placement. Avoid repeated
+        // native GetComponent calls for optional scripts on stripped prefabs.
+        // Force a fresh check immediately before committing a deployment.
+        private void RefreshOptionalComponents(bool force = false)
+        {
+            if (!force && Time.unscaledTime < nextOptionalComponentRefresh) return;
+            nextOptionalComponentRefresh = Time.unscaledTime + 1f;
+            if (drop == null) drop = GetComponent<AarisOfflineDrop>();
+            if (vehicle == null) vehicle = GetComponent<AarisVehicleSession>();
         }
 
         private void Awake()
         {
             motor = GetComponent<AarisThirdPersonPlayer>();
             drop = GetComponent<AarisOfflineDrop>();
+            vehicle = GetComponent<AarisVehicleSession>();
         }
+
+        private void OnDisable() => CancelAim();
 
         private void Start()
         {
@@ -86,6 +102,7 @@ namespace Aaris.MapReview
         public void ReleaseAndDeploy()
         {
             if (!aiming) return;
+            RefreshOptionalComponents(true); // Newly attached vehicle/drop state must veto deployment.
             // Do not trust the prior frame's preview: player and vehicles can move.
             UpdatePlacement();
             bool allowed = CanUse && placementValid && Time.time >= nextDeployment;
