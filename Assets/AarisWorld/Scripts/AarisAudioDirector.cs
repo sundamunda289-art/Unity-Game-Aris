@@ -22,6 +22,9 @@ namespace Aaris.MapReview
             public float At, Volume;
         }
         private readonly TimedCue[] scheduled = new TimedCue[16];
+        // Most frames have no due audio cue. Track the next deadline so a
+        // quiet player does not poll all 16 slots at every display refresh.
+        private float nextScheduledAt = float.PositiveInfinity;
         private static AarisAudioDirector instance;
         private static readonly string[] Keys =
         {
@@ -145,28 +148,49 @@ namespace Aaris.MapReview
             for (int i = 0; i < scheduled.Length; i++)
                 if (scheduled[i].Key == null) { empty = i; break; }
             // At high rates, drop only the oldest noncritical tail cue.
-            if (empty < 0)
+            // Recompute the deadline when replacing it: the old minimum
+            // might no longer be in the queue.
+            bool replacedOldest = empty < 0;
+            if (replacedOldest)
             {
                 empty = 0;
                 for (int i = 1; i < scheduled.Length; i++)
                     if (scheduled[i].At < scheduled[empty].At) empty = i;
             }
+            float at = Time.time + seconds;
             scheduled[empty] = new TimedCue
             {
-                Key = key, Position = point, At = Time.time + seconds,
-                Volume = volume
+                Key = key, Position = point, At = at, Volume = volume
             };
+            if (replacedOldest)
+            {
+                nextScheduledAt = float.PositiveInfinity;
+                for (int i = 0; i < scheduled.Length; i++)
+                    if (scheduled[i].Key != null && scheduled[i].At < nextScheduledAt)
+                        nextScheduledAt = scheduled[i].At;
+            }
+            else
+                nextScheduledAt = Mathf.Min(nextScheduledAt, at);
         }
 
         private void PlayScheduled()
         {
+            float now = Time.time;
+            if (now < nextScheduledAt) return;
+            float next = float.PositiveInfinity;
             for (int i = 0; i < scheduled.Length; i++)
             {
-                if (scheduled[i].Key == null || Time.time < scheduled[i].At) continue;
+                if (scheduled[i].Key == null) continue;
+                if (now < scheduled[i].At)
+                {
+                    next = Mathf.Min(next, scheduled[i].At);
+                    continue;
+                }
                 TimedCue cue = scheduled[i];
                 scheduled[i].Key = null;
                 OneShot(cue.Key, cue.Position, cue.Volume);
             }
+            nextScheduledAt = next;
         }
 
         /// <summary>Only successful weapon shots call this, never a held Fire button.</summary>
@@ -428,6 +452,7 @@ namespace Aaris.MapReview
             if (windLoop != null) windLoop.Stop();
             if (engineLoop != null) engineLoop.Stop();
             Array.Clear(scheduled, 0, scheduled.Length);
+            nextScheduledAt = float.PositiveInfinity;
             hasDropPhase = wasDriving = false;
             stepDistance = 0f;
         }
