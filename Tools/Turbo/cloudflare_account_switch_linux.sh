@@ -59,7 +59,7 @@ if [[ -n "${CLOUDFLARE_API_TOKEN:-}" || -n "${CLOUDFLARE_API_KEY:-}" ]]; then
   echo AARIS_CF_ENV_TOKEN_CONFLICT
   exit 26
 fi
-for name in worker.mjs watch_page.mjs wrangler.jsonc; do
+for name in worker.mjs watch_page.mjs wrangler.jsonc wrangler_auth_diag.py; do
   curl -fsSL --retry 3 --max-time 40 \
     "https://raw.githubusercontent.com/sundamunda289-art/Unity-Game-Aris/$AARIS_SOURCE_SHA/Tools/Turbo/$name" \
     -o "$TMP/$name"
@@ -75,7 +75,8 @@ if [[ "${AARIS_REUSE_LOGIN:-0}" != 1 ]]; then
   # Run Wrangler in a pseudo-TTY and flush every byte to a private,
   # session-specific 0600 log. Another authenticated SSH connection reads
   # that log immediately, even if this gh codespace ssh call buffers stdout.
-  python3 - "$AUTH_LOG" "${WRANGLER[@]}" login --device --browser=false <<'PYOAUTH'
+  OAUTH_STATUS=0
+  python3 - "$AUTH_LOG" "${WRANGLER[@]}" login --device --browser=false <<'PYOAUTH' || OAUTH_STATUS=$?
 import errno, os, pty, subprocess, sys
 log_path = sys.argv[1]
 master, slave = pty.openpty()
@@ -96,8 +97,18 @@ with open(log_path, "ab", buffering=0) as log:
 os.close(master)
 sys.exit(proc.wait())
 PYOAUTH
+  if ((OAUTH_STATUS!=0)); then
+    echo "AARIS_CF_DEVICE_LOGIN_COMMAND_FAILED_EXIT_$OAUTH_STATUS"
+    python3 "$TMP/wrangler_auth_diag.py" --log "$AUTH_LOG" || echo AARIS_CF_LOGIN_DIAGNOSTIC_UNAVAILABLE
+    exit "$OAUTH_STATUS"
+  fi
+  echo AARIS_CF_DEVICE_LOGIN_COMMAND_PASS
 fi
-"${WRANGLER[@]}" whoami --json > "$TMP/whoami.json"
+if ! "${WRANGLER[@]}" whoami --json > "$TMP/whoami.json"; then
+  echo AARIS_CF_WHOAMI_AFTER_LOGIN_FAILED
+  python3 "$TMP/wrangler_auth_diag.py" --latest || true
+  exit 34
+fi
 python3 - "$TMP/whoami.json" <<'PY'
 import json,sys
 obj=json.load(open(sys.argv[1]))
@@ -110,6 +121,7 @@ for account in accounts:
     if len(aid)==32 and all(x in "0123456789abcdef" for x in aid):
         print("AARIS_CF_ACCOUNT_OPTION="+aid+" "+str(label)[:60])
 PY
+echo AARIS_CF_WHOAMI_AUTHENTICATED
 mapfile -t IDS < <(python3 - "$TMP/whoami.json" <<'PY'
 import json,sys,re
 obj=json.load(open(sys.argv[1]))
