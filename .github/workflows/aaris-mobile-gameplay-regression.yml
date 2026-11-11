@@ -1,0 +1,69 @@
+name: Aaris Mobile Gameplay and Hotpath Regression
+
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/**'
+      - 'Assets/AarisWorld/Player/AarisPlayer.prefab'
+      - 'Assets/Resources/AarisCharacters/Primary/**'
+      - 'Packages/manifest.json'
+      - 'Tools/Validation/check_battle_hud.py'
+      - 'Tools/Validation/check_battle_hardening.py'
+      - 'Tools/Validation/check_mobile_hotpaths.py'
+      - '.github/workflows/aaris-mobile-gameplay-regression.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/AarisWorld/Scripts/**'
+      - 'Assets/AarisWorld/Player/AarisPlayer.prefab'
+      - 'Assets/Resources/AarisCharacters/Primary/**'
+      - 'Packages/manifest.json'
+      - 'Tools/Validation/check_battle_hud.py'
+      - 'Tools/Validation/check_battle_hardening.py'
+      - 'Tools/Validation/check_mobile_hotpaths.py'
+      - '.github/workflows/aaris-mobile-gameplay-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aaris-mobile-gameplay-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  combat-and-mobile-hotpaths:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install C# parser and GUID audit dependencies
+        run: python -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp 'PyYAML>=6,<7'
+      - name: Verify fire input, player movement and tactical gameplay
+        run: |
+          set -euo pipefail
+          python Tools/Validation/check_battle_hud.py
+          python Tools/Validation/check_mobile_hotpaths.py
+          python Tools/Validation/check_battle_hardening.py
+      - name: Parse every saved AarisWorld C# gameplay script
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from tree_sitter import Language, Parser
+          import tree_sitter_c_sharp
+
+          parser = Parser(Language(tree_sitter_c_sharp.language()))
+          sources = sorted(Path("Assets/AarisWorld/Scripts").rglob("*.cs"))
+          assert sources, "Missing gameplay C# source files"
+          broken = [str(path) for path in sources
+                    if parser.parse(path.read_bytes()).root_node.has_error]
+          assert not broken, "Invalid C# syntax: " + ", ".join(broken)
+          print(f"C# source syntax passed: {len(sources)} scripts")
+          print("Static regression only; native Unity compilation, Play Mode and device FPS require separate verification.")
+          PY
