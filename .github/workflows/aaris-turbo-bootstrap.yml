@@ -14,6 +14,7 @@ on:
       - ".github/workflows/aaris-turbo-bootstrap.yml"
       - "Tools/Turbo/**"
       - "Tools/Codespaces/termux_switch.sh"
+      - "Tools/Codespaces/termux_cloudflare_switch.sh"
 permissions:
   contents: read
 env:
@@ -46,7 +47,8 @@ jobs:
           config=json.load(open('Tools/Turbo/wrangler.jsonc'))
           assert config['main']=='./worker.mjs'
           assert config['durable_objects']['bindings']==[{'name':'MACHINES','class_name':'TurboMachine'}]
-          assert config['migrations'][0]['new_sqlite_classes']==['TurboMachine']
+          assert config['exports']['TurboMachine']=={'type':'durable-object','storage':'sqlite'}
+          assert 'migrations' not in config
           assert 'account_id' not in config
           print('AARIS_CF_SWITCH_DEPLOY_CONFIG_PASS')
           PYCONFIG
@@ -84,20 +86,26 @@ jobs:
           STATUS="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' \
             -X POST "$URL/bootstrap" -H 'Authorization: Bearer invalid' \
             -H 'Content-Type: application/json' -d '{"machine":"aaris-turbo-test"}')"
-          test "$STATUS" = 401 || { echo "TURBO_UNAUTHORIZED_BOOTSTRAP_NOT_REJECTED"; exit 17; }
+          [[ "$STATUS" = 401 || "$STATUS" = 403 ]] || { echo "TURBO_UNAUTHORIZED_BOOTSTRAP_NOT_REJECTED"; exit 17; }
           STATUS="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' \
             -X POST "$URL/agent/aaris-turbo-test/next" -H 'Content-Type: application/json' -d '{}')"
-          test "$STATUS" = 401 || { echo "TURBO_UNAUTHORIZED_AGENT_NOT_REJECTED"; exit 18; }
+          [[ "$STATUS" = 401 || "$STATUS" = 403 ]] || { echo "TURBO_UNAUTHORIZED_AGENT_NOT_REJECTED"; exit 18; }
+          # 403 may be a Cloudflare edge block; it rejects anonymous requests
+          # but is NOT proof that an authenticated agent can get through.
           # The single-endpoint fallback must never accept anonymous shell calls.
           STATUS="$(curl -sS --max-time 15 -o "$RUNNER_TEMP/turbo-denied.json" -w '%{http_code}' \
             "$URL/health" -H 'X-Aaris-Op: ping' -H 'X-Aaris-Machine: aaris-turbo-test' \
             -H 'X-Aaris-Token: invalid')"
-          test "$STATUS" = 401 || { echo "TURBO_FALLBACK_UNAUTHENTICATED"; exit 19; }
-          python3 - "$RUNNER_TEMP/turbo-denied.json" <<'PY'
+          [[ "$STATUS" = 401 || "$STATUS" = 403 ]] || { echo "TURBO_FALLBACK_UNAUTHENTICATED"; exit 19; }
+          if test "$STATUS" = 401; then
+            python3 - "$RUNNER_TEMP/turbo-denied.json" <<'PY'
           import json,sys
           assert json.load(open(sys.argv[1])).get('error') == 'unauthorized'
           print('TURBO_FALLBACK_AUTH_REJECTION_PASS')
           PY
+          else
+            echo 'TURBO_EDGE_403_ANONYMOUS_REQUEST_BLOCKED'
+          fi
           echo "TURBO_LIVE_CLOUDFLARE_AUTH_REJECTION_PASS"
   bootstrap:
     concurrency:
