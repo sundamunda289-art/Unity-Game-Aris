@@ -31,3 +31,106 @@ jobs:
         run: |
           echo 'Static OBJ, GUID and API presence checks completed.'
           echo 'A licensed Unity compile, real native Play Mode and device FPS tests are still required.'
+
+  # Owner-authorized in-place change in the SAME Codespace workspace only.
+  # No Unity Editor launch, no worktree, no map/scene writes.
+  unity-v3-inplace:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'feat/drop-aircraft-realism-fps-20261110'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: aaris-exact-open-editor-v3-upgrade
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+      EXACT_CODESPACE: aaris-ai-ubuntu-fallback-2-vp5r9xx4rwv6c6pq7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          lfs: false
+      - name: Locate the exact running owner Codespace without starting or replacing it
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" || { echo 'AARIS_V3_CODESPACE_PAT_UNAVAILABLE'; exit 12; }
+          gh codespace list -R "$GITHUB_REPOSITORY" --json name,state --limit 30 > "$RUNNER_TEMP/owner-machines-private.json"
+          python3 - <<'PYCHECK'
+          import json,os,sys
+          from pathlib import Path
+          items=json.loads((Path(os.environ['RUNNER_TEMP'])/'owner-machines-private.json').read_text())
+          exact=[x for x in items if x.get('name')==os.environ['EXACT_CODESPACE']]
+          if len(exact)!=1 or exact[0].get('state')!='Available':
+              print('AARIS_V3_EXACT_EXISTING_CODESPACE_NOT_AVAILABLE')
+              sys.exit(13)
+          print('AARIS_V3_EXISTING_CODESPACE_AVAILABLE')
+          PYCHECK
+      - name: Classify the existing Unity Editor launch failure without exposing private logs
+        run: |
+          set -euo pipefail
+          mkdir -p safe-report
+          if timeout 95 gh codespace ssh -c "$EXACT_CODESPACE" -- 'bash -s -- editor_diag' \
+            < Tools/Codespaces/remote.sh \
+            > safe-report/editor-diagnostic.txt 2> "$RUNNER_TEMP/private-diagnostic-ssh.log"; then
+            grep -E '^AARIS_EDITOR_' safe-report/editor-diagnostic.txt || true
+          else
+            echo 'AARIS_V3_EDITOR_DIAGNOSTIC_UNAVAILABLE'
+          fi
+      - name: Upgrade only the aircraft model and drop controller in the existing Codespace project
+        run: |
+          set -euo pipefail
+          mkdir -p safe-report
+          # This is the reviewed script from this SAME PR, sent directly to
+          # the user's existing Codespace. Never launch a Unity session.
+          if ! timeout 690 gh codespace ssh -c "$EXACT_CODESPACE" -- 'bash -s' \
+            < Tools/Codespaces/apply_open_editor_v3.sh \
+            > safe-report/safe-status.txt 2> "$RUNNER_TEMP/private-ssh-error.log"; then
+            grep -E '^AARIS_V3_' safe-report/safe-status.txt || true
+            echo 'AARIS_V3_SAFE_APPLY_BLOCKED_OR_FAILED'
+            exit 14
+          fi
+          grep -E '^AARIS_V3_' safe-report/safe-status.txt || true
+          grep -Eq '^AARIS_V3_EXISTING_CODESPACE_PROJECT_UPDATED$|^AARIS_V3_LIVE_PROJECT_ALREADY_CURRENT$' safe-report/safe-status.txt
+          echo 'AARIS_V3_EXISTING_CODESPACE_SOURCE_APPLIED_NO_EDITOR_LAUNCH'
+      - name: Diagnose existing Unity launch crash without launching another Editor
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p safe-report
+          if ! timeout 95 gh codespace ssh -c "$EXACT_CODESPACE" -- 'bash -s' \
+            < Tools/Codespaces/classify_existing_unity_crash.sh \
+            > safe-report/crash-classification.txt 2> "$RUNNER_TEMP/crash-private-ssh.log"; then
+            echo 'AARIS_GUI_CRASH_CLASSIFIER_UNAVAILABLE'
+            exit 17
+          fi
+          grep -E '^AARIS_GUI_DIAG_' safe-report/crash-classification.txt || true
+      - name: Isolate installed Unity native crash inside SAME Codespace temporary directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p safe-report
+          if ! timeout 720 gh codespace ssh -c "$EXACT_CODESPACE" -- 'bash -s' \
+            < Tools/Codespaces/editor_isolation_probe.sh \
+            > safe-report/isolation-status.txt 2> "$RUNNER_TEMP/isolation-private-ssh.log"; then
+            grep -E '^EDITOR_ISOLATE_' safe-report/isolation-status.txt || true
+            echo 'AARIS_GUI_ISOLATION_INCONCLUSIVE'
+            exit 18
+          fi
+          grep -E '^EDITOR_ISOLATE_' safe-report/isolation-status.txt || true
+          echo 'AARIS_GUI_ISOLATION_COMPLETED_ON_SAME_CODESPACE'
+      - name: Save only sanitized state, never backups, credentials or raw Unity logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-v3-same-open-editor-result
+          path: |
+            safe-report/safe-status.txt
+            safe-report/editor-diagnostic.txt
+            safe-report/crash-classification.txt
+            safe-report/isolation-status.txt
+          if-no-files-found: warn
+          retention-days: 2

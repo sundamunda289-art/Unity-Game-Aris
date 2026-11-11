@@ -80,7 +80,7 @@ PY
     ;;
   apply_gameplay)
     # Owner-authorized update of the EXISTING project in place. No worktree,
-    # no checkout/reset/stash and no changes to the native scene or graphics.
+    # no checkout/reset/stash and no changes to the native map scene or terrain.
     if pgrep -f '[E]ditor/Unity.*-projectPath' >/dev/null 2>&1; then
       echo 'AARIS_GAMEPLAY_INPLACE_EDITOR_BUSY'
       exit 58
@@ -156,7 +156,7 @@ required = {
     "Assets/AarisWorld/Scripts/AarisEquippedGun.cs": b"node.GetComponents(damageScratch)",
     "Assets/AarisWorld/Scripts/AarisMobileRuntime.cs": b"AARIS_TERRAIN_RENDER_AUDIT",
     "Assets/AarisWorld/Editor/AarisCodespaceAndroidBuild.cs": b"ANDROID_TERRAIN_PAINT_LAYERS_MISSING",
-    "Assets/Resources/AarisDrop/CargoPlane.obj": b"o Aaris_CargoPlane_Transport_V2",
+    "Assets/Resources/AarisDrop/CargoPlane.obj": b"o Aaris_TacticalTransport_V3",
 }
 for name, marker in required.items():
     if marker not in after[name]:

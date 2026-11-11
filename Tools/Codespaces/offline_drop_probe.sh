@@ -10,6 +10,7 @@ MODE="${1:-main}"
 case "$MODE" in
   main) FEATURE=main ;;
   hud_review) FEATURE=fix/android-ugui-shader-parachute-20261110 ;;
+  v3_review) FEATURE=feat/drop-aircraft-realism-fps-20261110 ;;
   *) echo AARIS_DROP_REVIEW_MODE_NOT_ALLOWED; exit 2 ;;
 esac
 EDITOR="$HOME/.local/share/aaris-unity-editors/6000.3.26f1/Editor/Unity"
@@ -53,10 +54,11 @@ fi
 # Copy ALL real working-tree tracked edits from the existing Codespace to temp,
 # except protected player/probe scripts. Never change the source or its git index.
 # Dot files, symlinks, credentials, Library, Temp, hidden secret dirs are excluded.
-if test "$MODE" = hud_review; then
+if test "$MODE" = hud_review || test "$MODE" = v3_review; then
   # Exactly the published reviewed player/HUD/parachute code, never a
   # local tracked overlay from an unrelated GUI session.
   echo AARIS_DROP_REVIEW_IMMUTABLE_REF_NO_WORKSPACE_OVERLAY
+  echo AARIS_DROP_REVIEW_FEATURE="$FEATURE"
 else
 python3 - "$SOURCE" "$PROJECT" "$SHA" <<'PY'
 import os, subprocess, sys

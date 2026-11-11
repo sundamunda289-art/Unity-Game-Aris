@@ -172,9 +172,14 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (phase == DropPhase.Landed || view == null) return;
-            float dt = Mathf.Clamp(Time.deltaTime, 0f, 0.11f);
+            // Preserve elapsed motion during a 10-15 FPS hitch; bounded fixed-size
+            // airborne substeps below keep the swept capsule collision-safe.
+            float dt = Mathf.Clamp(Time.deltaTime, 0f, 0.20f);
             if (dt <= 0f) return;
             ReadLookInput();
+            // The propellers must keep rotating after ejection, while the
+            // aircraft flies away instead of hanging motionless above the player.
+            AnimatePlaneRotors();
             if (phase == DropPhase.InPlane)
             {
                 flightProgress = Mathf.Clamp01(flightProgress + dt / pathDuration);
@@ -183,20 +188,12 @@ namespace Aaris.MapReview
                     plane.transform.position = Vector3.Lerp(pathStart, pathEnd, flightProgress);
                     transform.position = plane.transform.position + Vector3.down * 6f;
                 }
-                // One bounded angle accumulator drives all four shared rotor meshes.
-                // Avoid stacking Transform.Rotate deltas or creating per-frame art.
-                propellerAngle = Mathf.Repeat(propellerAngle +
-                    1150f * Mathf.Min(Time.unscaledDeltaTime, .05f), 360f);
-                if (propellers != null)
-                    for (int i = 0; i < propellers.Length; i++)
-                        if (propellers[i] != null)
-                            propellers[i].localRotation = Quaternion.Euler(0f, 0f,
-                                (i & 1) == 0 ? propellerAngle : -propellerAngle);
                 if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.F)) OnAction();
                 if (flightProgress >= 0.95f) Eject();
             }
             else
             {
+                AdvanceDepartingAircraft(dt);
                 // At 54 m/s a tenth of a second is 5.4 m. Deployment has a
                 // much larger margin, and touchdown always checks the capsule.
                 bool sampleHeight = phase == DropPhase.Freefall
@@ -210,12 +207,54 @@ namespace Aaris.MapReview
                     if (sampleHeight && (!reliableHeight || height <= autoDeployHeight))
                         canopyRequested = true;
                     if (canopyRequested) OpenCanopy();
-                    if (phase == DropPhase.Freefall) UpdateFreefall(dt);
                 }
-                if (phase == DropPhase.Opening || phase == DropPhase.Gliding)
-                    UpdateGlide(dt);
+                if (phase == DropPhase.Freefall || phase == DropPhase.Opening ||
+                    phase == DropPhase.Gliding)
+                    SimulateAirborne(dt);
                 if (sampleHeight && reliableHeight && hud != null)
                     hud.SetTelemetry(height, Mathf.Abs(downwardSpeed) * 3.6f, phase);
+            }
+        }
+
+        private void AnimatePlaneRotors()
+        {
+            if (plane == null || propellers == null) return;
+            propellerAngle = Mathf.Repeat(propellerAngle +
+                1150f * Mathf.Min(Time.unscaledDeltaTime, .05f), 360f);
+            for (int i = 0; i < propellers.Length; i++)
+                if (propellers[i] != null)
+                    propellers[i].localRotation = Quaternion.Euler(0f, 0f,
+                        (i & 1) == 0 ? propellerAngle : -propellerAngle);
+        }
+
+        private void AdvanceDepartingAircraft(float dt)
+        {
+            if (plane == null) return;
+            if (Time.time - airborneSince >= 4.5f)
+            {
+                Destroy(plane);
+                plane = null;
+                propellers = null;
+                return;
+            }
+            // Continued forward flight avoids the frozen plane left behind
+            // by the old delayed Destroy call. One transform update, no physics.
+            plane.transform.position += plane.transform.forward * planeSpeed * dt;
+        }
+
+        private void SimulateAirborne(float elapsed)
+        {
+            // At 60 FPS this executes once. Below 20 FPS it divides large
+            // motions into bounded capsule sweeps, without shortening game time.
+            const float MaxSweepSeconds = 0.05f;
+            int steps = Mathf.Clamp(Mathf.CeilToInt(elapsed / MaxSweepSeconds), 1, 4);
+            float stepDt = elapsed / steps;
+            for (int i = 0; i < steps; i++)
+            {
+                if (phase == DropPhase.Freefall) UpdateFreefall(stepDt);
+                else if (phase == DropPhase.Opening || phase == DropPhase.Gliding)
+                    UpdateGlide(stepDt);
+                else break; // Landed; never move another capsule step.
             }
         }
 
@@ -386,11 +425,13 @@ namespace Aaris.MapReview
             capsule.stepOffset = 0f;
             capsule.enabled = true;
             downwardSpeed = -3f;
-            horizontalVelocity = Vector3.zero;
+            // Preserve some aircraft momentum for a convincing, gradual
+            // transition into steerable freefall; the motor brakes smoothly.
+            horizontalVelocity = plane.transform.forward *
+                Mathf.Min(freefallForwardSpeed, planeSpeed * 0.55f);
             airborneSince = Time.time;
             if (hud != null) hud.SetAction("OPEN", true);
-            if (plane != null) Destroy(plane, 4.5f);
-            plane = null;
+            // Keep the aircraft alive until it has genuinely flown out of view.
         }
 
         private void OpenCanopy()
@@ -497,7 +538,11 @@ namespace Aaris.MapReview
                     + Vector3.up * (phase == DropPhase.Freefall ? 3.2f : 4.6f);
                 focus = transform.position + Vector3.up * 2.8f;
             }
-            pos = CameraSafePosition(focus, pos);
+            // At the authored 420m flight altitude the chase camera cannot
+            // hit the map. Skip one broadphase sphere sweep each aircraft frame;
+            // preserve full camera-occlusion testing during descent/landing.
+            if (phase != DropPhase.InPlane)
+                pos = CameraSafePosition(focus, pos);
             view.transform.position = Vector3.Lerp(view.transform.position,
                 pos, 1f - Mathf.Exp(-7f * Time.deltaTime));
             view.transform.rotation = Quaternion.Slerp(view.transform.rotation,
