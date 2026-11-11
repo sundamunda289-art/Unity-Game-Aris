@@ -312,6 +312,30 @@ def audit():
         "Duplicate Gloo Wall OnDisable breaks Unity compilation"
     )
 
+    # Gloo preview's blue/red color depends only on placement validity.
+    # Sustained aiming should not resend the same property block on each frame.
+    placement = gloo[gloo.index("private void UpdatePlacement()"):
+                     gloo.index("private float FindOpenDistance(")]
+    tint_guard = "if (!ghostTintInitialized || ghostTintValid != placementValid)"
+    assert tint_guard in placement
+    assert placement.count("AarisGlooWallVisuals.Tint(ghostRenderers") == 1
+    assert placement.index(tint_guard) < placement.index(
+        "AarisGlooWallVisuals.Tint(ghostRenderers")
+    assert (placement.index("AarisGlooWallVisuals.Tint(ghostRenderers")
+            < placement.index("ghostTintValid = placementValid;")
+            < placement.index("ghostTintInitialized = true;"))
+    for fps in (30, 60, 120):
+        tint_initialized = False
+        last_valid = False
+        updates = 0
+        # 4 seconds of aiming, exactly three visible color states.
+        for valid in [False] * fps + [True] * (2 * fps) + [False] * fps:
+            if not tint_initialized or last_valid != valid:
+                updates += 1
+                last_valid = valid
+                tint_initialized = True
+        assert updates == 3, (fps, updates)
+
     # An already-converged audio loop must make zero native volume/pitch
     # writes. Changed targets preserve MoveTowards's bounded fades and snap.
     loop = audio[audio.index("private static void AdjustLoop("):
