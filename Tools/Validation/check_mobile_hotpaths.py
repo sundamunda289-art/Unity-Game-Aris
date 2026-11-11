@@ -212,8 +212,7 @@ def audit():
     assert "GetComponent<" not in can_use
     assert "RefreshOptionalComponents();" in can_use
     assert "if (!isActiveAndEnabled || carriedWalls <= 0) return false;" in can_use
-    assert "Time.unscaledTime >= nextOptionalComponentRefresh" not in refresh or \
-        "Time.unscaledTime < nextOptionalComponentRefresh" in refresh
+    assert "if (!force && Time.unscaledTime < nextOptionalComponentRefresh) return;" in refresh
     assert "nextOptionalComponentRefresh = Time.unscaledTime + 1f;" in refresh
     assert refresh.count("GetComponent<AarisOfflineDrop>()") == 1
     assert refresh.count("GetComponent<AarisVehicleSession>()") == 1
