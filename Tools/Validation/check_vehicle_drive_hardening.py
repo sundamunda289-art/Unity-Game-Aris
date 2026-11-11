@@ -59,6 +59,33 @@ def test():
     assert "linearVelocity =" not in motor
     assert "MoveRotation(" not in motor
 
+    # Skip only truly sleeping, unoccupied cars. Parking brakes must be
+    # initialized even if Unity creates the body in a sleeping state, and
+    # wheel visuals must refresh on wake/driver entry or after re-enable.
+    create_wheel = motor.split("private void CreateWheel(", 1)[1].split(
+        "public bool AttachWheelModels", 1)[0]
+    fixed_update = motor.split("private void FixedUpdate()", 1)[1].split(
+        "private void ApplyAntiRoll(", 1)[0]
+    late_update = motor.split("private void LateUpdate()", 1)[1].split(
+        "public bool TryTakeDriver(", 1)[0]
+    assert "wheel.brakeTorque = ParkingBrakeTorque;" in create_wheel
+    assert create_wheel.index("wheel.brakeTorque = ParkingBrakeTorque;") < (
+        create_wheel.index("wheels[index] = wheel;"))
+    assert "if (driver == null && body.IsSleeping()) return;" in fixed_update
+    assert fixed_update.index("if (driver == null && body.IsSleeping()) return;") < (
+        fixed_update.index("float speed = SpeedMetresPerSecond;"))
+    assert "bool parkedSleeping = driver == null && body.IsSleeping();" in late_update
+    assert "if (parkedSleeping && sleepingWheelPoseCurrent) return;" in late_update
+    assert late_update.index("SyncVisibleWheels();") < (
+        late_update.index("sleepingWheelPoseCurrent = parkedSleeping;"))
+    assert "private void OnEnable() => sleepingWheelPoseCurrent = false;" in late_update
+    for occupied in (False, True):
+        for sleeping in (False, True):
+            skip_physics = not occupied and sleeping
+            assert skip_physics == (not occupied and sleeping)
+            if occupied or not sleeping:
+                assert not skip_physics, "Active, waking or driven car was throttled"
+
     # Anti-roll is based on contact-weight travel, not a guaranteed
     # no-flip hack; do not apply when both tyres are airborne.
     assert "private void ApplyAntiRoll(int leftIndex, int rightIndex)" in motor
@@ -149,7 +176,7 @@ def test():
         assert abs(value-(1-math.exp(-5)))<1e-8
 
     print("PASS: car exit while sliding/spinning/airborne, service vs parking brakes, "
-          "axle anti-roll, camera hit order, 4-arrow cleanup and 15-120 FPS maths.")
+          "axle anti-roll, sleeping-car wheel gating, camera hit order, 4-arrow cleanup and 15-120 FPS maths.")
     print("LIMIT: Unity WheelCollider solver, collision motion and phone GPU not exercised.")
 
 if __name__ == "__main__":
