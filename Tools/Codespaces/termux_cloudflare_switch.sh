@@ -61,6 +61,8 @@ SOURCE_SHA="$(GH_CONFIG_DIR="$MASTER" gh api "/repos/$REPO/git/ref/heads/main" -
 SRC="https://raw.githubusercontent.com/$REPO/$SOURCE_SHA/Tools/Turbo"
 curl -fsSL --retry 3 "$SRC/cloudflare_account_switch_linux.sh" -o "$TMP/remote.sh"
 curl -fsSL --retry 3 "$SRC/wrangler.jsonc" -o "$TMP/wrangler.jsonc"
+curl -fsSL --retry 3 "$SRC/device_oauth_parse.py" -o "$TMP/device_oauth_parse.py"
+python3 "$TMP/device_oauth_parse.py" --selftest
 bash -n "$TMP/remote.sh"
 python3 -m json.tool "$TMP/wrangler.jsonc" >/dev/null 2>&1 || jq empty "$TMP/wrangler.jsonc"
 WATCH_KEY_FILE="$BASE/cloudflare-watch.key"
@@ -80,11 +82,13 @@ OLD_URL="$(GH_CONFIG_DIR="$MASTER" gh variable get AARIS_BROKER_URL -R "$REPO" 2
 [[ "$OLD_URL" =~ ^https://[a-z0-9.-]+\.workers\.dev$ ]] || { echo "INVALID_OLD_BROKER_URL"; exit 9; }
 LOGIN_AGAIN=0
 ACCOUNT=""
+SESSION_ID="$(openssl rand -hex 8)"
+[[ "$SESSION_ID" =~ ^[a-f0-9]{16}$ ]] || { echo AARIS_CF_INVALID_SESSION_ID; exit 33; }
 for ATTEMPT in 1 2; do
   : > "$TMP/deploy.log"
   set +e
   GH_CONFIG_DIR="$CODESPACE_AUTH" gh codespace ssh -c "$MACHINE" -- \
-    "AARIS_SOURCE_SHA=$SOURCE_SHA AARIS_WATCH_HASH=$WATCH_HASH AARIS_REUSE_LOGIN=$LOGIN_AGAIN AARIS_CF_ACCOUNT_ID=$ACCOUNT bash -s" \
+    "AARIS_SOURCE_SHA=$SOURCE_SHA AARIS_WATCH_HASH=$WATCH_HASH AARIS_REUSE_LOGIN=$LOGIN_AGAIN AARIS_CF_ACCOUNT_ID=$ACCOUNT AARIS_CF_SESSION_ID=$SESSION_ID bash -s" \
     < "$TMP/remote.sh" > "$TMP/deploy.log" 2>&1 &
   SSH_PID=$!
   set -e
@@ -92,18 +96,17 @@ for ATTEMPT in 1 2; do
   echo 'CLOUDFLARE_STARTING_REMOTE_WRANGLER_LOGIN'
   for LOGIN_CHECK in $(seq 1 900); do
     if ! kill -0 "$SSH_PID" 2>/dev/null; then break; fi
-    if ((LOGIN_AGAIN==0 && OPENED==0)); then
-      # Open the actual official verification URL Wrangler prints.
-      LOGIN_LINK="$(grep -Eo 'https://dash\.cloudflare\.com/oauth2/device(/verify)?(\?user_code=[A-Za-z0-9_-]+)?' "$TMP/deploy.log" | tail -n 1 || true)"
-      DEVICE_CODE="$(sed -n '/and enter the code:/{n;s/^[[:space:]]*//;s/[[:space:]]*$//;p;}' "$TMP/deploy.log" | tail -n 1)"
-      if [[ "$LOGIN_LINK" == *'?user_code='* ]]; then
-        DEVICE_CODE="$(printf '%s' "$LOGIN_LINK" | sed 's/^.*user_code=//')"
-      fi
-      if [[ "$DEVICE_CODE" =~ ^[A-Za-z0-9_-]{6,20}$ && "$LOGIN_LINK" =~ ^https://dash\.cloudflare\.com/oauth2/device(/verify)?(\?user_code=[A-Za-z0-9_-]+)?$ ]]; then
-        if [[ "$LOGIN_LINK" == 'https://dash.cloudflare.com/oauth2/device' ]]; then
-          LOGIN_LINK="https://dash.cloudflare.com/oauth2/device?user_code=$DEVICE_CODE"
-        fi
-        echo 'CLOUDFLARE_LOGIN_READY: approve this device code now'
+    if ((LOGIN_AGAIN==0 && OPENED==0 && LOGIN_CHECK % 8 == 1)); then
+      # Poll the Codespace's *private* PTY log using a separate authenticated
+      # SSH session; the long-lived remote deployment SSH may buffer output.
+      # SESSION_ID is random and validated; never poll arbitrary remote paths.
+      timeout 18 env GH_CONFIG_DIR="$CODESPACE_AUTH" gh codespace ssh -c "$MACHINE" -- \
+        "cat \$HOME/.config/aaris-turbo/cf-login-$SESSION_ID.log 2>/dev/null || true" \
+        > "$TMP/device-live.log" 2>/dev/null || true
+      DETAILS="$(python3 "$TMP/device_oauth_parse.py" "$TMP/device-live.log" || true)"
+      if [[ -n "$DETAILS" ]]; then
+        IFS=$'\t' read -r LOGIN_LINK DEVICE_CODE <<< "$DETAILS"
+        echo 'CLOUDFLARE_LOGIN_READY — approve within 5 minutes'
         echo "Device code: $DEVICE_CODE"
         echo "Official URL: $LOGIN_LINK"
         if command -v termux-clipboard-set >/dev/null 2>&1; then
@@ -113,12 +116,18 @@ for ATTEMPT in 1 2; do
         fi
         if command -v termux-open-url >/dev/null 2>&1; then
           termux-open-url "$LOGIN_LINK" || true
+        else
+          echo 'Open the official URL above and enter the code.'
         fi
         OPENED=1
       fi
     fi
     if ((LOGIN_CHECK % 30 == 0)); then
-      echo 'CLOUDFLARE_REMOTE_LOGIN_OR_DEPLOY_IN_PROGRESS'
+      if ((OPENED==1)); then
+        echo 'CLOUDFLARE_AUTHORIZATION_OR_DEPLOYMENT_IN_PROGRESS'
+      else
+        echo 'CLOUDFLARE_PREPARING_OR_FETCHING_DEVICE_CODE'
+      fi
     fi
     sleep 1
   done
