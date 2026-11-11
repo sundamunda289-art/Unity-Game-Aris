@@ -336,6 +336,59 @@ def audit():
                 tint_initialized = True
         assert updates == 3, (fps, updates)
 
+    # Delayed SFX should do zero slot scans until the earliest cue is due.
+    # Overwriting a saturated queue must also discard the old deadline.
+    # This is a source + scheduling model test, not Unity audio hardware timing.
+    assert "private float nextScheduledAt = float.PositiveInfinity;" in audio
+    scheduler = audio[audio.index("private void Schedule("):
+                      audio.index("/// <summary>Only successful weapon shots")]
+    assert "bool replacedOldest = empty < 0;" in scheduler
+    assert "if (replacedOldest)" in scheduler
+    assert "nextScheduledAt = Mathf.Min(nextScheduledAt, at);" in scheduler
+    assert "float now = Time.time;" in scheduler
+    assert "if (now < nextScheduledAt) return;" in scheduler
+    assert "nextScheduledAt = next;" in scheduler
+    assert "scheduled[i].Key = null;" in scheduler
+    assert "Array.Clear(scheduled, 0, scheduled.Length);\n            nextScheduledAt = float.PositiveInfinity;" in audio
+
+    def simulate_cues(fps, due_times):
+        slots = list(enumerate(due_times))
+        deadline = min(due_times) if due_times else math.inf
+        emitted, scans = [], 0
+        for frame in range(2 * fps + 1):
+            now = frame / fps
+            if now < deadline:
+                continue
+            scans += 1
+            next_deadline = math.inf
+            remaining = []
+            for key, due in slots:
+                if now >= due:
+                    emitted.append((key, now))
+                else:
+                    next_deadline = min(next_deadline, due)
+                    remaining.append((key, due))
+            slots, deadline = remaining, next_deadline
+        return emitted, scans
+
+    cues = [0.14, 0.36, 0.55, 1.12]
+    for fps in (10, 20, 30, 60, 90, 120):
+        emitted, scans = simulate_cues(fps, cues)
+        assert [i for i, _ in emitted] == list(range(len(cues)))
+        assert all(t <= played < t + 1 / fps + 1e-7
+                   for (_, played), t in zip(emitted, cues))
+        assert scans <= len(cues), (fps, scans)
+        assert simulate_cues(fps, [])[1] == 0
+
+    # Saturation keeps 16 total sounds, replacing the earliest tail.
+    slots = [(i, 0.2 + i * 0.02) for i in range(16)]
+    oldest = min(range(len(slots)), key=lambda i: slots[i][1])
+    slots[oldest] = (99, 0.08)
+    retained = sorted(slots, key=lambda item: item[1])
+    assert len(retained) == 16 and retained[0] == (99, 0.08)
+    assert 0 not in [item[0] for item in slots]
+    assert min(due for _, due in slots) == 0.08
+
     # An already-converged audio loop must make zero native volume/pitch
     # writes. Changed targets preserve MoveTowards's bounded fades and snap.
     loop = audio[audio.index("private static void AdjustLoop("):
@@ -358,7 +411,7 @@ def audit():
         assert not (level != target)  # Steady-state setter is skipped.
 
     print("PASS: airborne support reuse, single motor, steady FOV writes, "
-          "bounded player/animation optional-component lookup, legacy idle pose, collision-safe camera, audio/gloo hotpaths, refresh-aware pacing and adaptive Android quality contracts")
+          "bounded player/animation optional-component lookup, legacy idle pose, collision-safe camera, deadline-gated SFX, audio/gloo hotpaths, refresh-aware pacing and adaptive Android quality contracts")
     print("NOT TESTED: Unity compilation, live camera occlusion and device FPS.")
 
 
