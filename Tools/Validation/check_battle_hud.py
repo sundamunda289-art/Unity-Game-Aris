@@ -73,6 +73,19 @@ def check() -> None:
     assert "if (instance == this) instance = null;" in on_disable
     assert hud.count("Add(Action.") == 5
 
+    # The optional ADS/PICK/DROP/RELOAD canvas has its own touch-capture
+    # singleton. A disable/re-enable cycle must restore it too, otherwise
+    # touches on those controls leak into camera movement.
+    weapon_hud = text("AarisWeaponHUD.cs")
+    weapon_enable = weapon_hud[weapon_hud.index("private void OnEnable()"):
+                               weapon_hud.index("private void OnDisable()")]
+    weapon_disable = weapon_hud[weapon_hud.index("private void OnDisable()"):]
+    assert "if (canvas == null || (instance != null && instance != this)) return;" in weapon_enable
+    assert "instance = this;" in weapon_enable
+    assert "UpdateArea(true);" in weapon_enable
+    assert "if (instance == this) instance = null;" in weapon_disable
+    assert "RectTransformUtility.RectangleContainsScreenPoint" in weapon_hud
+
 
     # A single CharacterController is moved by the original, terrain-checked
     # saved player script. Movement or gravity can never be applied twice.
