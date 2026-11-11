@@ -219,6 +219,27 @@ class WindowlessHousesTest(unittest.TestCase):
         self.assertIn("Undo.DestroyObjectImmediate(lod2.gameObject)", baker)
         self.assertIn("houses.Length != 47", baker)
 
+    def test_runtime_expansion_home_scope_is_audited_separately(self):
+        import json
+        plan = json.loads((ROOT / "Assets/Resources/AarisExpansion/"
+                           "WorldExpansionPlan.json").read_text())
+        self.assertEqual(plan["siteCount"], len(plan["sites"]))
+        self.assertEqual(plan["siteCount"], 21)
+        houses = [site for site in plan["sites"]
+                  if site["prefabKey"] != "watchtower"]
+        watches = [site for site in plan["sites"]
+                   if site["prefabKey"] == "watchtower"]
+        dynamic = [site for site in houses if site.get("interactive")]
+        self.assertEqual(len(houses), 16)
+        self.assertEqual(len(watches), 5)
+        self.assertEqual(len(dynamic), 4)
+        # These are NOT covered by the 47 native-house replacements.
+        # Never silently claim the four runtime glass/door houses are fixed
+        # until their catalog/prefabs AND physics regression probes migrate.
+        native_baker = (ROOT / "Assets/AarisWorld/Editor/"
+                        "AarisKenneyWindowlessBaker.cs").read_text()
+        self.assertIn("Native baseline expects exactly 47", native_baker)
+
     def test_a_single_urplit_material_is_used_by_editor_baker(self):
         path = ROOT / "Assets/AarisWorld/Editor/AarisKenneyWindowlessBaker.cs"
         code = path.read_text()
