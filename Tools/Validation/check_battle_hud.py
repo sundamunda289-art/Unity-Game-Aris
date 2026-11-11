@@ -105,8 +105,12 @@ def check() -> None:
     assert "bool newPress = held && !fireHeld;" in press
     assert "if (!held) semiShotQueued = false;" in press
     assert "if (!newPress) return;" in press
-    assert "IsArmed && Time.time >= nextAttack" in press
+    assert "Time.time < nextAttack) return;" in press
+    assert "if (IsArmed) ShootEquippedWeapon();" in press
+    assert "else QueuePunch();" in press
     assert "ShootEquippedWeapon();" in press
+    assert "QueuePunch();" in combat_update
+    assert combat_update.count("lastPunchTime = Time.time;") == 1
     assert "if (!equippedGun.Automatic && !semiShotQueued) return;" in combat_update
     assert "ShootEquippedWeapon();" in combat_update
     assert combat_update.count("equippedGun.TryFire(motor.AimCamera, gameObject)") == 1
