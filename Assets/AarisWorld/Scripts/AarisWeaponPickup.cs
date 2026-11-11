@@ -12,6 +12,8 @@ namespace Aaris.MapReview
         private AarisWeaponState state;
         private int candidateIndex;
         private Transform model;
+        private Renderer[] modelRenderers;
+        private float pendingSpinDegrees;
         private LineRenderer beacon;
         private bool reserved, consumed;
 
@@ -58,6 +60,9 @@ namespace Aaris.MapReview
                 return false;
             }
             model = visible.transform;
+            // Cache all mesh renderers once; the loot rotates only when at
+            // least one of them is visible in a camera view.
+            modelRenderers = visible.GetComponentsInChildren<Renderer>(true);
             model.name = "Local " + state.Spec.displayName + " Model";
             // Loot never interferes with player or map physics.
             foreach (var collider in visible.GetComponentsInChildren<Collider>(true))
@@ -101,7 +106,22 @@ namespace Aaris.MapReview
 
         private void Update()
         {
-            if (model != null) model.Rotate(0f, 19f * Time.deltaTime, 0f, Space.World);
+            if (model == null || Time.deltaTime <= 0f) return;
+            // Off-screen pickups must not dirty Transform hierarchies every
+            // Android frame. Keep elapsed rotation so the mesh resumes at
+            // exactly the same orientation when it becomes visible again.
+            pendingSpinDegrees += 19f * Time.deltaTime;
+            if (pendingSpinDegrees >= 360f)
+                pendingSpinDegrees = Mathf.Repeat(pendingSpinDegrees, 360f);
+            if (modelRenderers == null) return;
+            for (int i = 0; i < modelRenderers.Length; i++)
+            {
+                Renderer renderer = modelRenderers[i];
+                if (renderer == null || !renderer.isVisible) continue;
+                model.Rotate(0f, pendingSpinDegrees, 0f, Space.World);
+                pendingSpinDegrees = 0f;
+                break;
+            }
         }
 
         private void OnDisable()

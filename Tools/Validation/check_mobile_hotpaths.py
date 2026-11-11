@@ -466,8 +466,49 @@ def audit():
         assert writes < 2 * fps
         assert not (level != target)  # Steady-state setter is skipped.
 
+    # Ground loot can be abundant in the original offline map. Hidden weapon
+    # meshes must not dirty Unity Transform state at 30/60/120 FPS, while
+    # reappearing meshes catch up to the exact elapsed-time spin angle.
+    pickup = (SRC / "AarisWeaponPickup.cs").read_text(encoding="utf-8")
+    spin = pickup[pickup.index("private void Update()"):
+                  pickup.index("private void OnDisable()")]
+    assert "private Renderer[] modelRenderers;" in pickup
+    assert "modelRenderers = visible.GetComponentsInChildren<Renderer>(true);" in pickup
+    assert "pendingSpinDegrees += 19f * Time.deltaTime;" in spin
+    assert "if (pendingSpinDegrees >= 360f)" in spin
+    assert "Mathf.Repeat(pendingSpinDegrees, 360f)" in spin
+    assert "if (renderer == null || !renderer.isVisible) continue;" in spin
+    assert spin.index("renderer.isVisible") < spin.index("model.Rotate(")
+    assert spin.index("model.Rotate(") < spin.index("pendingSpinDegrees = 0f;")
+    assert spin.count("model.Rotate(") == 1
+    for fps in (10, 20, 30, 60, 90, 120):
+        pending, applied, writes = 0.0, 0.0, 0
+        # Four seconds outside the camera, then one second on-screen.
+        for frame in range(fps * 5):
+            pending += 19.0 / fps
+            if pending >= 360.0:
+                pending %= 360.0
+            visible = frame >= fps * 4
+            if visible:
+                applied = (applied + pending) % 360.0
+                pending = 0.0
+                writes += 1
+            else:
+                assert writes == 0
+        assert writes == fps, (fps, writes)
+        assert math.isclose(applied, 95.0, abs_tol=1e-7), (fps, applied)
+
+    # Long-hidden pickups keep a bounded angle instead of growing to an
+    # imprecise float, even if they stay out of view for several minutes.
+    pending = 0.0
+    for _ in range(60 * 600):
+        pending += 19.0 / 60
+        if pending >= 360.0:
+            pending %= 360.0
+    assert 0 <= pending < 360
+
     print("PASS: airborne support reuse, single motor, steady FOV writes, "
-          "bounded player/animation optional-component lookup, budgeted vehicle streaming, legacy idle pose, collision-safe camera, deadline-gated SFX, audio/gloo hotpaths, refresh-aware pacing and adaptive Android quality contracts")
+          "bounded player/animation optional-component lookup, budgeted vehicle streaming, legacy idle pose, collision-safe camera, deadline-gated SFX, offscreen loot spin, audio/gloo hotpaths, refresh-aware pacing and adaptive Android quality contracts")
     print("NOT TESTED: Unity compilation, live camera occlusion and device FPS.")
 
 
