@@ -24,6 +24,7 @@ namespace Aaris.MapReview
         private RectTransform safe;
         private Text wallLabel, grenadeLabel;
         private float nextThrow;
+        private float nextOptionalComponentRefresh;
         private int shownWalls = -1, shownGrenades = -1;
         private Rect previousSafeArea;
         private Vector2Int previousScreen;
@@ -55,10 +56,20 @@ namespace Aaris.MapReview
             initialized = true;
         }
 
+        // Stripped player prefabs can omit either optional component. Poll for
+        // late additions at most once per second, never on every render frame.
+        private void RefreshOptionalComponents(bool force = false)
+        {
+            if (!force && Time.unscaledTime < nextOptionalComponentRefresh) return;
+            nextOptionalComponentRefresh = Time.unscaledTime + 1f;
+            if (drop == null) drop = GetComponent<AarisOfflineDrop>();
+            if (vehicle == null) vehicle = GetComponent<AarisVehicleSession>();
+        }
+
         private void Update()
         {
             if (!initialized) return;
-            if (drop == null) drop = GetComponent<AarisOfflineDrop>();
+            RefreshOptionalComponents();
             bool onFoot = (drop == null || drop.HasLanded) &&
                 (vehicle == null || !vehicle.IsDriving);
             if (canvas != null && canvas.enabled != onFoot)
@@ -97,7 +108,11 @@ namespace Aaris.MapReview
         public void ThrowFrag()
         {
             if (!enabled || fragGrenades <= 0 || motor == null || motor.AimCamera == null ||
-                Time.time < nextThrow || (drop != null && !drop.HasLanded) ||
+                Time.time < nextThrow) return;
+            // A throw is rare and irreversible: re-read late-added vehicle/drop
+            // before consuming ammunition even inside the one-second poll window.
+            RefreshOptionalComponents(true);
+            if ((drop != null && !drop.HasLanded) ||
                 (vehicle != null && vehicle.IsDriving)) return;
             Camera aim = motor.AimCamera;
             Vector3 forward = aim.transform.forward.normalized;
