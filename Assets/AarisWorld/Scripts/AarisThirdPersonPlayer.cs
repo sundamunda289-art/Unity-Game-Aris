@@ -69,6 +69,9 @@ namespace Aaris.MapReview
                 minLookPitch, maxLookPitch);
             yaw += Mathf.Clamp(yawKick, -5f, 5f);
         }
+        // Skip repeated native limb Transform writes once the legacy fallback
+        // has reached a grounded idle pose; motion and punch edges re-arm it.
+        private bool legacyIdlePoseApplied;
         private float savedGroundStepOffset;
         private float smoothedEyeHeight, eyeHeightVelocity;
         private bool jumpButtonHeld;
@@ -85,6 +88,9 @@ namespace Aaris.MapReview
         // during the airplane / parachute sequence. Visuals only: no physics.
         internal void SetLegacyAerialPose(bool beneathCanopy)
         {
+            // The aerial visual can change the limbs while the foot motor is off.
+            // The next grounded Update must restore the idle pose once.
+            legacyIdlePoseApplied = false;
             // Angles fold a horizontal legacy T-pose into a suspended,
             // riser-holding pose (or a slightly spread freefall posture).
             float armAngle = beneathCanopy ? 48f : -38f;
@@ -102,6 +108,7 @@ namespace Aaris.MapReview
 
         internal void RestoreLegacyAerialPose()
         {
+            legacyIdlePoseApplied = false;
             if (leftArm != null) leftArm.localRotation = leftArmRest;
             if (rightArm != null) rightArm.localRotation = rightArmRest;
             if (leftLeg != null) leftLeg.localRotation = leftLegRest;
@@ -504,6 +511,15 @@ namespace Aaris.MapReview
 
         private void AnimateWalk(float dt)
         {
+            // A fully stationary fallback rig needs ONE final rest-pose write,
+            // not four Transform writes every frame for minutes at 60 FPS.
+            // Keep walking, airborne limbs and the full punch envelope live.
+            float secondsSincePunch = battle != null
+                ? Time.time - battle.LastPunchTime : float.PositiveInfinity;
+            bool punchAnimating = secondsSincePunch >= 0f && secondsSincePunch <= 0.36f;
+            bool settled = travelSpeed < 0.01f && controller.isGrounded && !punchAnimating;
+            if (settled && legacyIdlePoseApplied) return;
+            legacyIdlePoseApplied = settled;
             gait += travelSpeed * dt * 2.8f;
             float amplitude = Mathf.Clamp01(travelSpeed / runSpeed) * 36f;
             if (!controller.isGrounded) amplitude *= 0.2f;
@@ -645,6 +661,7 @@ namespace Aaris.MapReview
             lastLanding = Time.unscaledTime;
             lastJumpStarted = jumpUntil = -10f;
             travelSpeed = gait = 0f;
+            legacyIdlePoseApplied = false;
             running = jumpButtonHeld = false;
             moveFinger = lookFinger = -1;
             moveInput = Vector2.zero;
@@ -671,6 +688,7 @@ namespace Aaris.MapReview
             lastLanding = Time.unscaledTime;
             lastJumpStarted = jumpUntil = -10f;
             travelSpeed = gait = 0f;
+            legacyIdlePoseApplied = false;
             yaw = transform.eulerAngles.y;
             controller.stepOffset = battle != null
                 ? battle.GroundStepOffset : savedGroundStepOffset;
@@ -691,6 +709,7 @@ namespace Aaris.MapReview
             controller.stepOffset = battle != null
                 ? battle.GroundStepOffset : savedGroundStepOffset;
             lastGrounded = -10f; gait = travelSpeed = 0f;
+            legacyIdlePoseApplied = false;
             lastJumpStarted = lastLanding = -10f;
             if (followCamera != null) followCamera.fieldOfView = normalCameraFov;
             weaponAimFov = -1f;
