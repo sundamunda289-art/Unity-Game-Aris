@@ -88,6 +88,31 @@ def audit():
     assert "nextOptionalComponentRefresh = Time.unscaledTime + 1f;" in update
     assert update.index("nextOptionalComponentRefresh = Time.unscaledTime + 1f;") < update.index("ReadInput();")
 
+    # Animation-only optional scripts must not trigger GetComponent per
+    # LateUpdate on stripped player prefabs. Start caches present components;
+    # absent/late-added ones are retried at most once per unscaled second.
+    visual = (SRC / "AarisCharacterVisual.cs").read_text(encoding="utf-8")
+    startup = visual[visual.index("private void Start()"):visual.index("private bool FitVisualToController()")]
+    late = visual[visual.index("private void LateUpdate()"):visual.index("private void OnDestroy()")]
+    assert "aerialDrop = GetComponent<AarisOfflineDrop>();" in startup
+    assert "private float nextOptionalComponentRefresh;" in visual
+    assert "Time.unscaledTime >= nextOptionalComponentRefresh" in late
+    assert "nextOptionalComponentRefresh = Time.unscaledTime + 1f;" in late
+    assert late.count("GetComponent<AarisBattleActions>()") == 1
+    assert late.count("GetComponent<AarisOfflineDrop>()") == 1
+    assert late.count("GetComponent<AarisWeaponInventory>()") == 1
+    assert late.index("nextOptionalComponentRefresh = Time.unscaledTime + 1f;") < late.index("float dt =")
+    assert late.index("GetComponent<AarisOfflineDrop>()") < late.index("if (aerialDrop != null && !aerialDrop.HasLanded)")
+
+    for fps in (10, 30, 60, 90, 120):
+        next_retry, lookups = 0.0, 0
+        for frame in range(fps * 5):
+            now = frame / fps
+            if now >= next_retry:
+                next_retry = now + 1.0
+                lookups += 1
+        assert 4 <= lookups <= 6, (fps, lookups)
+
     # Android GPU fill-rate pressure should be reduced only after sustained
     # p95 misses. These are source/threshold contracts, NOT a GPU profiler.
     quality = (SRC / "AarisMobileRuntime.cs").read_text(encoding="utf-8")
@@ -96,6 +121,18 @@ def audit():
     assert "QualitySettings.streamingMipmapsMemoryBudget" in quality
     assert "memoryMB <= 2304 ? 160f : 224f" in quality
     assert "originalRenderScale = androidPipeline.renderScale;" in quality
+    # The low-RAM adaptation must never be enabled on high-RAM or
+    # unknown-RAM Android devices. Merely returning from ConfigureAndroidQuality
+    # after storing androidPipeline would still enable TuneAndroidResolution.
+    quality_setup = quality[quality.index("private void ConfigureAndroidQuality()"):
+                            quality.index("private void TuneAndroidResolution(")]
+    assert "if (memoryMB <= 0 || memoryMB > 3072) return;" in quality_setup
+    assert quality_setup.index("if (memoryMB <= 0 || memoryMB > 3072) return;") < quality_setup.index("androidPipeline = GraphicsSettings.currentRenderPipeline")
+    assert "if (androidPipeline == null || !adaptiveAndroidResolution) return;" in quality
+    for ram_mb in (0, -1, 4096, 8192):
+        assert not (0 < ram_mb <= 3072)
+    for ram_mb in (1536, 2048, 2304, 3072):
+        assert 0 < ram_mb <= 3072
     assert "lastTargetFps != targetFps" in quality
     assert "slowIntervals >= 2" in quality and "steadyIntervals >= 4" in quality
     assert "current - 0.05f" in quality and "current + 0.025f" in quality
@@ -134,7 +171,7 @@ def audit():
     assert simulate_quality([(28, 34), (16.7, 19), (28, 34)]) == .85
 
     print("PASS: airborne support reuse, single motor, steady FOV writes, "
-          "bounded optional-component lookup, collision-safe camera, audio and adaptive Android quality contracts")
+          "bounded player/animation optional-component lookup, collision-safe camera, audio and adaptive Android quality contracts")
     print("NOT TESTED: Unity compilation, live camera occlusion and device FPS.")
 
 
