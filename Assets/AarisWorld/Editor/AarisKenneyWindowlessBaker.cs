@@ -253,9 +253,11 @@ namespace Aaris.MapReview.EditorTools
                 throw new InvalidOperationException("Wrong scene; load native TerrainDemoScene first");
             if (EditorApplication.isPlayingOrWillChangePlaymode)
                 throw new InvalidOperationException("Cannot edit scene during Play Mode");
-            if (scene.isDirty && !previewInMemory)
+            if (scene.isDirty)
                 throw new InvalidOperationException(
-                    "Scene has unsaved editor changes; refusing to overwrite them");
+                    "Scene has unsaved Editor changes, including a previous preview. " +
+                    "Reopen the saved scene ONLY after checking those changes; " +
+                    "refusing to save unrelated work");
             GameObject[] houses = Houses(scene);
             if (houses.Length < 40 || houses.Length > 90)
                 throw new InvalidOperationException(
@@ -273,17 +275,31 @@ namespace Aaris.MapReview.EditorTools
             if (applyAll)
             {
                 Directory.CreateDirectory("/tmp/aaris-codespaces");
+                string backupPath = "/tmp/aaris-codespaces/windowless-scene-pre-bake-" +
+                    DateTime.UtcNow.ToString("yyyyMMddTHHmmssfffZ") + ".unity";
                 File.Copy(Path.Combine(Directory.GetParent(Application.dataPath).FullName,
-                    scene.path),
-                    "/tmp/aaris-codespaces/windowless-scene-pre-bake.unity", true);
+                    scene.path), backupPath, false);
+                Debug.Log("AARIS_KENNEY_PRE_BAKE_BACKUP " + backupPath);
             }
             int updated = 0, already = 0;
-            foreach (var home in work)
+            Undo.IncrementCurrentGroup();
+            int group = Undo.GetCurrentGroup();
+            Undo.SetCurrentGroupName("Aaris Windowless House Native Scene Replacement");
+            try
             {
-                if (Replace(home, prefabs[StyleOf(home.name)]))
-                    updated++;
-                else already++;
+                foreach (var home in work)
+                {
+                    if (Replace(home, prefabs[StyleOf(home.name)]))
+                        updated++;
+                    else already++;
+                }
             }
+            catch
+            {
+                Undo.RevertAllDownToGroup(group);
+                throw;
+            }
+            Undo.CollapseUndoOperations(group);
             if (applyAll)
             {
                 if (!EditorSceneManager.SaveScene(scene))
