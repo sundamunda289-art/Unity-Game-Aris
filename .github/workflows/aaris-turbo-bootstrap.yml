@@ -41,6 +41,18 @@ jobs:
           bash -n Tools/Codespaces/termux_switch.sh
           bash -n Tools/Codespaces/termux_cloudflare_switch.sh
           bash -n Tools/Turbo/cloudflare_account_switch_linux.sh
+          python3 - <<'PYCROSS'
+          from pathlib import Path
+          phone=Path("Tools/Codespaces/termux_cloudflare_switch.sh").read_text()
+          workflow=Path(".github/workflows/aaris-turbo-bootstrap.yml").read_text()
+          assert 'gh codespace list --limit 100 --json name,state,repository' in phone
+          assert 'gh codespace list --json name,displayName,state,repository' in workflow
+          assert 'endswith("/Unity-Game-Aris")' in phone and 'endswith("/Unity-Game-Aris")' in workflow
+          assert 'gh codespace list -R "$REPO"' not in phone
+          assert 'gh codespace list -R "$GITHUB_REPOSITORY"' not in workflow
+          assert 'gh codespace create -R "$CS_REPO"' in workflow
+          print("AARIS_CROSS_ACCOUNT_CODESPACE_STATIC_PASS")
+          PYCROSS
           python3 -m json.tool Tools/Turbo/wrangler.jsonc >/dev/null
           python3 - <<'PYCONFIG'
           import json
@@ -169,8 +181,12 @@ jobs:
               echo "TURBO_INVALID_MACHINE_NAME"; exit 11;
             }
           fi
-          gh codespace list -R "$GITHUB_REPOSITORY" \
-            --json name,displayName,state --limit 100 > "$RUNNER_TEMP/aaris-machines.json"
+          # The Codespace's GitHub account/repository can differ from the main
+          # sundamunda289-art source repo. List the account selected by CODESPACE_PAT.
+          gh codespace list --json name,displayName,state,repository --limit 100 \
+            > "$RUNNER_TEMP/aaris-all-machines.json"
+          jq '[.[]|select((.repository // "")|endswith("/Unity-Game-Aris"))]' \
+            "$RUNNER_TEMP/aaris-all-machines.json" > "$RUNNER_TEMP/aaris-machines.json"
           python3 Tools/Turbo/select_machine.py "$RUNNER_TEMP/aaris-machines.json" "$REQUEST" \
             > "$RUNNER_TEMP/turbo-selection.json"
           ACTION="$(jq -r .action "$RUNNER_TEMP/turbo-selection.json")"
@@ -178,12 +194,19 @@ jobs:
             test "$REQUEST" = auto || { echo "TURBO_EXPLICIT_AUTO_REQUIRED"; exit 12; }
             # Create a lightweight SSH Codespace once; no heavy Unity bootstrap
             # or Git LFS migration is necessary for the terminal connection.
-            gh api "/repos/$GITHUB_REPOSITORY/codespaces/machines" \
+            CS_LOGIN="$(gh api user --jq .login)"
+            CS_REPO="$CS_LOGIN/Unity-Game-Aris"
+            # If no Codespace exists, create only in the authenticated user's
+            # own verified repository — never in the permanent source repo.
+            gh repo view "$CS_REPO" --json name -q .name >/dev/null || {
+              echo "TURBO_CODESPACE_HOST_REPOSITORY_NOT_FOUND"; exit 13;
+            }
+            gh api "/repos/$CS_REPO/codespaces/machines" \
               --jq '.machines[].name' 2>/dev/null |
               grep -qxF standardLinux32gb || {
                 echo "TURBO_4CORE_MACHINE_NOT_AVAILABLE"; exit 13;
               }
-            NAME="$(timeout 1200 gh codespace create -R "$GITHUB_REPOSITORY" \
+            NAME="$(timeout 1200 gh codespace create -R "$CS_REPO" \
               -b main -m standardLinux32gb \
               --devcontainer-path .devcontainer/minimal-ubuntu/devcontainer.json \
               --idle-timeout 240m --display-name aaris-ai-ubuntu-minimal \
