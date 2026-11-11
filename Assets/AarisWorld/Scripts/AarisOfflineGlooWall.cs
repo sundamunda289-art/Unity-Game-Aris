@@ -31,6 +31,10 @@ namespace Aaris.MapReview
         private Vector3 proposedPoint;
         private Quaternion proposedRotation;
         private bool aiming, placementValid;
+        // Preview tint is either valid (blue) or blocked (red). Preserve the
+        // renderer property block across frames instead of submitting identical
+        // native color updates at 30/60/120 FPS while the wall is held.
+        private bool ghostTintInitialized, ghostTintValid;
         private float nextDeployment;
 
         public int Count => carriedWalls;
@@ -185,9 +189,16 @@ namespace Aaris.MapReview
 
             if (ghost == null) return;
             ghost.transform.SetPositionAndRotation(proposedPoint, proposedRotation);
-            AarisGlooWallVisuals.Tint(ghostRenderers, placementValid
-                ? new Color(0.20f, 0.78f, 0.98f, 0.40f)
-                : new Color(1f, 0.2f, 0.2f, 0.45f));
+            // The preview's material property block survives SetActive(false).
+            // Write it only on first appearance or a valid/blocked transition.
+            if (!ghostTintInitialized || ghostTintValid != placementValid)
+            {
+                AarisGlooWallVisuals.Tint(ghostRenderers, placementValid
+                    ? new Color(0.20f, 0.78f, 0.98f, 0.40f)
+                    : new Color(1f, 0.2f, 0.2f, 0.45f));
+                ghostTintValid = placementValid;
+                ghostTintInitialized = true;
+            }
             if (!ghost.activeSelf) ghost.SetActive(true);
         }
 
