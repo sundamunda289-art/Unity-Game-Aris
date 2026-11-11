@@ -38,6 +38,18 @@ jobs:
           python3 Tools/Turbo/gui_agent.py --selftest
           bash -n Tools/Turbo/ensure_agent.sh
           bash -n Tools/Codespaces/termux_switch.sh
+          bash -n Tools/Codespaces/termux_cloudflare_switch.sh
+          bash -n Tools/Turbo/cloudflare_account_switch_linux.sh
+          python3 -m json.tool Tools/Turbo/wrangler.jsonc >/dev/null
+          python3 - <<'PYCONFIG'
+          import json
+          config=json.load(open('Tools/Turbo/wrangler.jsonc'))
+          assert config['main']=='./worker.mjs'
+          assert config['durable_objects']['bindings']==[{'name':'MACHINES','class_name':'TurboMachine'}]
+          assert config['migrations'][0]['new_sqlite_classes']==['TurboMachine']
+          assert 'account_id' not in config
+          print('AARIS_CF_SWITCH_DEPLOY_CONFIG_PASS')
+          PYCONFIG
           python3 -m py_compile Tools/Turbo/agent.py
           python3 Tools/Turbo/agent.py --selftest
           python3 Tools/Turbo/select_machine.py --selftest
