@@ -68,21 +68,21 @@ jobs:
           mkdir -p "$RUNNER_TEMP/aaris-recovery-artifact"
           # Transfer a tar of ONLY JPEGs and text summaries. Never back up source
           # files, secrets, entire screens or Unity log into public Actions.
-          timeout 95 gh codespace ssh -c "$NAME" -- \
-            "bash -lc 'cd /tmp/aaris-unity-recovery &&
-             find . -maxdepth 1 -type f \\( -name \"*.jpg\" -o -name \"status.txt\" -o -name \"pose-report.txt\" \\) -print0 |
-             tar --null -czf - -T - | base64 -w0'" \
-            > "$RUNNER_TEMP/aaris-recovery.base64" || true
-          if [[ -s "$RUNNER_TEMP/aaris-recovery.base64" ]]; then
-            base64 -d "$RUNNER_TEMP/aaris-recovery.base64" \
-              > "$RUNNER_TEMP/aaris-recovery.tar.gz"
-            tar -xzf "$RUNNER_TEMP/aaris-recovery.tar.gz" \
-              -C "$RUNNER_TEMP/aaris-recovery-artifact"
-          fi
-          if ! find "$RUNNER_TEMP/aaris-recovery-artifact" -type f | grep -q .; then
-            printf 'Codespace did not return a verified screenshot/report. Check run diagnostics.\n' \
-              > "$RUNNER_TEMP/aaris-recovery-artifact/README.txt"
-          fi
+          # Same verified gh codespace ssh stdin transport used for recovery;
+          # no nested shell quoting or silent fallback on failed transfers.
+          timeout 95 gh codespace ssh -c "$NAME" -- 'bash -s' \
+            > "$RUNNER_TEMP/aaris-recovery.base64" <<'AARIS_REMOTE'
+          set -euo pipefail
+          cd /tmp/aaris-unity-recovery
+          find . -maxdepth 1 -type f \( -name '*.jpg' -o -name 'status.txt' -o -name 'pose-report.txt' -o -name 'compiler-errors.txt' \) -print0 \
+            | tar --null -czf - -T - | base64 -w0
+          AARIS_REMOTE
+          test -s "$RUNNER_TEMP/aaris-recovery.base64"
+          base64 -d "$RUNNER_TEMP/aaris-recovery.base64" \
+            > "$RUNNER_TEMP/aaris-recovery.tar.gz"
+          tar -xzf "$RUNNER_TEMP/aaris-recovery.tar.gz" \
+            -C "$RUNNER_TEMP/aaris-recovery-artifact"
+          test -s "$RUNNER_TEMP/aaris-recovery-artifact/status.txt"
           echo "AARIS_RECOVERY_ARTIFACT_READY"
       - name: Download true Editor screenshot or pose frames
         if: always()
