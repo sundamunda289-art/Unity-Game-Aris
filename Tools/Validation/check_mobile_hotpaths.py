@@ -299,6 +299,49 @@ def audit():
         assert 4 <= simulated_collider_polls(fps, 0) <= 6
         assert simulated_collider_polls(fps, 6.5) >= 10
 
+    # Vehicle streaming must not instantiate/destroy many full 3D cars on
+    # one low-RAM render frame. Keep native prefabs/physics and all plans.
+    vehicle = (SRC / "AarisVehicleWorld.cs").read_text(encoding="utf-8")
+    stream = vehicle[vehicle.index("private void Update()"):
+                     vehicle.index("private void OnDestroy()")]
+    quality = vehicle[vehicle.index("private void Awake()"):
+                      vehicle.index("[RuntimeInitializeOnLoadMethod")]
+    assert "private int spawnBudgetPerPoll = 2;" in vehicle
+    assert "private int unloadBudgetPerPoll = 4;" in vehicle
+    assert "#if UNITY_ANDROID && !UNITY_EDITOR" in quality
+    assert "memoryMB > 0 && memoryMB <= 3072" in quality
+    assert "spawnBudgetPerPoll = 1;" in quality
+    assert "unloadBudgetPerPoll = 2;" in quality
+    assert "unloaded < unloadBudgetPerPoll" in stream
+    assert "built >= spawnBudgetPerPoll" in stream
+    assert "record.visible.CanPark" in stream
+    assert "active >= MaximumNearbyVehicles" in stream
+    assert stream.count("player.position") == 1  # Cache native Transform once.
+    assert stream.count("Time.unscaledTime") == 1  # Cache clock once.
+    assert "record.nextProbe = now + 3.0f;" in stream
+    assert "new List<" not in stream
+
+    # Frame-paced simulation checks operation bursts at 15-120 FPS.
+    # This is a bounded scheduler model, NOT a Unity physics simulation.
+    for fps in (15, 30, 60, 90, 120):
+        for max_spawn, max_unload in ((1, 2), (2, 4)):
+            next_poll = 0.0
+            spawn_remaining, unload_remaining = 7, 7
+            spawned = unloaded = 0
+            for frame in range(3 * fps):
+                now = frame / fps
+                if now < next_poll:
+                    continue
+                next_poll = now + 0.3
+                spawn_ops = min(max_spawn, spawn_remaining)
+                unload_ops = min(max_unload, unload_remaining)
+                assert spawn_ops <= max_spawn and unload_ops <= max_unload
+                spawn_remaining -= spawn_ops
+                unload_remaining -= unload_ops
+                spawned += spawn_ops
+                unloaded += unload_ops
+            assert spawned == 7 and unloaded == 7, (fps, max_spawn)
+
     # A held Gloo Wall preview may be polled every frame by a touchscreen,
     # but optional vehicle/drop lookup must be cached and bounded. Recheck
     # immediately before deployment so newly attached driving state wins.
@@ -424,7 +467,7 @@ def audit():
         assert not (level != target)  # Steady-state setter is skipped.
 
     print("PASS: airborne support reuse, single motor, steady FOV writes, "
-          "bounded player/animation optional-component lookup, legacy idle pose, collision-safe camera, deadline-gated SFX, audio/gloo hotpaths, refresh-aware pacing and adaptive Android quality contracts")
+          "bounded player/animation optional-component lookup, budgeted vehicle streaming, legacy idle pose, collision-safe camera, deadline-gated SFX, audio/gloo hotpaths, refresh-aware pacing and adaptive Android quality contracts")
     print("NOT TESTED: Unity compilation, live camera occlusion and device FPS.")
 
 
