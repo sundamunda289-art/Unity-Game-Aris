@@ -69,9 +69,30 @@ for ATTEMPT in 1 2; do
   set +e
   GH_CONFIG_DIR="$CODESPACE_AUTH" gh codespace ssh -c "$MACHINE" -- \
     "AARIS_SOURCE_SHA=$SOURCE_SHA AARIS_WATCH_HASH=$WATCH_HASH AARIS_REUSE_LOGIN=$LOGIN_AGAIN AARIS_CF_ACCOUNT_ID=$ACCOUNT bash -s" \
-    < "$TMP/remote.sh" 2>&1 | tee "$TMP/deploy.log"
-  RESULT=${PIPESTATUS[0]}
+    < "$TMP/remote.sh" > "$TMP/deploy.log" 2>&1 &
+  SSH_PID=$!
   set -e
+  OPENED=0
+  for LOGIN_CHECK in $(seq 1 900); do
+    if ! kill -0 "$SSH_PID" 2>/dev/null; then break; fi
+    if ((LOGIN_AGAIN==0 && OPENED==0)); then
+      LOGIN_LINK="$(grep -Eo 'https://dash\.cloudflare\.com/oauth2/device(\?user_code=[A-Za-z0-9]+)?' "$TMP/deploy.log" | tail -n 1 || true)"
+      if [[ -n "$LOGIN_LINK" ]]; then
+        echo "Open official Cloudflare login and approve the device code:"
+        echo "$LOGIN_LINK"
+        if command -v termux-open-url >/dev/null 2>&1; then
+          termux-open-url "$LOGIN_LINK" || true
+        fi
+        OPENED=1
+      fi
+    fi
+    sleep 1
+  done
+  set +e
+  wait "$SSH_PID"
+  RESULT=$?
+  set -e
+  cat "$TMP/deploy.log"
   if ((RESULT==0)); then break; fi
   if ((RESULT!=42 || ATTEMPT==2)); then
     echo "CLOUDFLARE_DEPLOY_FAILED_NO_GITHUB_CONFIGURATION_CHANGED"
