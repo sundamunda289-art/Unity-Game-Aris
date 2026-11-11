@@ -6,7 +6,12 @@ umask 077
 REPO="sundamunda289-art/Unity-Game-Aris"
 LEGACY="https://aaris-turbo-terminal.aaris-game-control-6f9c.workers.dev"
 if ! command -v pkg >/dev/null 2>&1; then echo "TERMUX_REQUIRED"; exit 2; fi
-pkg install -y gh curl jq openssl coreutils >/dev/null
+# In Termux the openssl executable is shipped by openssl-tool, not openssl.
+pkg install -y gh curl jq openssl openssl-tool coreutils >/dev/null
+command -v openssl >/dev/null 2>&1 || {
+  echo "TERMUX_OPENSSL_TOOL_MISSING: pkg install -y openssl-tool"
+  exit 20
+}
 BASE="$HOME/.config/aaris-ai"
 mkdir -p "$BASE"
 chmod 700 "$BASE"
