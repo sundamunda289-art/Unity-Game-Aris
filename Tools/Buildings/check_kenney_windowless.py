@@ -179,6 +179,19 @@ class WindowlessHousesTest(unittest.TestCase):
                   if pattern.fullmatch(entry[0])]
         self.assertEqual(len(houses), 47,
                          "House replacement must be re-audited if map changes")
+        # Imported meshes are already triangulated. This budget counts the
+        # complete saved residential population, not one showcase house.
+        counts = collections.Counter(
+            next(style for style, _, _ in generator.STYLES
+                 if entry[0].endswith("_" + style + "_" + entry[0][-2:]))
+            for entry in houses)
+        triangles = sum(
+            counts[style] * len(read_obj(self.folder /
+                ("AarisWindowless_" + style + ".obj"))[2])
+            for style in counts)
+        self.assertEqual(sum(counts.values()), 47)
+        self.assertLessEqual(triangles, 22000,
+                             "Residential native mesh triangle budget exceeded")
         for name, body in houses:
             refs = re.findall(r"^  - component: {fileID: (\d+)}", body, re.M)
             kinds = [components[ref][0] for ref in refs]
