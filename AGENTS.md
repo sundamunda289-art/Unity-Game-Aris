@@ -20,6 +20,14 @@ Repository: sundamunda289-art/Unity-Game-Aris; branch: main. Public repository: 
    `auto` reuses a uniquely selectable Codespace; **only if that selected account has none** does it create one minimal Ubuntu SSH Codespace. When several are ambiguous, selection fails closed—use an exact name. Codespaces quota cannot be bypassed. Do **not** touch the old exhausted account or delete its projects.
 5. **Auto-resume:** the updated **minimal Ubuntu** devcontainer invokes `Tools/Turbo/ensure_agent.sh` on start and reconnects the installed agent if its local seven-day grant has not expired. A new account/machine or expired grant needs the one-time owner-only bootstrap. Original full Unity Codespaces need their own verified startup handling.
 
+### Cross-account codebase vs Codespace hosting — verified 2026-11-11
+
+- **Canonical source remains** `sundamunda289-art/Unity-Game-Aris` (`main`). Its GitHub Actions, Unity scenes/prefabs/LFS content, and Cloudflare Worker source stay authoritative.
+- **Codespace hosting can be a different GitHub account/repository.** Termux showed `cgfdgvhvg-ship-it/Unity-Game-Aris` contains `aaris-ai-ubuntu-minimal-4qr6v94w9rwvhjgp6` in `Available` state. This proves only GitHub Codespace state, not whether Unity Editor or Turbo agent is actually running.
+- Under the selected Codespace owner's GitHub credential, use `gh codespace list --json name,state,repository` **without `-R sundamunda289-art/Unity-Game-Aris`**. Select only the exact named authorized `*/Unity-Game-Aris` Codespace. Do not confuse its hosting repo with the permanent master codebase.
+- `Tools/Codespaces/termux_cloudflare_switch.sh` must deploy the Worker from canonical source and then SSH into the selected alternate-account Codespace. `.github/workflows/aaris-turbo-bootstrap.yml` must list Codespaces belonging to the authorized `CODESPACE_PAT` account. Its OIDC claim verification must stay pinned to the master `main` workflow/owner — never weaken it for the hosting fork.
+- Switching either GitHub or Cloudflare accounts does not authorize overwriting workspace files, stopping Unity, or exposing private credentials. Verify a genuine live terminal command and nonblank screen capture after reconnection.
+
 ### NEW CODESPACE / NEW GITHUB ACCOUNT — exact zero-to-live setup checklist
 
 **Mandatory for future chats whenever the user says "old Codespace quota finished, move the whole setup to a new Codespace."** Follow the stages below in order, using the connected GitHub and Cloudflare tools; **do not treat setup as complete until terminal AND screen E2E tests pass**. This is a transplant of the private control plane, **not** automatic installation/verification of the full Unity Editor and game build toolchain.
