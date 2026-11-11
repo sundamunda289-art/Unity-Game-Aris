@@ -139,7 +139,12 @@ def audit() -> None:
 
     # A crouched/prone bullet must leave the actor's actual eye-height,
     # not a standing muzzle that could see through low cover.
-    assert "actions.CameraEyeHeight - 0.15f" in gun
+    # The muzzle must track the active actor's stance. The gun caches the
+    # owner-bound component to avoid GetComponent on every shot; reject a
+    # stale/orphaned component lookup or a standing-height muzzle regression.
+    assert "if (cachedOwner != owner)" in gun
+    assert "cachedActions = owner.GetComponent<AarisBattleActions>();" in gun
+    assert "cachedActions.CameraEyeHeight - 0.15f" in gun
     assert "SameTarget" in gun and "FirstExternalHit" in gun
 
     # Lying flat on stairs and bridge meshes must not be blocked because a
