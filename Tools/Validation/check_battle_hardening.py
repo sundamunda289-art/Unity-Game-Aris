@@ -34,6 +34,8 @@ def audit() -> None:
     state = source("AarisBattleActions.cs")
     visual = source("AarisCharacterVisual.cs")
     gun = source("AarisEquippedGun.cs")
+    weapon_hud = source("AarisWeaponHUD.cs")
+    vehicle_hud = source("AarisVehicleHUD.cs")
 
     assert "Mathf.Clamp(Time.deltaTime, 0f, 0.15f)" in motor, "Low-FPS movement discards time"
     assert motor.count("controller.Move(") == 1, "Two movement authorities detected"
@@ -109,8 +111,18 @@ def audit() -> None:
     # restored for the first grounded Move. This preserves automatic stair
     # traversal while preventing jumps from auto-mantling wall ledges.
     assert "savedGroundStepOffset = controller.stepOffset;" in motor
-    assert "controller.stepOffset = !launchJump && (wasGrounded || verticalVelocity <= 0f)" in motor
+    assert "float requestedStep = !launchJump && (wasGrounded || verticalVelocity <= 0f)" in motor
+    assert "if (!Mathf.Approximately(controller.stepOffset, requestedStep))" in motor
+    assert "if (!Mathf.Approximately(controller.stepOffset, groundedStep))" in motor
     assert "controller.stepOffset = groundedStep;" in motor
+    # Stable camera/joystick state should NOT repeatedly dirty native
+    # CharacterController state or mobile Canvas layout/text properties.
+    assert "if (moveRing.anchoredPosition != stickPosition)" in ui
+    assert "if (moveRing.sizeDelta != ringSize)" in ui
+    assert "if (moveKnob.anchoredPosition != knobPosition)" in ui
+    assert "if (moveKnob.sizeDelta != knobSize)" in ui
+    assert "if (captions[0].text != aimCaption)" in weapon_hud
+    assert "if (driveCaption.text != desiredCaption)" in vehicle_hud
     assert "savedGroundStepOffset + 0.1f" in motor
     assert "public float GroundStepOffset" in state
     assert "0.20f : 0.16f" in state
