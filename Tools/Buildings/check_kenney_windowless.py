@@ -147,7 +147,7 @@ class WindowlessHousesTest(unittest.TestCase):
         blocks = re.split(r"(?=^--- !u!)", scene_path.read_text(), flags=re.M)
         components, gameobjects = {}, {}
         for block in blocks:
-            head = re.match(r"^--- !u!(\\d+) &(\\d+)", block)
+            head = re.match(r"^--- !u!(\d+) &(\d+)", block)
             if not head:
                 continue
             kind, file_id = int(head.group(1)), head.group(2)
@@ -159,24 +159,24 @@ class WindowlessHousesTest(unittest.TestCase):
         pattern = re.compile(
             r"^.+_(?:bungalow_house|pitched_roof_cottage|a_frame_cabin|"
             r"detached_two_storey_house|garage_apartment|"
-            r"two_bedroom_garage_house|row_three_townhouses)_\\d{2}$")
+            r"two_bedroom_garage_house|row_three_townhouses)_\d{2}$")
         houses = [entry for entry in gameobjects.values()
                   if pattern.fullmatch(entry[0])]
         self.assertEqual(len(houses), 47,
                          "House replacement must be re-audited if map changes")
         for name, body in houses:
-            refs = re.findall(r"^  - component: {fileID: (\\d+)}", body, re.M)
+            refs = re.findall(r"^  - component: {fileID: (\d+)}", body, re.M)
             kinds = [components[ref][0] for ref in refs]
             self.assertCountEqual(kinds, [4, 33, 23, 64, 205], name)
             transform = next(components[ref][1]
                              for ref in refs if components[ref][0] == 4)
-            children = re.findall(r"^  - {fileID: (\\d+)}", transform, re.M)
+            children = re.findall(r"^  - {fileID: (\d+)}", transform, re.M)
             self.assertEqual(len(children), 2, name)
             actual = []
             for child in children:
                 self.assertEqual(components[child][0], 4)
                 obj = re.search(
-                    r"^  m_GameObject: {fileID: (\\d+)}",
+                    r"^  m_GameObject: {fileID: (\d+)}",
                     components[child][1], re.M)
                 self.assertIsNotNone(obj, name)
                 actual.append(gameobjects[obj.group(1)][0])
