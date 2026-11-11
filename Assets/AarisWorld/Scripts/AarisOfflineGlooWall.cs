@@ -64,8 +64,6 @@ namespace Aaris.MapReview
             vehicle = GetComponent<AarisVehicleSession>();
         }
 
-        private void OnDisable() => CancelAim();
-
         private void Start()
         {
             ghost = AarisGlooWallVisuals.Create("GlooWall_Ghost_Local", true);
