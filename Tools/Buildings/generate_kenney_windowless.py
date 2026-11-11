@@ -72,6 +72,20 @@ def parse_obj(archive: zipfile.ZipFile, name: str):
     return vertices, uvs, faces
 
 
+# Seven style-specific facade tones sampled from the SAME Kenney 512px atlas.
+# One URP material remains shared: no added draw calls or textures.
+# U offsets are in opaque lower-row swatches (Unity UV V=0 at image bottom).
+FACADE_U = {
+    "bungalow_house": 0.94,             # warm ivory
+    "pitched_roof_cottage": 0.81,       # sandstone
+    "a_frame_cabin": 0.68,              # timber brown
+    "detached_two_storey_house": 0.43,  # pale plaster
+    "garage_apartment": 0.30,          # blue-gray
+    "two_bedroom_garage_house": 0.55,   # terracotta
+    "row_three_townhouses": 0.16,      # slate
+}
+
+
 def bake_mesh(parts, slug: str, wall_height: float, roof_type: str) -> str:
     vertices, texcoords, faces = [], [], []
 
@@ -86,7 +100,10 @@ def bake_mesh(parts, slug: str, wall_height: float, roof_type: str) -> str:
             vertices.append(tuple(
                 lo[i] + (v[i] - mins[i]) / spans[i] * (hi[i] - lo[i])
                 for i in range(3)))
-        texcoords.extend(src_uv)
+        if part == "building-block":
+            texcoords.extend((FACADE_U[slug], v) for _, v in src_uv)
+        else:
+            texcoords.extend(src_uv)
         faces.extend([[(vo + vi + 1, uo + ui + 1) for vi, ui in f] for f in src_f])
 
     w, d, h = 10.0, 8.0, wall_height
