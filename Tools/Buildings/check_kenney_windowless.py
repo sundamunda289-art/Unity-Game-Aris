@@ -140,6 +140,57 @@ class WindowlessHousesTest(unittest.TestCase):
                     (3.0, 1.5, -4.6), (0.0, 0.0, 1.2)),
                     "The front solid wall has a hole where no opening belongs")
 
+    def test_exact_native_scene_hierarchy_and_47_houses(self):
+        import collections
+        import re
+        scene_path = (ROOT / "Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity")
+        blocks = re.split(r"(?=^--- !u!)", scene_path.read_text(), flags=re.M)
+        components, gameobjects = {}, {}
+        for block in blocks:
+            head = re.match(r"^--- !u!(\\d+) &(\\d+)", block)
+            if not head:
+                continue
+            kind, file_id = int(head.group(1)), head.group(2)
+            components[file_id] = (kind, block)
+            if kind == 1:
+                name = re.search(r"^  m_Name: (.+)$", block, re.M)
+                if name:
+                    gameobjects[file_id] = (name.group(1), block)
+        pattern = re.compile(
+            r"^.+_(?:bungalow_house|pitched_roof_cottage|a_frame_cabin|"
+            r"detached_two_storey_house|garage_apartment|"
+            r"two_bedroom_garage_house|row_three_townhouses)_\\d{2}$")
+        houses = [entry for entry in gameobjects.values()
+                  if pattern.fullmatch(entry[0])]
+        self.assertEqual(len(houses), 47,
+                         "House replacement must be re-audited if map changes")
+        for name, body in houses:
+            refs = re.findall(r"^  - component: {fileID: (\\d+)}", body, re.M)
+            kinds = [components[ref][0] for ref in refs]
+            self.assertCountEqual(kinds, [4, 33, 23, 64, 205], name)
+            transform = next(components[ref][1]
+                             for ref in refs if components[ref][0] == 4)
+            children = re.findall(r"^  - {fileID: (\\d+)}", transform, re.M)
+            self.assertEqual(len(children), 2, name)
+            actual = []
+            for child in children:
+                self.assertEqual(components[child][0], 4)
+                obj = re.search(
+                    r"^  m_GameObject: {fileID: (\\d+)}",
+                    components[child][1], re.M)
+                self.assertIsNotNone(obj, name)
+                actual.append(gameobjects[obj.group(1)][0])
+            self.assertCountEqual(
+                actual, ["ReviewLOD_" + name + "_1",
+                         "ReviewLOD_" + name + "_2"], name)
+        baker = (ROOT / "Assets/AarisWorld/Editor/"
+                 "AarisKenneyWindowlessBaker.cs").read_text()
+        self.assertIn('"ReviewLOD_" + source.name + "_1"', baker)
+        self.assertIn('"ReviewLOD_" + source.name + "_2"', baker)
+        self.assertIn("Undo.DestroyObjectImmediate(lod1.gameObject)", baker)
+        self.assertIn("Undo.DestroyObjectImmediate(lod2.gameObject)", baker)
+        self.assertIn("houses.Length != 47", baker)
+
     def test_a_single_urplit_material_is_used_by_editor_baker(self):
         path = ROOT / "Assets/AarisWorld/Editor/AarisKenneyWindowlessBaker.cs"
         code = path.read_text()
