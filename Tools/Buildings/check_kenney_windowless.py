@@ -128,6 +128,21 @@ class WindowlessHousesTest(unittest.TestCase):
                 for vertex in vertices:
                     self.assertTrue(all(math.isfinite(x) for x in vertex))
 
+    def test_seven_facade_styles_share_one_atlas_without_extra_materials(self):
+        self.assertEqual(len(generator.FACADE_U), 7)
+        self.assertEqual(len(set(generator.FACADE_U.values())), 7)
+        for name, _, _ in generator.STYLES:
+            with self.subTest(style=name):
+                _, uvs, _, materials = read_obj(
+                    self.folder / ("AarisWindowless_" + name + ".obj"))
+                self.assertEqual(materials, {"colormap"})
+                palette_u = generator.FACADE_U[name]
+                self.assertTrue(any(abs(u-palette_u) < 1e-6 for u, _ in uvs))
+                # Keep samples away from atlas edges to avoid black bleed.
+                self.assertTrue(0.10 < palette_u < 0.96)
+        self.assertEqual(len(list(self.folder.glob("*.png"))), 1,
+                         "Only one shared texture is allowed")
+
     def test_front_aperture_is_truly_open_but_front_walls_block(self):
         for name, _, _ in generator.STYLES:
             with self.subTest(style=name):
