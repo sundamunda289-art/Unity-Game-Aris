@@ -26,17 +26,20 @@ if ! GH_CONFIG_DIR="$CODESPACE_AUTH" gh auth status -h github.com >/dev/null 2>&
 fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-GH_CONFIG_DIR="$CODESPACE_AUTH" gh codespace list -R "$REPO" --limit 100 --json name,state > "$TMP/codespaces.json"
-jq -r '.[]|[.name,.state]|@tsv' "$TMP/codespaces.json"
+# Source repo is the sundamunda289-art master, but this Codespace can be
+# hosted in any authorized GitHub account's Unity-Game-Aris repository.
+GH_CONFIG_DIR="$CODESPACE_AUTH" gh codespace list --limit 100 --json name,state,repository > "$TMP/codespaces.json"
+echo 'Available Codespaces in authorized Unity-Game-Aris hosting repositories:'
+jq -r '.[]|select((.repository // "")|endswith("/Unity-Game-Aris"))|[.name,.state,.repository]|@tsv' "$TMP/codespaces.json"
 MACHINE="${1:-}"
 if [[ -z "$MACHINE" ]]; then
-  mapfile -t RUNNING < <(jq -r '.[]|select(.state=="Available")|.name' "$TMP/codespaces.json")
+  mapfile -t RUNNING < <(jq -r '.[]|select(.state=="Available" and ((.repository // "")|endswith("/Unity-Game-Aris")))|.name' "$TMP/codespaces.json")
   if (("${#RUNNING[@]}"==1)); then MACHINE="${RUNNING[0]}"; else
     read -r -p "Exact running Codespace name (from list): " MACHINE
   fi
 fi
 [[ "$MACHINE" =~ ^[A-Za-z0-9][A-Za-z0-9-]{2,119}$ ]] || { echo "INVALID_MACHINE"; exit 4; }
-jq -e --arg m "$MACHINE" '.[]|select(.name==$m and .state=="Available")' "$TMP/codespaces.json" >/dev/null || {
+jq -e --arg m "$MACHINE" '.[]|select(.name==$m and .state=="Available" and ((.repository // "")|endswith("/Unity-Game-Aris")))' "$TMP/codespaces.json" >/dev/null || {
   echo "CODESPACE_MUST_ALREADY_BE_RUNNING; NOT STARTING OR RESTARTING IT"
   exit 5
 }
