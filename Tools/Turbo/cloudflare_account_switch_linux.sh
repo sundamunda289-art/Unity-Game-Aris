@@ -32,13 +32,13 @@ if ((NODE_MAJOR<20)) || ! command -v npx >/dev/null 2>&1; then
   NODE_ROOT="$HOME/.local/share/aaris-turbo-node/v22.16.0"
   if [[ ! -x "$NODE_ROOT/bin/node" || ! -x "$NODE_ROOT/bin/npx" ]]; then
     mkdir -p "$HOME/.local/share/aaris-turbo-node"
-    NODE_ARCHIVE="node-v22.16.0-linux-x64.tar.xz"
+    NODE_ARCHIVE="node-v22.16.0-linux-x64.tar.gz"
     curl -fsSL --retry 3 --max-time 150 \
       "https://nodejs.org/dist/v22.16.0/$NODE_ARCHIVE" -o "$TMP/$NODE_ARCHIVE"
     (cd "$TMP"; printf '%s  %s\n' \
-      f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e "$NODE_ARCHIVE" |
+      fb870226119d47378fa9c92c4535389c72dae14fcc7b47e6fdcc82c43de5a547 "$NODE_ARCHIVE" |
       sha256sum -c --status)
-    tar -xJf "$TMP/$NODE_ARCHIVE" -C "$TMP"
+    tar -xzf "$TMP/$NODE_ARCHIVE" -C "$TMP"
     mv "$TMP/node-v22.16.0-linux-x64" "$NODE_ROOT"
     echo AARIS_CF_LOCAL_NODE22_SHA256_VERIFIED
   fi
