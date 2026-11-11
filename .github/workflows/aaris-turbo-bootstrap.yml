@@ -54,6 +54,10 @@ jobs:
           assert 'wrangler_auth_diag.py" --log "$AUTH_LOG"' in remote
           assert 'AARIS_CF_DEVICE_LOGIN_COMMAND_PASS' in remote
           assert 'AARIS_CF_WHOAMI_AUTHENTICATED' in remote
+          assert 'ACCOUNT="${2:-}"' in phone
+          assert 'CLOUDFLARE_REUSE_EXISTING_AUTHORIZED_LOGIN_FOR_EXPLICIT_ACCOUNT' in phone
+          assert 'LOGIN_AGAIN=1' in phone
+          assert 'AARIS_CF_ACCOUNT_NOT_AUTHORIZED' in remote
           print("AARIS_CF_OAUTH_DIAGNOSTIC_REGRESSION_PASS")
           PYOAUTHDIAG
           python3 -m py_compile Tools/Turbo/device_oauth_parse.py
