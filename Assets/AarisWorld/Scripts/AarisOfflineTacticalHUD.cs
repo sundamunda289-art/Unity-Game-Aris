@@ -100,8 +100,12 @@ namespace Aaris.MapReview
 
         public bool TryGiveGrenades(int amount)
         {
-            if (amount <= 0) return false;
-            fragGrenades = Mathf.Clamp(fragGrenades + amount, 0, 10);
+            // An inventory at capacity must decline the pickup, rather than
+            // falsely reporting success and consuming the source item.
+            if (amount <= 0 || fragGrenades >= 10) return false;
+            // Saturate BEFORE addition: a very large grant must never
+            // overflow the integer counter and accidentally clear ammo.
+            fragGrenades += Mathf.Min(amount, 10 - fragGrenades);
             return true;
         }
 
