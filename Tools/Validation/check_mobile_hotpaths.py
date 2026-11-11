@@ -59,8 +59,37 @@ def audit():
     for surface in ("water", "river", "stream", "road", "asphalt", "concrete", "floor", "bridge"):
         assert 'label.IndexOf("' + surface + '", StringComparison.OrdinalIgnoreCase)' in audio
 
+    # The collision-clamped camera target is always tested once, including
+    # while stationary; the second cast is only necessary while smoothing.
+    # The epsilon is 0.1 mm, far smaller than the camera collision radius.
+    camera = motor[motor.index("private void PlaceCamera(bool instant)"):]
+    first_cast = camera.index("wanted = ObstructionSafe(pivot, wanted);")
+    interpolation = camera.index("Vector3 next = instant ? wanted")
+    second_guard = camera.index("if ((next - wanted).sqrMagnitude > 0.00000001f)")
+    second_cast = camera.index("next = ObstructionSafe(pivot, next);")
+    assert first_cast < interpolation < second_guard < second_cast
+    assert camera.count("ObstructionSafe(pivot, next)") == 1
+    assert math.sqrt(0.00000001) <= 0.0001
+    # Stable camera and instant reset skip the duplicate cast; a moving
+    # camera still checks the interpolated position for obstructions.
+    assert not (0.0 > 0.00000001)
+    assert (0.02 * 0.02) > 0.00000001
+
+    # Simplified/stripped player prefabs may omit battle or inventory;
+    # checking missing components on every 60/120 Hz frame burns CPU.
+    # Prefetch at Awake and retry no faster than once per real-time second.
+    awake = motor[motor.index("private void Awake()"):motor.index("private void OnDestroy()")]
+    update = motor[motor.index("private void Update()"):motor.index("private void AnimateWalk")]
+    for component in ("AarisBattleActions", "AarisWeaponInventory"):
+        assert "GetComponent<" + component + ">()" in awake
+        assert "GetComponent<" + component + ">()" in update
+    assert "private float nextOptionalComponentRefresh;" in motor
+    assert "Time.unscaledTime >= nextOptionalComponentRefresh" in update
+    assert "nextOptionalComponentRefresh = Time.unscaledTime + 1f;" in update
+    assert update.index("nextOptionalComponentRefresh = Time.unscaledTime + 1f;") < update.index("ReadInput();")
+
     print("PASS: airborne support reuse, single motor, steady FOV writes, "
-          "bounded optional-component lookup and allocation-free footstep matching")
+          "bounded optional-component lookup, collision-safe camera cast deduplication and allocation-free footstep matching")
     print("NOT TESTED: Unity compilation, live camera occlusion and device FPS.")
 
 

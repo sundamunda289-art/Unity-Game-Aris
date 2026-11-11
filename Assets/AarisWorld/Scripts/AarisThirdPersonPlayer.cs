@@ -52,6 +52,7 @@ namespace Aaris.MapReview
         private Texture2D disc;
         private AarisBattleActions battle;
         private AarisWeaponInventory weaponInventory;
+        private float nextOptionalComponentRefresh;
         private Vector3 horizontalVelocity;
         private float normalCameraFov;
         private float weaponAimFov = -1f;
@@ -144,6 +145,10 @@ namespace Aaris.MapReview
         private void Awake()
         {
             controller = GetComponent<CharacterController>();
+            // Resolve normal gameplay components once. Optional components added
+            // later are still discovered by a bounded retry in Update.
+            battle = GetComponent<AarisBattleActions>();
+            weaponInventory = GetComponent<AarisWeaponInventory>();
             savedGroundStepOffset = controller.stepOffset;
             terrains = Terrain.activeTerrains;
             if (followCamera == null) followCamera = Camera.main;
@@ -293,8 +298,16 @@ namespace Aaris.MapReview
 
         private void Update()
         {
-            if (battle == null) battle = GetComponent<AarisBattleActions>();
-            if (weaponInventory == null) weaponInventory = GetComponent<AarisWeaponInventory>();
+            // Avoid native component searches on every Android frame when
+            // optional battle/weapon scripts are absent in a map-only scene.
+            // Late-added components still become available within one second.
+            if ((battle == null || weaponInventory == null) &&
+                Time.unscaledTime >= nextOptionalComponentRefresh)
+            {
+                nextOptionalComponentRefresh = Time.unscaledTime + 1f;
+                if (battle == null) battle = GetComponent<AarisBattleActions>();
+                if (weaponInventory == null) weaponInventory = GetComponent<AarisWeaponInventory>();
+            }
             ReadInput();
             // Do not silently discard elapsed time on 10–20 FPS phones.
             // A 50ms cap previously made a character at 10 FPS move at
@@ -603,7 +616,12 @@ namespace Aaris.MapReview
             Vector3 wanted = pivot - orbit * Vector3.forward * followDistance + orbit * Vector3.right * 0.30f;
             wanted = ObstructionSafe(pivot, wanted);
             Vector3 next = instant ? wanted : Vector3.SmoothDamp(followCamera.transform.position, wanted, ref cameraVelocity, 0.07f);
-            next = ObstructionSafe(pivot, next);
+            // The target has already passed the first collision sweep. On a
+            // settled camera (or instant reset), casting the same segment again
+            // is redundant. Keep the second sweep during camera interpolation
+            // so a smoothing frame never clips through a nearby obstruction.
+            if ((next - wanted).sqrMagnitude > 0.00000001f)
+                next = ObstructionSafe(pivot, next);
             followCamera.transform.SetPositionAndRotation(next, Quaternion.LookRotation(pivot + orbit * Vector3.forward * 0.5f - next));
         }
         private void LateUpdate() { PlaceCamera(false); }
