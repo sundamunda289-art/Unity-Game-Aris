@@ -168,6 +168,27 @@ def audit():
     for ram_mb in (1536, 2048, 2304, 3072):
         assert 0 < ram_mb <= 3072
     assert "lastTargetFps != targetFps" in quality
+    # Unity mobile pacing must be evaluated against the effective display
+    # divisor, not the nominal request (90 Hz / 60 requested -> 45 real).
+    assert "Screen.currentResolution.refreshRateRatio.value" in quality
+    assert "Mathf.CeilToInt(refreshHz / requestedFps)" in quality
+    assert "float effectiveFps = EffectiveAndroidTargetFps(targetFps);" in quality
+    assert "float budgetMs = 1000f / effectiveFps;" in quality
+    assert "s.effectiveTargetFps = EffectiveAndroidTargetFps(s.targetFps);" in quality
+    assert "float budgetMs = 1000f / targetFps;" not in quality
+
+    def effective_android_fps(refresh_hz, requested_fps):
+        return 30.0 if requested_fps <= 0 else (refresh_hz / math.ceil(refresh_hz / requested_fps)
+            if refresh_hz > 0 else requested_fps)
+
+    for hz, requested, effective in ((60, 60, 60), (90, 60, 45),
+                                     (120, 60, 60), (144, 60, 48),
+                                     (90, 30, 30), (60, 30, 30)):
+        assert effective_android_fps(hz, requested) == effective
+    assert effective_android_fps(59.94, 60) == 59.94
+    # 45 FPS at 90 Hz is healthy, not a sustained 60 FPS render miss.
+    assert 22.2 < (1000 / effective_android_fps(90, 60)) * 1.08
+    assert 22.2 > (1000 / 60) * 1.20
     assert "slowIntervals >= 2" in quality and "steadyIntervals >= 4" in quality
     assert "current - 0.05f" in quality and "current + 0.025f" in quality
     assert "Mathf.Clamp(minimumAndroidRenderScale, 0.65f, 1f)" in quality
@@ -308,7 +329,7 @@ def audit():
         assert not (level != target)  # Steady-state setter is skipped.
 
     print("PASS: airborne support reuse, single motor, steady FOV writes, "
-          "bounded player/animation optional-component lookup, legacy idle pose, collision-safe camera, audio/gloo hotpaths and adaptive Android quality contracts")
+          "bounded player/animation optional-component lookup, legacy idle pose, collision-safe camera, audio/gloo hotpaths, refresh-aware pacing and adaptive Android quality contracts")
     print("NOT TESTED: Unity compilation, live camera occlusion and device FPS.")
 
 
