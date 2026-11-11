@@ -47,6 +47,11 @@ def audit():
     assert "public bool TryPickup(AarisWeaponState incoming, out AarisWeaponState dropped)" in inventory
     assert "dropped = equipped != null ? equipped.CaptureState() : null;" in inventory
     assert "if (old != null)" in inventory and "old.gameObject.SetActive(false);" in inventory
+    # A composite FBX cannot be sized from its first child Renderer.
+    assert "var renderers = visible.GetComponentsInChildren<Renderer>(true);" in inventory
+    assert "combinedBounds.Encapsulate(renderers[i].bounds);" in inventory
+    assert "Mathf.Max(combinedBounds.size.x" in inventory
+    assert "renderer.bounds.size" not in inventory
     assert "combat.Equip(null)" in inventory and "combat.SetFireHeld(false)" in inventory
     assert "public bool TryRemove(out AarisWeaponState removed)" in inventory
     assert "Configure(AarisWeaponState state)" in gun

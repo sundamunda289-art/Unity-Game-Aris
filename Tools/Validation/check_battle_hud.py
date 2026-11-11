@@ -71,8 +71,20 @@ def check() -> None:
     assert "horizontalVelocity = Vector3.MoveTowards" in motor
     assert "if (running && intent.sqrMagnitude < 0.04f) intent = Vector2.up;" in motor
 
-    for speed in ["6.5f", "5.7f", "4.2f", "2.4f", "1.1f", "2.0f"]:
-        assert speed in motor, f"2km battle movement speed missing: {speed}"
+    # Assert each actual field, not an unrelated occurrence of its literal.
+    # The current prone speed is 1.45 m/s; 1.1f belongs to another setting.
+    expected_speeds = {
+        "unarmedSprintSpeed": "6.5",
+        "armedSprintSpeed": "5.7",
+        "walkSpeed": "4.2",
+        "crouchMoveSpeed": "2.4",
+        "proneMoveSpeed": "1.45",
+        "combatMoveSpeed": "2.0",
+    }
+    for field, value in expected_speeds.items():
+        assert re.search(rf"\b{field}\s*=\s*{value}f\b", motor), (
+            f"2km movement setting changed: {field} != {value} m/s"
+        )
     assert "horizontalBraking" in motor and "normalCameraFov" in motor
     assert "Debug.isDebugBuild" in motor, "Release APK must hide saved debugging buttons"
 
