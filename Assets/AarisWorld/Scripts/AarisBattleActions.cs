@@ -78,12 +78,20 @@ namespace Aaris.MapReview
 
         public void SetFireHeld(bool held)
         {
-            // Semi-auto must fire on a NEW press only, never repeatedly
-            // while held. Full-auto retains the original held cadence.
-            if (held && !fireHeld) semiShotQueued = true;
+            // Unity's EventSystem can process both Down and Up between combat
+            // Updates on 10-20 FPS phones. Fire immediately on the new press:
+            // otherwise a quick tap is discarded before Update can see it.
+            bool newPress = held && !fireHeld;
             fireHeld = held;
             if (!held) semiShotQueued = false;
             if (held && motor != null) motor.CancelAutoSprint();
+            if (!newPress) return;
+            semiShotQueued = true;
+            // Do not bypass the existing gun's ammo, reload, cooldown or
+            // aim/cover checks. Held auto-fire still uses Update's cadence.
+            if (isActiveAndEnabled && Time.timeScale > 0f &&
+                IsArmed && Time.time >= nextAttack)
+                ShootEquippedWeapon();
         }
 
         public bool ToggleCrouch() =>
@@ -204,14 +212,7 @@ namespace Aaris.MapReview
             if (IsArmed)
             {
                 if (!equippedGun.Automatic && !semiShotQueued) return;
-                if (!equippedGun.Automatic) semiShotQueued = false;
-                if (equippedGun.TryFire(motor.AimCamera, gameObject))
-                {
-                    attackSequence++;
-                    lastShootTime = Time.time;
-                    nextAttack = Time.time + equippedGun.SecondsBetweenShots;
-                }
-                else nextAttack = Time.time + 0.04f;
+                ShootEquippedWeapon();
                 return;
             }
 
@@ -219,6 +220,21 @@ namespace Aaris.MapReview
             nextAttack = lastPunchTime + Mathf.Max(punchInterval, PunchVisualDuration);
             punchContactTime = lastPunchTime + PunchContactDelay;
             attackSequence++;
+        }
+
+        private void ShootEquippedWeapon()
+        {
+            // One trigger edge consumes at most one shot. Shared by the HUD
+            // press path and the held-fire Update path, so their cooldown and
+            // animation sequencing cannot drift apart.
+            semiShotQueued = false;
+            if (equippedGun.TryFire(motor.AimCamera, gameObject))
+            {
+                attackSequence++;
+                lastShootTime = Time.time;
+                nextAttack = Time.time + equippedGun.SecondsBetweenShots;
+            }
+            else nextAttack = Time.time + 0.04f;
         }
 
         private void Punch()
