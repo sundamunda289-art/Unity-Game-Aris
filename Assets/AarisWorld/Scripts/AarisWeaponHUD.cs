@@ -154,6 +154,17 @@ namespace Aaris.MapReview
             return false;
         }
 
+        private void OnEnable()
+        {
+            // OnDisable clears the singleton used by touch capture, but the
+            // scene-load bootstrap will not re-run on a HUD reactivation.
+            // OnEnable also runs before Create() on initial AddComponent:
+            // only reclaim a fully constructed canvas, never another HUD.
+            if (canvas == null || (instance != null && instance != this)) return;
+            instance = this;
+            UpdateArea(true);
+        }
+
         private void OnDisable()
         {
             if (instance == this) instance = null;
