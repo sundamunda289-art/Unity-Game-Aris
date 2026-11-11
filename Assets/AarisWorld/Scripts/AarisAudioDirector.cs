@@ -243,9 +243,16 @@ namespace Aaris.MapReview
         private static void AdjustLoop(AudioSource source, float volume, float pitch, float dt)
         {
             if (source == null || source.clip == null) return;
-            source.volume = Mathf.MoveTowards(source.volume, volume, dt * 1.6f);
-            source.pitch = Mathf.MoveTowards(source.pitch, pitch, dt * 1.8f);
-            if (source.volume <= 0.001f && volume <= 0f && source.isPlaying)
+            // A steady loop already at its target should not issue two
+            // managed-to-native AudioSource property writes every frame.
+            // Preserve the exact MoveTowards result, including the final snap.
+            float currentVolume = source.volume;
+            float nextVolume = Mathf.MoveTowards(currentVolume, volume, dt * 1.6f);
+            if (nextVolume != currentVolume) source.volume = nextVolume;
+            float currentPitch = source.pitch;
+            float nextPitch = Mathf.MoveTowards(currentPitch, pitch, dt * 1.8f);
+            if (nextPitch != currentPitch) source.pitch = nextPitch;
+            if (nextVolume <= 0.001f && volume <= 0f && source.isPlaying)
                 source.Stop();
         }
 
