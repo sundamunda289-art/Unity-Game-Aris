@@ -58,6 +58,15 @@ def audit() -> None:
     assert "float stanceScale = stanceTotal > 1f ? pose / stanceTotal : 1f;" in visual
     assert "crouchBlend * stanceScale" in visual and "proneBlend * stanceScale" in visual
     assert "HasProneClearance" in state
+    assert "return HasProneClearance(worldPosition, transform.forward);" in state, (
+        "Prone strafing footprint must align with the facing body, not travel vector"
+    )
+    assert "horizontalVelocity = Vector3.ClampMagnitude(horizontalVelocity, speed);" in motor, (
+        "A crouch/prone transition must not inherit excess sprint velocity"
+    )
+    assert "FindFirstObjectByType<AarisMobileRuntime>() == null" in motor, (
+        "Player Awake must not overwrite AarisMobileRuntime FPS settings"
+    )
     assert "count == nearHits.Length" in state
     assert "muzzleHit" in gun
 

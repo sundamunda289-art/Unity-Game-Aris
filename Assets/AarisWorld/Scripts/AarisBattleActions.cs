@@ -150,9 +150,10 @@ namespace Aaris.MapReview
         public bool CanAdvanceProne(Vector3 worldPosition, Vector3 travelDirection)
         {
             if (stance != PlayerStance.Prone) return true;
-            Vector3 direction = travelDirection.sqrMagnitude > 0.0025f
-                ? travelDirection.normalized : transform.forward;
-            return HasProneClearance(worldPosition, direction);
+            // The horizontal footprint belongs to the actual facing body,
+            // not the travel vector: armed prone strafing can move sideways.
+            // Keep travelDirection in the public signature for existing callers.
+            return HasProneClearance(worldPosition, transform.forward);
         }
 
         private bool HasProneClearance(Vector3 position, Vector3 forward)
