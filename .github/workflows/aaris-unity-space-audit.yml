@@ -1,0 +1,74 @@
+name: Aaris Unity Disk and Temp Check
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aaris-unity-editor-maintenance
+  cancel-in-progress: false
+
+jobs:
+  disk-audit:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.actor == 'sundamunda289-art') ||
+      (github.event_name == 'issue_comment' && github.event.issue.number == 77 &&
+       github.event.comment.user.login == 'sundamunda289-art' &&
+       github.event.comment.body == 'AARIS SPACE CHECK')
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+      NAME: aaris-ai-ubuntu-minimal-4qr6v94w9rwvhjgp6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          lfs: false
+      - name: Ensure existing Codespace can be reached
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" || { echo "CODESPACE_PAT_MISSING"; exit 2; }
+          state="$(gh codespace view -c "$NAME" --json state --jq .state)"
+          echo "CODESPACE_STATE=$state"
+          case "$state" in
+            Available) ;;
+            Shutdown|Stopped) gh api -X POST "/user/codespaces/$NAME/start" >/dev/null ;;
+            Starting|Queued|Provisioning) ;;
+            *) echo "CODESPACE_UNAVAILABLE"; exit 3 ;;
+          esac
+          for attempt in $(seq 1 40); do
+            state="$(gh codespace view -c "$NAME" --json state --jq .state || true)"
+            test "$state" = Available && break
+            sleep 5
+          done
+          test "$state" = Available || { echo "CODESPACE_START_TIMEOUT"; exit 4; }
+          echo "CODESPACE_READY"
+      - name: Measure disk, inodes, caches and clean only safe stopped-Editor Temp
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 360 gh codespace ssh -c "$NAME" -- 'bash -s' \
+            < Tools/Codespaces/unity_space_audit.sh \
+            | tee "$RUNNER_TEMP/aaris-space-report.txt"
+          grep -q '^AARIS_SPACE_AUDIT_COMPLETE$' "$RUNNER_TEMP/aaris-space-report.txt"
+      - name: Package audited diagnostic report
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/aaris-audit-artifact"
+          cp "$RUNNER_TEMP/aaris-space-report.txt" "$RUNNER_TEMP/aaris-audit-artifact/report.txt" 2>/dev/null || \
+            printf 'Remote disk inspection did not complete. Check Actions job.\n' > "$RUNNER_TEMP/aaris-audit-artifact/report.txt"
+      - name: Download Unity disk report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AarisSpaceAudit-${{ github.run_id }}
+          path: ${{ runner.temp }}/aaris-audit-artifact/report.txt
+          retention-days: 1
+          if-no-files-found: error
