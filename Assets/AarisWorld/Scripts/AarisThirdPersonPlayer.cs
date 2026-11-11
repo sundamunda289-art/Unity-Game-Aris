@@ -336,8 +336,12 @@ namespace Aaris.MapReview
             // as soon as a grounded Move succeeds.
             float groundedStep = battle != null
                 ? battle.GroundStepOffset : savedGroundStepOffset;
-            controller.stepOffset = !launchJump && (wasGrounded || verticalVelocity <= 0f)
+            float requestedStep = !launchJump && (wasGrounded || verticalVelocity <= 0f)
                 ? groundedStep : 0f;
+            // Stance and jump transitions still apply immediately; stable
+            // frames avoid reconfiguring the native CharacterController.
+            if (!Mathf.Approximately(controller.stepOffset, requestedStep))
+                controller.stepOffset = requestedStep;
 
             // Sole controller motor: no extra movement component or double
             // gravity. Touch, keyboard and auto-sprint use one intent pipeline.
@@ -455,7 +459,8 @@ namespace Aaris.MapReview
                 if (!wasGrounded && !launchJump) lastLanding = now;
                 lastGrounded = now;
                 if (verticalVelocity < 0f) verticalVelocity = -groundedDownVelocity;
-                controller.stepOffset = groundedStep;
+                if (!Mathf.Approximately(controller.stepOffset, groundedStep))
+                    controller.stepOffset = groundedStep;
             }
             Vector3 velocity = controller.velocity;
             travelSpeed = new Vector2(velocity.x, velocity.z).magnitude;

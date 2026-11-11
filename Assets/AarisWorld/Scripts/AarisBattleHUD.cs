@@ -158,10 +158,19 @@ namespace Aaris.MapReview
                 safeRoot, player.MoveStickScreenCenter, null, out Vector2 stickPosition))
             {
                 float scale = player.MoveStickScreenScale / canvas.scaleFactor;
-                moveRing.anchoredPosition = stickPosition;
-                moveRing.sizeDelta = Vector2.one * (152f * scale);
-                moveKnob.anchoredPosition = player.MoveStickInput * (44f * scale);
-                moveKnob.sizeDelta = Vector2.one * (56f * scale);
+                // Writing unchanged RectTransforms dirties the mobile Canvas.
+                // Idle frames must not rebuild the joystick UI.
+                Vector2 ringSize = Vector2.one * (152f * scale);
+                Vector2 knobPosition = player.MoveStickInput * (44f * scale);
+                Vector2 knobSize = Vector2.one * (56f * scale);
+                if (moveRing.anchoredPosition != stickPosition)
+                    moveRing.anchoredPosition = stickPosition;
+                if (moveRing.sizeDelta != ringSize)
+                    moveRing.sizeDelta = ringSize;
+                if (moveKnob.anchoredPosition != knobPosition)
+                    moveKnob.anchoredPosition = knobPosition;
+                if (moveKnob.sizeDelta != knobSize)
+                    moveKnob.sizeDelta = knobSize;
             }
             foreach (var button in buttons)
             {

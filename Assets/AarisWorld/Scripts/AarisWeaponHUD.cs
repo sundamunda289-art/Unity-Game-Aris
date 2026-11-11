@@ -129,7 +129,9 @@ namespace Aaris.MapReview
                     buttons[i].gameObject.SetActive(show);
             }
             if (!armed) return;
-            captions[0].text = inventory.Aiming ? "ADS ON" : "ADS";
+            string aimCaption = inventory.Aiming ? "ADS ON" : "ADS";
+            if (captions[0].text != aimCaption)
+                captions[0].text = aimCaption;
             var gun = inventory.Current;
             if (shownMagazine != gun.Magazine || shownReserve != gun.Reserve || shownReloading != gun.Reloading)
             {
