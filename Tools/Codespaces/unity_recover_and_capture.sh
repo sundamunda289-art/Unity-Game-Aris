@@ -49,18 +49,27 @@ fi
 # Bounded import and frame-production observation; never alter LFS/caches.
 for i in $(seq 1 12); do
   sleep 10
-  n="$(find "$POSE" -maxdepth 1 -type f -name '*.jpg' 2>/dev/null | wc -l)"
+  mkdir -p "$POSE"
+n="$(find "$POSE" -maxdepth 1 -type f -name '*.jpg' 2>/dev/null | wc -l)"
   if [[ "$n" -ge 18 ]]; then break; fi
 done
 pid="$(pgrep -f '[E]ditor/Unity.*-projectPath /workspaces/Unity-Game-Aris' | head -1 || true)"
 say "final_editor_running=$([[ -n "$pid" ]] && echo yes || echo no)"
 say "final_editor_log_age_seconds=$(($(date +%s)-$(stat -c %Y "$LOG")))"
 say "compilation_errors=$(grep -cE 'error CS[0-9]+' "$LOG" || true)"
+# These diagnostics refer only to public project C# source paths, never tokens.
+grep -E 'error CS[0-9]+' "$LOG" | tail -n 12 > "$OUT/compiler-errors.txt" || true
+if [[ -s "$OUT/compiler-errors.txt" ]]; then
+  say "compiler_error_details_begin"
+  cat "$OUT/compiler-errors.txt"
+  say "compiler_error_details_end"
+fi
 n="$(find "$POSE" -maxdepth 1 -type f -name '*.jpg' 2>/dev/null | wc -l)"
 say "real_pose_frames=$n"
 if [[ -f "$POSE/report.txt" ]]; then
   grep -E '^(STAGE|FRAME|SUCCESS|ERROR|TIMEOUT|PLAYMODE)' "$POSE/report.txt" | tail -30 > "$OUT/pose-report.txt" || true
 fi
+touch "$OUT/pose-report.txt"
 export DISPLAY=:99
 window="$(xdotool search --onlyvisible --name '^Unity - Unity-Game-Aris' | head -1 || true)"
 if [[ -n "$window" ]]; then
