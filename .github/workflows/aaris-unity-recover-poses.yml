@@ -1,0 +1,95 @@
+name: Aaris Unity Recover and Pose Frames
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aaris-unity-editor-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.actor == 'sundamunda289-art') ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 77 &&
+       github.event.comment.user.login == 'sundamunda289-art' &&
+       github.event.comment.body == 'AARIS UNITY RECOVER')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+      NAME: aaris-ai-ubuntu-minimal-4qr6v94w9rwvhjgp6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          lfs: false
+      - name: Validate owner Codespace access without printing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" || { echo "CODESPACE_PAT_UNAVAILABLE"; exit 2; }
+          state="$(gh codespace view -c "$NAME" --json state --jq .state)"
+          echo "CODESPACE_INITIAL_STATE=$state"
+          case "$state" in
+            Available) ;;
+            Shutdown|Stopped)
+              gh api -X POST "/user/codespaces/$NAME/start" >/dev/null
+              ;;
+            Starting|Queued|Provisioning) ;;
+            *) echo "UNSUPPORTED_CODESPACE_STATE"; exit 3 ;;
+          esac
+          for i in $(seq 1 55); do
+            state="$(gh codespace view -c "$NAME" --json state --jq .state || true)"
+            test "$state" = Available && break
+            sleep 6
+          done
+          test "$state" = Available || { echo "CODESPACE_NOT_READY"; exit 4; }
+          echo "CODESPACE_READY"
+      - name: Safely inspect and recover stale Editor, keep all source and LFS
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 460 gh codespace ssh -c "$NAME" -- 'bash -s' \
+            < Tools/Codespaces/unity_recover_and_capture.sh \
+            | tee "$RUNNER_TEMP/recovery-out.txt"
+          grep -q '^AARIS_RECOVERY_FINISHED$' "$RUNNER_TEMP/recovery-out.txt"
+      - name: Fetch only real screenshots and sanitized reports
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/aaris-recovery-artifact"
+          # Transfer a tar of ONLY JPEGs and text summaries. Never back up source
+          # files, secrets, entire screens or Unity log into public Actions.
+          timeout 95 gh codespace ssh -c "$NAME" -- \
+            "bash -lc 'cd /tmp/aaris-unity-recovery &&
+             find . -maxdepth 1 -type f \\( -name \"*.jpg\" -o -name \"status.txt\" -o -name \"pose-report.txt\" \\) -print0 |
+             tar --null -czf - -T - | base64 -w0'" \
+            > "$RUNNER_TEMP/aaris-recovery.base64" || true
+          if [[ -s "$RUNNER_TEMP/aaris-recovery.base64" ]]; then
+            base64 -d "$RUNNER_TEMP/aaris-recovery.base64" \
+              > "$RUNNER_TEMP/aaris-recovery.tar.gz"
+            tar -xzf "$RUNNER_TEMP/aaris-recovery.tar.gz" \
+              -C "$RUNNER_TEMP/aaris-recovery-artifact"
+          fi
+          if ! find "$RUNNER_TEMP/aaris-recovery-artifact" -type f | grep -q .; then
+            printf 'Codespace did not return a verified screenshot/report. Check run diagnostics.\n' \
+              > "$RUNNER_TEMP/aaris-recovery-artifact/README.txt"
+          fi
+          echo "AARIS_RECOVERY_ARTIFACT_READY"
+      - name: Download true Editor screenshot or pose frames
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AarisUnityRecovery-${{ github.run_id }}
+          path: ${{ runner.temp }}/aaris-recovery-artifact/
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
