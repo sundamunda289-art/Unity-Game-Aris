@@ -18,6 +18,9 @@ namespace Aaris.MapReview
         [SerializeField] private Terrain[] terrains;
         [SerializeField] private bool releaseTerrainPaintCpuCopies = false;
         [SerializeField] private int targetFrameRate = 60;
+        [Header("Android-only: conservative URP resolution adaptation")]
+        [SerializeField] private bool adaptiveAndroidResolution = true;
+        [SerializeField, Range(0.65f, 1f)] private float minimumAndroidRenderScale = 0.72f;
         private readonly float[] frameTimes = new float[180];
         private readonly float[] sortedTimes = new float[180];
         private int frameIndex, frameCount;
@@ -34,6 +37,9 @@ namespace Aaris.MapReview
 #if UNITY_ANDROID && !UNITY_EDITOR
         private long androidPssKB = -1;
         private Task<string> pendingLogWrite;
+        private UniversalRenderPipelineAsset androidPipeline;
+        private float originalRenderScale = 1f;
+        private int slowIntervals, steadyIntervals, lastTargetFps;
 #endif
         public static string LatestReport { get; private set; } = "Starting map...";
 
@@ -65,6 +71,9 @@ namespace Aaris.MapReview
             // rather than changing the four native TerrainData assets or
             // forcing a platform-specific renderer/material substitution.
             yield return null; // Let URP initialize its first terrain frame.
+#if UNITY_ANDROID && !UNITY_EDITOR
+            ConfigureAndroidQuality();
+#endif
             if (releaseTerrainPaintCpuCopies)
                 Debug.LogWarning("AARIS_TERRAIN_PAINT_RELEASE_DISABLED: preserve original alphamap GPU uploads.");
             AuditNativeTerrain();
@@ -109,6 +118,77 @@ namespace Aaris.MapReview
                 " api=" + SystemInfo.graphicsDeviceType);
         }
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // Runs once after URP initializes. The source pipeline asset and terrain
+        // materials stay untouched; only this Android player's runtime quality changes.
+        private void ConfigureAndroidQuality()
+        {
+            if (!adaptiveAndroidResolution) return;
+            androidPipeline = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
+            if (androidPipeline == null) return;
+            originalRenderScale = androidPipeline.renderScale;
+            lastTargetFps = Application.targetFrameRate;
+            int memoryMB = SystemInfo.systemMemorySize;
+            if (memoryMB <= 0 || memoryMB > 3072) return;
+            float initialScale = memoryMB <= 2304 ? 0.85f : 0.92f;
+            androidPipeline.renderScale = Mathf.Min(originalRenderScale, initialScale);
+            // Mipmap streaming was already enabled by the saved QualitySettings.
+            // Bound its texture residency on low-RAM phones without modifying
+            // the four native TerrainData control textures or their readability.
+            float mipBudgetMB = memoryMB <= 2304 ? 160f : 224f;
+            QualitySettings.streamingMipmapsMemoryBudget =
+                Mathf.Min(QualitySettings.streamingMipmapsMemoryBudget, mipBudgetMB);
+        }
+
+        // Two bad windows to lower GPU fill cost, four stable windows to recover
+        // image detail. Never oscillate on an individual slow frame.
+        private void TuneAndroidResolution(Sample sample)
+        {
+            if (androidPipeline == null || !adaptiveAndroidResolution) return;
+            int targetFps = Application.targetFrameRate;
+            if (targetFps <= 0) return;
+            if (lastTargetFps != targetFps)
+            {
+                lastTargetFps = targetFps;
+                slowIntervals = steadyIntervals = 0;
+                return;
+            }
+            float budgetMs = 1000f / targetFps;
+            if (sample.p95FrameMs > budgetMs * 1.20f)
+            {
+                slowIntervals++;
+                steadyIntervals = 0;
+            }
+            else if (sample.p95FrameMs < budgetMs * 1.08f &&
+                     sample.p99FrameMs < budgetMs * 1.40f)
+            {
+                steadyIntervals++;
+                slowIntervals = 0;
+            }
+            else
+            {
+                slowIntervals = steadyIntervals = 0;
+            }
+
+            float current = androidPipeline.renderScale;
+            float floor = Mathf.Min(originalRenderScale,
+                Mathf.Clamp(minimumAndroidRenderScale, 0.65f, 1f));
+            if (slowIntervals >= 2)
+            {
+                float reduced = Mathf.Max(floor, current - 0.05f);
+                if (reduced < current - 0.001f) androidPipeline.renderScale = reduced;
+                slowIntervals = 0;
+            }
+            else if (steadyIntervals >= 4)
+            {
+                float recovered = Mathf.Min(originalRenderScale, current + 0.025f);
+                if (recovered > current + 0.001f) androidPipeline.renderScale = recovered;
+                steadyIntervals = 0;
+            }
+            sample.renderScale = androidPipeline.renderScale;
+        }
+#endif
+
         private void Update()
         {
             float dt = Time.unscaledDeltaTime;
@@ -139,6 +219,16 @@ namespace Aaris.MapReview
         private void OnApplicationPause(bool paused)
         {
             if (paused) Record("pause");
+            else
+            {
+                // Do not let the resumed frame or old device-time samples
+                // trigger an inappropriate resolution drop after backgrounding.
+                frameIndex = frameCount = 0;
+                sampleAt = Time.unscaledTime + ReportInterval;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                slowIntervals = steadyIntervals = 0;
+#endif
+            }
         }
         private void OnApplicationQuit() { Record("quit"); }
         private void OnDestroy()
@@ -206,6 +296,8 @@ namespace Aaris.MapReview
                 catch (Exception e) { Debug.LogWarning("Android PSS unavailable: " + e.GetType().Name); }
             }
             s.androidPssKB = androidPssKB;
+            if (reason == "sample" && frameCount >= 30)
+                TuneAndroidResolution(s);
             if (GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset pipeline)
                 s.renderScale = pipeline.renderScale;
 #endif
