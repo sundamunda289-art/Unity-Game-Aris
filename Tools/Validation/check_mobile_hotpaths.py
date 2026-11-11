@@ -185,6 +185,38 @@ def audit():
     assert "nextCheck = Time.unscaledTime + 1f;" in nearby
     assert "if (forcePhysicsSync) Physics.SyncTransforms();" in nearby
 
+    # Two-threshold streaming prevents collider enable/disable churn when
+    # a player strafes over the 55 m boundary. The entry distance stays
+    # unchanged; only an already enabled shape gets a 6 m release margin.
+    assert "private const float ColliderReleaseMargin = 6f;" in nearby
+    assert "float enterDistance = Mathf.Max(0f, activationDistance);" in nearby
+    assert "float retainDistance = enterDistance + ColliderReleaseMargin;" in nearby
+    assert "float enterLimit = enterDistance * enterDistance;" in nearby
+    assert "float retainLimit = retainDistance * retainDistance;" in nearby
+    assert "Cell(lastPosition.x - retainDistance)" in nearby
+    assert "Cell(lastPosition.z - retainDistance)" in nearby
+    assert "float limit = c.enabled ? retainLimit : enterLimit;" in nearby
+    assert "if (dx * dx + dz * dz > limit) continue;" in nearby
+
+    def collider_transitions(distances, margin):
+        enabled, changes = False, 0
+        for metres in distances:
+            limit = 55.0 + margin if enabled else 55.0
+            should_enable = metres <= limit
+            if should_enable != enabled:
+                changes += 1
+                enabled = should_enable
+        return changes, enabled
+
+    boundary_jitter = [54.7, 55.3] * 60
+    assert collider_transitions(boundary_jitter, 0.0)[0] == 120
+    assert collider_transitions(boundary_jitter, 6.0) == (1, True)
+    # An unloaded object at 58 m cannot activate just because exit distance
+    # is 61 m. It only comes online after reaching the 55 m entry threshold.
+    assert collider_transitions([58.0, 57.0, 55.1], 6.0) == (0, False)
+    # Leaving beyond 61 m switches off; re-entry at 54 m activates again.
+    assert collider_transitions([54.0, 60.0, 62.0, 58.0, 54.0], 6.0) == (3, True)
+
     def simulated_collider_polls(fps, speed, seconds=5):
         last_x, next_check, count = 0., 0., 0
         for frame in range(fps * seconds):
