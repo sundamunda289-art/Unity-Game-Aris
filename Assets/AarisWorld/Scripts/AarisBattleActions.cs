@@ -87,11 +87,13 @@ namespace Aaris.MapReview
             if (held && motor != null) motor.CancelAutoSprint();
             if (!newPress) return;
             semiShotQueued = true;
-            // Do not bypass the existing gun's ammo, reload, cooldown or
-            // aim/cover checks. Held auto-fire still uses Update's cadence.
-            if (isActiveAndEnabled && Time.timeScale > 0f &&
-                IsArmed && Time.time >= nextAttack)
-                ShootEquippedWeapon();
+            // Do not bypass the gun's ammo, reload, cooldown or cover checks.
+            // An unarmed tap must also begin its punch wind-up immediately,
+            // otherwise a short Down/Up pair is lost before the next Update.
+            if (!isActiveAndEnabled || Time.timeScale <= 0f ||
+                Time.time < nextAttack) return;
+            if (IsArmed) ShootEquippedWeapon();
+            else QueuePunch();
         }
 
         public bool ToggleCrouch() =>
@@ -216,6 +218,11 @@ namespace Aaris.MapReview
                 return;
             }
 
+            QueuePunch();
+        }
+
+        private void QueuePunch()
+        {
             lastPunchTime = Time.time;
             nextAttack = lastPunchTime + Mathf.Max(punchInterval, PunchVisualDuration);
             punchContactTime = lastPunchTime + PunchContactDelay;
