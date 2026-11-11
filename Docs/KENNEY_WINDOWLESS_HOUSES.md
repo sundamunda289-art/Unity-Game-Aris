@@ -103,7 +103,24 @@ LODs before the bake, or the 12 untouched landmark LODs plus exactly 47
 persisted replacement home roots afterwards. Partial bake states fail
 closed. Compile and Play Mode are still required for runtime proof.
 
-**Known limitation:** Separate runtime settlement expansion still uses
-its existing catalog/prefabs; this pilot edits the **native residential
-scene only**. That path needs a separate, tested migration if all runtime
-expansion houses must also become windowless.
+## Additional runtime houses: explicit follow-up, NOT implemented yet
+
+`Assets/Resources/AarisExpansion/WorldExpansionPlan.json` authoritatively
+lists **21 runtime sites**: **16 residential homes** and five watchtowers.
+Of those 16 homes, four sites (`ARX_18`–`ARX_21`) currently use
+`AarisModularHouse.Create` and spawn actual door leaves and breakable
+windows. Twelve others resolve original catalog prefabs.
+
+This draft's 47-home baker changes **only the already-authored native
+scene**, so those 16 runtime houses must **not** be described as upgraded.
+Their migration should use the seven authored Kenney prefabs through
+**persisted catalog references**, preserve `WorldExpansionPlan` site
+coordinates and footprint bounds, and scale the prefab to the approved
+site dimensions (not append runtime window/door overlays). The four
+interactive-house regression probes must be redesigned for unblocked
+doorless entrances and physics/raycast evidence before merging that
+separate change. Keep the five watchtowers unchanged.
+
+**Known limitation:** Without a real Unity Editor import, scene view,
+collider walk-through, and Android build, **neither native nor runtime
+replacement is an independently verified in-game result**.
