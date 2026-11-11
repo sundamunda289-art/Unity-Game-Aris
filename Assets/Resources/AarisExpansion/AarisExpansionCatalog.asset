@@ -16,3 +16,6 @@ MonoBehaviour:
   bungalow: {fileID: 10000, guid: 95adab75211757f1905ab13c50b263c6, type: 3}
   detached: {fileID: 10000, guid: c120df7ac4b15dbab6e890bd54e21641, type: 3}
   watchtower: {fileID: 10000, guid: 999daad9214a56a8bbde73b8aab5f8d2, type: 3}
+  openCottage: {fileID: 240995416063321573, guid: 64f3de8b33ff288b5ac880b2c5287fc6, type: 3}
+  openBungalow: {fileID: 8893387745110225068, guid: 2d0579356206d6006a0bfc34e9e56ffe, type: 3}
+  openDetached: {fileID: 864132135819181147, guid: 0beffc006563d8d93a6a2bd4b5b2a9fc, type: 3}

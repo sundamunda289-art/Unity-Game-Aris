@@ -211,7 +211,14 @@ class ExpansionIntegrity(unittest.TestCase):
         self.assertIn("public void ApplyDamage(float amount, GameObject attacker)", panel)
         self.assertIn("solid.enabled = false;", panel)
         self.assertIn("leaf.gameObject.SetActive(false);", panel)
-        self.assertIn("if (component is IAarisDamageable damageable)", weapon)
+        # Both the prior per-component iteration and the new allocation-free
+        # GetComponents(List<T>) damage dispatch satisfy the gameplay contract.
+        self.assertTrue(
+            "if (component is IAarisDamageable damageable)" in weapon or
+            ("node.GetComponents(damageScratch);" in weapon and
+             "damageScratch[i] is IAarisDamageable damageable" in weapon),
+            "damage application must discover IAarisDamageable without network state",
+        )
         self.assertIn("damageable.ApplyDamage(amount, attacker);", weapon)
         self.assertNotIn("Unity.Netcode", modular + panel)
         self.assertNotIn("NetworkBehaviour", modular + panel)

@@ -120,7 +120,15 @@ namespace Aaris.MapReview
                     skippedResources++;
                     continue;
                 }
-                GameObject prefab = catalog.Resolve(site.prefabKey);
+                // Preserve the four proven interactive modular sites and the
+                // original watchtowers. Only the noninteractive house variants
+                // are replaced with prefabs baked into core project assets.
+                bool replaceClosedHouse = !site.interactive &&
+                    (site.prefabKey == "cottage" || site.prefabKey == "bungalow" ||
+                     site.prefabKey == "detached");
+                GameObject prefab = replaceClosedHouse
+                    ? catalog.ResolveOpen(site.prefabKey)
+                    : catalog.Resolve(site.prefabKey);
                 if (prefab == null)
                 {
                     skippedResources++;
