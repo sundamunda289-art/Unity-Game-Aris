@@ -41,6 +41,20 @@ jobs:
           bash -n Tools/Codespaces/termux_switch.sh
           bash -n Tools/Codespaces/termux_cloudflare_switch.sh
           bash -n Tools/Turbo/cloudflare_account_switch_linux.sh
+          python3 Tools/Turbo/device_oauth_parse.py --selftest
+          python3 -m py_compile Tools/Turbo/device_oauth_parse.py
+          python3 - <<'PYOAUTHREGRESSION'
+          from pathlib import Path
+          phone=Path("Tools/Codespaces/termux_cloudflare_switch.sh").read_text()
+          remote=Path("Tools/Turbo/cloudflare_account_switch_linux.sh").read_text()
+          assert 'cf-login-$AARIS_CF_SESSION_ID.log' in remote
+          assert 'pty.openpty()' in remote and 'buffering=0' in remote
+          assert 'AARIS_CF_SESSION_ID=$SESSION_ID' in phone
+          assert 'device_oauth_parse.py' in phone
+          assert 'gh codespace ssh -c "$MACHINE"' in phone
+          assert 'CLOUDFLARE_LOGIN_READY' in phone
+          print("AARIS_CF_LIVE_OAUTH_PTY_STATIC_PASS")
+          PYOAUTHREGRESSION
           python3 - <<'PYDEVICE'
           from pathlib import Path
           phone=Path("Tools/Codespaces/termux_cloudflare_switch.sh").read_text()
