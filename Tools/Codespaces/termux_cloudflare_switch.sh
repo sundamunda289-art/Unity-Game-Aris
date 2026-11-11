@@ -30,7 +30,15 @@ if ! GH_CONFIG_DIR="$CODESPACE_AUTH" gh auth status -h github.com >/dev/null 2>&
   GH_CONFIG_DIR="$CODESPACE_AUTH" gh auth login -h github.com -p https -w -s 'codespace,repo'
 fi
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+SSH_PID=""
+cleanup() {
+  if [[ -n "${SSH_PID:-}" ]] && kill -0 "$SSH_PID" 2>/dev/null; then
+    kill "$SSH_PID" 2>/dev/null || true
+    wait "$SSH_PID" 2>/dev/null || true
+  fi
+  rm -rf "$TMP"
+}
+trap cleanup EXIT
 # Source repo is the sundamunda289-art master, but this Codespace can be
 # hosted in any authorized GitHub account's Unity-Game-Aris repository.
 GH_CONFIG_DIR="$CODESPACE_AUTH" gh codespace list --limit 100 --json name,state,repository > "$TMP/codespaces.json"
@@ -84,7 +92,17 @@ for ATTEMPT in 1 2; do
   for LOGIN_CHECK in $(seq 1 900); do
     if ! kill -0 "$SSH_PID" 2>/dev/null; then break; fi
     if ((LOGIN_AGAIN==0 && OPENED==0)); then
-      LOGIN_LINK="$(grep -Eo 'https://dash\.cloudflare\.com/oauth2/device(\?user_code=[A-Za-z0-9]+)?' "$TMP/deploy.log" | tail -n 1 || true)"
+      # The *plain* /oauth2/device page is not a valid approval request.
+      # Open only the complete URL containing Wrangler's one-time code.
+      LOGIN_LINK="$(grep -Eo 'https://dash\.cloudflare\.com/oauth2/device\?user_code=[A-Za-z0-9_-]+' "$TMP/deploy.log" | tail -n 1 || true)"
+      if [[ -z "$LOGIN_LINK" ]]; then
+        # Wrangler --browser=false can print a bare device URL followed
+        # separately by 'and enter the code:' and the one-time code.
+        DEVICE_CODE="$(sed -n '/and enter the code:/{n;s/^[[:space:]]*//;s/[[:space:]]*$//;p;}' "$TMP/deploy.log" | tail -n 1)"
+        if [[ "$DEVICE_CODE" =~ ^[A-Za-z0-9_-]{6,20}$ ]]; then
+          LOGIN_LINK="https://dash.cloudflare.com/oauth2/device?user_code=$DEVICE_CODE"
+        fi
+      fi
       if [[ -n "$LOGIN_LINK" ]]; then
         echo "Open official Cloudflare login and approve the device code:"
         echo "$LOGIN_LINK"
@@ -99,6 +117,7 @@ for ATTEMPT in 1 2; do
   set +e
   wait "$SSH_PID"
   RESULT=$?
+  SSH_PID=""
   set -e
   cat "$TMP/deploy.log"
   if ((RESULT==0)); then break; fi
