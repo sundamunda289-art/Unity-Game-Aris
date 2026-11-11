@@ -236,6 +236,19 @@ namespace Aaris.MapReview
             if (!focused) ReleaseAllPointers();
         }
 
+        private void OnEnable()
+        {
+            // A paused or temporarily disabled HUD must reclaim its shared
+            // input visibility after reactivation. Boot() only runs at scene
+            // load, so OnDisable's cleared instance was previously never set
+            // again, leaving all five controls unresponsive on re-enable.
+            // OnEnable precedes Build() for a newly added component: only
+            // register an already constructed canvas and never steal another HUD.
+            if (canvas == null || (instance != null && instance != this)) return;
+            instance = this;
+            UpdateSafeArea(true);
+        }
+
         private void OnDisable()
         {
             ReleaseAllPointers();
