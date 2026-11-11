@@ -1,0 +1,41 @@
+name: Kenney CC0 windowless house source checks
+
+on:
+  pull_request:
+    paths:
+      - "Tools/Buildings/**"
+      - "Assets/AarisWorld/Editor/AarisKenneyWindowlessBaker.cs"
+      - ".github/workflows/aaris-kenney-windowless-checks.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-kenney-windowless:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout non-LFS script source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          lfs: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify Python scripts parse
+        run: |
+          python3 -m py_compile \
+            Tools/Buildings/generate_kenney_windowless.py \
+            Tools/Buildings/check_kenney_windowless.py
+      - name: Verify pinned CC0 source, mesh budgets and physical open entrance
+        run: python3 Tools/Buildings/check_kenney_windowless.py
+      - name: Generate distributable author-time OBJ assets
+        run: python3 Tools/Buildings/generate_kenney_windowless.py
+      - name: Upload verified house assets for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-kenney-windowless-cc0-houses
+          path: Assets/AarisWorld/Models/KenneyWindowlessHouses/
+          if-no-files-found: error
+          retention-days: 7
