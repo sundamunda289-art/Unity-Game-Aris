@@ -143,6 +143,19 @@ namespace Aaris.MapReview
                 Mathf.Min(QualitySettings.streamingMipmapsMemoryBudget, mipBudgetMB);
         }
 
+        // Android rounds requested FPS down to a divisor of the display rate.
+        // For example, a 90 Hz screen requested at 60 FPS actually paces at
+        // 45 FPS, so measuring its 22 ms frames against 16.7 ms would wrongly
+        // blur the world even though the GPU is meeting the device's pacing.
+        private static float EffectiveAndroidTargetFps(int requestedFps)
+        {
+            if (requestedFps <= 0) return 30f; // Android's -1 default.
+            float refreshHz = (float)Screen.currentResolution.refreshRateRatio.value;
+            if (refreshHz <= 0f) return requestedFps;
+            int divisor = Mathf.Max(1, Mathf.CeilToInt(refreshHz / requestedFps));
+            return refreshHz / divisor;
+        }
+
         // Two bad windows to lower GPU fill cost, four stable windows to recover
         // image detail. Never oscillate on an individual slow frame.
         private void TuneAndroidResolution(Sample sample)
@@ -156,7 +169,8 @@ namespace Aaris.MapReview
                 slowIntervals = steadyIntervals = 0;
                 return;
             }
-            float budgetMs = 1000f / targetFps;
+            float effectiveFps = EffectiveAndroidTargetFps(targetFps);
+            float budgetMs = 1000f / effectiveFps;
             if (sample.p95FrameMs > budgetMs * 1.20f)
             {
                 slowIntervals++;
@@ -252,6 +266,7 @@ namespace Aaris.MapReview
         {
             public string reason, utc, version, device, gpu, api, lastError;
             public int systemRamMB, targetFps, warningCount, framesOver50Ms;
+            public float effectiveTargetFps;
             public float seconds, averageFps, p95FrameMs, p99FrameMs, renderScale = 1f;
             public long unityAllocatedBytes, unityReservedBytes, managedBytes, androidPssKB;
             public ulong textureBytes, desiredTextureBytes;
@@ -299,6 +314,7 @@ namespace Aaris.MapReview
                 catch (Exception e) { Debug.LogWarning("Android PSS unavailable: " + e.GetType().Name); }
             }
             s.androidPssKB = androidPssKB;
+            s.effectiveTargetFps = EffectiveAndroidTargetFps(s.targetFps);
             if (reason == "sample" && frameCount >= 30)
                 TuneAndroidResolution(s);
             if (GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset pipeline)
