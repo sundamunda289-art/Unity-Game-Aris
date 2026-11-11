@@ -229,6 +229,11 @@ namespace Aaris.MapReview
 
         public void CancelHold()
         {
+            // Canvas can be hidden throughout a drive or skydive. Do not
+            // redundantly toggle the inactive Gloo preview every Update.
+            // A real pointer or active aim is still cancelled immediately.
+            if (holding == int.MinValue && (wall == null || !wall.Aiming))
+                return;
             holding = int.MinValue;
             if (wall != null) wall.CancelAim();
         }

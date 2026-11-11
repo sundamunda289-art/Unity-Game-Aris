@@ -36,6 +36,7 @@ def audit() -> None:
     gun = source("AarisEquippedGun.cs")
     weapon_hud = source("AarisWeaponHUD.cs")
     vehicle_hud = source("AarisVehicleHUD.cs")
+    tactical = source("AarisOfflineTacticalHUD.cs")
 
     assert "Mathf.Clamp(Time.deltaTime, 0f, 0.15f)" in motor, "Low-FPS movement discards time"
     assert motor.count("controller.Move(") == 1, "Two movement authorities detected"
@@ -79,6 +80,19 @@ def audit() -> None:
     assert "private void ReleaseAllPointers()" in ui
     assert "button.CancelHold()" in ui
     assert "if (!focused) ReleaseAllPointers();" in ui
+
+    # Canvas.enabled=false doesn't call the button's OnDisable. On every
+    # non-foot frame we must clear real holds, but avoid redundant native
+    # ghost.SetActive(false) calls after the hold has already been cleared.
+    guard = "if (holding == int.MinValue && (wall == null || !wall.Aiming))"
+    assert guard in tactical
+    cancel = tactical.split("public void CancelHold()", 1)[1]
+    assert cancel.index(guard) < cancel.index("holding = int.MinValue;")
+    assert cancel.index("holding = int.MinValue;") < cancel.index("wall.CancelAim();")
+    assert "if (wallTouch != null) wallTouch.CancelHold();" in tactical
+    assert "private void OnDisable() => CancelHold();" in tactical
+    assert "private void OnApplicationPause(bool paused)" in tactical
+    assert "private void OnApplicationFocus(bool focused)" in tactical
 
     # Missing Humanoid motion must NOT silently hide the reliable saved
     # player body and turn it into an unanimated FBX T-pose.
