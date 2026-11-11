@@ -296,7 +296,7 @@ namespace Aaris.MapReview
                 catch (Exception e) { Debug.LogWarning("Android PSS unavailable: " + e.GetType().Name); }
             }
             s.androidPssKB = androidPssKB;
-            if (reason == "sample" && frameCount >= 90)
+            if (reason == "sample" && frameCount >= 30)
                 TuneAndroidResolution(s);
             if (GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset pipeline)
                 s.renderScale = pipeline.renderScale;
