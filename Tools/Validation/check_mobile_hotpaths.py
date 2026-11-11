@@ -94,6 +94,19 @@ def audit():
     visual = (SRC / "AarisCharacterVisual.cs").read_text(encoding="utf-8")
     startup = visual[visual.index("private void Start()"):visual.index("private bool FitVisualToController()")]
     late = visual[visual.index("private void LateUpdate()"):visual.index("private void OnDestroy()")]
+    # Do not dirty the native visual hierarchy every idle frame. The aerial
+    # override is selected before the single final rotation setter (previously
+    # two setters each skydiving frame). This changes no physical motor.
+    assert "Quaternion desiredRotation = restingLocalRotation *" in late
+    assert "desiredRotation = restingLocalRotation *" in late
+    assert late.index("desiredRotation = restingLocalRotation *", late.index("if (aerialDrop != null && !aerialDrop.HasLanded)")) < late.index("if (visualRoot.localRotation != desiredRotation)")
+    assert "if (visualRoot.localRotation != desiredRotation)" in late
+    assert "if (visualRoot.localPosition != desiredPosition)" in late
+    assert late.count("visualRoot.localRotation = desiredRotation;") == 1
+    assert late.count("visualRoot.localPosition = desiredPosition;") == 1
+    assert "visual.transform.localRotation =" not in late
+    assert "visual.transform.localPosition =" not in late
+
     assert "aerialDrop = GetComponent<AarisOfflineDrop>();" in startup
     assert "private float nextOptionalComponentRefresh;" in visual
     assert "Time.unscaledTime >= nextOptionalComponentRefresh" in late
