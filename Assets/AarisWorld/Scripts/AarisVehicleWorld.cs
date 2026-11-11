@@ -68,6 +68,22 @@ namespace Aaris.MapReview
         private GameObject[] wheelPrefabs;
         private int validModels;
         private Material paletteMaterial;
+        // Instantiate/Destroy of a complete car can spike a 2 GB Android frame.
+        // Bound structural changes per 300 ms poll; retain all 26 authored plans.
+        private int spawnBudgetPerPoll = 2;
+        private int unloadBudgetPerPoll = 4;
+
+        private void Awake()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            int memoryMB = SystemInfo.systemMemorySize;
+            if (memoryMB > 0 && memoryMB <= 3072)
+            {
+                spawnBudgetPerPoll = 1;
+                unloadBudgetPerPoll = 2;
+            }
+#endif
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
@@ -393,28 +409,33 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (player == null) return;
-            if (Time.unscaledTime < nextPoll) return;
-            nextPoll = Time.unscaledTime + .3f;
-            int active = 0, built = 0;
+            float now = Time.unscaledTime;
+            if (now < nextPoll) return;
+            nextPoll = now + .3f;
+            // One native Transform read per poll, not one per vehicle record.
+            Vector3 playerPosition = player.position;
+            int active = 0, built = 0, unloaded = 0;
             foreach (var record in plans)
             {
                 if (record.visible == null) continue;
-                float dist2 = (record.visible.transform.position - player.position).sqrMagnitude;
+                float dist2 = (record.visible.transform.position - playerPosition).sqrMagnitude;
                 // Never despawn a driven, rolling or collided vehicle.
-                if (dist2 > UnloadRadius * UnloadRadius && record.visible.CanPark)
+                if (unloaded < unloadBudgetPerPoll &&
+                    dist2 > UnloadRadius * UnloadRadius && record.visible.CanPark)
                 {
                     record.position = record.visible.transform.position;
                     record.rotation = record.visible.transform.rotation;
                     Destroy(record.visible.gameObject);
                     record.visible = null;
+                    unloaded++;
                 }
                 else active++;
             }
             foreach (var record in plans)
             {
-                if (active >= MaximumNearbyVehicles || built >= 2) break;
-                if (record.visible != null || Time.unscaledTime < record.nextProbe) continue;
-                if ((record.position - player.position).sqrMagnitude > LoadRadius * LoadRadius)
+                if (active >= MaximumNearbyVehicles || built >= spawnBudgetPerPoll) break;
+                if (record.visible != null || now < record.nextProbe) continue;
+                if ((record.position - playerPosition).sqrMagnitude > LoadRadius * LoadRadius)
                     continue;
                 if (TryResolve(record, out Vector3 pos) && Build(record, pos))
                 {
@@ -425,7 +446,7 @@ namespace Aaris.MapReview
                 }
                 else
                 {
-                    record.nextProbe = Time.unscaledTime + 3.0f;
+                    record.nextProbe = now + 3.0f;
                 }
             }
         }
