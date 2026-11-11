@@ -7,6 +7,8 @@ umask 077
 : "${AARIS_WATCH_HASH:?private viewer SHA-256 digest required}"
 [[ "$AARIS_SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 20
 [[ "$AARIS_WATCH_HASH" =~ ^[a-f0-9]{64}$ ]] || exit 21
+: "${AARIS_CF_SESSION_ID:?random account-switch login session required}"
+[[ "$AARIS_CF_SESSION_ID" =~ ^[a-f0-9]{16}$ ]] || { echo AARIS_CF_INVALID_SESSION_ID; exit 32; }
 [[ "${AARIS_REUSE_LOGIN:-0}" =~ ^[01]$ ]] || exit 22
 if [[ -n "${AARIS_CF_ACCOUNT_ID:-}" ]] &&
    [[ ! "$AARIS_CF_ACCOUNT_ID" =~ ^[a-f0-9]{32}$ ]]; then
@@ -20,7 +22,15 @@ for bin in curl python3 tar sha256sum; do
   }
 done
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+# A detached device code must be readable by a separate authorized SSH
+# session, because gh codespace ssh may buffer its original stdout.
+AUTH_LOG_DIR="$HOME/.config/aaris-turbo"
+mkdir -p "$AUTH_LOG_DIR"
+chmod 700 "$AUTH_LOG_DIR"
+AUTH_LOG="$AUTH_LOG_DIR/cf-login-$AARIS_CF_SESSION_ID.log"
+: > "$AUTH_LOG"
+chmod 600 "$AUTH_LOG"
+trap 'rm -rf "$TMP"; rm -f "$AUTH_LOG"' EXIT
 # Minimal Ubuntu Codespaces may not ship with Node. Install a verified, user-local
 # LTS binary only when needed, without sudo, global npm changes, or Unity restart.
 NODE_MAJOR=0
@@ -62,7 +72,30 @@ WRANGLER=(npx --yes wrangler@4.119.0)
 if [[ "${AARIS_REUSE_LOGIN:-0}" != 1 ]]; then
   "${WRANGLER[@]}" logout >/dev/null 2>&1 || true
   echo 'AARIS_CF_DEVICE_OAUTH_STARTED'
-  "${WRANGLER[@]}" login --device --browser=false
+  # Run Wrangler in a pseudo-TTY and flush every byte to a private,
+  # session-specific 0600 log. Another authenticated SSH connection reads
+  # that log immediately, even if this gh codespace ssh call buffers stdout.
+  python3 - "$AUTH_LOG" "${WRANGLER[@]}" login --device --browser=false <<'PYOAUTH'
+import errno, os, pty, subprocess, sys
+log_path = sys.argv[1]
+master, slave = pty.openpty()
+proc = subprocess.Popen(sys.argv[2:], stdin=subprocess.DEVNULL,
+                        stdout=slave, stderr=slave, start_new_session=True)
+os.close(slave)
+with open(log_path, "ab", buffering=0) as log:
+    while True:
+        try:
+            chunk = os.read(master, 8192)
+        except OSError as exc:
+            if exc.errno == errno.EIO:
+                break
+            raise
+        if not chunk:
+            break
+        log.write(chunk)
+os.close(master)
+sys.exit(proc.wait())
+PYOAUTH
 fi
 "${WRANGLER[@]}" whoami --json > "$TMP/whoami.json"
 python3 - "$TMP/whoami.json" <<'PY'
