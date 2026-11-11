@@ -106,9 +106,10 @@ def bake_mesh(parts, slug: str, wall_height: float, roof_type: str) -> str:
     add("roof-flat-border-straight", (-1.55, passage_height+0.12, -d/2-0.55),
         (1.55, passage_height+0.30, -d/2+0.25))
     for x in (-w/2+0.23, w/2-0.23):
-        add("roof-flat-border-straight", (x-0.10, 0, -d/2-0.12),
+        # Plain Kenney block pillars look cleaner, save 128 polygons/home.
+        add("building-block", (x-0.10, 0, -d/2-0.12),
             (x+0.10, h-0.15, -d/2+0.15))
-        add("roof-flat-border-straight", (x-0.10, 0, d/2-0.15),
+        add("building-block", (x-0.10, 0, d/2-0.15),
             (x+0.10, h-0.15, d/2+0.12))
     band = h*0.49 if h >= 6 else 0.55
     add("roof-flat-border-straight", (-w/2-0.04, band-0.08, -d/2-0.13),
