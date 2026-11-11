@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "aaris-turbo-terminal",
+  "main": "./worker.mjs",
+  "compatibility_date": "2026-11-10",
+  "durable_objects": {
+    "bindings": [
+      { "name": "MACHINES", "class_name": "TurboMachine" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["TurboMachine"] }
+  ],
+  "observability": { "enabled": true }
+}
