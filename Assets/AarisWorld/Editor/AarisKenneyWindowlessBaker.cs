@@ -239,6 +239,22 @@ namespace Aaris.MapReview.EditorTools
                 old.size.z / target.size.z);
             // Match existing authored width, height, depth, root rotation, scale
             // and ground position. Roof overhang remains inside old mesh bounds.
+            // The saved player capsule has radius 0.28m and height 1.78m.
+            // Require extra clearance so an imported mesh's anisotropic
+            // fitting cannot silently turn the nominally open entrance
+            // into an unusable narrow slit on short/narrow vendor models.
+            Vector3 globalScale = source.transform.lossyScale;
+            const float baseDoorWidth = 2.24f;
+            const float baseDoorHeight = 2.62f;
+            float clearWidth = baseDoorWidth * Mathf.Abs(size.x * globalScale.x);
+            float clearHeight = baseDoorHeight * Mathf.Abs(size.y * globalScale.y);
+            if (float.IsNaN(clearWidth) || float.IsInfinity(clearWidth) ||
+                float.IsNaN(clearHeight) || float.IsInfinity(clearHeight) ||
+                clearWidth < 1.25f || clearHeight < 2.05f)
+                throw new InvalidOperationException(
+                    "House doorway clearance too small after fitting: " +
+                    source.name + " width=" + clearWidth.ToString("F2") +
+                    " height=" + clearHeight.ToString("F2"));
             Vector3 offset = new Vector3(
                 old.center.x - target.center.x*size.x,
                 old.min.y - target.min.y*size.y,
