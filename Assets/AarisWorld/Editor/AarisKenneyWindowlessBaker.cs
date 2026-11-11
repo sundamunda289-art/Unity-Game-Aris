@@ -199,11 +199,31 @@ namespace Aaris.MapReview.EditorTools
             var renderer = source.GetComponent<MeshRenderer>();
             if (filter == null || filter.sharedMesh == null || renderer == null)
                 throw new InvalidOperationException("House missing base native mesh: " + source.name);
+            // Original native scene's LOD children are named
+            // ReviewLOD_<exact house root name>_1 and _2.
+            // Do NOT mistake them for the different vendor prefab naming
+            // convention (_LOD1 / _LOD2), nor delete unrelated children.
+            string expectedLod1 = "ReviewLOD_" + source.name + "_1";
+            string expectedLod2 = "ReviewLOD_" + source.name + "_2";
+            Transform lod1 = source.transform.Find(expectedLod1);
+            Transform lod2 = source.transform.Find(expectedLod2);
+            if (lod1 == null || lod2 == null ||
+                lod1 == lod2 || source.transform.childCount != 2)
+                throw new InvalidOperationException(
+                    "Native LOD hierarchy mismatch; refusing house edit: " +
+                    source.name);
             foreach (Transform child in source.transform)
-                if (!Regex.IsMatch(child.name, @"_LOD[12]$"))
+            {
+                if (child != lod1 && child != lod2)
                     throw new InvalidOperationException(
-                        "Unexpected authored child; refusing to delete: " + source.name +
-                        " / " + child.name);
+                        "Unexpected authored child; refusing to delete: " +
+                        source.name + " / " + child.name);
+                if (child.GetComponent<MeshFilter>() == null ||
+                    child.GetComponent<MeshRenderer>() == null)
+                    throw new InvalidOperationException(
+                        "Missing authored LOD mesh; refusing house edit: " +
+                        source.name + " / " + child.name);
+            }
 
             Bounds old = filter.sharedMesh.bounds;
             if (old.size.x < 3 || old.size.y < 2 || old.size.z < 3 ||
@@ -233,9 +253,10 @@ namespace Aaris.MapReview.EditorTools
             instance.transform.localRotation = Quaternion.identity;
             instance.transform.localScale = size;
 
-            foreach (Transform child in source.transform.Cast<Transform>().ToArray())
-                if (child != instance.transform && Regex.IsMatch(child.name, @"_LOD[12]$"))
-                    Undo.DestroyObjectImmediate(child.gameObject);
+            // The two native LOD GameObjects were identified and strictly
+            // validated above; remove only those exact references.
+            Undo.DestroyObjectImmediate(lod1.gameObject);
+            Undo.DestroyObjectImmediate(lod2.gameObject);
             LODGroup lod = source.GetComponent<LODGroup>();
             if (lod != null) Undo.DestroyObjectImmediate(lod);
             MeshCollider collision = source.GetComponent<MeshCollider>();
@@ -259,9 +280,10 @@ namespace Aaris.MapReview.EditorTools
                     "Reopen the saved scene ONLY after checking those changes; " +
                     "refusing to save unrelated work");
             GameObject[] houses = Houses(scene);
-            if (houses.Length < 40 || houses.Length > 90)
+            if (houses.Length != 47)
                 throw new InvalidOperationException(
-                    "Unexpected residential house count " + houses.Length);
+                    "Native baseline expects exactly 47 residential homes; found " +
+                    houses.Length + ". Re-audit the scene before bulk baking.");
             Material shared = EnsureMaterial();
             var prefabs = Styles.ToDictionary(style => style,
                 style => EnsurePrefab(style, shared), StringComparer.Ordinal);
