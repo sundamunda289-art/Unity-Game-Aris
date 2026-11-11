@@ -321,10 +321,9 @@ def audit():
     assert placement.count("AarisGlooWallVisuals.Tint(ghostRenderers") == 1
     assert placement.index(tint_guard) < placement.index(
         "AarisGlooWallVisuals.Tint(ghostRenderers")
-    assert placement.index("AarisGlooWallVisuals.Tint(ghostRenderers") < (
-        placement.index("ghostTintValid = placementValid;") <
-        placement.index("ghostTintInitialized = true;")
-    )
+    assert (placement.index("AarisGlooWallVisuals.Tint(ghostRenderers")
+            < placement.index("ghostTintValid = placementValid;")
+            < placement.index("ghostTintInitialized = true;"))
     for fps in (30, 60, 120):
         tint_initialized = False
         last_valid = False
