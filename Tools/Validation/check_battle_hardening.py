@@ -61,6 +61,31 @@ def audit() -> None:
     assert "count == nearHits.Length" in state
     assert "muzzleHit" in gun
 
+    # Buffer-saturated physics queries must not silently cancel a valid shot,
+    # grenade explosion, melee strike or Gloo Wall placement. Full queries
+    # are used only when the preallocated nonalloc buffer is full.
+    assert "if (count >= rayHits.Length)" in gun
+    assert "foundHits = Physics.RaycastAll(ray, range," in gun
+    assert "if (saturated) return false;" not in gun
+
+    grenade = source("AarisOfflineFragGrenade.cs")
+    assert "if (count >= overlaps.Length)" in grenade
+    assert "affected = Physics.OverlapSphere(" in grenade
+    assert "var collider = affected[i];" in grenade
+    assert "sightHits = Physics.RaycastAll(" in grenade
+    assert "sightHits[i].distance < length - 0.02f" in grenade
+    assert "explosion damage safely cancelled" not in grenade
+
+    gloo = source("AarisOfflineGlooWall.cs")
+    assert "hits = Physics.RaycastAll(" in gloo
+    assert "supports = Physics.RaycastAll(" in gloo
+    assert "blockers = Physics.OverlapBox(" in gloo
+    assert "if (other != null && !other.transform.IsChildOf(transform)" in gloo
+
+    assert "targets = Physics.OverlapSphere(" in state
+    assert "Collider victim = targets[best];" in state
+    assert "Physics.Raycast(origin, delta.normalized" in state
+
     # Android may drop a pointer without PointerUp on app pause, focus loss
     # or orientation changes. Reset the underlying identifier set, not just
     # the public fireHeld Boolean.

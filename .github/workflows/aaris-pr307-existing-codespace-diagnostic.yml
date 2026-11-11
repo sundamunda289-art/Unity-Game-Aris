@@ -1,0 +1,103 @@
+name: PR307 existing Codespace read-only Unity diagnostics
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    paths:
+      - '.github/workflows/aaris-pr307-existing-codespace-diagnostic.yml'
+permissions:
+  contents: read
+jobs:
+  inspect-existing:
+    if: github.event.pull_request.number == 307 && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+    steps:
+      - name: Inspect only the already-authorized Codespace; preserve original worktree
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if test -z "${GH_TOKEN:-}"; then
+            echo 'AARIS_REMOTE_CREDENTIAL_UNAVAILABLE'
+            exit 10
+          fi
+          if ! listing="$(timeout 55 gh codespace list -R "$GITHUB_REPOSITORY" --json name,state --limit 70 2>/dev/null)"; then
+            echo 'AARIS_CODESPACE_LIST_FAILED'
+            exit 11
+          fi
+          preferred=aaris-ai-ubuntu-minimal-xr4p7jj6p4qjc6q5x
+          fallback=aaris-ai-ubuntu-fallback-2-vp5r9xx4rwv6c6pq7
+          if jq -e --arg cs "$preferred" 'any(.[]; .name==$cs)' <<< "$listing" >/dev/null; then
+            cs="$preferred"
+          elif jq -e --arg cs "$fallback" 'any(.[]; .name==$cs)' <<< "$listing" >/dev/null; then
+            cs="$fallback"
+          else
+            echo 'AARIS_KNOWN_CODESPACE_NOT_LISTED'
+            jq -r '.[] | "codespace_name=" + .name + " state=" + .state' <<< "$listing" | head -20
+            exit 12
+          fi
+          state="$(jq -r --arg cs "$cs" '.[]|select(.name==$cs)|.state' <<< "$listing" | head -1)"
+          printf 'selected_codespace=%s\nstate=%s\n' "$cs" "$state"
+          if test "$state" != Available; then
+            echo 'AARIS_SELECTED_CODESPACE_OFFLINE_NO_MUTATION'
+            exit 0
+          fi
+          echo 'AARIS_EXISTING_CODESPACE_SSH_PROBE_START'
+          timeout 300 gh codespace ssh -c "$cs" -- 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          export PYTHONDONTWRITEBYTECODE=1
+          root=/workspaces/Unity-Game-Aris
+          if ! git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            echo 'AARIS_EXISTING_PROJECT_NOT_FOUND'
+            exit 21
+          fi
+          origin="$(git -C "$root" remote get-url origin)"
+          case "$origin" in
+            *github.com[:/]sundamunda289-art/Unity-Game-Aris|*github.com[:/]sundamunda289-art/Unity-Game-Aris.git) echo 'origin_matches_master=yes' ;;
+            *) echo 'origin_matches_master=no'; exit 22 ;;
+          esac
+          echo "os_id=$( . /etc/os-release; echo "$ID" )"
+          echo "existing_head=$(git -C "$root" rev-parse HEAD)"
+          echo "existing_branch=$(git -C "$root" branch --show-current)"
+          echo "tracked_modified_count=$(git -C "$root" status --porcelain=v1 --untracked-files=no | wc -l | tr -d ' ')"
+          for file in AarisBreakablePanel AarisVehicleWorld AarisWeaponLootWorld AarisEquippedGun AarisOfflineFragGrenade AarisOfflineGlooWall AarisVehicleMotor AarisVehicleSession AarisVehicleHUD; do
+            path="Assets/AarisWorld/Scripts/$file.cs"
+            test -f "$root/$path" || { echo "missing_script=$file"; continue; }
+            if test -n "$(git -C "$root" status --porcelain -- "$path")"; then
+              echo "modified_script=$file"
+            fi
+          done
+          if pgrep -f '[E]ditor/Unity.*-projectPath' >/dev/null; then
+            echo 'unity_editor_process=running'
+          else
+            echo 'unity_editor_process=stopped'
+          fi
+          if DISPLAY=:99 xdpyinfo >/dev/null 2>&1; then echo 'unity_x_display=available'; else echo 'unity_x_display=unavailable'; fi
+          editor=none
+          for path in "$HOME/.local/share/aaris-unity-editors/6000.3.26f1/Editor/Unity" /workspaces/.aaris-unity-editors/6000.3.26f1/Editor/Unity /tmp/aaris-unity-runtime/editors/6000.3.26f1/Editor/Unity; do
+            if test -x "$path"; then editor=installed; break; fi
+          done
+          echo "unity_editor_binary=$editor"
+          echo 'AARIS_READ_ONLY_REMOTE_PREFLIGHT_COMPLETE'
+          cd "$root"
+          for check in check_vehicle_system.py check_vehicle_drive_hardening.py check_weapon_loot.py check_single_weapon_transactions.py; do
+            if test ! -f "Tools/Validation/$check"; then echo "remote_test_missing=$check"; continue; fi
+            if timeout 90 python3 "Tools/Validation/$check" >/tmp/aaris-pr307-remote-audit.log 2>&1; then
+              echo "remote_test_pass=$check"
+            else
+              echo "remote_test_failed=$check"
+              # Bounded diagnostic; do not expose credentials, repo-specific private paths or raw environment.
+              grep -E '^(AssertionError|Traceback|  File |    assert |SyntaxError)' /tmp/aaris-pr307-remote-audit.log | tail -9 | cut -c1-220 || true
+            fi
+          done
+          echo 'AARIS_REMOTE_TESTS_RECORDED'
+          printf 'local_gloo_diff_lines='
+          git diff --numstat -- Assets/AarisWorld/Scripts/AarisOfflineGlooWall.cs | awk '{print $1 "+" $2}' | head -1
+          echo 'local_gloo_relevant_physics_lines_start'
+          grep -nE 'forwardHits.Length|groundHits.Length|overlaps.Length|Physics.RaycastAll|Physics.OverlapBox' Assets/AarisWorld/Scripts/AarisOfflineGlooWall.cs | head -22 || true
+          echo 'local_gloo_relevant_physics_lines_end'
+          REMOTE
+          echo 'AARIS_EXISTING_CODESPACE_DIAGNOSTIC_COMPLETE'

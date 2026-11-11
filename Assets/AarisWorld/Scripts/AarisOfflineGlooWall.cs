@@ -151,11 +151,18 @@ namespace Aaris.MapReview
         {
             int count = Physics.RaycastNonAlloc(player + Vector3.up * 1.1f, ahead, forwardHits,
                 desired, groundAndCoverMask, QueryTriggerInteraction.Ignore);
-            if (count >= forwardHits.Length) return 0f;
+            RaycastHit[] hits = forwardHits;
+            if (count >= forwardHits.Length)
+            {
+                // Dense cover needs the complete set, not a randomly truncated one.
+                hits = Physics.RaycastAll(new Ray(player + Vector3.up * 1.1f, ahead),
+                    desired, groundAndCoverMask, QueryTriggerInteraction.Ignore);
+                count = hits.Length;
+            }
             float nearest = desired;
             for (int i = 0; i < count; i++)
             {
-                RaycastHit hit = forwardHits[i];
+                RaycastHit hit = hits[i];
                 if (hit.collider == null || hit.collider.transform.IsChildOf(transform) ||
                     hit.collider is TerrainCollider || hit.normal.y >= MinimumSupportNormal) continue;
                 nearest = Mathf.Min(nearest, hit.distance - 0.65f);
@@ -169,10 +176,17 @@ namespace Aaris.MapReview
             int count = Physics.RaycastNonAlloc(point, Vector3.down, groundHits,
                 2f * SupportProbeHeight, groundAndCoverMask, QueryTriggerInteraction.Ignore);
             height = float.NegativeInfinity;
-            if (count >= groundHits.Length) return false;
+            RaycastHit[] supports = groundHits;
+            if (count >= groundHits.Length)
+            {
+                supports = Physics.RaycastAll(new Ray(point, Vector3.down),
+                    2f * SupportProbeHeight, groundAndCoverMask,
+                    QueryTriggerInteraction.Ignore);
+                count = supports.Length;
+            }
             for (int i = 0; i < count; i++)
             {
-                RaycastHit hit = groundHits[i];
+                RaycastHit hit = supports[i];
                 if (hit.collider == null || hit.collider.transform.IsChildOf(transform) ||
                     hit.normal.y < MinimumSupportNormal || hit.collider.attachedRigidbody != null ||
                     hit.collider.GetComponentInParent<AarisGlooWallHealth>() != null ||
@@ -195,10 +209,17 @@ namespace Aaris.MapReview
             halfSize.y = (queryTop - queryBottom) * 0.5f;
             int count = Physics.OverlapBoxNonAlloc(center, halfSize, overlaps, proposedRotation,
                 groundAndCoverMask, QueryTriggerInteraction.Ignore);
-            if (count >= overlaps.Length) return false;
+            Collider[] blockers = overlaps;
+            if (count >= overlaps.Length)
+            {
+                // Placement is still rejected if ANY real obstacle is found.
+                blockers = Physics.OverlapBox(center, halfSize, proposedRotation,
+                    groundAndCoverMask, QueryTriggerInteraction.Ignore);
+                count = blockers.Length;
+            }
             for (int i = 0; i < count; i++)
             {
-                Collider other = overlaps[i];
+                Collider other = blockers[i];
                 if (other != null && !other.transform.IsChildOf(transform) &&
                     !(other is TerrainCollider)) return false;
             }

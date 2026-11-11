@@ -42,9 +42,11 @@ namespace Aaris.MapReview
             get
             {
                 if (body == null || TotalSpeedMetresPerSecond >= 1.1f ||
-                    body.angularVelocity.magnitude >= .5f ||
-                    Vector3.Dot(transform.up, Vector3.up) < .72f)
+                    body.angularVelocity.magnitude >= .5f)
                     return false;
+                // A stopped, overturned car cannot satisfy a two-wheel ground test.
+                // VehicleSession.TryFindExit must still locate a safe standing capsule.
+                if (Vector3.Dot(transform.up, Vector3.up) < .72f) return true;
                 int grounded = 0;
                 foreach (var wheel in wheels)
                     if (wheel != null && wheel.isGrounded) grounded++;
@@ -125,6 +127,7 @@ namespace Aaris.MapReview
                 if (renderers.Length == 0)
                 {
                     Destroy(instance);
+                    ClearVisualWheels();
                     return false;
                 }
                 Bounds combined = renderers[0].bounds;
@@ -141,6 +144,7 @@ namespace Aaris.MapReview
                 if (maxDimension < .001f)
                 {
                     Destroy(instance);
+                    ClearVisualWheels();
                     return false;
                 }
                 instance.transform.localScale *=
@@ -149,6 +153,16 @@ namespace Aaris.MapReview
             }
             SyncVisibleWheels();
             return true;
+        }
+
+        private void ClearVisualWheels()
+        {
+            for (int i = 0; i < visualWheels.Length; i++)
+            {
+                if (visualWheels[i] == null) continue;
+                Destroy(visualWheels[i].gameObject);
+                visualWheels[i] = null;
+            }
         }
 
         private void SyncVisibleWheels()
@@ -240,7 +254,27 @@ namespace Aaris.MapReview
             float maxAngle = Mathf.Lerp(32f, 10f, Mathf.InverseLerp(0f, 24f, speedAbs));
             float target = turn * maxAngle;
             smoothSteer = Mathf.MoveTowards(smoothSteer, target, 125f * Time.fixedDeltaTime);
-            wheels[0].steerAngle = wheels[1].steerAngle = smoothSteer;
+            // Ackermann steering uses the actual four wheel anchor locations,
+            // not a hardcoded wheelbase or track shared by every model.
+            float steerDegrees = Mathf.Abs(smoothSteer);
+            if (steerDegrees < .01f)
+            {
+                wheels[0].steerAngle = wheels[1].steerAngle = smoothSteer;
+            }
+            else
+            {
+                float wheelBase = Mathf.Abs(wheels[0].transform.localPosition.z -
+                    wheels[2].transform.localPosition.z);
+                float track = Mathf.Abs(wheels[1].transform.localPosition.x -
+                    wheels[0].transform.localPosition.x);
+                float turnRadius = wheelBase / Mathf.Tan(steerDegrees * Mathf.Deg2Rad);
+                float inner = Mathf.Atan(wheelBase /
+                    Mathf.Max(.1f, turnRadius - track * .5f)) * Mathf.Rad2Deg;
+                float outer = Mathf.Atan(wheelBase /
+                    (turnRadius + track * .5f)) * Mathf.Rad2Deg;
+                wheels[0].steerAngle = smoothSteer > 0f ? outer : -inner;
+                wheels[1].steerAngle = smoothSteer > 0f ? inner : -outer;
+            }
 
             // Axle load transfer: counter excessive roll on fast bends and
             // uneven slopes without freezing Rigidbody rotation or faking

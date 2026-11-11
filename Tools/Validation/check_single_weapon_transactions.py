@@ -78,7 +78,16 @@ def audit():
     assert "HasPickupInRange = bestPickup != null;" in world
     assert "Physics.RaycastNonAlloc(new Ray(eye, toTarget / distance)" in world
     assert "Physics.RaycastNonAlloc(new Ray(start, Vector3.down)" in world
-    assert "if (hits >= candidateFloorHits.Length) return false;" in world
+    assert "if (hits >= candidateFloorHits.Length)" in world
+    assert "floors = Physics.RaycastAll(" in world
+    assert "RaycastHit candidate = floors[i];" in world
+    # Overflow must not disable reachable loot or drop placement.
+    assert "sightHits = Physics.RaycastAll(" in world
+    assert "var collider = sightHits[i].collider;" in world
+    assert "floorHits = Physics.RaycastAll(ray, 3.5f," in world
+    assert "var hit = floorHits[i];" in world
+    assert "obstructionHits = Physics.OverlapCapsule(" in world
+    assert "var obstacle = obstructionHits[i];" in world
     assert "RetryDelaySeconds = 3f;" in world
     assert "nextCandidateProbeAt[i] = now + RetryDelaySeconds;" in world
     assert 'Add("PICK"' in hud and 'Add("DROP"' in hud

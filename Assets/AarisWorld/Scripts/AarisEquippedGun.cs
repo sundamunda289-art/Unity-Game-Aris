@@ -115,22 +115,28 @@ namespace Aaris.MapReview
         }
 
         private bool FirstExternalHit(Ray ray, float range, Transform owner,
-            out RaycastHit nearest, out bool saturated)
+            out RaycastHit nearest)
         {
             nearest = default(RaycastHit);
             int count = Physics.RaycastNonAlloc(ray, rayHits, range,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            saturated = count >= rayHits.Length;
-            if (saturated) return false;
+            RaycastHit[] foundHits = rayHits;
+            if (count >= rayHits.Length)
+            {
+                // Never miss a near wall or opponent in a full unordered buffer.
+                foundHits = Physics.RaycastAll(ray, range,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                count = foundHits.Length;
+            }
             float minDistance = float.PositiveInfinity;
             bool found = false;
             for (int i = 0; i < count; i++)
             {
-                Collider collider = rayHits[i].collider;
+                Collider collider = foundHits[i].collider;
                 if (collider == null || collider.transform.IsChildOf(owner)) continue;
-                if (rayHits[i].distance >= minDistance) continue;
-                minDistance = rayHits[i].distance;
-                nearest = rayHits[i];
+                if (foundHits[i].distance >= minDistance) continue;
+                minDistance = foundHits[i].distance;
+                nearest = foundHits[i];
                 found = true;
             }
             return found;
@@ -174,8 +180,7 @@ namespace Aaris.MapReview
                     Quaternion.AngleAxis(-spread.y, camera.transform.right) * camera.transform.forward;
                 Ray aim = new Ray(camera.transform.position, look);
                 bool targetFound = FirstExternalHit(aim, spec.rangeMetres,
-                    owner.transform, out RaycastHit target, out bool saturated);
-                if (saturated) continue; // fail closed on crowded physics
+                    owner.transform, out RaycastHit target);
                 Vector3 destination = targetFound ? target.point : aim.GetPoint(spec.rangeMetres);
                 Vector3 path = destination - muzzle;
                 float distance = path.magnitude;
@@ -183,8 +188,7 @@ namespace Aaris.MapReview
                 {
                     bool muzzleHitFound = FirstExternalHit(
                         new Ray(muzzle, path / distance), distance,
-                        owner.transform, out RaycastHit muzzleHit, out saturated);
-                    if (saturated) continue;
+                        owner.transform, out RaycastHit muzzleHit);
                     if (muzzleHitFound &&
                         (!targetFound || !SameTarget(target.collider, muzzleHit.collider)))
                         continue;

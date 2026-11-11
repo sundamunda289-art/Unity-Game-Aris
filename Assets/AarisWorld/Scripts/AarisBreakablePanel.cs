@@ -31,7 +31,10 @@ namespace Aaris.MapReview
             player = nearbyPlayer;
             isDoor = door;
             house = houseRoot;
-            if (isDoor) doorwayCenter = new Vector3(0f, 0f, transform.localPosition.z);
+            if (isDoor)
+                doorwayCenter = house != null && solid != null
+                    ? house.InverseTransformPoint(solid.bounds.center)
+                    : transform.localPosition;
             health = Mathf.Max(1f, hitPoints);
             enabled = door; // windows do no per-frame polling
         }
@@ -75,8 +78,8 @@ namespace Aaris.MapReview
         {
             if (leaf == null) return false;
             // Doorframe safety volume, regardless of current swing angle.
-            Vector3 middle = house.TransformPoint(new Vector3(0f, 1.18f,
-                transform.localPosition.z));
+            Vector3 middle = house.TransformPoint(new Vector3(doorwayCenter.x, 1.18f,
+                doorwayCenter.z));
             int hits = Physics.OverlapBoxNonAlloc(middle, new Vector3(.9f, 1.20f, .95f),
                 blockers, house.rotation, Physics.DefaultRaycastLayers,
                 QueryTriggerInteraction.Ignore);

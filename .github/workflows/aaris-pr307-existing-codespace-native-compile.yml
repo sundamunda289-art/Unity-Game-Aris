@@ -1,0 +1,87 @@
+name: PR307 existing Codespace native Unity compiler baseline
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    paths:
+      - '.github/workflows/aaris-pr307-existing-codespace-native-compile.yml'
+permissions:
+  contents: read
+jobs:
+  native-compile-existing:
+    if: github.event.pull_request.number == 307 && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    concurrency:
+      group: aaris-codespace-control
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+    steps:
+      - name: Compile current original project in same Codespace, no source checkout/reset
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "${GH_TOKEN:-}" || { echo 'AARIS_CODESPACE_AUTH_NOT_CONFIGURED'; exit 10; }
+          cs=aaris-ai-ubuntu-minimal-xr4p7jj6p4qjc6q5x
+          listing="$(timeout 55 gh codespace list -R "$GITHUB_REPOSITORY" --json name,state --limit 70 2>/dev/null)" || { echo 'AARIS_CODESPACE_LOOKUP_FAILED'; exit 11; }
+          state="$(jq -r --arg cs "$cs" '.[] | select(.name==$cs) | .state' <<< "$listing" | head -1)"
+          test "$state" = Available || { echo "AARIS_CURRENT_CODESPACE_NOT_AVAILABLE_${state:-MISSING}"; exit 12; }
+          echo 'AARIS_EXISTING_CODESPACE_UNITY_COMPILE_START'
+          timeout 775 gh codespace ssh -c "$cs" -- 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          umask 077
+          export PYTHONDONTWRITEBYTECODE=1
+          root=/workspaces/Unity-Game-Aris
+          test -d "$root/Assets/AarisWorld/Scripts" || { echo AARIS_REMOTE_SOURCE_MISSING; exit 21; }
+          cd "$root"
+          origin="$(git remote get-url origin)"
+          case "$origin" in
+            *github.com[:/]sundamunda289-art/Unity-Game-Aris|*github.com[:/]sundamunda289-art/Unity-Game-Aris.git) ;;
+            *) echo 'AARIS_REMOTE_ORIGIN_MISMATCH'; exit 22 ;;
+          esac
+          if pgrep -f '[E]ditor/Unity.*-projectPath' >/dev/null 2>&1; then
+            echo 'AARIS_NATIVE_EDITOR_ALREADY_RUNNING_LEAVE_ALONE'
+            exit 23
+          fi
+          editor=
+          for path in "$HOME/.local/share/aaris-unity-editors/6000.3.26f1/Editor/Unity" /workspaces/.aaris-unity-editors/6000.3.26f1/Editor/Unity /tmp/aaris-unity-runtime/editors/6000.3.26f1/Editor/Unity; do
+            if test -x "$path"; then editor="$path"; break; fi
+          done
+          test -n "$editor" || { echo 'AARIS_UNITY_BINARY_MISSING'; exit 24; }
+          DISPLAY=:99 xdpyinfo >/dev/null 2>&1 || { echo 'AARIS_NATIVE_DISPLAY_UNAVAILABLE'; exit 25; }
+          before="$(git status --porcelain=v1 --untracked-files=no | sha256sum | cut -d ' ' -f1)"
+          echo "existing_source_sha=$(git rev-parse HEAD)"
+          echo "tracked_modified_before=$(git status --porcelain=v1 --untracked-files=no | wc -l | tr -d ' ')"
+          out="$(mktemp -d /tmp/aaris-native-pr307-check.XXXXXXXX)"
+          echo 'AARIS_NATIVE_COMPILATION_RUNNING'
+          set +e
+          timeout --signal=TERM 650 env DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 "$editor" -batchmode -quit -projectPath "$root" -logFile "$out/editor.log" > "$out/private-stdout.log" 2> "$out/private-stderr.log"
+          rc=$?
+          set -e
+          echo "unity_editor_exit_code=$rc"
+          if test -s "$out/editor.log"; then
+            error_count="$(grep -Ec 'error CS[0-9]{4}' "$out/editor.log" || true)"
+            echo "native_csharp_error_matches=$error_count"
+            echo 'AARIS_NATIVE_CS_ERROR_CODES_BEGIN'
+            grep -Eo 'error CS[0-9]{4}' "$out/editor.log" | sort | uniq -c | head -15 || true
+            echo 'AARIS_NATIVE_CS_ERROR_CODES_END'
+            if grep -qiE 'no valid unity|license.*(invalid|failed|not found)|activation.*(failed|required)' "$out/editor.log"; then
+              echo 'AARIS_UNITY_LICENSE_DIAGNOSTIC_PRESENT'
+            fi
+            if grep -qiE 'scripts have compiler errors|compilation failed|compiler errors' "$out/editor.log"; then
+              echo 'AARIS_UNITY_SCRIPT_COMPILE_FAILED'
+            fi
+          else
+            echo 'AARIS_NATIVE_EDITOR_LOG_MISSING'
+          fi
+          after="$(git status --porcelain=v1 --untracked-files=no | sha256sum | cut -d ' ' -f1)"
+          echo "tracked_modified_after=$(git status --porcelain=v1 --untracked-files=no | wc -l | tr -d ' ')"
+          if test "$before" = "$after"; then
+            echo 'AARIS_TRACKED_WORKTREE_UNCHANGED'
+          else
+            echo 'AARIS_TRACKED_WORKTREE_CHANGED_REQUIRES_REVIEW'
+          fi
+          if test "$rc" -ne 0; then echo 'AARIS_NATIVE_UNITY_COMPILE_NONZERO'; exit 26; fi
+          if test "${error_count:-0}" -ne 0; then echo 'AARIS_NATIVE_UNITY_CSHARP_ERRORS'; exit 27; fi
+          echo 'AARIS_NATIVE_UNITY_BASELINE_COMPILE_SUCCESS'
+          REMOTE

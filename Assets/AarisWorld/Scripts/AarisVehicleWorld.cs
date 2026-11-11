@@ -52,7 +52,7 @@ namespace Aaris.MapReview
     [DefaultExecutionOrder(-70), DisallowMultipleComponent]
     public sealed class AarisVehicleWorld : MonoBehaviour
     {
-        private const float LoadRadius = 42f;
+        private const float LoadRadius = 48f; // within 55m collider streaming
         private const float UnloadRadius = 160f;
         private const float SeaLevel = -38.07552f;
         private const int TargetVehicles = 26;
@@ -261,12 +261,19 @@ namespace Aaris.MapReview
             int hits = Physics.RaycastNonAlloc(new Ray(rayOrigin, Vector3.down),
                 rayHits, 5f, Physics.DefaultRaycastLayers,
                 QueryTriggerInteraction.Ignore);
-            if (hits >= rayHits.Length) return false;
+            // A saturated nonalloc query can omit the nearest supporting floor.
+            RaycastHit[] supports = rayHits;
+            if (hits >= rayHits.Length)
+            {
+                supports = Physics.RaycastAll(new Ray(rayOrigin, Vector3.down),
+                    5f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                hits = supports.Length;
+            }
             float bestError = 1.05f;
             bool found = false;
             for (int i = 0; i < hits; i++)
             {
-                var h = rayHits[i];
+                var h = supports[i];
                 if (h.collider == null || h.normal.y < .9781f) continue; // <=12 deg
                 if (player != null && h.collider.transform.IsChildOf(player)) continue;
                 float error = Mathf.Abs(expected - h.point.y);
@@ -295,8 +302,11 @@ namespace Aaris.MapReview
             float expectedY = record.previouslySpawned ? record.position.y - .71f : p.y;
             // Ground map author stores garage Y and road Y; use sampled
             // Terrain only as a sanity check, not as a rooftop substitute.
-            if (Mathf.Abs(ground - expectedY) > 2.5f) return false;
-            if (!HasSupport(new Vector3(x, 0f, z), expectedY, out float y))
+            // New authored candidate heights can be stale after a terrain edit.
+            // Re-streaming a driven car retains its previously parked elevation.
+            float referenceY = record.previouslySpawned ||
+                Mathf.Abs(ground - expectedY) <= 2.5f ? expectedY : ground;
+            if (!HasSupport(new Vector3(x, 0f, z), referenceY, out float y))
                 return false;
             Quaternion angle = record.rotation;
             var forward = angle * Vector3.forward * 1.42f;

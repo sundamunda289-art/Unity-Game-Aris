@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic, asset-free proof that 64m cell lookup preserves 42m loot queries."""
+"""Deterministic proof that 64m cell lookup preserves the 48m loot queries."""
 import math
 import random
 import unittest
@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = (ROOT / "Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs").read_text(encoding="utf-8")
 CELL_METRES = 64.0
-RADIUS = 42.0
+RADIUS = 48.0
 
 
 def key(x, z):
@@ -18,8 +18,8 @@ def key(x, z):
 class LootGridRegression(unittest.TestCase):
     def test_no_world_visual_or_despawn_rule_changed(self):
         for clause in (
-            "private const float ActivationMetres = 42f;",
-            "private const float ReleaseMetres = 69f;",
+            "private const float ActivationMetres = 48f;",
+            "private const float ReleaseMetres = 75f;",
             "private const int MaximumActiveLoot = 40;",
             "private const float CandidateCellMetres = 64f;",
             "IndexPlannedCandidates();",
@@ -33,6 +33,12 @@ class LootGridRegression(unittest.TestCase):
             "candidateCells.TryGetValue(CandidateCellKey(x, z)",
         ):
             self.assertIn(clause, SOURCE)
+
+    def test_dense_floor_queries_keep_full_results_and_roof_safety(self):
+        self.assertIn("floors = Physics.RaycastAll(", SOURCE)
+        self.assertIn("candidate.collider.attachedRigidbody != null", SOURCE)
+        self.assertIn("Mathf.Abs(candidate.point.y - expectedGround) > .35f", SOURCE)
+        self.assertIn("candidate.normal.y < (indoor ? .966f : .94f)", SOURCE)
 
     def test_native_terrain_world_y_used_for_outdoor_floor(self):
         self.assertIn("terrain.SampleHeight(new Vector3(c.x, 0f, c.z))", SOURCE)

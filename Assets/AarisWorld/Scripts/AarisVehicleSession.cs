@@ -115,10 +115,19 @@ namespace Aaris.MapReview
                 int hitCount = Physics.RaycastNonAlloc(
                     new Ray(eye, delta / distance), entrySight, distance,
                     Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                if (hitCount >= entrySight.Length) return false;
+                RaycastHit[] sightHits = entrySight;
+                if (hitCount >= entrySight.Length)
+                {
+                    // Do not reject an enter attempt merely because nearby
+                    // modules filled the buffer; still test every real wall.
+                    sightHits = Physics.RaycastAll(new Ray(eye, delta / distance),
+                        distance, Physics.DefaultRaycastLayers,
+                        QueryTriggerInteraction.Ignore);
+                    hitCount = sightHits.Length;
+                }
                 for (int i = 0; i < hitCount; i++)
                 {
-                    var hit = entrySight[i];
+                    var hit = sightHits[i];
                     if (hit.collider == null ||
                         hit.collider.transform.IsChildOf(transform) ||
                         hit.collider.transform.IsChildOf(nearbyCar.transform)) continue;
@@ -192,24 +201,38 @@ namespace Aaris.MapReview
             if (car == null) return false;
             var t = car.transform;
             float seaLevel = -38.07552f;
-            // Exit candidates are computed on demand, without allocating
-            // a new array or touching any driving/render quality settings.
+            // A roll/pitch of 90-180 degrees must not send exit candidates
+            // into the air or underground. Search four horizontal directions.
+            Vector3 flatForward = Vector3.ProjectOnPlane(t.forward, Vector3.up);
+            if (flatForward.sqrMagnitude < .01f)
+                flatForward = Vector3.ProjectOnPlane(t.right, Vector3.up);
+            if (flatForward.sqrMagnitude < .01f)
+                flatForward = Quaternion.Euler(0f, t.eulerAngles.y, 0f) * Vector3.forward;
+            flatForward.Normalize();
+            Vector3 flatRight = Vector3.Cross(Vector3.up, flatForward);
             for (int side = 0; side < 4; side++)
             {
-                Vector3 option = t.position + (side == 0 ? t.right * 3.2f :
-                    side == 1 ? -t.right * 3.2f :
-                    side == 2 ? -t.forward * 3.5f : t.forward * 3.5f);
+                Vector3 option = t.position + (side == 0 ? flatRight * 3.2f :
+                    side == 1 ? -flatRight * 3.2f :
+                    side == 2 ? -flatForward * 3.5f : flatForward * 3.5f);
                 if (Mathf.Abs(option.x) > 973f || Mathf.Abs(option.z) > 973f) continue;
                 int hits = Physics.RaycastNonAlloc(
                     new Ray(option + Vector3.up * 2.5f, Vector3.down), exitGround, 5f,
                     Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                if (hits >= exitGround.Length) continue;
+                RaycastHit[] supports = exitGround;
+                if (hits >= exitGround.Length)
+                {
+                    supports = Physics.RaycastAll(
+                        new Ray(option + Vector3.up * 2.5f, Vector3.down),
+                        5f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                    hits = supports.Length;
+                }
                 float best = float.PositiveInfinity;
                 Vector3 support = Vector3.zero;
                 Collider floor = null;
                 for (int i = 0; i < hits; i++)
                 {
-                    var hit = exitGround[i];
+                    var hit = supports[i];
                     if (hit.collider == null || hit.collider.transform.IsChildOf(t) ||
                         hit.collider.transform.IsChildOf(transform) ||
                         hit.normal.y < .707f || hit.point.y < seaLevel + .35f ||
@@ -227,11 +250,17 @@ namespace Aaris.MapReview
                 Vector3 top = support + Vector3.up * (capsule.height - r + .1f);
                 int overlaps = Physics.OverlapCapsuleNonAlloc(bottom, top, r,
                     exitOverlap, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                if (overlaps >= exitOverlap.Length) continue;
+                Collider[] blockers = exitOverlap;
+                if (overlaps >= exitOverlap.Length)
+                {
+                    blockers = Physics.OverlapCapsule(bottom, top, r,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                    overlaps = blockers.Length;
+                }
                 bool safe = true;
                 for (int i = 0; i < overlaps; i++)
                 {
-                    var obstacle = exitOverlap[i];
+                    var obstacle = blockers[i];
                     if (obstacle == null || obstacle == floor ||
                         obstacle.transform.IsChildOf(transform)) continue;
                     safe = false;
@@ -294,15 +323,19 @@ namespace Aaris.MapReview
                     .22f, cameraObstacles, length, Physics.DefaultRaycastLayers,
                     QueryTriggerInteraction.Ignore);
                 float nearest = length;
+                RaycastHit[] sight = cameraObstacles;
                 if (count >= cameraObstacles.Length)
                 {
-                    // Fail closed when the nonalloc buffer is saturated:
-                    // prioritize a clear view over clipping through a wall.
-                    nearest = .45f;
+                    // Include all barriers rather than forcing a camera jump
+                    // to 45 cm when a distant dense building fills the buffer.
+                    sight = Physics.SphereCastAll(new Ray(start, direction), .22f,
+                        length, Physics.DefaultRaycastLayers,
+                        QueryTriggerInteraction.Ignore);
+                    count = sight.Length;
                 }
-                else for (int i = 0; i < count; i++)
+                for (int i = 0; i < count; i++)
                 {
-                    var hit = cameraObstacles[i];
+                    var hit = sight[i];
                     if (hit.collider == null ||
                         hit.collider.transform.IsChildOf(vehicle) ||
                         hit.collider.transform.IsChildOf(transform))

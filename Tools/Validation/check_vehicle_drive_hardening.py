@@ -26,6 +26,12 @@ def test():
     assert "body.angularVelocity.magnitude >= .5f" in motor
     assert "Vector3.Dot(transform.up, Vector3.up) < .72f" in motor
     assert "return grounded >= 2;" in motor
+    # Stopped flipped cars still need a valid external capsule before exit.
+    assert "if (Vector3.Dot(transform.up, Vector3.up) < .72f) return true;" in motor
+    assert "Vector3.ProjectOnPlane(t.forward, Vector3.up)" in session
+    assert "Vector3 flatRight = Vector3.Cross(Vector3.up, flatForward);" in session
+    assert "Physics.RaycastAll(" in session
+    assert "Physics.OverlapCapsule(" in session
     assert "car == null || !car.IsSafeToExit" in session
     assert "car.SpeedMetresPerSecond > 1.1f" not in session
 
@@ -79,6 +85,8 @@ def test():
     assert "hit.collider.transform.IsChildOf(transform)" in session
     assert "nearest = Mathf.Min(nearest, hit.distance)" in session
     assert "if (count >= cameraObstacles.Length)" in session
+    assert "Physics.SphereCastAll(new Ray(start, direction)" in session
+    assert "var hit = sight[i];" in session
     assert "Physics.SphereCast(" not in session
 
     # Existing map and touchscreen interaction protections must remain.

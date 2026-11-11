@@ -98,17 +98,19 @@ namespace Aaris.MapReview
             armed = false;
             int count = Physics.OverlapSphereNonAlloc(transform.position, blastRadius,
                 overlaps, damageMask, QueryTriggerInteraction.Ignore);
+            Collider[] affected = overlaps;
             if (count >= overlaps.Length)
             {
-                Debug.LogWarning("Aaris frag: target buffer saturated; explosion damage safely cancelled.");
-                Destroy(gameObject);
-                return;
+                // Full query only on saturation; all victims remain eligible.
+                affected = Physics.OverlapSphere(transform.position, blastRadius,
+                    damageMask, QueryTriggerInteraction.Ignore);
+                count = affected.Length;
             }
             damaged.Clear();
             Vector3 blast = transform.position;
             for (int i = 0; i < count; i++)
             {
-                var collider = overlaps[i];
+                var collider = affected[i];
                 if (collider == null || collider.transform.IsChildOf(transform)) continue;
                 IAarisDamageable target = FindDamageable(collider);
                 if (target == null || damaged.Contains(target)) continue;
@@ -142,15 +144,21 @@ namespace Aaris.MapReview
             // must still occlude the blast even when it is not damageable.
             int hits = Physics.RaycastNonAlloc(new Ray(origin, delta / length), rays,
                 length, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            if (hits >= rays.Length) return false;
+            RaycastHit[] sightHits = rays;
+            if (hits >= rays.Length)
+            {
+                sightHits = Physics.RaycastAll(new Ray(origin, delta / length), length,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                hits = sightHits.Length;
+            }
             for (int i = 0; i < hits; i++)
             {
-                Collider c = rays[i].collider;
+                Collider c = sightHits[i].collider;
                 if (c == null || c.transform.IsChildOf(transform) ||
                     c.transform.IsChildOf(target) || target.IsChildOf(c.transform))
                     continue;
                 // Any solid obstruction before the victim blocks this explosion ray.
-                if (rays[i].distance < length - 0.02f) return false;
+                if (sightHits[i].distance < length - 0.02f) return false;
             }
             return true;
         }

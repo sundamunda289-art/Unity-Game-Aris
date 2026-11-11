@@ -226,11 +226,18 @@ namespace Aaris.MapReview
             int mask = Physics.DefaultRaycastLayers;
             int count = Physics.OverlapSphereNonAlloc(center, 0.48f, nearHits, mask,
                 QueryTriggerInteraction.Ignore);
+            Collider[] targets = nearHits;
+            if (count >= nearHits.Length)
+            {
+                targets = Physics.OverlapSphere(center, 0.48f, mask,
+                    QueryTriggerInteraction.Ignore);
+                count = targets.Length;
+            }
             int best = -1;
             float distance = float.MaxValue;
             for (int i = 0; i < count; i++)
             {
-                var collider = nearHits[i];
+                var collider = targets[i];
                 if (collider == null || collider.transform.IsChildOf(transform)) continue;
                 Vector3 nearest = collider.ClosestPoint(origin);
                 Vector3 candidateOffset = nearest - origin;
@@ -242,9 +249,8 @@ namespace Aaris.MapReview
                     best = i;
                 }
             }
-            if (count >= nearHits.Length) return; // Do not select a random hit on overflow.
             if (best < 0) return;
-            Collider victim = nearHits[best];
+            Collider victim = targets[best];
             Vector3 point = victim.ClosestPoint(origin);
             Vector3 delta = point - origin;
             // A fist cannot hit a player through a wall or a solid rock.
