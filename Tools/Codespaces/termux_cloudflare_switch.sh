@@ -100,8 +100,19 @@ unset WATCH_KEY
 OLD_URL="$(GH_CONFIG_DIR="$MASTER" gh variable get AARIS_BROKER_URL -R "$REPO" 2>/dev/null || true)"
 [[ -n "$OLD_URL" ]] || OLD_URL="$LEGACY"
 [[ "$OLD_URL" =~ ^https://[a-z0-9.-]+\.workers\.dev$ ]] || { echo "INVALID_OLD_BROKER_URL"; exit 9; }
+# Optional explicit target Cloudflare account ID: reuse the Codespace's
+# existing authorized Wrangler session without restarting the OAuth device flow.
+# The Linux installer verifies this exact ID appears in Wrangler's whoami
+# memberships before deploying. Never silently select a different account.
+ACCOUNT="${2:-}"
 LOGIN_AGAIN=0
-ACCOUNT=""
+if [[ -n "$ACCOUNT" ]]; then
+  [[ "$ACCOUNT" =~ ^[a-f0-9]{32}$ ]] || {
+    echo "INVALID_EXPLICIT_CF_ACCOUNT_ID"; exit 10;
+  }
+  LOGIN_AGAIN=1
+  echo "CLOUDFLARE_REUSE_EXISTING_AUTHORIZED_LOGIN_FOR_EXPLICIT_ACCOUNT"
+fi
 SESSION_ID="$(openssl rand -hex 8)"
 [[ "$SESSION_ID" =~ ^[a-f0-9]{16}$ ]] || { echo AARIS_CF_INVALID_SESSION_ID; exit 33; }
 for ATTEMPT in 1 2; do
