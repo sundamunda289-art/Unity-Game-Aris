@@ -59,11 +59,12 @@ jobs:
           from pathlib import Path
           phone=Path("Tools/Codespaces/termux_cloudflare_switch.sh").read_text()
           linux=Path("Tools/Turbo/cloudflare_account_switch_linux.sh").read_text()
-          assert 'oauth2/device(/verify)?' in phone
+          parser=Path("Tools/Turbo/device_oauth_parse.py").read_text()
+          assert 'oauth2/device(?:/verify)?' in parser
           assert 'CLOUDFLARE_LOGIN_READY' in phone
           assert 'termux-clipboard-set' in phone
           assert 'DEVICE_CODE' in phone
-          assert 'LOGIN_LINK="https://dash.cloudflare.com/oauth2/device?user_code=$DEVICE_CODE"' in phone
+          assert 'python3 "$TMP/device_oauth_parse.py"' in phone
           assert 'AARIS_CF_OPEN_BROWSER=https://dash.cloudflare.com/oauth2/device' not in linux
           assert 'trap cleanup EXIT' in phone
           print("AARIS_CF_DEVICE_URL_STATIC_PASS")
