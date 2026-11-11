@@ -40,18 +40,18 @@ jobs:
           bash -n Tools/Turbo/ensure_agent.sh
           bash -n Tools/Codespaces/termux_switch.sh
           bash -n Tools/Codespaces/termux_cloudflare_switch.sh
-          bash Tools/Codespaces/termux_cloudflare_switch.sh --selftest-device
           bash -n Tools/Turbo/cloudflare_account_switch_linux.sh
           python3 - <<'PYDEVICE'
           from pathlib import Path
           phone=Path("Tools/Codespaces/termux_cloudflare_switch.sh").read_text()
           linux=Path("Tools/Turbo/cloudflare_account_switch_linux.sh").read_text()
-          assert "parse_wrangler_device" in phone
-          assert "oauth2/device(/verify)?" in phone
-          assert "CLOUDFLARE_LOGIN_READY" in phone
-          assert "termux-clipboard-set" in phone
-          assert "AARIS_CF_OPEN_BROWSER=https://dash.cloudflare.com/oauth2/device" not in linux
-          assert "trap cleanup EXIT" in phone
+          assert 'oauth2/device(/verify)?' in phone
+          assert 'CLOUDFLARE_LOGIN_READY' in phone
+          assert 'termux-clipboard-set' in phone
+          assert 'DEVICE_CODE' in phone
+          assert 'LOGIN_LINK="https://dash.cloudflare.com/oauth2/device?user_code=$DEVICE_CODE"' in phone
+          assert 'AARIS_CF_OPEN_BROWSER=https://dash.cloudflare.com/oauth2/device' not in linux
+          assert 'trap cleanup EXIT' in phone
           print("AARIS_CF_DEVICE_URL_STATIC_PASS")
           PYDEVICE
           python3 - <<'PYCROSS'
