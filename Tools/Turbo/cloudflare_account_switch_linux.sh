@@ -158,18 +158,70 @@ fi
 # Only its SHA-256 digest reaches this remote Linux session and the Worker.
 printf '%s' "$AARIS_WATCH_HASH" |
   "${WRANGLER[@]}" secret put WATCH_TOKEN_HASH --config "$TMP/wrangler.jsonc" >/dev/null
-STATUS="$(curl -sS --retry 3 --max-time 20 "$URL/health")"
-python3 - "$STATUS" <<'PY'
-import json,sys
-obj=json.loads(sys.argv[1])
-assert obj.get("service")=="aaris-turbo" and obj.get("status")=="ready", obj
-PY
-# Confirm this new deployment rejects anonymous command execution before activation.
-HTTP="$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \
-  -X POST "$URL/bootstrap" -H 'Content-Type: application/json' -d '{"machine":"aaris-invalid-test"}')"
+# A brand-new workers.dev hostname may require DNS and TLS edge propagation.
+# Never disable certificate verification (-k), and never mark a deployment
+# active until its HTTPS health endpoint returns the expected application JSON.
+echo AARIS_CF_HTTPS_HEALTH_VERIFY_START
+HEALTH_READY=0
+for ATTEMPT in $(seq 1 18); do
+  CURL_RC=0
+  STATUS="$(curl -sS --connect-timeout 8 --max-time 18 "$URL/health" 2>"$TMP/health-curl.err")" || CURL_RC=$?
+  if ((CURL_RC==0)) && python3 -c 'import json,sys; obj=json.loads(sys.argv[1]); assert obj.get("service")=="aaris-turbo" and obj.get("status")=="ready"' "$STATUS" >/dev/null 2>&1; then
+    HEALTH_READY=1
+    echo AARIS_CF_HTTPS_HEALTH_VALIDATED
+    break
+  fi
+  if ((CURL_RC==60)); then
+    echo AARIS_CF_HTTPS_CERTIFICATE_VERIFICATION_FAILED
+    exit 36
+  fi
+  case "$CURL_RC" in
+    0|6|7|28|35|52|56) ;; # transient DNS, TLS, transport or not-yet-live response
+    *) echo "AARIS_CF_HEALTH_NONRETRYABLE_CURL_EXIT=$CURL_RC"; exit "$CURL_RC" ;;
+  esac
+  if ((ATTEMPT==1 || ATTEMPT%4==0)); then
+    echo "AARIS_CF_HTTPS_HEALTH_NOT_READY_ATTEMPT=$ATTEMPT CURL_EXIT=$CURL_RC"
+  fi
+  if ((ATTEMPT<18)); then sleep 10; fi
+done
+if ((HEALTH_READY!=1)); then
+  echo AARIS_CF_HTTPS_HEALTH_NOT_READY_AFTER_BOUNDED_RETRIES
+  echo AARIS_CF_DEPLOYED_BUT_NOT_ACTIVATED_KEEP_OLD_GITHUB_BROKER
+  exit 35
+fi
+# These are read-only unauthorized probes. Keep the exact 401 requirement;
+# transient HTTPS connection failures may also occur across Cloudflare edges.
+cf_unauthorized_probe() {
+  local endpoint="$1" data="$2" attempt code rc
+  for attempt in $(seq 1 6); do
+    rc=0
+    code="$(curl -sS --connect-timeout 8 --max-time 18 -o /dev/null -w '%{http_code}' \
+      -X POST "$URL/$endpoint" -H 'Content-Type: application/json' -d "$data" \
+      2>"$TMP/security-curl.err")" || rc=$?
+    if ((rc==0)); then
+      [[ "$code" == 401 ]] || {
+        echo "AARIS_CF_UNSAFE_$endpoint" >&2
+        return 30
+      }
+      echo "$code"
+      return 0
+    fi
+    if ((rc==60)); then
+      echo AARIS_CF_HTTPS_CERTIFICATE_VERIFICATION_FAILED >&2
+      return 36
+    fi
+    case "$rc" in
+      6|7|28|35|52|56) ;;
+      *) echo "AARIS_CF_SECURITY_PROBE_NONRETRYABLE_CURL_EXIT=$rc" >&2; return "$rc" ;;
+    esac
+    if ((attempt<6)); then sleep 7; fi
+  done
+  echo AARIS_CF_HTTPS_SECURITY_PROBE_NOT_READY >&2
+  return 37
+}
+HTTP="$(cf_unauthorized_probe bootstrap '{"machine":"aaris-invalid-test"}')"
 [[ "$HTTP" == 401 ]] || { echo "AARIS_CF_UNSAFE_BOOTSTRAP_STATUS=$HTTP"; exit 30; }
-HTTP="$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \
-  -X POST "$URL/agent/aaris-invalid-test/next" -H 'Content-Type: application/json' -d '{}')"
+HTTP="$(cf_unauthorized_probe agent/aaris-invalid-test/next '{}')"
 [[ "$HTTP" == 401 ]] || { echo "AARIS_CF_UNSAFE_AGENT_STATUS=$HTTP"; exit 31; }
 echo AARIS_CF_WORKER_HEALTH_PASS
 echo "AARIS_CF_BROKER=$URL"
