@@ -149,6 +149,11 @@ def audit() -> None:
     assert "activationDistance = 55" in nearby
     assert "nextCheck = Time.unscaledTime + .25f;" in nearby
     assert "Physics.SyncTransforms();" in nearby
+    assert "private void OnEnable()" in nearby
+    assert "streamed[i] && obstacles[i] != null" in nearby
+    assert "restoredOnDisable = streamed != null && active != null;" in nearby
+    assert "active.Clear();" in nearby and "nextActive.Clear();" in nearby
+    assert "RefreshNow();" in nearby
     assert (6.5 * (0.25 + 0.15)) < 55 - 2.0
 
     # 10–120 FPS: the controller must integrate a full second at common

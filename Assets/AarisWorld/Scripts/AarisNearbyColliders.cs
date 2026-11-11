@@ -13,6 +13,10 @@ namespace Aaris.MapReview
         [SerializeField] private float activationDistance = 55;
         [SerializeField] private float cellSize = 250;
         private Bounds[] worldBounds;
+        // Only supported static authored shapes are gated by the spatial grid.
+        // Other collider types must remain enabled across disable/enable cycles.
+        private bool[] streamed;
+        private bool restoredOnDisable;
         private readonly Dictionary<long, List<int>> cells = new Dictionary<long, List<int>>();
         private List<int> active, nextActive;
         private int[] visited, wanted;
@@ -24,6 +28,7 @@ namespace Aaris.MapReview
         {
             if (target == null || obstacles == null) { enabled = false; return; }
             worldBounds = new Bounds[obstacles.Length];
+            streamed = new bool[obstacles.Length];
             visited = new int[obstacles.Length]; wanted = new int[obstacles.Length];
             active = new List<int>(obstacles.Length); nextActive = new List<int>(obstacles.Length);
             cellSize = Mathf.Max(32, cellSize);
@@ -37,6 +42,7 @@ namespace Aaris.MapReview
                 if (c is MeshCollider mc && mc.sharedMesh != null) local = mc.sharedMesh.bounds;
                 else if (c is BoxCollider box) local = new Bounds(box.center, box.size);
                 else { c.enabled = true; worldBounds[i] = c.bounds; continue; }
+                streamed[i] = true;
                 Matrix4x4 m = c.transform.localToWorldMatrix;
                 Vector3 e = local.extents;
                 Vector3 x = m.MultiplyVector(new Vector3(e.x, 0, 0));
@@ -109,9 +115,31 @@ namespace Aaris.MapReview
             // Renderer visibility, terrain and native tree collisions are unchanged.
             if (forcePhysicsSync) Physics.SyncTransforms();
         }
+        private void OnEnable()
+        {
+            // OnDisable temporarily restores all authored colliders. Without a
+            // rescan, toggling this component leaves every distant building
+            // collidable forever even though its grid still tracks only the
+            // previously active indices.
+            // When the target has gone away (e.g. scene teardown), keep
+            // authored colliders enabled rather than disabling every wall.
+            if (!restoredOnDisable || target == null || worldBounds == null ||
+                streamed == null || active == null || nextActive == null ||
+                obstacles == null) return;
+            restoredOnDisable = false;
+            for (int i = 0; i < obstacles.Length; i++)
+                if (streamed[i] && obstacles[i] != null)
+                    obstacles[i].enabled = false;
+            active.Clear();
+            nextActive.Clear();
+            // Restore nearby collisions immediately before the next player Move.
+            RefreshNow();
+        }
+
         private void OnDisable()
         {
             if (obstacles == null) return;
+            restoredOnDisable = streamed != null && active != null;
             foreach (Collider c in obstacles) if (c != null) c.enabled = true;
         }
     }
