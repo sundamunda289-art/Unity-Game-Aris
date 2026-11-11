@@ -88,16 +88,33 @@ echo "GITHUB_BROKER_VARIABLE_UPDATED"
 # The workflow uses CODESPACE_PAT only for SSH; sync the selected Codespace account.
 GH_CONFIG_DIR="$CODESPACE_AUTH" gh auth token | GH_CONFIG_DIR="$MASTER" gh secret set CODESPACE_PAT -R "$REPO"
 echo "STARTING_ONE_SIGNED_GITHUB_OIDC_REBOOTSTRAP"
+DISPATCHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 if ! GH_CONFIG_DIR="$MASTER" gh workflow run aaris-turbo-bootstrap.yml -R "$REPO" --ref main -f machine="$MACHINE"; then
   GH_CONFIG_DIR="$MASTER" gh variable set AARIS_BROKER_URL -R "$REPO" --body "$OLD_URL"
   echo "BOOTSTRAP_DISPATCH_FAILED_BROKER_ROLLED_BACK"
   exit 12
 fi
 echo "GitHub Actions: https://github.com/$REPO/actions/workflows/aaris-turbo-bootstrap.yml"
+RUN_ID=""
+for TRY in $(seq 1 25); do
+  RUN_ID="$(GH_CONFIG_DIR="$MASTER" gh run list -R "$REPO" --workflow aaris-turbo-bootstrap.yml     --event workflow_dispatch --limit 20     --json databaseId,createdAt     --jq '.[] | select(.createdAt >= "'"$DISPATCHED_AT"'") | .databaseId'     2>/dev/null | head -n 1 || true)"
+  [[ "$RUN_ID" =~ ^[0-9]+$ ]] && break
+  sleep 3
+done
+if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
+  echo "BOOTSTRAP_RUN_NOT_FOUND_NOT_CLAIMING_SUCCESS"
+  exit 13
+fi
+echo "Verifying authenticated agent handshake: https://github.com/$REPO/actions/runs/$RUN_ID"
+if ! GH_CONFIG_DIR="$MASTER" gh run watch "$RUN_ID" -R "$REPO" --exit-status; then
+  GH_CONFIG_DIR="$MASTER" gh variable set AARIS_BROKER_URL -R "$REPO" --body "$OLD_URL"
+  echo "BOOTSTRAP_FAILED_GITHUB_BROKER_URL_ROLLED_BACK"
+  exit 14
+fi
 echo "Cloudflare Worker: $NEW_URL"
 if command -v termux-clipboard-set >/dev/null 2>&1; then
   printf '%s' "$NEW_URL/watch#key=$(cat "$WATCH_KEY_FILE")" | termux-clipboard-set
   echo "PRIVATE_WATCH_LINK_COPIED_TO_CLIPBOARD_NOT_PRINTED"
 fi
-echo "BOOTSTRAP_DISPATCHED_VERIFY_TURBO_CLOUDFLARE_HANDSHAKE_PASS"
-echo "Unity Editor was not restarted. New agent is connected only when the bootstrap succeeds."
+echo "AARIS_CF_SWITCH_SUCCESS_VERIFIED_AGENT_HANDSHAKE"
+echo "Unity Editor was not restarted. Bootstrap passed; verify a harmless terminal command before changing assets."
