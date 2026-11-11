@@ -60,6 +60,19 @@ def check() -> None:
     assert "OnPointerDown" in button and "OnPointerUp" in button
     assert "SetFireHeld(false)" in hud and "CapturesScreenPosition" in hud
     assert "standaloneInputModule" not in hud  # Do not rely on arbitrary user-provided code.
+    # Disabling the HUD releases held fire/jump and clears the singleton.
+    # Re-enabling the same Canvas must restore pointer capture and refresh
+    # safe-area anchors without constructing a second set of controls.
+    on_enable = hud[hud.index("private void OnEnable()"):
+                    hud.index("private void OnDisable()")]
+    on_disable = hud[hud.index("private void OnDisable()"):]
+    assert "if (canvas == null || (instance != null && instance != this)) return;" in on_enable
+    assert "instance = this;" in on_enable
+    assert "UpdateSafeArea(true);" in on_enable
+    assert "ReleaseAllPointers();" in on_disable
+    assert "if (instance == this) instance = null;" in on_disable
+    assert hud.count("Add(Action.") == 5
+
 
     # A single CharacterController is moved by the original, terrain-checked
     # saved player script. Movement or gravity can never be applied twice.
