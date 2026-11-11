@@ -88,8 +88,53 @@ def audit():
     assert "nextOptionalComponentRefresh = Time.unscaledTime + 1f;" in update
     assert update.index("nextOptionalComponentRefresh = Time.unscaledTime + 1f;") < update.index("ReadInput();")
 
+    # Android GPU fill-rate pressure should be reduced only after sustained
+    # p95 misses. These are source/threshold contracts, NOT a GPU profiler.
+    quality = (SRC / "AarisMobileRuntime.cs").read_text(encoding="utf-8")
+    assert "ConfigureAndroidQuality();" in quality
+    assert "#if UNITY_ANDROID && !UNITY_EDITOR" in quality
+    assert "QualitySettings.streamingMipmapsMemoryBudget" in quality
+    assert "memoryMB <= 2304 ? 160f : 224f" in quality
+    assert "originalRenderScale = androidPipeline.renderScale;" in quality
+    assert "lastTargetFps != targetFps" in quality
+    assert "slowIntervals >= 2" in quality and "steadyIntervals >= 4" in quality
+    assert "current - 0.05f" in quality and "current + 0.025f" in quality
+    assert "Mathf.Clamp(minimumAndroidRenderScale, 0.65f, 1f)" in quality
+    assert 'reason == "sample" && frameCount >= 90' in quality
+    assert "frameIndex = frameCount = 0;" in quality
+    assert "slowIntervals = steadyIntervals = 0;" in quality
+
+    def simulate_quality(p95_p99_samples, starting_scale=.85, original_scale=1., floor=.72):
+        scale = starting_scale
+        slow = steady = 0
+        for p95, p99 in p95_p99_samples:
+            if p95 > 1000 / 60 * 1.20:
+                slow += 1
+                steady = 0
+            elif p95 < 1000 / 60 * 1.08 and p99 < 1000 / 60 * 1.40:
+                steady += 1
+                slow = 0
+            else:
+                slow = steady = 0
+            if slow >= 2:
+                scale = max(floor, scale - .05)
+                slow = 0
+            elif steady >= 4:
+                scale = min(original_scale, scale + .025)
+                steady = 0
+        return round(scale, 3)
+
+    # One stutter cannot degrade quality; sustained misses lower scale.
+    assert simulate_quality([(28, 34)]) == .85
+    assert simulate_quality([(28, 34), (28, 34)]) == .8
+    assert simulate_quality([(28, 34)] * 100) == .72
+    # Recovery is intentionally slower and capped at the native authored scale.
+    assert simulate_quality([(16.7, 19)] * 4) == .875
+    assert simulate_quality([(16.7, 19)] * 100) == 1.0
+    assert simulate_quality([(28, 34), (16.7, 19), (28, 34)]) == .85
+
     print("PASS: airborne support reuse, single motor, steady FOV writes, "
-          "bounded optional-component lookup, collision-safe camera cast deduplication and allocation-free footstep matching")
+          "bounded optional-component lookup, collision-safe camera, audio and adaptive Android quality contracts")
     print("NOT TESTED: Unity compilation, live camera occlusion and device FPS.")
 
 
