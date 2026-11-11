@@ -121,6 +121,18 @@ def audit():
     assert "QualitySettings.streamingMipmapsMemoryBudget" in quality
     assert "memoryMB <= 2304 ? 160f : 224f" in quality
     assert "originalRenderScale = androidPipeline.renderScale;" in quality
+    # The low-RAM adaptation must never be enabled on high-RAM or
+    # unknown-RAM Android devices. Merely returning from ConfigureAndroidQuality
+    # after storing androidPipeline would still enable TuneAndroidResolution.
+    quality_setup = quality[quality.index("private void ConfigureAndroidQuality()"):
+                            quality.index("private void TuneAndroidResolution(")]
+    assert "if (memoryMB <= 0 || memoryMB > 3072) return;" in quality_setup
+    assert quality_setup.index("if (memoryMB <= 0 || memoryMB > 3072) return;") < quality_setup.index("androidPipeline = GraphicsSettings.currentRenderPipeline")
+    assert "if (androidPipeline == null || !adaptiveAndroidResolution) return;" in quality
+    for ram_mb in (0, -1, 4096, 8192):
+        assert not (0 < ram_mb <= 3072)
+    for ram_mb in (1536, 2048, 2304, 3072):
+        assert 0 < ram_mb <= 3072
     assert "lastTargetFps != targetFps" in quality
     assert "slowIntervals >= 2" in quality and "steadyIntervals >= 4" in quality
     assert "current - 0.05f" in quality and "current + 0.025f" in quality
