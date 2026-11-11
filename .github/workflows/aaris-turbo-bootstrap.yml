@@ -41,6 +41,20 @@ jobs:
           bash -n Tools/Codespaces/termux_switch.sh
           bash -n Tools/Codespaces/termux_cloudflare_switch.sh
           bash -n Tools/Turbo/cloudflare_account_switch_linux.sh
+          python3 - <<'PYTLSREADY'
+          from pathlib import Path
+          remote=Path("Tools/Turbo/cloudflare_account_switch_linux.sh").read_text()
+          assert 'AARIS_CF_HTTPS_HEALTH_VERIFY_START' in remote
+          assert 'for ATTEMPT in $(seq 1 18)' in remote
+          assert 'CURL_RC==60' in remote
+          assert 'AARIS_CF_HTTPS_CERTIFICATE_VERIFICATION_FAILED' in remote
+          assert 'AARIS_CF_DEPLOYED_BUT_NOT_ACTIVATED_KEEP_OLD_GITHUB_BROKER' in remote
+          assert 'cf_unauthorized_probe bootstrap' in remote
+          assert 'cf_unauthorized_probe agent/aaris-invalid-test/next' in remote
+          assert '[[ "$code" == 401 ]]' in remote
+          assert not any(option in remote for option in ('curl -k ', 'curl --insecure', '--ssl-no-revoke'))
+          print("AARIS_CF_FIRST_DEPLOY_HTTPS_READINESS_STATIC_PASS")
+          PYTLSREADY
           python3 Tools/Turbo/device_oauth_parse.py --selftest
           python3 Tools/Turbo/wrangler_auth_diag.py --selftest
           python3 -m py_compile Tools/Turbo/wrangler_auth_diag.py
