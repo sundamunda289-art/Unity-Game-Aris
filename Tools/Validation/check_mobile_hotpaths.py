@@ -160,8 +160,9 @@ def audit():
             writes += 1
         assert writes == 4, (fps, writes)
 
-    # Android GPU fill-rate pressure should be reduced only after sustained
-    # p95 misses. These are source/threshold contracts, NOT a GPU profiler.
+    # Android image quality should fall only after sustained frame misses,
+    # never just from isolated GC/streaming hitches. These source/threshold
+    # contracts are not real device GPU/CPU profiling.
     quality = (SRC / "AarisMobileRuntime.cs").read_text(encoding="utf-8")
     assert "ConfigureAndroidQuality();" in quality
     assert "#if UNITY_ANDROID && !UNITY_EDITOR" in quality
@@ -203,17 +204,19 @@ def audit():
     assert 22.2 < (1000 / effective_android_fps(90, 60)) * 1.08
     assert 22.2 > (1000 / 60) * 1.20
     assert "slowIntervals >= 2" in quality and "steadyIntervals >= 4" in quality
+    assert "sample.p75FrameMs > budgetMs * 1.06f" in quality
+    assert "p75FrameMs = frameCount > 0 ? sortedTimes[Mathf.CeilToInt(frameCount * .75f) - 1]" in quality
     assert "current - 0.05f" in quality and "current + 0.025f" in quality
     assert "Mathf.Clamp(minimumAndroidRenderScale, 0.65f, 1f)" in quality
     assert 'reason == "sample" && frameCount >= 30' in quality
     assert "frameIndex = frameCount = 0;" in quality
     assert "slowIntervals = steadyIntervals = 0;" in quality
 
-    def simulate_quality(p95_p99_samples, starting_scale=.85, original_scale=1., floor=.72):
+    def simulate_quality(p75_p95_p99_samples, starting_scale=.85, original_scale=1., floor=.72):
         scale = starting_scale
         slow = steady = 0
-        for p95, p99 in p95_p99_samples:
-            if p95 > 1000 / 60 * 1.20:
+        for p75, p95, p99 in p75_p95_p99_samples:
+            if p95 > 1000 / 60 * 1.20 and p75 > 1000 / 60 * 1.06:
                 slow += 1
                 steady = 0
             elif p95 < 1000 / 60 * 1.08 and p99 < 1000 / 60 * 1.40:
@@ -229,14 +232,18 @@ def audit():
                 steady = 0
         return round(scale, 3)
 
-    # One stutter cannot degrade quality; sustained misses lower scale.
-    assert simulate_quality([(28, 34)]) == .85
-    assert simulate_quality([(28, 34), (28, 34)]) == .8
-    assert simulate_quality([(28, 34)] * 100) == .72
+    # A few long frames (GC, asset streaming, app notifications) must not
+    # continuously blur the world while 75% of frames meet the budget.
+    assert simulate_quality([(16.7, 28, 34)] * 100) == .85
+    assert simulate_quality([(16.7, 28, 34), (24, 28, 34)]) == .85
+    # Sustained >25% slow frames merit fill-rate relief, with hysteresis.
+    assert simulate_quality([(24, 28, 34)]) == .85
+    assert simulate_quality([(24, 28, 34), (24, 28, 34)]) == .8
+    assert simulate_quality([(24, 28, 34)] * 100) == .72
     # Recovery is intentionally slower and capped at the native authored scale.
-    assert simulate_quality([(16.7, 19)] * 4) == .875
-    assert simulate_quality([(16.7, 19)] * 100) == 1.0
-    assert simulate_quality([(28, 34), (16.7, 19), (28, 34)]) == .85
+    assert simulate_quality([(16.7, 16.7, 19)] * 4) == .875
+    assert simulate_quality([(16.7, 16.7, 19)] * 100) == 1.0
+    assert simulate_quality([(24, 28, 34), (16.7, 16.7, 19), (24, 28, 34)]) == .85
 
     # Stream only originally enabled authored obstacles. Lifecycle teardown
     # must not wake deliberately disabled collision shapes across the 2 km map.
