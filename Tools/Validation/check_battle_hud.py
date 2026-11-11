@@ -95,6 +95,26 @@ def check() -> None:
     assert "Physics.OverlapCapsuleNonAlloc" in state
     assert "TrySetStance(PlayerStance.Standing)" in state
     assert "OverlapSphereNonAlloc" in state and "equippedGun.TryFire" in state
+    # EventSystem runs after the combat Update execution order. On a low-FPS
+    # device a Down/Up pair can arrive before its next Update; shoot once at
+    # the actual press edge while retaining the held auto-fire path.
+    press = state[state.index("public void SetFireHeld(bool held)"):
+                  state.index("public bool ToggleCrouch()")]
+    combat_update = state[state.index("private void Update()"):
+                          state.index("private void Punch()")]
+    assert "bool newPress = held && !fireHeld;" in press
+    assert "if (!held) semiShotQueued = false;" in press
+    assert "if (!newPress) return;" in press
+    assert "IsArmed && Time.time >= nextAttack" in press
+    assert "ShootEquippedWeapon();" in press
+    assert "if (!equippedGun.Automatic && !semiShotQueued) return;" in combat_update
+    assert "ShootEquippedWeapon();" in combat_update
+    assert combat_update.count("equippedGun.TryFire(motor.AimCamera, gameObject)") == 1
+    # Per-shot GetComponent costs must not scale with weapon fire rate.
+    assert "if (cachedOwner != owner)" in gun
+    assert gun.count("owner.GetComponent<AarisBattleActions>()") == 1
+    assert gun.count("owner.GetComponent<AarisThirdPersonPlayer>()") == 1
+    assert "cachedMotor.ApplyWeaponRecoil" in gun
     assert "Physics.RaycastNonAlloc" in gun
     assert "IAarisDamageable" in gun
     assert "Animator.applyRootMotion = false" not in state
