@@ -5,6 +5,26 @@ set -euo pipefail
 umask 077
 REPO="sundamunda289-art/Unity-Game-Aris"
 LEGACY="https://aaris-turbo-terminal.aaris-game-control-6f9c.workers.dev"
+# Read ONLY safe error categories from the Codespace's recent Wrangler logs,
+# without starting a new OAuth flow, restarting Unity, or exposing any token.
+if [[ "${1:-}" == "--diagnose" ]]; then
+  MACHINE="${2:-}"
+  [[ "$MACHINE" =~ ^[A-Za-z0-9][A-Za-z0-9-]{2,119}$ ]] || {
+    echo 'USAGE: bash aaris-cf-switch.sh --diagnose EXACT-RUNNING-CODESPACE-NAME'
+    exit 2
+  }
+  CFG="$HOME/.config/gh"
+  [[ -s "$HOME/.config/aaris-ai/codespace-gh/hosts.yml" ]] && CFG="$HOME/.config/aaris-ai/codespace-gh"
+  command -v gh >/dev/null && command -v curl >/dev/null || {
+    echo AARIS_CF_DIAG_REQUIRES_GH_AND_CURL; exit 3;
+  }
+  DIAG_FILE="$(mktemp)"
+  trap 'rm -f "$DIAG_FILE"' EXIT
+  curl -fsSL --retry 3 "https://raw.githubusercontent.com/$REPO/main/Tools/Turbo/wrangler_auth_diag.py" -o "$DIAG_FILE"
+  echo 'AARIS_CF_INSPECTING_RECENT_WRANGLER_AUTH_ERRORS_NO_NEW_LOGIN'
+  GH_CONFIG_DIR="$CFG" gh codespace ssh -c "$MACHINE" -- 'python3 - --latest' < "$DIAG_FILE"
+  exit 0
+fi
 if ! command -v pkg >/dev/null 2>&1; then echo "TERMUX_REQUIRED"; exit 2; fi
 # In Termux the openssl executable is shipped by openssl-tool, not openssl.
 pkg install -y gh curl jq openssl openssl-tool coreutils >/dev/null
