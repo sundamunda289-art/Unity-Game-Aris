@@ -251,7 +251,12 @@ namespace Aaris.MapReview
             }
             bool show = driving || session.CanEnter;
             if (driveButton.activeSelf != show) driveButton.SetActive(show);
-            if (show) driveCaption.text = driving ? "EXIT" : "DRIVE";
+            if (show)
+            {
+                string desiredCaption = driving ? "EXIT" : "DRIVE";
+                if (driveCaption.text != desiredCaption)
+                    driveCaption.text = desiredCaption;
+            }
         }
 
         private void OnApplicationPause(bool paused)
