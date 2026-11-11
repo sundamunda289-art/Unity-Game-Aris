@@ -273,7 +273,8 @@ namespace Aaris.MapReview.EditorTools
             if (applyAll)
             {
                 Directory.CreateDirectory("/tmp/aaris-codespaces");
-                File.Copy(scene.path,
+                File.Copy(Path.Combine(Directory.GetParent(Application.dataPath).FullName,
+                    scene.path),
                     "/tmp/aaris-codespaces/windowless-scene-pre-bake.unity", true);
             }
             int updated = 0, already = 0;
