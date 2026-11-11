@@ -153,7 +153,10 @@ namespace Aaris.MapReview
             previousSimulateMouse = Input.simulateMouseWithTouches;
             Input.simulateMouseWithTouches = false;
             inputConfigured = true;
-            Application.targetFrameRate = 60;
+            // AarisMobileRuntime is the FPS authority when present (execution order -300).
+            // Do not override a 30/60 FPS device setting from another Awake().
+            if (FindFirstObjectByType<AarisMobileRuntime>() == null)
+                Application.targetFrameRate = 60;
             if (nearbyColliders == null) nearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
             spawn = transform.position;
             spawnRotation = transform.rotation;
@@ -372,6 +375,10 @@ namespace Aaris.MapReview
             if (!wasGrounded) response *= airborneSteering;
             horizontalVelocity = Vector3.MoveTowards(horizontalVelocity,
                 desiredVelocity, response * dt);
+            // On a stance change, do not let sprint inertia carry a prone or
+            // crouched capsule faster than its authored movement ceiling.
+            if (battle != null && battle.Stance != AarisBattleActions.PlayerStance.Standing)
+                horizontalVelocity = Vector3.ClampMagnitude(horizontalVelocity, speed);
             Vector3 candidate = transform.position + horizontalVelocity * dt;
             // Original 2km map bounds and shoreline/bridge checks survive.
             // No horizontal displacement: let CharacterController handle vertical
