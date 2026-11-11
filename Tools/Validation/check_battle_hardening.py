@@ -94,6 +94,42 @@ def audit() -> None:
     assert "private void OnApplicationPause(bool paused)" in tactical
     assert "private void OnApplicationFocus(bool focused)" in tactical
 
+    # Optional flight/vehicle components may be missing on stripped player
+    # prefabs. Don't burn two GetComponent calls per frame; refresh on a
+    # bounded cadence, but force a fresh check before the irreversible throw.
+    assert "private float nextOptionalComponentRefresh;" in tactical
+    update_body = tactical.split("private void Update()", 1)[1].split(
+        "public bool TryGiveGrenades", 1
+    )[0]
+    refresh_body = tactical.split("private void RefreshOptionalComponents(", 1)[1].split(
+        "private void Update()", 1
+    )[0]
+    throw_body = tactical.split("public void ThrowFrag()", 1)[1].split(
+        "private void Build()", 1
+    )[0]
+    assert "RefreshOptionalComponents();" in update_body
+    assert "GetComponent<" not in update_body
+    assert "Time.unscaledTime < nextOptionalComponentRefresh" in refresh_body
+    assert "nextOptionalComponentRefresh = Time.unscaledTime + 1f;" in refresh_body
+    assert "if (drop == null) drop = GetComponent<AarisOfflineDrop>();" in refresh_body
+    assert "if (vehicle == null) vehicle = GetComponent<AarisVehicleSession>();" in refresh_body
+    assert throw_body.index("RefreshOptionalComponents(true);") < throw_body.index(
+        "if ((drop != null && !drop.HasLanded)"
+    )
+    assert throw_body.index("Time.time < nextThrow") < throw_body.index(
+        "RefreshOptionalComponents(true);"
+    )
+    for fps in (10, 15, 30, 60, 90, 120):
+        next_refresh = 0.0
+        component_polls = 0
+        for frame in range(5 * fps):
+            now = frame / fps
+            if now < next_refresh:
+                continue
+            next_refresh = now + 1.0
+            component_polls += 1
+        assert 4 <= component_polls <= 6, (fps, component_polls)
+
     # Missing Humanoid motion must NOT silently hide the reliable saved
     # player body and turn it into an unanimated FBX T-pose.
     assert "if (!graphReady)" in visual
