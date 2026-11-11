@@ -199,8 +199,51 @@ def audit():
         assert 4 <= simulated_collider_polls(fps, 0) <= 6
         assert simulated_collider_polls(fps, 6.5) >= 10
 
+    # A held Gloo Wall preview may be polled every frame by a touchscreen,
+    # but optional vehicle/drop lookup must be cached and bounded. Recheck
+    # immediately before deployment so newly attached driving state wins.
+    gloo = (SRC / "AarisOfflineGlooWall.cs").read_text(encoding="utf-8")
+    can_use = gloo[gloo.index("public bool CanUse"):
+                   gloo.index("private void RefreshOptionalComponents")]
+    refresh = gloo[gloo.index("private void RefreshOptionalComponents"):
+                   gloo.index("private void Awake()")]
+    release = gloo[gloo.index("public void ReleaseAndDeploy()"):
+                   gloo.index("private void UpdatePlacement()")]
+    assert "GetComponent<" not in can_use
+    assert "RefreshOptionalComponents();" in can_use
+    assert "if (!isActiveAndEnabled || carriedWalls <= 0) return false;" in can_use
+    assert "Time.unscaledTime >= nextOptionalComponentRefresh" not in refresh or \
+        "Time.unscaledTime < nextOptionalComponentRefresh" in refresh
+    assert "nextOptionalComponentRefresh = Time.unscaledTime + 1f;" in refresh
+    assert refresh.count("GetComponent<AarisOfflineDrop>()") == 1
+    assert refresh.count("GetComponent<AarisVehicleSession>()") == 1
+    assert "RefreshOptionalComponents(true);" in release
+    assert release.index("RefreshOptionalComponents(true);") < release.index("UpdatePlacement();")
+    assert "private void OnDisable() => CancelAim();" in gloo
+
+    # An already-converged audio loop must make zero native volume/pitch
+    # writes. Changed targets preserve MoveTowards's bounded fades and snap.
+    loop = audio[audio.index("private static void AdjustLoop("):
+                 audio.index("private void LateUpdate()")]
+    assert "float nextVolume = Mathf.MoveTowards(currentVolume, volume" in loop
+    assert "float nextPitch = Mathf.MoveTowards(currentPitch, pitch" in loop
+    assert "if (nextVolume != currentVolume) source.volume = nextVolume;" in loop
+    assert "if (nextPitch != currentPitch) source.pitch = nextPitch;" in loop
+    assert "if (nextVolume <= 0.001f && volume <= 0f && source.isPlaying)" in loop
+
+    for fps in (10, 30, 60, 120):
+        level, target, writes = 0.0, 0.75, 0
+        for frame in range(3 * fps):
+            next_level = min(target, level + 1.6 / fps)
+            if next_level != level:
+                level = next_level
+                writes += 1
+        assert level == target
+        assert writes < 2 * fps
+        assert not (level != target)  # Steady-state setter is skipped.
+
     print("PASS: airborne support reuse, single motor, steady FOV writes, "
-          "bounded player/animation optional-component lookup, collision-safe camera, audio and adaptive Android quality contracts")
+          "bounded player/animation optional-component lookup, collision-safe camera, audio/gloo hotpaths and adaptive Android quality contracts")
     print("NOT TESTED: Unity compilation, live camera occlusion and device FPS.")
 
 
