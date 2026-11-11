@@ -37,7 +37,7 @@ for name in worker.mjs watch_page.mjs wrangler.jsonc; do
   test -s "$TMP/$name"
 done
 cd "$TMP"
-WRANGLER=(npx --yes wrangler@4.160.0)
+WRANGLER=(npx --yes wrangler@4.119.0)
 # Log in with official OAuth device flow. Nothing is saved in GitHub.
 # Existing local Wrangler authentication is not used after logout.
 if [[ "${AARIS_REUSE_LOGIN:-0}" != 1 ]]; then
