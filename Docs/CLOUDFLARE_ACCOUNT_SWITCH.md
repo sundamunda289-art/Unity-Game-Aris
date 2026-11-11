@@ -6,7 +6,8 @@ The Codespace/GitHub repository, Unity Editor process, and game assets stay unch
 
 ## One-time preparation
 
-- Have a **running** Ubuntu Linux Codespace for `sundamunda289-art/Unity-Game-Aris` accessible by an authorized GitHub login, and its valid `CODESPACE_PAT` configured in the repository for the one-time Turbo bootstrap. A Codespace is the temporary Linux host for the Cloudflare Wrangler CLI, not the actual Unity build target changed by the switch.
+- **Permanent codebase vs hosting:** source stays `sundamunda289-art/Unity-Game-Aris`, while the Codespace can be hosted at `cgfdgvhvg-ship-it/Unity-Game-Aris` or another authorized account's `Unity-Game-Aris` fork.
+- Have a **running** Ubuntu Linux Codespace in an authorized `*/Unity-Game-Aris` hosting repository accessible by an authorized GitHub login, and its valid `CODESPACE_PAT` configured in the repository for the one-time Turbo bootstrap. A Codespace is the temporary Linux host for the Cloudflare Wrangler CLI, not the actual Unity build target changed by the switch.
 - Install Termux, and authorize the repository owner and the Codespace account through the official GitHub device flow if prompted.
 - The approved repo `main` must contain `Tools/Turbo/wrangler.jsonc`, `Tools/Codespaces/termux_cloudflare_switch.sh` and `Tools/Turbo/cloudflare_account_switch_linux.sh` and the `AARIS_BROKER_URL` variable fallback in `.github/workflows/aaris-turbo-bootstrap.yml`. Do not run against an unmerged PR expecting it to already be on `main`.
 
@@ -25,7 +26,7 @@ If multiple running Codespaces are visible, give the **exact** chosen name:
 bash "$HOME/aaris-cf-switch.sh" EXACT-CODESPACE-NAME
 ```
 
-The script uses `gh codespace ssh` to run Wrangler **inside the running Linux Codespace**, not on native Android. Wrangler's `login --device --browser=false` prints the official Cloudflare authorization link. The phone script opens it automatically if `termux-open-url` is available; otherwise open the printed link manually. Approve the intended account. If the authenticated Cloudflare login has more than one accessible account, the script asks you to choose its exact 32-character Cloudflare Account ID; it cannot safely infer which account you intend.
+The switcher discovers Codespaces across the selected GitHub account (not only the source repo), validates that the selected one is `Available` and belongs to an authorized `*/Unity-Game-Aris` hosting repository. The script uses `gh codespace ssh` to run Wrangler **inside the running Linux Codespace**, not on native Android. Wrangler's `login --device --browser=false` prints the official Cloudflare authorization link. The phone script opens it automatically if `termux-open-url` is available; otherwise open the printed link manually. Approve the intended account. If the authenticated Cloudflare login has more than one accessible account, the script asks you to choose its exact 32-character Cloudflare Account ID; it cannot safely infer which account you intend.
 
 The new account must have an enabled `workers.dev` subdomain. The script deploys only the Worker source from the pinned GitHub `main` commit, without modifying the current `/workspaces/Unity-Game-Aris` working tree or touching Unity's caches. It creates the `MACHINES` Durable Object SQLite binding using the account-neutral `wrangler.jsonc` config, and sets only `WATCH_TOKEN_HASH` as a Worker secret. No `GITHUB_TOKEN`, `GITHUB_PAT`, Unity login, or license is copied into Cloudflare.
 
