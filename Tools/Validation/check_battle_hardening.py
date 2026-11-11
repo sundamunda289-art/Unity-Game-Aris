@@ -161,14 +161,15 @@ def audit() -> None:
     nearby = source("AarisNearbyColliders.cs")
     assert "DefaultExecutionOrder(-250)" in nearby
     assert "activationDistance = 55" in nearby
-    assert "nextCheck = Time.unscaledTime + .25f;" in nearby
+    assert "nextCheck = Time.unscaledTime + 1f;" in nearby
     assert "Physics.SyncTransforms();" in nearby
     assert "private void OnEnable()" in nearby
     assert "streamed[i] && obstacles[i] != null" in nearby
-    assert "restoredOnDisable = streamed != null && active != null;" in nearby
+    assert "restoredOnDisable = active != null;" in nearby
+    assert "if (c == null || !c.enabled) continue;" in nearby
     assert "active.Clear();" in nearby and "nextActive.Clear();" in nearby
     assert "RefreshNow();" in nearby
-    assert (6.5 * (0.25 + 0.15)) < 55 - 2.0
+    assert (6.5 * (1.0 + 0.15)) < 55 - 2.0
 
     # 10–120 FPS: the controller must integrate a full second at common
     # mobile rates even when Unity frames are slower than 20 FPS.

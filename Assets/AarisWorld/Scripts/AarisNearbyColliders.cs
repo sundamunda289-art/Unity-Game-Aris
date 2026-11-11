@@ -35,13 +35,15 @@ namespace Aaris.MapReview
             for (int i = 0; i < obstacles.Length; i++)
             {
                 Collider c = obstacles[i];
-                if (c == null) continue;
+                if (c == null || !c.enabled) continue;
+                // Preserve intentionally disabled authored colliders: never
+                // revive them through streaming, lifecycle, or teardown.
                 // Collider.bounds is empty while disabled. Read only local bounds metadata;
                 // never temporarily enable/cook every distant building just to cache bounds.
                 Bounds local;
                 if (c is MeshCollider mc && mc.sharedMesh != null) local = mc.sharedMesh.bounds;
                 else if (c is BoxCollider box) local = new Bounds(box.center, box.size);
-                else { c.enabled = true; worldBounds[i] = c.bounds; continue; }
+                else { worldBounds[i] = c.bounds; continue; }
                 streamed[i] = true;
                 Matrix4x4 m = c.transform.localToWorldMatrix;
                 Vector3 e = local.extents;
@@ -71,6 +73,8 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (target == null) return;
+            // Refresh after two metres of movement; while stationary, reduce the
+            // full spatial-grid poll from 4 Hz to 1 Hz on low-end phones.
             if ((target.position - lastPosition).sqrMagnitude >= 4 || Time.unscaledTime >= nextCheck) RefreshNow(false);
         }
         // Explicit teleport and startup calls still synchronize immediately.
@@ -81,7 +85,7 @@ namespace Aaris.MapReview
         {
             if (target == null || worldBounds == null) return;
             lastPosition = target.position;
-            nextCheck = Time.unscaledTime + .25f;
+            nextCheck = Time.unscaledTime + 1f;
             float limit = activationDistance * activationDistance;
             if (query == int.MaxValue) { Array.Clear(visited, 0, visited.Length); Array.Clear(wanted, 0, wanted.Length); query = 0; }
             query++;
@@ -138,9 +142,14 @@ namespace Aaris.MapReview
 
         private void OnDisable()
         {
-            if (obstacles == null) return;
-            restoredOnDisable = streamed != null && active != null;
-            foreach (Collider c in obstacles) if (c != null) c.enabled = true;
+            if (obstacles == null || streamed == null) return;
+            restoredOnDisable = active != null;
+            // Only restore colliders that this streamer disabled itself.
+            // An authored-off collider or unsupported collider must retain
+            // its original state, even when the component is toggled.
+            for (int i = 0; i < obstacles.Length; i++)
+                if (streamed[i] && obstacles[i] != null)
+                    obstacles[i].enabled = true;
         }
     }
 }

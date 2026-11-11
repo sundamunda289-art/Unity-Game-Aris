@@ -170,6 +170,35 @@ def audit():
     assert simulate_quality([(16.7, 19)] * 100) == 1.0
     assert simulate_quality([(28, 34), (16.7, 19), (28, 34)]) == .85
 
+    # Stream only originally enabled authored obstacles. Lifecycle teardown
+    # must not wake deliberately disabled collision shapes across the 2 km map.
+    # Periodic stationary checks stay available, but at 1 Hz instead of 4 Hz.
+    nearby = (SRC / "AarisNearbyColliders.cs").read_text(encoding="utf-8")
+    assert "if (c == null || !c.enabled) continue;" in nearby
+    assert "else { worldBounds[i] = c.bounds; continue; }" in nearby
+    assert "if (streamed[i] && obstacles[i] != null)" in nearby
+    on_disable = nearby[nearby.index("private void OnDisable()"):]
+    assert "if (obstacles == null || streamed == null) return;" in on_disable
+    assert "if (streamed[i] && obstacles[i] != null)" in on_disable
+    assert "foreach (Collider c in obstacles)" not in on_disable
+    assert "if ((target.position - lastPosition).sqrMagnitude >= 4 || Time.unscaledTime >= nextCheck)" in nearby
+    assert "nextCheck = Time.unscaledTime + 1f;" in nearby
+    assert "if (forcePhysicsSync) Physics.SyncTransforms();" in nearby
+
+    def simulated_collider_polls(fps, speed, seconds=5):
+        last_x, next_check, count = 0., 0., 0
+        for frame in range(fps * seconds):
+            now = frame / fps
+            x = now * speed
+            if (x - last_x) ** 2 >= 4 or now >= next_check:
+                last_x, next_check = x, now + 1.
+                count += 1
+        return count
+
+    for fps in (15, 30, 60, 120):
+        assert 4 <= simulated_collider_polls(fps, 0) <= 6
+        assert simulated_collider_polls(fps, 6.5) >= 10
+
     print("PASS: airborne support reuse, single motor, steady FOV writes, "
           "bounded player/animation optional-component lookup, collision-safe camera, audio and adaptive Android quality contracts")
     print("NOT TESTED: Unity compilation, live camera occlusion and device FPS.")
