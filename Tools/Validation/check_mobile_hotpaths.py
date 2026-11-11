@@ -100,7 +100,7 @@ def audit():
     assert "slowIntervals >= 2" in quality and "steadyIntervals >= 4" in quality
     assert "current - 0.05f" in quality and "current + 0.025f" in quality
     assert "Mathf.Clamp(minimumAndroidRenderScale, 0.65f, 1f)" in quality
-    assert 'reason == "sample" && frameCount >= 90' in quality
+    assert 'reason == "sample" && frameCount >= 30' in quality
     assert "frameIndex = frameCount = 0;" in quality
     assert "slowIntervals = steadyIntervals = 0;" in quality
 
