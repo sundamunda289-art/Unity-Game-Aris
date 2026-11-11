@@ -36,9 +36,19 @@ else
   }
 fi
 CS_USER="$(GH_CONFIG_DIR="$WORKER" gh api user -q .login)"
-if ! GH_CONFIG_DIR="$WORKER" gh api "/repos/$REPO/codespaces/machines" --jq '.machines[].name' >/dev/null; then
-  echo 'Codespaces machine API not accessible. Old secret was left unchanged.'
+# An alternate GitHub account can host its own Unity-Game-Aris fork.
+# Do not look up Codespace machine types on the permanent master repository.
+if ! GH_CONFIG_DIR="$WORKER" gh codespace list --limit 100 --json name,state,repository >/dev/null; then
+  echo 'Codespaces not accessible for this account. Old secret was left unchanged.'
   exit 4
+fi
+CS_COUNT="$(GH_CONFIG_DIR="$WORKER" gh codespace list --limit 100 --json name,state,repository \
+  --jq '[.[]|select((.repository // "")|endswith("/Unity-Game-Aris"))]|length')"
+if test "$CS_COUNT" = 0; then
+  GH_CONFIG_DIR="$WORKER" gh repo view "$CS_USER/Unity-Game-Aris" --json name -q .name >/dev/null || {
+    echo 'No existing Unity-Game-Aris Codespace or authorized hosting fork; old secret unchanged.'
+    exit 4
+  }
 fi
 MASTER_TOKEN="$(GH_CONFIG_DIR="$MASTER" gh auth token)"
 CS_TOKEN="$(GH_CONFIG_DIR="$WORKER" gh auth token)"
