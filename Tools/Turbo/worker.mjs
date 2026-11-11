@@ -90,6 +90,12 @@ export class TurboMachine {
     sql.exec("CREATE TABLE IF NOT EXISTS chunks (command_id TEXT NOT NULL, seq INTEGER NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, ts INTEGER NOT NULL DEFAULT (unixepoch()), PRIMARY KEY (command_id, seq))");
     sql.exec("CREATE INDEX IF NOT EXISTS chunks_command ON chunks (command_id, seq)");
     sql.exec("CREATE TABLE IF NOT EXISTS viewer_frame (id INTEGER PRIMARY KEY, command_id TEXT NOT NULL, base64 TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, mode TEXT NOT NULL, updated_at INTEGER NOT NULL)");
+    // Each polling request must read only a bounded number of indexed command rows.
+    // Old watch captures can outnumber ordinary commands by thousands on the Free tier.
+    sql.exec("CREATE INDEX IF NOT EXISTS commands_recent ON commands(created_at DESC,id DESC)");
+    sql.exec("CREATE INDEX IF NOT EXISTS commands_status_created ON commands(status,created_at,id)");
+    sql.exec("CREATE INDEX IF NOT EXISTS commands_watch_pending ON commands(status,expires_at,started_at) WHERE id GLOB 'watch_*'");
+    sql.exec("CREATE INDEX IF NOT EXISTS commands_nonwatch_recent ON commands(created_at DESC,id DESC) WHERE id NOT GLOB 'watch_*'");
   }
   async fetch(req) {
     const path = new URL(req.url).pathname;
@@ -123,9 +129,9 @@ export class TurboMachine {
       const live=last>0 && now-last<=90 && expires.length>0 && Number(expires[0].value)>now;
       const frames=Array.from(sql.exec("SELECT command_id,width,height,mode,updated_at FROM viewer_frame WHERE id=1"));
       const recent=Array.from(sql.exec(
-        "SELECT id,argv_json,status,exit_code,created_at FROM commands WHERE id NOT LIKE 'watch_%' ORDER BY created_at DESC,id DESC LIMIT 20"));
+        "SELECT id,argv_json,status,exit_code,created_at FROM commands WHERE id NOT GLOB 'watch_*' ORDER BY created_at DESC,id DESC LIMIT 20"));
       const outputs=Array.from(sql.exec(
-        "SELECT c.id,ch.kind,substr(ch.text,1,900) AS content FROM chunks ch JOIN commands c ON c.id=ch.command_id WHERE c.id IN (SELECT id FROM commands WHERE id NOT LIKE 'watch_%' ORDER BY created_at DESC,id DESC LIMIT 20) AND instr(c.argv_json,'gui.py')=0 AND instr(c.argv_json,'gui_agent.py')=0 AND c.id NOT LIKE 'watch_%' AND length(ch.text)<1200 ORDER BY c.created_at DESC,ch.seq DESC LIMIT 65"));
+        "SELECT c.id,ch.kind,substr(ch.text,1,900) AS content FROM chunks ch JOIN commands c ON c.id=ch.command_id WHERE c.id IN (SELECT id FROM commands WHERE id NOT GLOB 'watch_*' ORDER BY created_at DESC,id DESC LIMIT 20) AND instr(c.argv_json,'gui.py')=0 AND instr(c.argv_json,'gui_agent.py')=0 AND c.id NOT GLOB 'watch_*' AND ch.seq<8 AND length(ch.text)<1200 ORDER BY c.created_at DESC,ch.seq DESC LIMIT 65"));
       const logMap=new Map();
       for(const r of outputs.reverse()){
         const prev=logMap.get(r.id)||"";
@@ -157,7 +163,7 @@ export class TurboMachine {
       const last=seen.length?Number(seen[0].value):0;
       if (!last || now-last>90)return json({scheduled:false,reason:"offline"});
       const pending=Array.from(sql.exec(
-        "SELECT id FROM commands WHERE id LIKE 'watch_%' AND ((status='queued' AND expires_at>unixepoch()) OR (status='running' AND started_at>unixepoch()-120)) LIMIT 1"));
+        "SELECT id FROM commands WHERE id GLOB 'watch_*' AND ((status='queued' AND expires_at>unixepoch()) OR (status='running' AND started_at>unixepoch()-120)) LIMIT 1"));
       if(pending.length)return json({scheduled:false,reason:"already_pending",id:pending[0].id});
       const requested=Array.from(sql.exec("SELECT value FROM config WHERE key='watch_requested'"));
       const since=requested.length?now-Number(requested[0].value):999;
@@ -166,7 +172,7 @@ export class TurboMachine {
       if(!d.force && previous.length && now-previous[0].updated_at<3 &&
          previous[0].mode===mode)return json({scheduled:false,reason:"fresh_frame"});
       const lastCwd=Array.from(sql.exec(
-        "SELECT cwd FROM commands WHERE cwd LIKE '/workspaces/%' ORDER BY created_at DESC LIMIT 1"));
+        "SELECT cwd FROM commands WHERE id NOT GLOB 'watch_*' AND cwd LIKE '/workspaces/%' ORDER BY created_at DESC LIMIT 1"));
       const cwd=lastCwd.length?lastCwd[0].cwd:"/workspaces/Unity-Game-Aris";
       const id="watch_"+crypto.randomUUID().replace(/-/g,"");
       const shell="python3 \"$HOME/.local/share/aaris-turbo/gui.py\" look"+(mode==="fast"?" --fast":"");
