@@ -156,8 +156,9 @@ namespace Aaris.MapReview
             return refreshHz / divisor;
         }
 
-        // Two bad windows to lower GPU fill cost, four stable windows to recover
-        // image detail. Never oscillate on an individual slow frame.
+        // Two sustained slow windows to lower GPU fill cost, four stable windows
+        // to recover detail. Outlier hitches (asset loads, GC, OS scheduling)
+        // must not blur the image when most frames still meet the budget.
         private void TuneAndroidResolution(Sample sample)
         {
             if (androidPipeline == null || !adaptiveAndroidResolution) return;
@@ -171,7 +172,8 @@ namespace Aaris.MapReview
             }
             float effectiveFps = EffectiveAndroidTargetFps(targetFps);
             float budgetMs = 1000f / effectiveFps;
-            if (sample.p95FrameMs > budgetMs * 1.20f)
+            if (sample.p95FrameMs > budgetMs * 1.20f &&
+                sample.p75FrameMs > budgetMs * 1.06f)
             {
                 slowIntervals++;
                 steadyIntervals = 0;
@@ -267,7 +269,7 @@ namespace Aaris.MapReview
             public string reason, utc, version, device, gpu, api, lastError;
             public int systemRamMB, targetFps, warningCount, framesOver50Ms;
             public float effectiveTargetFps;
-            public float seconds, averageFps, p95FrameMs, p99FrameMs, renderScale = 1f;
+            public float seconds, averageFps, p75FrameMs, p95FrameMs, p99FrameMs, renderScale = 1f;
             public long unityAllocatedBytes, unityReservedBytes, managedBytes, androidPssKB;
             public ulong textureBytes, desiredTextureBytes;
             public long terrainCpuPaintBytesReleased;
@@ -294,6 +296,7 @@ namespace Aaris.MapReview
                 device = SystemInfo.deviceModel, gpu = SystemInfo.graphicsDeviceName, api = SystemInfo.graphicsDeviceType.ToString(),
                 systemRamMB = SystemInfo.systemMemorySize, targetFps = Application.targetFrameRate,
                 seconds = Time.unscaledTime, averageFps = total > 0 ? frameCount / total : 0,
+                p75FrameMs = frameCount > 0 ? sortedTimes[Mathf.CeilToInt(frameCount * .75f) - 1] * 1000 : 0,
                 p95FrameMs = frameCount > 0 ? sortedTimes[Mathf.Clamp(Mathf.CeilToInt(frameCount * .95f) - 1, 0, frameCount - 1)] * 1000 : 0,
                 p99FrameMs = frameCount > 0 ? sortedTimes[Mathf.CeilToInt(frameCount * .99f) - 1] * 1000 : 0,
                 framesOver50Ms = framesOver50Ms,
