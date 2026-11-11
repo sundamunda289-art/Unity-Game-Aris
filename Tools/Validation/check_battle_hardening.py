@@ -130,6 +130,28 @@ def audit() -> None:
             component_polls += 1
         assert 4 <= component_polls <= 6, (fps, component_polls)
 
+    # Reject grants at capacity; a saturated positive pickup must not
+    # report success or consume its source. Limit the increment before
+    # addition to avoid signed-int overflow on adversarial large amounts.
+    grant = tactical.split("public bool TryGiveGrenades(int amount)", 1)[1].split(
+        "public void ThrowFrag()", 1
+    )[0]
+    assert "if (amount <= 0 || fragGrenades >= 10) return false;" in grant
+    assert "fragGrenades += Mathf.Min(amount, 10 - fragGrenades);" in grant
+    assert "Mathf.Clamp(fragGrenades + amount" not in grant
+    for starting in (0, 3, 9, 10):
+        for amount in (-5, 0, 1, 2, 10, (2**31 - 1)):
+            inventory = starting
+            accepted = amount > 0 and inventory < 10
+            if accepted:
+                inventory += min(amount, 10 - inventory)
+            assert accepted == (amount > 0 and starting < 10)
+            assert starting <= inventory <= 10
+            if not accepted:
+                assert inventory == starting
+            if amount >= 10 and starting < 10:
+                assert inventory == 10
+
     # Missing Humanoid motion must NOT silently hide the reliable saved
     # player body and turn it into an unanimated FBX T-pose.
     assert "if (!graphReady)" in visual
@@ -282,7 +304,7 @@ def audit() -> None:
 
     print("PASS: Unity 6.3 HUD/animation packages, 10-120 FPS elapsed time, "
           "12k adversarial blend combinations, multi-pointer hold/release, "
-          "single motor and prone/fire collision contracts")
+          "single motor, grenade inventory saturation and prone/fire collision contracts")
     print("NOT TESTED: Unity Editor compilation, in-game animation retargeting, device FPS")
 
 
