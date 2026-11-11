@@ -124,12 +124,15 @@ namespace Aaris.MapReview
         private void ConfigureAndroidQuality()
         {
             if (!adaptiveAndroidResolution) return;
+            // The adaptation budget is specifically for 2–3 GB devices.
+            // On larger or unknown-RAM devices leave the native URP quality
+            // unchanged; a CPU-bound hitch must not blur their graphics.
+            int memoryMB = SystemInfo.systemMemorySize;
+            if (memoryMB <= 0 || memoryMB > 3072) return;
             androidPipeline = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
             if (androidPipeline == null) return;
             originalRenderScale = androidPipeline.renderScale;
             lastTargetFps = Application.targetFrameRate;
-            int memoryMB = SystemInfo.systemMemorySize;
-            if (memoryMB <= 0 || memoryMB > 3072) return;
             float initialScale = memoryMB <= 2304 ? 0.85f : 0.92f;
             androidPipeline.renderScale = Mathf.Min(originalRenderScale, initialScale);
             // Mipmap streaming was already enabled by the saved QualitySettings.
