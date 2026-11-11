@@ -23,6 +23,10 @@ namespace Aaris.MapReview
         private int query;
         private Vector3 lastPosition;
         private float nextCheck;
+        // Keep an already-live collider for a few extra metres so tiny player
+        // movements at the activation boundary do not churn physics broadphase.
+        // Never use this margin to enable a previously unloaded collider early.
+        private const float ColliderReleaseMargin = 6f;
 
         private void Awake()
         {
@@ -86,12 +90,15 @@ namespace Aaris.MapReview
             if (target == null || worldBounds == null) return;
             lastPosition = target.position;
             nextCheck = Time.unscaledTime + 1f;
-            float limit = activationDistance * activationDistance;
+            float enterDistance = Mathf.Max(0f, activationDistance);
+            float retainDistance = enterDistance + ColliderReleaseMargin;
+            float enterLimit = enterDistance * enterDistance;
+            float retainLimit = retainDistance * retainDistance;
             if (query == int.MaxValue) { Array.Clear(visited, 0, visited.Length); Array.Clear(wanted, 0, wanted.Length); query = 0; }
             query++;
             nextActive.Clear();
-            for (int xCell = Cell(lastPosition.x - activationDistance); xCell <= Cell(lastPosition.x + activationDistance); xCell++)
-                for (int zCell = Cell(lastPosition.z - activationDistance); zCell <= Cell(lastPosition.z + activationDistance); zCell++)
+            for (int xCell = Cell(lastPosition.x - retainDistance); xCell <= Cell(lastPosition.x + retainDistance); xCell++)
+                for (int zCell = Cell(lastPosition.z - retainDistance); zCell <= Cell(lastPosition.z + retainDistance); zCell++)
             {
                 if (!cells.TryGetValue(Key(xCell, zCell), out List<int> entries)) continue;
                 foreach (int i in entries)
@@ -103,6 +110,9 @@ namespace Aaris.MapReview
                     // XZ distance supports long piers and elevated towers without early deactivation.
                     Vector3 q = worldBounds[i].ClosestPoint(lastPosition);
                     float dx = q.x - lastPosition.x, dz = q.z - lastPosition.z;
+                    // Existing active colliders have a wider exit radius.
+                    // New colliders still enter at the authored distance.
+                    float limit = c.enabled ? retainLimit : enterLimit;
                     if (dx * dx + dz * dz > limit) continue;
                     wanted[i] = query;
                     if (!c.enabled) c.enabled = true;
