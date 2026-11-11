@@ -331,6 +331,11 @@ namespace Aaris.MapReview.EditorTools
                         updated++;
                     else already++;
                 }
+                // Keep native SaveScene inside the atomic Undo scope. If it
+                // refuses or throws, restore all previous scene objects.
+                if (applyAll && !EditorSceneManager.SaveScene(scene))
+                    throw new InvalidOperationException(
+                        "Unity refused native scene save; original scene backup retained");
             }
             catch
             {
@@ -340,8 +345,6 @@ namespace Aaris.MapReview.EditorTools
             Undo.CollapseUndoOperations(group);
             if (applyAll)
             {
-                if (!EditorSceneManager.SaveScene(scene))
-                    throw new InvalidOperationException("Unity refused native scene save");
                 previewInMemory = false;
             }
             else
