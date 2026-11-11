@@ -41,6 +41,16 @@ jobs:
           bash -n Tools/Codespaces/termux_switch.sh
           bash -n Tools/Codespaces/termux_cloudflare_switch.sh
           bash -n Tools/Turbo/cloudflare_account_switch_linux.sh
+          python3 - <<'PYDEVICE'
+          from pathlib import Path
+          phone=Path("Tools/Codespaces/termux_cloudflare_switch.sh").read_text()
+          linux=Path("Tools/Turbo/cloudflare_account_switch_linux.sh").read_text()
+          assert r'oauth2/device\?user_code=[A-Za-z0-9_-]+' in phone
+          assert 'LOGIN_LINK="https://dash.cloudflare.com/oauth2/device?user_code=$DEVICE_CODE"' in phone
+          assert 'AARIS_CF_OPEN_BROWSER=https://dash.cloudflare.com/oauth2/device' not in linux
+          assert 'trap cleanup EXIT' in phone
+          print("AARIS_CF_DEVICE_URL_STATIC_PASS")
+          PYDEVICE
           python3 - <<'PYCROSS'
           from pathlib import Path
           phone=Path("Tools/Codespaces/termux_cloudflare_switch.sh").read_text()
