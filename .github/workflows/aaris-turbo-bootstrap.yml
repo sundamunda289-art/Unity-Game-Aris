@@ -42,6 +42,20 @@ jobs:
           bash -n Tools/Codespaces/termux_cloudflare_switch.sh
           bash -n Tools/Turbo/cloudflare_account_switch_linux.sh
           python3 Tools/Turbo/device_oauth_parse.py --selftest
+          python3 Tools/Turbo/wrangler_auth_diag.py --selftest
+          python3 -m py_compile Tools/Turbo/wrangler_auth_diag.py
+          python3 - <<'PYOAUTHDIAG'
+          from pathlib import Path
+          phone=Path("Tools/Codespaces/termux_cloudflare_switch.sh").read_text()
+          remote=Path("Tools/Turbo/cloudflare_account_switch_linux.sh").read_text()
+          assert '== "--diagnose"' in phone
+          assert 'AARIS_CF_INSPECTING_RECENT_WRANGLER_AUTH_ERRORS_NO_NEW_LOGIN' in phone
+          assert 'OAUTH_STATUS=0' in remote
+          assert 'wrangler_auth_diag.py" --log "$AUTH_LOG"' in remote
+          assert 'AARIS_CF_DEVICE_LOGIN_COMMAND_PASS' in remote
+          assert 'AARIS_CF_WHOAMI_AUTHENTICATED' in remote
+          print("AARIS_CF_OAUTH_DIAGNOSTIC_REGRESSION_PASS")
+          PYOAUTHDIAG
           python3 -m py_compile Tools/Turbo/device_oauth_parse.py
           python3 - <<'PYOAUTHREGRESSION'
           from pathlib import Path
