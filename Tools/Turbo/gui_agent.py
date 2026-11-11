@@ -5,6 +5,7 @@ No web server or public image URL is opened. Frames are printed as JPEG base64
 ONLY to the existing private Cloudflare Durable Object command-output channel.
 Supported: look, init, click x y, double_click x y, right_click x y,
 move x y, key KEYSYM, scroll NUMBER, type TEXT, paste TEXT.
+Also: batch JSON with 1-4 validated pointer/key actions, one screenshot afterward.
 Each action returns the next screenshot; never perpetual video streaming.
 """
 from __future__ import annotations
@@ -28,7 +29,9 @@ if not re.fullmatch(r":[0-9]{1,3}", DISPLAY):
     DISPLAY = ":99"
 SAFE_KEY = re.compile(r"[A-Za-z0-9_+:-]{1,64}\Z")
 ACTIONS = {"look", "init", "click", "double_click", "right_click",
-           "move", "key", "scroll", "type", "paste"}
+           "move", "key", "scroll", "type", "paste", "batch"}
+BATCH_ACTIONS = {"click", "double_click", "right_click", "move", "scroll", "key"}
+BATCH_LIMIT = 4
 
 
 def exec_safe(args, *, timeout=12, input=None):
@@ -91,6 +94,26 @@ def ensure_screen():
 
 
 def validate(action, args):
+    if action == "batch":
+        if len(args) != 1 or len(args[0]) > 1400:
+            raise ValueError("BATCH_SIZE")
+        try:
+            steps = json.loads(args[0])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("BATCH_JSON") from exc
+        if not isinstance(steps, list) or not 1 <= len(steps) <= BATCH_LIMIT:
+            raise ValueError("BATCH_COUNT")
+        normalized = []
+        for step in steps:
+            if not isinstance(step, dict) or set(step.keys()) != {"action", "args"}:
+                raise ValueError("BATCH_STEP_FORMAT")
+            kind, values = step["action"], step["args"]
+            if kind not in BATCH_ACTIONS or not isinstance(values, list) or any(
+                isinstance(v, bool) or not isinstance(v, (str, int)) for v in values
+            ):
+                raise ValueError("BATCH_ACTION_NOT_ALLOWED")
+            normalized.append((kind, validate(kind, [str(v) for v in values])))
+        return normalized
     if action not in ACTIONS:
         raise ValueError("ACTION_NOT_ALLOWED")
     if action in {"click", "double_click", "right_click", "move"}:
@@ -133,6 +156,10 @@ def map_coords(x,y):
 
 
 def perform(action,args):
+    if action == "batch":
+        for kind, values in args:
+            perform(kind, values)
+        return
     if action in {"look","init"}:
         return
     if action in {"click","double_click","right_click","move"}:
@@ -227,6 +254,17 @@ def selftest():
             pass
         else:
             raise AssertionError((action,args))
+    two = '[{"action":"move","args":[120,350]},{"action":"key","args":["Tab"]}]'
+    assert validate("batch",[two]) == [("move",[120,350]),("key",["Tab"])]
+    for invalid in ['[]', '[{"action":"type","args":["secret"]}]',
+                    '[{"action":"click","args":[5000,4]}]',
+                    '[{"action":"move","args":[1,1]}]'*5]:
+        try:
+            validate("batch",[invalid])
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("BATCH_SHOULD_REJECT")
     assert MAX_IMAGE_BYTES<=96000
     assert validate("look", []) == []
     assert validate("click", ["799", "449"]) == [799,449]
@@ -246,7 +284,7 @@ def main():
     os.environ["DISPLAY"]=DISPLAY
     ensure_screen()
     perform(action,args)
-    time.sleep(.22)
+    time.sleep(.12 if action=="batch" else .22)
     width,height,data=capture_jpeg(fast=fast)
     print(f"AARIS_GUI_FRAME_SIZE={width}x{height}")
     print("AARIS_GUI_FRAME_MODE="+("fast" if fast else "full"))
