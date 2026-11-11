@@ -113,6 +113,39 @@ def audit():
                 lookups += 1
         assert 4 <= lookups <= 6, (fps, lookups)
 
+    # The legacy fallback has four animated limb Transform setters. Once it
+    # reaches a grounded idle pose, skip duplicate writes at any frame rate.
+    # Movement, jump, punch and aerial/vehicle transitions must re-arm updates.
+    idle = motor[motor.index("private void AnimateWalk(float dt)"):
+                 motor.index("private bool HasWalkableGroundWithinStep()")]
+    assert "bool punchAnimating = secondsSincePunch >= 0f && secondsSincePunch <= 0.36f;" in idle
+    assert "travelSpeed < 0.01f && controller.isGrounded && !punchAnimating" in idle
+    assert "if (settled && legacyIdlePoseApplied) return;" in idle
+    assert "legacyIdlePoseApplied = settled;" in idle
+    assert idle.index("if (settled && legacyIdlePoseApplied) return;") < idle.index("gait += travelSpeed")
+    for transition in ("SetLegacyAerialPose(", "RestoreLegacyAerialPose(",
+                       "ResumeFromAerialDrop()", "ResetCameraAfterVehicle()", "ResetPlayer()"):
+        start = motor.index(transition)
+        end = motor.find("\n        }", start)
+        assert "legacyIdlePoseApplied = false;" in motor[start:end], transition
+
+    for fps in (10, 30, 60, 120):
+        already_idle, writes = False, 0
+        for _ in range(fps * 5):
+            settled = True
+            if settled and already_idle:
+                continue
+            already_idle = settled
+            writes += 1
+        assert writes == 1, (fps, writes)
+        # Punch immediately leaves the idle guard; landing/movement settle once.
+        for settled in (False, False, True, True):
+            if settled and already_idle:
+                continue
+            already_idle = settled
+            writes += 1
+        assert writes == 4, (fps, writes)
+
     # Android GPU fill-rate pressure should be reduced only after sustained
     # p95 misses. These are source/threshold contracts, NOT a GPU profiler.
     quality = (SRC / "AarisMobileRuntime.cs").read_text(encoding="utf-8")
@@ -242,7 +275,7 @@ def audit():
         assert not (level != target)  # Steady-state setter is skipped.
 
     print("PASS: airborne support reuse, single motor, steady FOV writes, "
-          "bounded player/animation optional-component lookup, collision-safe camera, audio/gloo hotpaths and adaptive Android quality contracts")
+          "bounded player/animation optional-component lookup, legacy idle pose, collision-safe camera, audio/gloo hotpaths and adaptive Android quality contracts")
     print("NOT TESTED: Unity compilation, live camera occlusion and device FPS.")
 
 
