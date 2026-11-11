@@ -9,7 +9,7 @@ on:
       - ".github/workflows/aaris-kenney-windowless-checks.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify-kenney-windowless:
@@ -41,26 +41,3 @@ jobs:
           path: Assets/AarisWorld/Models/KenneyWindowlessHouses/
           if-no-files-found: error
           retention-days: 7
-
-      - name: Commit generated assets into this guarded feature branch only
-        if: >-
-          ${{ github.event.pull_request.head.repo.full_name == github.repository &&
-              github.event.pull_request.head.ref == 'feature/kenney-windowless-mobile-houses-20261111' }}
-        env:
-          TARGET_BRANCH: ${{ github.event.pull_request.head.ref }}
-        run: |
-          set -euo pipefail
-          target='Assets/AarisWorld/Models/KenneyWindowlessHouses'
-          test -f "$target/Kenney-CC0-License.txt"
-          test -f "$target/colormap.png"
-          test "$(find "$target" -maxdepth 1 -name 'AarisWindowless_*.obj' | wc -l)" -eq 7
-          git add -- "$target"
-          if git diff --cached --quiet; then
-            echo "All generated model assets are already committed."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "assets(houses): persist 7 licensed Kenney CC0 windowless mesh variants"
-            # No force push. An unrelated branch change makes this fail safely.
-            git push origin "HEAD:refs/heads/$TARGET_BRANCH"
-          fi
