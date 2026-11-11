@@ -13,23 +13,42 @@ if [[ -n "${AARIS_CF_ACCOUNT_ID:-}" ]] &&
   echo AARIS_CF_INVALID_ACCOUNT_ID
   exit 23
 fi
-for bin in node npx curl python3; do
+for bin in curl python3 tar sha256sum; do
   command -v "$bin" >/dev/null || {
     echo "AARIS_CF_MISSING_LINUX_TOOL=$bin"
     exit 24
   }
 done
-NODE_MAJOR="$(node -p "parseInt(process.versions.node.split('.')[0],10)")"
-if ((NODE_MAJOR<20)); then
-  echo AARIS_CF_NODE20_OR_NEWER_REQUIRED
-  exit 25
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+# Minimal Ubuntu Codespaces may not ship with Node. Install a verified, user-local
+# LTS binary only when needed, without sudo, global npm changes, or Unity restart.
+NODE_MAJOR=0
+if command -v node >/dev/null 2>&1; then
+  NODE_MAJOR="$(node -p "parseInt(process.versions.node.split('.')[0],10)")"
 fi
+if ((NODE_MAJOR<20)) || ! command -v npx >/dev/null 2>&1; then
+  [[ "$(uname -m)" == x86_64 ]] || { echo AARIS_CF_NODE_ARCH_UNSUPPORTED; exit 25; }
+  NODE_ROOT="$HOME/.local/share/aaris-turbo-node/v22.16.0"
+  if [[ ! -x "$NODE_ROOT/bin/node" || ! -x "$NODE_ROOT/bin/npx" ]]; then
+    mkdir -p "$HOME/.local/share/aaris-turbo-node"
+    NODE_ARCHIVE="node-v22.16.0-linux-x64.tar.xz"
+    curl -fsSL --retry 3 --max-time 150 \
+      "https://nodejs.org/dist/v22.16.0/$NODE_ARCHIVE" -o "$TMP/$NODE_ARCHIVE"
+    (cd "$TMP"; printf '%s  %s\n' \
+      f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e "$NODE_ARCHIVE" |
+      sha256sum -c --status)
+    tar -xJf "$TMP/$NODE_ARCHIVE" -C "$TMP"
+    mv "$TMP/node-v22.16.0-linux-x64" "$NODE_ROOT"
+    echo AARIS_CF_LOCAL_NODE22_SHA256_VERIFIED
+  fi
+  export PATH="$NODE_ROOT/bin:$PATH"
+fi
+command -v node >/dev/null && command -v npx >/dev/null || exit 25
 if [[ -n "${CLOUDFLARE_API_TOKEN:-}" || -n "${CLOUDFLARE_API_KEY:-}" ]]; then
   echo AARIS_CF_ENV_TOKEN_CONFLICT
   exit 26
 fi
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
 for name in worker.mjs watch_page.mjs wrangler.jsonc; do
   curl -fsSL --retry 3 --max-time 40 \
     "https://raw.githubusercontent.com/sundamunda289-art/Unity-Game-Aris/$AARIS_SOURCE_SHA/Tools/Turbo/$name" \
