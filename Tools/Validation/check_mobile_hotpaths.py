@@ -305,7 +305,12 @@ def audit():
     assert refresh.count("GetComponent<AarisVehicleSession>()") == 1
     assert "RefreshOptionalComponents(true);" in release
     assert release.index("RefreshOptionalComponents(true);") < release.index("UpdatePlacement();")
-    assert "private void OnDisable() => CancelAim();" in gloo
+    # A duplicated Unity MonoBehaviour callback with the same signature
+    # fails C# compilation (CS0111) before gameplay can even start.
+    # Keep exactly one lifecycle cleanup for a canceled Gloo preview.
+    assert gloo.count("private void OnDisable() => CancelAim();") == 1, (
+        "Duplicate Gloo Wall OnDisable breaks Unity compilation"
+    )
 
     # An already-converged audio loop must make zero native volume/pitch
     # writes. Changed targets preserve MoveTowards's bounded fades and snap.
