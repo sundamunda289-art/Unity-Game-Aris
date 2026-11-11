@@ -121,8 +121,11 @@ namespace Aaris.MapReview
             // rescan, toggling this component leaves every distant building
             // collidable forever even though its grid still tracks only the
             // previously active indices.
-            if (!restoredOnDisable || streamed == null || active == null ||
-                nextActive == null || obstacles == null) return;
+            // When the target has gone away (e.g. scene teardown), keep
+            // authored colliders enabled rather than disabling every wall.
+            if (!restoredOnDisable || target == null || worldBounds == null ||
+                streamed == null || active == null || nextActive == null ||
+                obstacles == null) return;
             restoredOnDisable = false;
             for (int i = 0; i < obstacles.Length; i++)
                 if (streamed[i] && obstacles[i] != null)
