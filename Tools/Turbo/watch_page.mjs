@@ -29,7 +29,7 @@ footer{color:var(--sub);font-size:11px;line-height:1.6} [hidden]{display:none!im
 <section class="panel">
 <div class="bar"><select id="machine" aria-label="Codespace"><option value="">Auto: newest connected Codespace</option></select>
 <select id="quality" aria-label="Screenshot quality"><option value="fast">Fast preview</option><option value="full">Full quality</option></select>
-<select id="interval" aria-label="Refresh interval"><option value="3000">3 sec</option><option value="5000">5 sec</option><option value="10000">10 sec</option></select>
+<select id="interval" aria-label="Refresh interval"><option value="10000">10 sec (recommended)</option><option value="5000">5 sec</option><option value="3000">3 sec</option></select>
 <span class="grow"></span><button id="pause">Pause</button><button id="snap" class="primary">📸 Snap now</button></div>
 <div id="screenBox"><div id="noFrame">Waiting for the next screenshot…</div><img id="screen" alt="Latest Codespace desktop" hidden><span id="chip">No live frame yet</span></div>
 <div id="meta"><span id="size">Waiting for frame</span><span id="when">No capture yet</span></div></section>
@@ -87,7 +87,7 @@ async function showFrame(m,id){
 }
 async function poll(force){
  if(document.hidden||paused||busy||!valid(key))return;
- const rate=Number(el("interval").value)||3000;
+ const rate=Number(el("interval").value)||10000;
  if(!force && Date.now()-last<rate-200)return;
  busy=true;last=Date.now();
  try{
