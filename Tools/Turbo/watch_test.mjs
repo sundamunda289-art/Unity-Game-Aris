@@ -22,7 +22,12 @@ console.log("AARIS_PERMANENT_WATCH_UI_STATIC_PASS");
 
 const workerSource=readFileSync(new URL("./worker.mjs",import.meta.url),"utf8");
 assert.match(workerSource,/DELETE FROM viewer_frame WHERE updated_at/);
-assert.ok(workerSource.includes("WHERE id NOT LIKE 'watch_%'"));
+assert.ok(workerSource.includes("WHERE id NOT GLOB 'watch_*'"));
+assert.match(workerSource,/CREATE INDEX IF NOT EXISTS commands_nonwatch_recent/);
+assert.match(workerSource,/CREATE INDEX IF NOT EXISTS commands_status_created/);
+assert.match(workerSource,/ch\.seq<8/);
+assert.doesNotMatch(workerSource,/id NOT LIKE 'watch_%'/);
+assert.match(page,/10 sec \(recommended\)/);
 assert.match(workerSource,/WATCH_TOKEN_HASH/);
 assert.doesNotMatch(workerSource,/AARIS_PERMANENT_VIEW_786/);
 console.log("AARIS_WATCH_RETENTION_STATIC_PASS");
