@@ -1,0 +1,5 @@
+newmtl colormap
+Ka 1 1 1
+Kd 1 1 1
+illum 2
+map_Kd colormap.png
