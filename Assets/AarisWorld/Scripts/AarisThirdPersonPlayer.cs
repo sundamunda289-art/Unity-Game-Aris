@@ -305,11 +305,17 @@ namespace Aaris.MapReview
             // CharacterController.isGrounded reflects the PREVIOUS Move.
             // Single movement authority retains short coyote/buffer windows.
             bool wasGrounded = controller.isGrounded;
-            // isGrounded is from the previous Move. A downward sphere sweep
-            // bridges tiny downhill gaps but must never trigger during ascent.
+            // Both downhill checks run before Move, so a missed support sweep
+            // cannot acquire different geometry later in this same frame.
+            // Reuse the negative result instead of repeating an expensive
+            // Physics.SphereCast on every airborne frame.
+            bool downhillProbeChecked = false;
             if (!wasGrounded && verticalVelocity <= 0f &&
                 now - lastJumpStarted > 0.18f)
+            {
+                downhillProbeChecked = true;
                 wasGrounded = HasWalkableGroundWithinStep();
+            }
             if (wasGrounded)
             {
                 lastGrounded = now;
@@ -430,8 +436,9 @@ namespace Aaris.MapReview
 
             // A short support sweep reduces floating when downhill terrain
             // drops away between frames. Skip while ascending from a jump.
-            if (!wasGrounded && !launchJump && verticalVelocity <= 0f &&
-                now - lastJumpStarted > 0.16f && downhillProbeDistance > 0f)
+            if (!downhillProbeChecked && !wasGrounded && !launchJump &&
+                verticalVelocity <= 0f && now - lastJumpStarted > 0.16f &&
+                downhillProbeDistance > 0f)
             {
                 float radius = Mathf.Max(0.07f, controller.radius - controller.skinWidth);
                 Vector3 feet = transform.TransformPoint(
@@ -469,8 +476,17 @@ namespace Aaris.MapReview
             float targetFov = weaponAimFov > 0f ? weaponAimFov :
                 normalCameraFov + (sprinting && travelSpeed > 4f ? 6f : 0f);
             if (followCamera != null)
-                followCamera.fieldOfView = Mathf.Lerp(followCamera.fieldOfView,
-                    targetFov, 1f - Mathf.Exp(-5f * dt));
+            {
+                float currentFov = followCamera.fieldOfView;
+                float fovError = targetFov - currentFov;
+                // Avoid a native camera property write forever after the
+                // sprint / ADS blend has visually converged. Snap its last
+                // tiny fraction so subsequent steady frames do no work.
+                if (Mathf.Abs(fovError) > 0.001f)
+                    followCamera.fieldOfView = Mathf.Abs(fovError) <= 0.1f
+                        ? targetFov
+                        : Mathf.Lerp(currentFov, targetFov, 1f - Mathf.Exp(-5f * dt));
+            }
         }
 
         private void AnimateWalk(float dt)

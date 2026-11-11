@@ -53,6 +53,7 @@ namespace Aaris.MapReview
         private float stepDistance, lastSkidAt = -10f, lastCrashAt = -10f;
         private int nextVoice;
         private Vector3 previousPosition;
+        private float nextOptionalComponentRefresh;
 
         private static AudioSource MakeSource(Transform parent, string name)
         {
@@ -256,9 +257,17 @@ namespace Aaris.MapReview
                 ? Mathf.Clamp((previousY - pos.y) / dt, 0f, 65f) : 0f;
             previousY = pos.y;
             PlayScheduled();
-            if (drop == null) drop = GetComponent<AarisOfflineDrop>();
-            if (vehicle == null) vehicle = GetComponent<AarisVehicleSession>();
-            if (combat == null) combat = GetComponent<AarisBattleActions>();
+            // Optional gameplay components can be attached after Awake.
+            // If one is absent, retry at most once per second rather than
+            // repeating up to three native GetComponent searches every frame.
+            if ((drop == null || vehicle == null || combat == null) &&
+                Time.unscaledTime >= nextOptionalComponentRefresh)
+            {
+                nextOptionalComponentRefresh = Time.unscaledTime + 1f;
+                if (drop == null) drop = GetComponent<AarisOfflineDrop>();
+                if (vehicle == null) vehicle = GetComponent<AarisVehicleSession>();
+                if (combat == null) combat = GetComponent<AarisBattleActions>();
+            }
             bool airborneDrop = drop != null && drop.enabled && !drop.HasLanded;
             bool driving = vehicle != null && vehicle.IsDriving;
 
@@ -385,12 +394,19 @@ namespace Aaris.MapReview
                     out RaycastHit hit, 2.0f, Physics.DefaultRaycastLayers,
                     QueryTriggerInteraction.Ignore))
             {
-                string label = hit.collider.name.ToLowerInvariant();
-                if (label.Contains("water") || label.Contains("river") ||
-                    label.Contains("stream")) surface = "step_water";
-                else if (label.Contains("road") || label.Contains("asphalt") ||
-                    label.Contains("concrete") || label.Contains("floor") ||
-                    label.Contains("bridge")) surface = "step_road";
+                // Case-insensitive comparisons avoid allocating a lowercased
+                // string on every footstep while keeping material detection.
+                string label = hit.collider.name;
+                if (label.IndexOf("water", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    label.IndexOf("river", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    label.IndexOf("stream", StringComparison.OrdinalIgnoreCase) >= 0)
+                    surface = "step_water";
+                else if (label.IndexOf("road", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    label.IndexOf("asphalt", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    label.IndexOf("concrete", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    label.IndexOf("floor", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    label.IndexOf("bridge", StringComparison.OrdinalIgnoreCase) >= 0)
+                    surface = "step_road";
             }
             OneShot(surface, pos, speed > 5.4f ? 0.61f : 0.48f,
                 UnityEngine.Random.Range(0.92f, 1.08f));

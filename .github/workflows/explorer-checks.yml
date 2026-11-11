@@ -16,6 +16,7 @@ on:
       - 'Tools/Validation/check_weapon_loot.py'
       - 'Tools/Validation/check_single_weapon_transactions.py'
       - 'Tools/Validation/check_armed_locomotion.py'
+      - 'Tools/Validation/check_mobile_hotpaths.py'
       - 'Tools/Validation/check_vehicle_system.py'
       - 'Tools/Validation/check_vehicle_drive_hardening.py'
       - 'Assets/Resources/AarisVehicles/**'
@@ -67,6 +68,8 @@ jobs:
         run: python Tools/Validation/check_single_weapon_transactions.py
       - name: Check weapon-ready locomotion and masked upper-body animation
         run: python Tools/Validation/check_armed_locomotion.py
+      - name: Check mobile movement, camera and audio CPU hot paths
+        run: python Tools/Validation/check_mobile_hotpaths.py
       - name: Verify local Kenney cars, 45 real markers, 33 road stops and four-arrow driving
         run: python Tools/Validation/check_vehicle_system.py
       - name: Stress-test vehicle exit, parking brakes, anti-roll and camera collision
