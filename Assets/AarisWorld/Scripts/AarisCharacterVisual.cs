@@ -453,17 +453,23 @@ namespace Aaris.MapReview
             float planar = new Vector2(velocity.x, velocity.z).magnitude;
             float leaning = Mathf.InverseLerp(4.2f, fullRunSpeed, planar) *
                 sprintForwardLeanDegrees * (primaryLoaded ? 0.8f : 1f) * (1f - proneBlend);
-            visual.transform.localRotation = restingLocalRotation *
+            Quaternion desiredRotation = restingLocalRotation *
                 Quaternion.Euler(Mathf.Lerp(leaning, 80f, fallbackProne), 0f, 0f);
             // Visual-only skydiving pose; never tilt the physical CharacterController.
-            // Fall/riser animation clips can later replace this safe fallback.
+            // Choose the final rotation before touching the hierarchy: the
+            // aerial override previously caused two native Transform writes.
             if (aerialDrop != null && !aerialDrop.HasLanded)
             {
                 float aerialPitch = aerialDrop.IsFreefall ? 64f :
                     aerialDrop.IsUnderCanopy ? 6f : 0f;
-                visual.transform.localRotation = restingLocalRotation *
+                desiredRotation = restingLocalRotation *
                     Quaternion.Euler(aerialPitch, 0f, 0f);
             }
+            Transform visualRoot = visual.transform;
+            // An unchanged standing or idle pose should not dirty the
+            // character hierarchy on every mobile render frame.
+            if (visualRoot.localRotation != desiredRotation)
+                visualRoot.localRotation = desiredRotation;
 
             float landingAge = playerMotor != null
                 ? Time.unscaledTime - playerMotor.LastLandingTime
@@ -471,8 +477,10 @@ namespace Aaris.MapReview
             float landingDip = landingAge >= 0f && landingAge <= 0.2f
                 ? Mathf.Sin(Mathf.PI * landingAge / 0.2f) * landingCompressionMetres
                 : 0f;
-            visual.transform.localPosition = restingLocalPosition +
+            Vector3 desiredPosition = restingLocalPosition +
                 new Vector3(0f, fallbackProne * 0.36f - landingDip, fallbackProne * 0.14f);
+            if (visualRoot.localPosition != desiredPosition)
+                visualRoot.localPosition = desiredPosition;
 
             if (graphReady)
             {
