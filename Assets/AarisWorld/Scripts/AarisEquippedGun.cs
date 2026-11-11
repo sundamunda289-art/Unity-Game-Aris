@@ -47,6 +47,11 @@ namespace Aaris.MapReview
         private static readonly List<MonoBehaviour> damageScratch =
             new List<MonoBehaviour>(8);
         private AarisWeaponSpec spec;
+        // The weapon can be exchanged or dropped. Cache native component
+        // lookups by owning GameObject, never by gun or a stale static player.
+        private GameObject cachedOwner;
+        private AarisBattleActions cachedActions;
+        private AarisThirdPersonPlayer cachedMotor;
         private int magazine, reserve;
         private float reloadUntil, nextFire;
         private uint spreadSeed;
@@ -160,9 +165,14 @@ namespace Aaris.MapReview
             // multi-pellet shotguns; reload and cooldown live in weapon state.
             magazine--;
             nextFire = Time.time + spec.ShotInterval;
-            AarisBattleActions actions = owner.GetComponent<AarisBattleActions>();
-            float muzzleHeight = actions != null
-                ? Mathf.Max(0.28f, actions.CameraEyeHeight - 0.15f) : 1.3f;
+            if (cachedOwner != owner)
+            {
+                cachedOwner = owner;
+                cachedActions = owner.GetComponent<AarisBattleActions>();
+                cachedMotor = owner.GetComponent<AarisThirdPersonPlayer>();
+            }
+            float muzzleHeight = cachedActions != null
+                ? Mathf.Max(0.28f, cachedActions.CameraEyeHeight - 0.15f) : 1.3f;
             Vector3 muzzle = owner.transform.position + Vector3.up * muzzleHeight +
                 owner.transform.forward * 0.24f;
             AarisAudioDirector.GunShot(spec.category, spec.id, muzzle);
@@ -205,8 +215,7 @@ namespace Aaris.MapReview
                     ApplyDamage(target.collider, spec.damage, owner);
                 }
             }
-            var motor = owner.GetComponent<AarisThirdPersonPlayer>();
-            if (motor != null) motor.ApplyWeaponRecoil(spec.recoilPitchDegrees,
+            if (cachedMotor != null) cachedMotor.ApplyWeaponRecoil(spec.recoilPitchDegrees,
                 (AarisWeaponRandom.Next01(ref spreadSeed) - 0.5f) *
                 spec.recoilPitchDegrees * 0.4f);
             if (magazine == 0) BeginReload();
