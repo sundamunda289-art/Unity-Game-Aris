@@ -61,7 +61,7 @@ WRANGLER=(npx --yes wrangler@4.119.0)
 # Existing local Wrangler authentication is not used after logout.
 if [[ "${AARIS_REUSE_LOGIN:-0}" != 1 ]]; then
   "${WRANGLER[@]}" logout >/dev/null 2>&1 || true
-  echo 'AARIS_CF_OPEN_BROWSER=https://dash.cloudflare.com/oauth2/device'
+  echo 'AARIS_CF_DEVICE_OAUTH_STARTED'
   "${WRANGLER[@]}" login --device --browser=false
 fi
 "${WRANGLER[@]}" whoami --json > "$TMP/whoami.json"
