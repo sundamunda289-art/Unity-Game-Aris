@@ -55,6 +55,8 @@ namespace Aaris.MapReview
         private AarisBattleActions actions;
         private AarisThirdPersonPlayer playerMotor;
         private AarisOfflineDrop aerialDrop;
+        // Optional scripts can join after Start, but never probe every animation frame.
+        private float nextOptionalComponentRefresh;
         private Transform punchArm;
         private Vector3 restingLocalPosition;
         private Quaternion restingLocalRotation;
@@ -136,6 +138,7 @@ namespace Aaris.MapReview
             actions = GetComponent<AarisBattleActions>();
             playerMotor = GetComponent<AarisThirdPersonPlayer>();
             weaponInventory = GetComponent<AarisWeaponInventory>();
+            aerialDrop = GetComponent<AarisOfflineDrop>();
             restingLocalPosition = visual.transform.localPosition;
             restingLocalRotation = visual.transform.localRotation;
             punchArm = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
@@ -421,9 +424,18 @@ namespace Aaris.MapReview
         private void LateUpdate()
         {
             if (visual == null || controller == null) return;
-            if (actions == null) actions = GetComponent<AarisBattleActions>();
-            if (weaponInventory == null && actions != null && actions.IsArmed)
-                weaponInventory = GetComponent<AarisWeaponInventory>();
+            // Missing optional components are retried at most once per second,
+            // instead of issuing native GetComponent calls at 60/120 Hz.
+            if ((actions == null || aerialDrop == null ||
+                 (weaponInventory == null && actions != null && actions.IsArmed)) &&
+                Time.unscaledTime >= nextOptionalComponentRefresh)
+            {
+                nextOptionalComponentRefresh = Time.unscaledTime + 1f;
+                if (actions == null) actions = GetComponent<AarisBattleActions>();
+                if (aerialDrop == null) aerialDrop = GetComponent<AarisOfflineDrop>();
+                if (weaponInventory == null && actions != null && actions.IsArmed)
+                    weaponInventory = GetComponent<AarisWeaponInventory>();
+            }
 
             float dt = Mathf.Min(Time.deltaTime, 0.15f);
             float alpha = 1f - Mathf.Exp(-dt / Mathf.Max(0.04f, blendResponseSeconds));
@@ -445,7 +457,6 @@ namespace Aaris.MapReview
                 Quaternion.Euler(Mathf.Lerp(leaning, 80f, fallbackProne), 0f, 0f);
             // Visual-only skydiving pose; never tilt the physical CharacterController.
             // Fall/riser animation clips can later replace this safe fallback.
-            if (aerialDrop == null) aerialDrop = GetComponent<AarisOfflineDrop>();
             if (aerialDrop != null && !aerialDrop.HasLanded)
             {
                 float aerialPitch = aerialDrop.IsFreefall ? 64f :
