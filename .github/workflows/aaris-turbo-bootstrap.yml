@@ -49,7 +49,7 @@ jobs:
           assert 'gh codespace list --json name,displayName,state,repository' in workflow
           assert 'endswith("/Unity-Game-Aris")' in phone and 'endswith("/Unity-Game-Aris")' in workflow
           assert 'gh codespace list -R "$REPO"' not in phone
-          assert 'gh codespace list -R "$GITHUB_REPOSITORY"' not in workflow
+          assert not any(line.strip().startswith('gh codespace list -R ') for line in workflow.splitlines())
           assert 'gh codespace create -R "$CS_REPO"' in workflow
           print("AARIS_CROSS_ACCOUNT_CODESPACE_STATIC_PASS")
           PYCROSS
