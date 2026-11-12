@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-11-12",
+  "project": "sundamunda289-art/Unity-Game-Aris",
+  "source_scene": "Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity",
+  "replacement_scope": {
+    "original_model": "TownHall",
+    "original_instance_count_in_map_layout": 1,
+    "original_instance_name": "ClockTowerTown_TownHall_01",
+    "replacement_completed_in_pr": 390,
+    "original_instance_remains_at_same_position": true
+  },
+  "additional_open_entry_houses": [
+    {
+      "name": "ClockTowerTown_OpenDetached_07",
+      "district": "ClockTowerTown",
+      "position_m": [
+        313,
+        -11.936767578125,
+        219
+      ],
+      "yaw_degrees": 0,
+      "uniform_scale": 1,
+      "footprint_size_m": [
+        12.38272,
+        16.4304
+      ],
+      "minimum_existing_building_gap_m": 13.36,
+      "minimum_road_edge_gap_m": 6.79,
+      "minimum_vehicle_corridor_gap_m": 14.61
+    },
+    {
+      "name": "ClockTowerTown_OpenDetached_08",
+      "district": "ClockTowerTown",
+      "position_m": [
+        353,
+        -11.936767578125,
+        283
+      ],
+      "yaw_degrees": 0,
+      "uniform_scale": 1,
+      "footprint_size_m": [
+        12.38272,
+        16.4304
+      ],
+      "minimum_existing_building_gap_m": 17.47,
+      "minimum_road_edge_gap_m": 71.28,
+      "minimum_vehicle_corridor_gap_m": 73.78
+    },
+    {
+      "name": "HighlandObservatory_OpenDetached_06",
+      "district": "HighlandObservatory",
+      "position_m": [
+        569,
+        23.758773803710938,
+        -632
+      ],
+      "yaw_degrees": 0,
+      "uniform_scale": 1,
+      "footprint_size_m": [
+        12.38272,
+        16.4304
+      ],
+      "minimum_existing_building_gap_m": 13.83,
+      "minimum_road_edge_gap_m": 6.28,
+      "minimum_vehicle_corridor_gap_m": 37.81
+    },
+    {
+      "name": "ValleySettlement_OpenDetached_07",
+      "district": "ValleySettlement",
+      "position_m": [
+        -391,
+        15.408645629882812,
+        -209
+      ],
+      "yaw_degrees": 0,
+      "uniform_scale": 1,
+      "footprint_size_m": [
+        12.38272,
+        16.4304
+      ],
+      "minimum_existing_building_gap_m": 15.06,
+      "minimum_road_edge_gap_m": 9.28,
+      "minimum_vehicle_corridor_gap_m": 16.21
+    },
+    {
+      "name": "NorthernRidgeTown_OpenDetached_07",
+      "district": "NorthernRidgeTown",
+      "position_m": [
+        276,
+        -30.83440399169922,
+        651
+      ],
+      "yaw_degrees": 0,
+      "uniform_scale": 1,
+      "footprint_size_m": [
+        12.38272,
+        16.4304
+      ],
+      "minimum_existing_building_gap_m": 13.87,
+      "minimum_road_edge_gap_m": 8.78,
+      "minimum_vehicle_corridor_gap_m": 18.93
+    }
+  ],
+  "added_count": 5,
+  "expected_combined_open_detached_scene_instances": 6,
+  "mesh": {
+    "path": "Assets/AarisWorld/Generated/KenneyOpenHomes/OpenDetached.asset",
+    "guid": "54220d323b5b8c210a866d77e95144b7",
+    "shared_material_path": "Assets/AarisWorld/Generated/KenneyOpenHomes/KenneyAtlasURP.mat",
+    "shared_material_guid": "fb97cb6492795e33da9388746acc365f",
+    "license": "CC0",
+    "source": "Kenney Building Kit"
+  },
+  "safety": {
+    "existing_buildings_deleted": 0,
+    "existing_buildings_moved": 0,
+    "additional_scene_objects_created": 70,
+    "additional_gameobjects_created": 15,
+    "additional_lod_groups_created": 5,
+    "extra_mesh_asset_copies": 0,
+    "existing_roads_modified": 0,
+    "existing_vehicle_spawns_modified": 0,
+    "terrain_files_modified": 0,
+    "clearance_unit": "metres",
+    "minimum_existing_building_gap_required_m": 10,
+    "minimum_road_edge_gap_required_m": 6,
+    "minimum_vehicle_corridor_gap_required_m": 5,
+    "places_within_original_terrain_plateau_districts": true
+  },
+  "notes": [
+    "Extra houses are authored directly as shared-mesh scene objects, under each district Transform, not spawned at runtime.",
+    "No changes made to the 59 legacy building entries or their terrain foundations; this supplement records five additional native scene instances.",
+    "Static geometry and GIS-like road/vehicle clearance checks completed. Fresh Unity Editor Play and Android FPS measurements for this exact branch are not yet confirmed."
+  ]
+}
