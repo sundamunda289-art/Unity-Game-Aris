@@ -46,6 +46,9 @@ namespace Aaris.MapReview
         private const int MaximumActiveLoot = 40;
         private const int StreamFramesPerRefresh = 3;
         private const int MaximumBuildAttemptsPerFrame = 2;
+        // Destroying up to 40 streamed weapon meshes in one teleport frame
+        // can spike frame time on 2 GB Android devices. Retire them in batches.
+        private const int MaximumUnloadsPerRefresh = 6;
         private const int MaximumCandidateProbesPerFrame = 6;
         private const float RetryDelaySeconds = 3f;
         private const int MaximumDroppedLoot = 320;
@@ -576,6 +579,7 @@ namespace Aaris.MapReview
             bool explicitPickup = now <= requestPickupUntil;
             AarisWeaponPickup bestPickup = null;
             float bestDistance = pickupSquared;
+            int unloaded = 0;
 
             // Unload far visuals, never their planned match state.
             for (int i = active.Count - 1; i >= 0; i--)
@@ -589,6 +593,9 @@ namespace Aaris.MapReview
                 float d2 = (pickup.transform.position - playerPosition).sqrMagnitude;
                 if (d2 > releaseSquared)
                 {
+                    // Already too far for interaction. Delay excess visual
+                    // teardown to later 330 ms polls instead of stalling a frame.
+                    if (unloaded >= MaximumUnloadsPerRefresh) continue;
                     if (pickup.CandidateIndex < 0)
                     {
                         var rec = FindDrop(pickup.CandidateIndex);
@@ -596,6 +603,7 @@ namespace Aaris.MapReview
                     }
                     active.RemoveAt(i);
                     Destroy(pickup.gameObject);
+                    unloaded++;
                     continue;
                 }
                 if (d2 <= bestDistance && !IsBlockedDrop(pickup) &&
