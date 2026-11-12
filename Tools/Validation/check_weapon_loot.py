@@ -149,7 +149,11 @@ def run():
     assert 'Add("SWAP"' not in hud
     assert "private bool CanReachPickup(AarisWeaponPickup pickup)" in world
     assert "Physics.RaycastNonAlloc(sightLine, pickupObstructions, distance" in world
-    assert "sightHits = Physics.RaycastAll(sightLine, distance," in world
+    # Keep correct occlusion on 24-hit overflow, without allocating on
+    # every crowded-house pickup. Full RaycastAll remains last-resort only.
+    assert "CompleteRaycastOverflow(sightLine, distance, out sightHits)" in world
+    assert "Physics.RaycastNonAlloc(ray, overflowRayHits, distance," in world
+    assert "results = Physics.RaycastAll(ray, distance," in world
     assert "CanReachPickup(pickup)" in world
     assert "if (hits >= pickupObstructions.Length)" in world
     assert "var collider = sightHits[i].collider;" in world

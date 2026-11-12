@@ -34,6 +34,33 @@ class LootGridRegression(unittest.TestCase):
         ):
             self.assertIn(clause, SOURCE)
 
+    def test_dense_settlement_physics_overflow_is_allocation_bounded(self):
+        # Saturated small hit buffers cannot be used to approve a floor
+        # or a pickup through a wall. Retry in reusable 128-slot storage.
+        self.assertIn("private readonly RaycastHit[] overflowRayHits = new RaycastHit[128];", SOURCE)
+        self.assertIn("private readonly Collider[] overflowBlockers = new Collider[128];", SOURCE)
+        overflow = SOURCE[SOURCE.index("private int CompleteRaycastOverflow("):
+                          SOURCE.index("private bool TryResolve(")]
+        self.assertIn("Physics.RaycastNonAlloc(ray, overflowRayHits, distance,", overflow)
+        self.assertIn("if (count >= overflowRayHits.Length)", overflow)
+        self.assertIn("results = Physics.RaycastAll(ray, distance,", overflow)
+        for caller in ("CompleteRaycastOverflow(groundRay, 3.3f, out floorHits)",
+                       "CompleteRaycastOverflow(sightLine, distance, out sightHits)",
+                       "CompleteRaycastOverflow(ray, 3.5f, out resolvedFloors)"):
+            self.assertIn(caller, SOURCE)
+        self.assertIn("capsuleBottom, capsuleTop, .22f, overflowBlockers,", SOURCE)
+        self.assertIn("if (blockers >= overflowBlockers.Length)", SOURCE)
+        self.assertIn("nearbyBlockers = Physics.OverlapCapsule(", SOURCE)
+        for small in (24, 32):
+            for contacts in (0, small - 1, small, 63, 127, 128, 256):
+                retry = contacts >= small
+                allocation_needed = retry and contacts >= 128
+                self.assertFalse(allocation_needed and not retry)
+                if contacts < small:
+                    self.assertFalse(retry)
+                if contacts >= 128:
+                    self.assertTrue(allocation_needed)
+
     def test_reserved_starter_slot_never_exceeds_40_models(self):
         self.assertIn("int streamLimit = MaximumActiveLoot -", SOURCE)
         self.assertIn("active.Count >= streamLimit", SOURCE)
