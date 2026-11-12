@@ -535,7 +535,8 @@ namespace Aaris.MapReview
             {
                 // Aerial orbit uses -pitch; the grounded orbit uses +pitch.
                 // Convert the sign once to keep the same look direction.
-                footMotor.ResumeFromAerialDrop(yaw, -pitch);
+                footMotor.PrepareAerialCameraHandoff(yaw, -pitch);
+                footMotor.ResumeFromAerialDrop();
                 footMotor.enabled = true;
             }
         }
