@@ -217,6 +217,30 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertNotIn('"PropellerBladeA"', source)
         self.assertNotIn('"PropellerBladeB"', source)
 
+    def test_low_fps_airborne_sweeps_preserve_motion_and_plane_flyaway(self):
+        source = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
+        self.assertIn("Mathf.Clamp(Time.deltaTime, 0f, 0.20f)", source)
+        self.assertIn("const float MaxSweepSeconds = 0.05f;", source)
+        self.assertIn("Mathf.Clamp(Mathf.CeilToInt(elapsed / MaxSweepSeconds), 1, 4)", source)
+        self.assertIn("float stepDt = elapsed / steps;", source)
+        self.assertIn("SimulateAirborne(dt);", source)
+        self.assertIn("AdvanceDepartingAircraft(dt);", source)
+        self.assertIn("AnimatePlaneRotors();", source)
+        self.assertIn("plane.transform.position += plane.transform.forward * planeSpeed * dt;", source)
+        self.assertIn("Mathf.Min(freefallForwardSpeed, planeSpeed * 0.55f)", source)
+        self.assertIn("if (phase == DropPhase.Freefall) UpdateFreefall(stepDt);", source)
+        self.assertIn("else if (phase == DropPhase.Opening || phase == DropPhase.Gliding)", source)
+        self.assertIn("else break; // Once the player lands, stop airborne movement.", source)
+        eject = source.split("private void Eject()", 1)[1].split("private void OpenCanopy()", 1)[0]
+        self.assertNotIn("Destroy(plane", eject)
+        self.assertNotIn("plane = null;", eject)
+        # The 20 Hz step bound holds across frame rates that were previously
+        # clamped to 0.11s and made low-FPS freefall/steering run too slowly.
+        for elapsed in (1/120, 1/60, 1/30, 1/20, 1/15, 1/10, 0.2):
+            steps = max(1, min(4, math.ceil(elapsed / 0.05)))
+            self.assertLessEqual(elapsed / steps, 0.050000001)
+            self.assertAlmostEqual((elapsed / steps) * steps, elapsed)
+
     def test_parachute_is_elongated_and_round_ended_not_rectangular(self):
         verts, _, _, bounds = read_obj(MODELS["parachute"][0])
         self.assertGreater(bounds[0] / max(bounds[2], 0.1), 2.8)
