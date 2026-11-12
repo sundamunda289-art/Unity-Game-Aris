@@ -58,9 +58,9 @@ def audit():
     # shoot/punch clips, rather than borrowing weight from lower-body gait.
     assert "AnimationLayerMixerPlayable.Create(graph, 2)" in visual
     assert "mixer = AnimationMixerPlayable.Create(graph, 12);" in visual
-    assert "mixer.SetInputWeight(9, baseWeight * grounded * runBlend * walkRunBlend * sprintBlend);" in visual
-    assert "mixer.SetInputWeight(10, baseWeight * proneWeight" in visual
-    assert "mixer.SetInputWeight(11, baseWeight * proneWeight" in visual
+    assert "WriteWeightIfChanged(mixer, lastBaseWeights, 9, baseWeight * grounded * runBlend * walkRunBlend * sprintBlend);" in visual
+    assert "WriteWeightIfChanged(mixer, lastBaseWeights, 10, baseWeight * proneWeight" in visual
+    assert "WriteWeightIfChanged(mixer, lastBaseWeights, 11, baseWeight * proneWeight" in visual
     assert "float stanceScale = stanceTotal > 1f ? pose / stanceTotal : 1f;" in visual
     assert "weaponUpperMixer = AnimationMixerPlayable.Create(graph, 3);" in visual
     assert "upperBodyMask.SetHumanoidBodyPartActive(part, active);" in visual
@@ -71,7 +71,7 @@ def audit():
     assert "float baseWeight = 1f - primary;" in visual
     assert "float carryTarget = !carrying ? 0f : aim ? 0.63f :" in visual
     assert "readyHoldPlayable.SetSpeed(0d);" in visual
-    assert "layered.SetInputWeight(1, layerWeight);" in visual
+    assert "WriteLayerWeightIfChanged(layerWeight);" in visual
     assert "if (upperBodyMask != null) Destroy(upperBodyMask);" in visual
     assert "animator.applyRootMotion = false" in visual
     assert "controller.Move(" not in visual
