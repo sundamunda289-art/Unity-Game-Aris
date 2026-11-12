@@ -10,6 +10,7 @@ on:
       - 'Tools/Validation/check_battle_hud.py'
       - 'Tools/Validation/check_battle_hardening.py'
       - 'Tools/Validation/check_mobile_hotpaths.py'
+      - 'Tools/Validation/test_open_combat_houses.py'
       - '.github/workflows/aaris-mobile-gameplay-regression.yml'
   push:
     branches: [main]
@@ -21,6 +22,7 @@ on:
       - 'Tools/Validation/check_battle_hud.py'
       - 'Tools/Validation/check_battle_hardening.py'
       - 'Tools/Validation/check_mobile_hotpaths.py'
+      - 'Tools/Validation/test_open_combat_houses.py'
       - '.github/workflows/aaris-mobile-gameplay-regression.yml'
   workflow_dispatch:
 
@@ -51,6 +53,7 @@ jobs:
           python Tools/Validation/check_battle_hud.py
           python Tools/Validation/check_mobile_hotpaths.py
           python Tools/Validation/check_battle_hardening.py
+          python Tools/Validation/test_open_combat_houses.py
       - name: Parse every saved AarisWorld C# gameplay script
         run: |
           python - <<'PY'
