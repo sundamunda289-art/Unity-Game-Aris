@@ -169,7 +169,7 @@ def evidence(run_id, script, fps, seconds, timeout, inline_preview):
     ROOT.mkdir(mode=0o700,parents=True,exist_ok=True)
     folder=ROOT/run_id
     folder.mkdir(mode=0o700,exist_ok=False)
-    recorder=gui_v4.Recorder(folder,fps,max_frames=180)
+    recorder=gui_v4.Recorder(folder,fps,max_frames=900)
     events=[]
     t0=time.monotonic()
     with open(gui_v4.LOCK_PATH,"a+b") as lock:
