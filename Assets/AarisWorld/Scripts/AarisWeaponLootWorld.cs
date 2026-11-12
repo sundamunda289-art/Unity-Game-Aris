@@ -154,12 +154,16 @@ namespace Aaris.MapReview
                 // Apply the probability to ALL sectors. An early cap on
                 // sorted candidates unfairly stocked the west side first
                 // and left the east half of the 2km map with no outdoor loot.
-                // Memory is bounded by 514 authored slots; instantiated
-                // GameObjects are separately capped at MaximumActiveLoot.
+                // Memory is bounded by 514 authored slots plus at most 32
+                // native-tree spots per terrain tile. Spawned GameObjects
+                // remain separately capped at MaximumActiveLoot.
                 if (!WithinMap(c)) continue;
                 bool indoor = c.kind == "indoor";
+                // The old 32% open-ground chance made most outdoor landing
+                // spots look empty. Plan more existing candidates without
+                // increasing the active mesh or per-frame physics budgets.
                 float chance = indoor ? 0.72f :
-                    c.kind == "tree" ? 0.75f : 0.32f;
+                    c.kind == "tree" ? 0.85f : 0.60f;
                 if (AarisWeaponRandom.Next01(ref rng) > chance) continue;
                 var spec = AarisWeaponCatalog.Select(ref rng, indoor);
                 if (spec == null) continue;
@@ -225,7 +229,7 @@ namespace Aaris.MapReview
                 int accepted = 0, attempts = 0;
                 Vector3 origin = terrain.transform.position;
                 Vector3 size = data.size;
-                while (accepted < 12 && attempts++ < 72)
+                while (accepted < 32 && attempts++ < 160)
                 {
                     int idx = (int)(AarisWeaponRandom.Next(ref rng) % (uint)trees.Length);
                     Vector3 tree = origin + Vector3.Scale(trees[idx].position, size);
