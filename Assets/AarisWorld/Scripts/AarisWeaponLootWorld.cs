@@ -778,11 +778,19 @@ namespace Aaris.MapReview
             // checks in TryFindDropSpot provide the ground truth here.
             if (!player.TryGetComponent(out CharacterController controller) || !controller.enabled) return;
 
-            foreach (var pickup in active)
+            // A visible gun within range is not the same as an equipped gun.
+            // If the character moves away before the next 330ms pickup poll,
+            // marking the starter settled here can permanently strand them
+            // unarmed. Complete the existing atomic pickup transaction now.
+            // Use an index loop because TryTake removes a successful pickup.
+            for (int i = 0; i < active.Count; i++)
             {
-                if (pickup != null && !IsBlockedDrop(pickup) &&
-                    (pickup.transform.position - playerPosition).sqrMagnitude <= PickupDistance * PickupDistance &&
-                    CanReachPickup(pickup))
+                var pickup = active[i];
+                if (pickup == null || IsBlockedDrop(pickup) ||
+                    (pickup.transform.position - playerPosition).sqrMagnitude > PickupDistance * PickupDistance ||
+                    !CanReachPickup(pickup))
+                    continue;
+                if (TryTake(pickup))
                 {
                     starterLootSettled = true;
                     return;
