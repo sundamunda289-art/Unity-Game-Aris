@@ -50,7 +50,9 @@ jobs:
           grep -qxF AARIS_V8_APK_MULTISCHEME_SIGNATURE_MANIFEST_SHA256_VERIFIED "$B/installfix-v8-stage"
           export JAVA_HOME="$SDK/OpenJDK" PATH="$SDK/OpenJDK/bin:$PATH"
           "$SDK/SDK/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" > "$B/private-release-v8-signature.log"
-          for s in v1 v2 v3; do grep -q "Verified using $s scheme.*: true" "$B/private-release-v8-signature.log"; done
+          for s in v2 v3; do grep -q "Verified using $s scheme.*: true" "$B/private-release-v8-signature.log"; done
+          "$SDK/SDK/build-tools/36.0.0/apksigner" verify --min-sdk-version 21 --verbose "$APK" > "$B/private-release-v8-signature-v1.log"
+          grep -q 'Verified using v1 scheme.*: true' "$B/private-release-v8-signature-v1.log"
           python3 - <<'PY'
           from pathlib import Path
           import hashlib,json
