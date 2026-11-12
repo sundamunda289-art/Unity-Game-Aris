@@ -204,7 +204,10 @@ def evidence(run_id, script, fps, seconds, timeout, inline_preview):
                 if event.get("error"): break
         finally:
             remaining=seconds-(time.monotonic()-t0)
-            if remaining>0:time.sleep(remaining)
+            # On cancellation or failed input, release immediately instead of
+            # waiting for the full originally requested recording window.
+            if remaining>0 and not any(e.get("error") for e in events):
+                time.sleep(remaining)
             recorder.finish()
             fcntl.flock(lock,fcntl.LOCK_UN)
     sheet=gui_v4.compose_sheet(folder,recorder.frames)
