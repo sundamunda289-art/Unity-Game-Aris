@@ -84,7 +84,9 @@ namespace Aaris.MapReview
             bool newPress = held && !fireHeld;
             fireHeld = held;
             if (!held) semiShotQueued = false;
-            if (held && motor != null) motor.CancelAutoSprint();
+            // The single player motor owns sprint cancellation. Clearing it
+            // here would erase jump-shot momentum before its Update runs when
+            // Jump and Fire arrive during the same mobile input frame.
             if (!newPress) return;
             semiShotQueued = true;
             // Do not bypass the gun's ammo, reload, cooldown or cover checks.
