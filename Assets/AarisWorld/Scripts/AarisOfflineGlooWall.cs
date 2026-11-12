@@ -23,6 +23,7 @@ namespace Aaris.MapReview
         private readonly RaycastHit[] groundHits = new RaycastHit[32];
         private readonly Collider[] overlaps = new Collider[48];
         private AarisThirdPersonPlayer motor;
+        private CharacterController playerCapsule;
         private AarisOfflineDrop drop;
         private AarisVehicleSession vehicle;
         private float nextOptionalComponentRefresh;
@@ -64,6 +65,7 @@ namespace Aaris.MapReview
         private void Awake()
         {
             motor = GetComponent<AarisThirdPersonPlayer>();
+            playerCapsule = GetComponent<CharacterController>();
             drop = GetComponent<AarisOfflineDrop>();
             vehicle = GetComponent<AarisVehicleSession>();
         }
@@ -239,6 +241,20 @@ namespace Aaris.MapReview
 
         private bool HasCoverClearance(float supportTop)
         {
+            // Physics overlap intentionally ignores our capsule, so perform
+            // a cheap explicit player clearance check in wall-local space.
+            // It also protects angled placements where the wall's wide end
+            // could reach the player despite a safe centre distance.
+            if (playerCapsule != null)
+            {
+                Vector3 offset = Quaternion.Inverse(proposedRotation) *
+                    (transform.position - proposedPoint);
+                Vector3 extent = AarisGlooWallVisuals.CoverSize * 0.5f;
+                float margin = playerCapsule.radius + 0.16f;
+                if (Mathf.Abs(offset.x) <= extent.x + margin &&
+                    Mathf.Abs(offset.z) <= extent.z + margin)
+                    return false;
+            }
             // Exclude the shallow contact band occupied by the sampled floor.
             // The deployed box still reaches the lowest supported ground point.
             float queryBottom = supportTop + 0.075f;
