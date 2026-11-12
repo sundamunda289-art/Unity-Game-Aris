@@ -182,6 +182,36 @@ def audit():
     for ram_mb in (1536, 2048, 2304, 3072):
         assert 0 < ram_mb <= 3072
     assert "lastTargetFps != targetFps" in quality
+    assert "private float lastEffectiveTargetFps;" in quality
+    assert "lastEffectiveTargetFps = EffectiveAndroidTargetFps(lastTargetFps);" in quality
+    assert "Mathf.Abs(lastEffectiveTargetFps - effectiveFps) > 0.5f" in quality
+    governor = quality[quality.index("private void TuneAndroidResolution("):
+                       quality.index("private void Update()")]
+    assert governor.index("float effectiveFps = EffectiveAndroidTargetFps(targetFps);") < governor.index(
+        "Mathf.Abs(lastEffectiveTargetFps - effectiveFps) > 0.5f")
+    assert governor.index("frameIndex = frameCount = 0;") < governor.index(
+        "float budgetMs = 1000f / effectiveFps;")
+    assert "sample.renderScale = androidPipeline.renderScale;" in governor
+    # Android 90 Hz -> 60 Hz switches the *effective* 60-FPS request from
+    # 45 to 60 FPS. A prior slow window cannot count toward a new budget.
+    def simulate_refresh_windows(windows):
+        old_effective, slow_windows, downscales = None, 0, 0
+        for effective, slow in windows:
+            if old_effective is None or abs(effective - old_effective) > .5:
+                old_effective, slow_windows = effective, 0
+                continue
+            slow_windows = slow_windows + 1 if slow else 0
+            if slow_windows >= 2:
+                downscales += 1
+                slow_windows = 0
+        return downscales
+
+    assert simulate_refresh_windows([(45, True), (45, True), (60, True),
+                                     (60, True)]) == 0
+    assert simulate_refresh_windows([(45, True), (45, True), (60, True),
+                                     (60, True), (60, True)]) == 1
+    assert simulate_refresh_windows([(45, True), (45, True),
+                                     (45, True)]) == 1
     # Unity mobile pacing must be evaluated against the effective display
     # divisor, not the nominal request (90 Hz / 60 requested -> 45 real).
     assert "Screen.currentResolution.refreshRateRatio.value" in quality
