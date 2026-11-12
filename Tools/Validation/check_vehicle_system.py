@@ -134,6 +134,19 @@ def test():
     assert "GameObject.CreatePrimitive" not in world
     assert "UnityWebRequest" not in world
 
+    # Boot methods for the loot, battle HUD and vehicles have no guaranteed
+    # order. Re-resolve optional references at actual car entry so gun Fire,
+    # pickup, and HUD controls cannot remain active while driving.
+    entry = session.split("private bool TryEnter()", 1)[1].split(
+        "private void SetFootHudVisible(", 1)[0]
+    for component in ("AarisBattleActions", "AarisWeaponInventory"):
+        assert f"= GetComponent<{component}>();" in entry
+    assert "lootWorld = FindFirstObjectByType<AarisWeaponLootWorld>();" in entry
+    assert entry.index("if (!nearbyCar.TryTakeDriver(this)) return false;") < (
+        entry.index("lootWorld = FindFirstObjectByType<AarisWeaponLootWorld>();"))
+    assert entry.index("lootWorld = FindFirstObjectByType<AarisWeaponLootWorld>();") < (
+        entry.index("if (actions != null) actions.enabled = false;"))
+
     # Full WheelCollider physics without fake step velocity teleports.
     assert "wheelPrefabs[i] = Resources.Load<GameObject>(item.wheelResource);" in world
     assert "motor.AttachWheelModels(wheelSource, paletteMaterial)" in world

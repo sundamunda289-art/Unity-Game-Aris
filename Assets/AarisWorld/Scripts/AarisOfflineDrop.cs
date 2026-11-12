@@ -87,6 +87,13 @@ namespace Aaris.MapReview
                 enabled = false;
                 return;
             }
+            // AfterSceneLoad bootstrap methods can run in any order. Other
+            // systems may have attached the battle, visual and vehicle
+            // components AFTER this component's Awake. Refresh once here
+            // before suspending their input/camera authority for flight.
+            if (combat == null) combat = GetComponent<AarisBattleActions>();
+            if (vehicle == null) vehicle = GetComponent<AarisVehicleSession>();
+            if (characterVisual == null) characterVisual = GetComponent<AarisCharacterVisual>();
             // Never start aerial transition while driving.
             if (vehicle != null && vehicle.IsDriving) { enabled = false; return; }
             cachedPlayerRotation = transform.rotation;
