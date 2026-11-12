@@ -119,9 +119,24 @@ class LootGridRegression(unittest.TestCase):
                         placement.index("distance = 1.55f;"))
 
     def test_native_terrain_world_y_used_for_outdoor_floor(self):
-        self.assertIn("terrain.SampleHeight(new Vector3(c.x, 0f, c.z))", SOURCE)
+        # Original authored slots and nearby offset retries both sample
+        # Terrain in world-space, without adding the tile Y a second time.
+        self.assertIn("float x = c.x + offsetX, z = c.z + offsetZ;", SOURCE)
+        self.assertIn("terrain.SampleHeight(new Vector3(x, 0f, z))", SOURCE)
         self.assertNotIn("terrain.transform.position.y + terrain.SampleHeight", SOURCE)
         self.assertIn("float expectedGround = indoor ? c.y :", SOURCE)
+
+    def test_outdoor_relocation_keeps_stream_and_physics_budgets(self):
+        self.assertIn("private bool TryResolveNearCandidate(", SOURCE)
+        self.assertIn('if (candidate.kind == "indoor") return false;', SOURCE)
+        self.assertIn("int alternateProbeBudget = 3;", SOURCE)
+        self.assertIn("alternative < 2 && alternateProbeBudget > 0", SOURCE)
+        self.assertIn("alternateProbeBudget--;", SOURCE)
+        self.assertIn("TryResolve(candidate, terrains, out spot,", SOURCE)
+        self.assertIn("ref alternateProbeBudget, out Vector3 spot", SOURCE)
+        self.assertIn("MaximumBuildAttemptsPerFrame = 2;", SOURCE)
+        self.assertIn("if (!foundFloor) return false;", SOURCE)
+        self.assertIn("Physics.CheckCapsule(center", SOURCE)
 
     def test_all_points_in_circle_covered_and_priority_preserved(self):
         rng = random.Random(20261110)
