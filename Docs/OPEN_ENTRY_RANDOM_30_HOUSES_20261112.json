@@ -1,0 +1,433 @@
+{
+  "schema_version": 1,
+  "created_date": "2026-11-12",
+  "scope": "saved native scene 2 km x 2 km, reproducible random distribution inside flattened settlement districts",
+  "source_repo": "sundamunda289-art/Unity-Game-Aris",
+  "scene_path": "Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity",
+  "random_seed": 20261112,
+  "counts": {
+    "existing_legacy_buildings": 59,
+    "original_townhall_already_replaced": 1,
+    "previously_added_open_detached": 5,
+    "random_new_open_detached": 30,
+    "total_open_detached_in_scene": 36
+  },
+  "district_counts": {
+    "CanalMarket": 3,
+    "ClockTowerTown": 3,
+    "CoastalHamlet": 3,
+    "EasternPort": 3,
+    "FreightDistrict": 3,
+    "HighlandObservatory": 3,
+    "LakesideHamlet": 3,
+    "NorthernRidgeTown": 3,
+    "OldVillage": 3,
+    "ValleySettlement": 3
+  },
+  "spawn_policy": "Static authored positions, not runtime random spawn; visually varied yaw 0/90/180/270 degrees",
+  "assets": {
+    "mesh": "Assets/AarisWorld/Generated/KenneyOpenHomes/OpenDetached.asset",
+    "mesh_guid": "54220d323b5b8c210a866d77e95144b7",
+    "material": "Assets/AarisWorld/Generated/KenneyOpenHomes/KenneyAtlasURP.mat",
+    "material_guid": "fb97cb6492795e33da9388746acc365f",
+    "license": "Kenney CC0",
+    "new_mesh_assets_added": 0,
+    "new_material_assets_added": 0
+  },
+  "placement_constraints_m": {
+    "minimum_existing_buildings": 9,
+    "minimum_separation_new_houses": 11,
+    "minimum_road_edge_distance": 5.5,
+    "minimum_vehicle_corridor_distance": 8,
+    "minimum_existing_proximity_props_distance": 6,
+    "minimum_player_spawn_distance": 16,
+    "district_boundary_margin": 12
+  },
+  "placement_audit_minima_m": {
+    "existingBuildings": 9.76,
+    "otherNewHouses": 15.31,
+    "roadEdge": 6.28,
+    "vehicleCorridor": 14.3,
+    "existingProps": 25.33
+  },
+  "performance": {
+    "mesh_and_material_reused": true,
+    "each_house_lod_levels": 3,
+    "static_mesh_collider_enabled_and_registered_in_nearby_collision_grid": true,
+    "nearby_activation_distance_m": 55,
+    "distant_collider_visibility_gated": true,
+    "target_mobile_ram_gb": 2,
+    "android_fps_measured": false
+  },
+  "safety": {
+    "existing_buildings_deleted": 0,
+    "legacy_buildings_modified": 0,
+    "terrain_modified": false,
+    "roads_modified": false,
+    "vehicle_spawns_modified": false,
+    "other_agents_worktree_modified": false,
+    "unity_editor_visual_verification_for_this_change": false
+  },
+  "positions": [
+    {
+      "name": "CanalMarket_OpenDetached_Random_01",
+      "district": "CanalMarket",
+      "position_m": [
+        -96,
+        -31.07855224609375,
+        612
+      ],
+      "yaw_degrees": 0,
+      "root_gameobject_file_id": 931200,
+      "collider_file_id": 931204
+    },
+    {
+      "name": "CanalMarket_OpenDetached_Random_02",
+      "district": "CanalMarket",
+      "position_m": [
+        -129,
+        -31.07855224609375,
+        607
+      ],
+      "yaw_degrees": 180,
+      "root_gameobject_file_id": 931300,
+      "collider_file_id": 931304
+    },
+    {
+      "name": "CanalMarket_OpenDetached_Random_03",
+      "district": "CanalMarket",
+      "position_m": [
+        -64,
+        -31.07855224609375,
+        698
+      ],
+      "yaw_degrees": 180,
+      "root_gameobject_file_id": 931400,
+      "collider_file_id": 931404
+    },
+    {
+      "name": "ClockTowerTown_OpenDetached_Random_01",
+      "district": "ClockTowerTown",
+      "position_m": [
+        285,
+        -11.936767578125,
+        272
+      ],
+      "yaw_degrees": 90,
+      "root_gameobject_file_id": 930000,
+      "collider_file_id": 930004
+    },
+    {
+      "name": "ClockTowerTown_OpenDetached_Random_02",
+      "district": "ClockTowerTown",
+      "position_m": [
+        375,
+        -11.936767578125,
+        155
+      ],
+      "yaw_degrees": 270,
+      "root_gameobject_file_id": 930100,
+      "collider_file_id": 930104
+    },
+    {
+      "name": "ClockTowerTown_OpenDetached_Random_03",
+      "district": "ClockTowerTown",
+      "position_m": [
+        418,
+        -11.936767578125,
+        277
+      ],
+      "yaw_degrees": 0,
+      "root_gameobject_file_id": 930200,
+      "collider_file_id": 930204
+    },
+    {
+      "name": "CoastalHamlet_OpenDetached_Random_01",
+      "district": "CoastalHamlet",
+      "position_m": [
+        661,
+        -18.211563110351562,
+        601
+      ],
+      "yaw_degrees": 180,
+      "root_gameobject_file_id": 932700,
+      "collider_file_id": 932704
+    },
+    {
+      "name": "CoastalHamlet_OpenDetached_Random_02",
+      "district": "CoastalHamlet",
+      "position_m": [
+        659,
+        -18.211563110351562,
+        646
+      ],
+      "yaw_degrees": 90,
+      "root_gameobject_file_id": 932800,
+      "collider_file_id": 932804
+    },
+    {
+      "name": "CoastalHamlet_OpenDetached_Random_03",
+      "district": "CoastalHamlet",
+      "position_m": [
+        676,
+        -18.211563110351562,
+        678
+      ],
+      "yaw_degrees": 270,
+      "root_gameobject_file_id": 932900,
+      "collider_file_id": 932904
+    },
+    {
+      "name": "EasternPort_OpenDetached_Random_01",
+      "district": "EasternPort",
+      "position_m": [
+        804,
+        -31.07855224609375,
+        398
+      ],
+      "yaw_degrees": 180,
+      "root_gameobject_file_id": 930600,
+      "collider_file_id": 930604
+    },
+    {
+      "name": "EasternPort_OpenDetached_Random_02",
+      "district": "EasternPort",
+      "position_m": [
+        831,
+        -31.07855224609375,
+        296
+      ],
+      "yaw_degrees": 180,
+      "root_gameobject_file_id": 930700,
+      "collider_file_id": 930704
+    },
+    {
+      "name": "EasternPort_OpenDetached_Random_03",
+      "district": "EasternPort",
+      "position_m": [
+        867,
+        -31.07855224609375,
+        406
+      ],
+      "yaw_degrees": 180,
+      "root_gameobject_file_id": 930800,
+      "collider_file_id": 930804
+    },
+    {
+      "name": "FreightDistrict_OpenDetached_Random_01",
+      "district": "FreightDistrict",
+      "position_m": [
+        545,
+        -1.07183837890625,
+        -204
+      ],
+      "yaw_degrees": 180,
+      "root_gameobject_file_id": 930900,
+      "collider_file_id": 930904
+    },
+    {
+      "name": "FreightDistrict_OpenDetached_Random_02",
+      "district": "FreightDistrict",
+      "position_m": [
+        575,
+        -1.07183837890625,
+        -202
+      ],
+      "yaw_degrees": 0,
+      "root_gameobject_file_id": 931000,
+      "collider_file_id": 931004
+    },
+    {
+      "name": "FreightDistrict_OpenDetached_Random_03",
+      "district": "FreightDistrict",
+      "position_m": [
+        541,
+        -1.07183837890625,
+        -162
+      ],
+      "yaw_degrees": 90,
+      "root_gameobject_file_id": 931100,
+      "collider_file_id": 931104
+    },
+    {
+      "name": "HighlandObservatory_OpenDetached_Random_01",
+      "district": "HighlandObservatory",
+      "position_m": [
+        598,
+        23.758773803710938,
+        -582
+      ],
+      "yaw_degrees": 0,
+      "root_gameobject_file_id": 930300,
+      "collider_file_id": 930304
+    },
+    {
+      "name": "HighlandObservatory_OpenDetached_Random_02",
+      "district": "HighlandObservatory",
+      "position_m": [
+        565,
+        23.758773803710938,
+        -666
+      ],
+      "yaw_degrees": 270,
+      "root_gameobject_file_id": 930400,
+      "collider_file_id": 930404
+    },
+    {
+      "name": "HighlandObservatory_OpenDetached_Random_03",
+      "district": "HighlandObservatory",
+      "position_m": [
+        551,
+        23.758773803710938,
+        -586
+      ],
+      "yaw_degrees": 0,
+      "root_gameobject_file_id": 930500,
+      "collider_file_id": 930504
+    },
+    {
+      "name": "LakesideHamlet_OpenDetached_Random_01",
+      "district": "LakesideHamlet",
+      "position_m": [
+        -714,
+        -2.6588516235351562,
+        64
+      ],
+      "yaw_degrees": 0,
+      "root_gameobject_file_id": 931800,
+      "collider_file_id": 931804
+    },
+    {
+      "name": "LakesideHamlet_OpenDetached_Random_02",
+      "district": "LakesideHamlet",
+      "position_m": [
+        -741,
+        -2.6588516235351562,
+        85
+      ],
+      "yaw_degrees": 180,
+      "root_gameobject_file_id": 931900,
+      "collider_file_id": 931904
+    },
+    {
+      "name": "LakesideHamlet_OpenDetached_Random_03",
+      "district": "LakesideHamlet",
+      "position_m": [
+        -717,
+        -2.6588516235351562,
+        29
+      ],
+      "yaw_degrees": 90,
+      "root_gameobject_file_id": 932000,
+      "collider_file_id": 932004
+    },
+    {
+      "name": "NorthernRidgeTown_OpenDetached_Random_01",
+      "district": "NorthernRidgeTown",
+      "position_m": [
+        347,
+        -30.83440399169922,
+        703
+      ],
+      "yaw_degrees": 270,
+      "root_gameobject_file_id": 932400,
+      "collider_file_id": 932404
+    },
+    {
+      "name": "NorthernRidgeTown_OpenDetached_Random_02",
+      "district": "NorthernRidgeTown",
+      "position_m": [
+        267,
+        -30.83440399169922,
+        682
+      ],
+      "yaw_degrees": 180,
+      "root_gameobject_file_id": 932500,
+      "collider_file_id": 932504
+    },
+    {
+      "name": "NorthernRidgeTown_OpenDetached_Random_03",
+      "district": "NorthernRidgeTown",
+      "position_m": [
+        325,
+        -30.83440399169922,
+        594
+      ],
+      "yaw_degrees": 90,
+      "root_gameobject_file_id": 932600,
+      "collider_file_id": 932604
+    },
+    {
+      "name": "OldVillage_OpenDetached_Random_01",
+      "district": "OldVillage",
+      "position_m": [
+        -499,
+        1.7115249633789062,
+        -546
+      ],
+      "yaw_degrees": 0,
+      "root_gameobject_file_id": 931500,
+      "collider_file_id": 931504
+    },
+    {
+      "name": "OldVillage_OpenDetached_Random_02",
+      "district": "OldVillage",
+      "position_m": [
+        -575,
+        1.7115249633789062,
+        -540
+      ],
+      "yaw_degrees": 90,
+      "root_gameobject_file_id": 931600,
+      "collider_file_id": 931604
+    },
+    {
+      "name": "OldVillage_OpenDetached_Random_03",
+      "district": "OldVillage",
+      "position_m": [
+        -499,
+        1.7115249633789062,
+        -636
+      ],
+      "yaw_degrees": 0,
+      "root_gameobject_file_id": 931700,
+      "collider_file_id": 931704
+    },
+    {
+      "name": "ValleySettlement_OpenDetached_Random_01",
+      "district": "ValleySettlement",
+      "position_m": [
+        -449,
+        15.408645629882812,
+        -206
+      ],
+      "yaw_degrees": 90,
+      "root_gameobject_file_id": 932100,
+      "collider_file_id": 932104
+    },
+    {
+      "name": "ValleySettlement_OpenDetached_Random_02",
+      "district": "ValleySettlement",
+      "position_m": [
+        -448,
+        15.408645629882812,
+        -158
+      ],
+      "yaw_degrees": 90,
+      "root_gameobject_file_id": 932200,
+      "collider_file_id": 932204
+    },
+    {
+      "name": "ValleySettlement_OpenDetached_Random_03",
+      "district": "ValleySettlement",
+      "position_m": [
+        -388,
+        15.408645629882812,
+        -176
+      ],
+      "yaw_degrees": 180,
+      "root_gameobject_file_id": 932300,
+      "collider_file_id": 932304
+    }
+  ]
+}
