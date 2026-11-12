@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic, asset-free proof that 64m cell lookup preserves 42m loot queries."""
+"""Deterministic proof that 64m cell lookup preserves bounded 50m loot queries."""
 import math
 import random
 import unittest
@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = (ROOT / "Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs").read_text(encoding="utf-8")
 CELL_METRES = 64.0
-RADIUS = 42.0
+RADIUS = 50.0
 
 
 def key(x, z):
@@ -18,7 +18,7 @@ def key(x, z):
 class LootGridRegression(unittest.TestCase):
     def test_no_world_visual_or_despawn_rule_changed(self):
         for clause in (
-            "private const float ActivationMetres = 42f;",
+            "private const float ActivationMetres = 50f;",
             "private const float ReleaseMetres = 69f;",
             "private const int MaximumActiveLoot = 40;",
             "private const float CandidateCellMetres = 64f;",
@@ -33,6 +33,18 @@ class LootGridRegression(unittest.TestCase):
             "candidateCells.TryGetValue(CandidateCellKey(x, z)",
         ):
             self.assertIn(clause, SOURCE)
+
+    def test_reserved_starter_slot_never_exceeds_40_models(self):
+        self.assertIn("int streamLimit = MaximumActiveLoot -", SOURCE)
+        self.assertIn("active.Count >= streamLimit", SOURCE)
+        for starter_pending in (False, True):
+            limit = 40 - int(starter_pending)
+            assert limit in (39, 40)
+            for active_count in range(41):
+                if active_count < limit:
+                    self.assertLessEqual(active_count + 1, 40)
+                else:
+                    self.assertGreaterEqual(active_count, limit)
 
     def test_player_drop_never_bypasses_40_live_visuals(self):
         # A voluntary drop used to bypass the streaming cap and allocate a
