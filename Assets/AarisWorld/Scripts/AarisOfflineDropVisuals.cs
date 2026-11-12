@@ -44,6 +44,21 @@ namespace Aaris.MapReview
                 material.SetFloat("_Smoothness", smoothness);
         }
 
+        // Resolve once per aircraft spawn. Never mutate the shared saved URP
+        // materials; old/mobile imports without these assets keep the original
+        // lightweight cached fallback and its independent finish settings.
+        private static Material SavedAircraftFinish(string materialName,
+            ref Material fallback, Color fallbackColor, float metallic, float smoothness)
+        {
+            Material saved = Resources.Load<Material>("AarisDrop/Materials/" + materialName);
+            if (saved != null && saved.shader != null &&
+                saved.shader.name.StartsWith("Universal Render Pipeline/", StringComparison.Ordinal))
+                return saved;
+            Material material = Paint(ref fallback, fallbackColor);
+            SetAircraftFinish(material, metallic, smoothness);
+            return material;
+        }
+
         private static GameObject Part(Transform parent, string name, PrimitiveType primitive,
             Vector3 position, Quaternion rotation, Vector3 scale, Material material)
         {
@@ -136,16 +151,19 @@ namespace Aaris.MapReview
             if (prefab != null)
             {
                 root = UnityEngine.Object.Instantiate(prefab, position, rotation);
-                Material hullPaint = Paint(ref hull, new Color(.31f, .36f, .35f));
-                Material cockpitPaint = Paint(ref dark, new Color(.055f, .10f, .13f));
-                Material wingPaint = Paint(ref wingPanels, new Color(.39f, .43f, .40f));
-                Material enginePaint = Paint(ref engineDark, new Color(.095f, .12f, .13f));
-                Material safetyPaint = Paint(ref safetyAccent, new Color(.60f, .60f, .49f));
-                SetAircraftFinish(hullPaint, .38f, .32f);
-                SetAircraftFinish(cockpitPaint, .08f, .82f);
-                SetAircraftFinish(wingPaint, .30f, .25f);
-                SetAircraftFinish(enginePaint, .52f, .26f);
-                SetAircraftFinish(safetyPaint, .18f, .27f);
+                // Prefer the five serialized URP/Lit aircraft finishes. Unlike
+                // flat procedural paints, these preserve authored PBR surface
+                // properties and any future texture maps without per-frame work.
+                Material hullPaint = SavedAircraftFinish("CargoPlane-HulledMetal",
+                    ref hull, new Color(.31f, .36f, .35f), .38f, .32f);
+                Material cockpitPaint = SavedAircraftFinish("CargoPlane-DarkCockpit",
+                    ref dark, new Color(.055f, .10f, .13f), .08f, .82f);
+                Material wingPaint = SavedAircraftFinish("CargoPlane-WingPanels",
+                    ref wingPanels, new Color(.39f, .43f, .40f), .30f, .25f);
+                Material enginePaint = SavedAircraftFinish("CargoPlane-EngineDark",
+                    ref engineDark, new Color(.095f, .12f, .13f), .52f, .26f);
+                Material safetyPaint = SavedAircraftFinish("CargoPlane-SafetyAccent",
+                    ref safetyAccent, new Color(.60f, .60f, .49f), .18f, .27f);
                 // Imported OBJ/MTL materials are not guaranteed to be URP-compatible.
                 // Map each authored submesh to one cached, shared URP material.
                 // Preserve wing/cockpit/intake contrast instead of flattening

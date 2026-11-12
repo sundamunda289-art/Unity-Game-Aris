@@ -68,6 +68,29 @@ class OfflineCombatAssetChecks(unittest.TestCase):
                 self.assertGreater(bounds[1], min_y)
                 self.assertGreater(bounds[2], min_z)
 
+    def test_aircraft_uses_saved_urp_lit_finishes_instead_of_flat_runtime_paint(self):
+        visuals = (SCRIPTS / "AarisOfflineDropVisuals.cs").read_text("utf-8")
+        self.assertIn(
+            'Resources.Load<Material>("AarisDrop/Materials/" + materialName)',
+            visuals)
+        self.assertIn("Material hullPaint = SavedAircraftFinish(", visuals)
+        self.assertIn("if (saved != null && saved.shader != null", visuals)
+        profiles = {
+            "CargoPlane-HulledMetal": (0.38, 0.32),
+            "CargoPlane-DarkCockpit": (0.08, 0.82),
+            "CargoPlane-WingPanels": (0.30, 0.25),
+            "CargoPlane-EngineDark": (0.52, 0.26),
+            "CargoPlane-SafetyAccent": (0.18, 0.27),
+        }
+        for name, (metallic, smoothness) in profiles.items():
+            with self.subTest(material=name):
+                self.assertIn(f'SavedAircraftFinish("{name}"', visuals)
+                source = (ASSETS / "AarisDrop" / "Materials" /
+                          (name + ".mat")).read_text("utf-8")
+                self.assertIn("guid: 933532a4fcc9baf4fa0491de14d08ed7", source)
+                self.assertRegex(source, rf"(?m)^    - _Metallic: {metallic:g}$")
+                self.assertRegex(source, rf"(?m)^    - _Smoothness: {smoothness:g}$")
+
     def test_player_safe_footing_uses_same_world_space_ground_height(self):
         player = (SCRIPTS / "AarisThirdPersonPlayer.cs").read_text("utf-8")
         self.assertIn("ground = Mathf.Max(ground, t.SampleHeight(position));", player)
