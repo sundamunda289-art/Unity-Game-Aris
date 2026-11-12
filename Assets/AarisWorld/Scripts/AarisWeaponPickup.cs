@@ -68,17 +68,38 @@ namespace Aaris.MapReview
             foreach (var collider in visible.GetComponentsInChildren<Collider>(true))
                 collider.enabled = false;
 
-            // Fit different artist FBX units to one gameplay pickup size.
-            var renderer = visible.GetComponentInChildren<Renderer>();
-            if (renderer != null && renderer.bounds.size.magnitude > 0.001f)
-            {
-                float length = Mathf.Max(renderer.bounds.size.x,
-                    renderer.bounds.size.y, renderer.bounds.size.z);
-                float scale = Mathf.Clamp(0.82f / length, 0.001f, 10f);
-                model.localScale *= scale;
-            }
-            model.localPosition = new Vector3(0f, 0.15f, 0f);
+            // An FBX can contain several meshes. The first renderer may be
+            // only a sight, magazine or tiny attachment, so size the whole
+            // authored gun once rather than scaling that one piece to 82 cm.
+            var renderers = visible.GetComponentsInChildren<Renderer>(true);
+            Bounds modelBounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+                modelBounds.Encapsulate(renderers[i].bounds);
+            float length = Mathf.Max(modelBounds.size.x,
+                modelBounds.size.y, modelBounds.size.z);
+            if (length > 0.001f)
+                model.localScale *= Mathf.Clamp(0.82f / length, 0.001f, 10f);
+
+            model.localPosition = Vector3.zero;
             model.localRotation = Quaternion.Euler(0f, 0f, -75f);
+            // FBX pivots need not sit inside the mesh. Recompute bounds after
+            // rotation/scaling and keep the complete pickup above the floor.
+            modelBounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+                modelBounds.Encapsulate(renderers[i].bounds);
+            Vector3 delta = new Vector3(
+                transform.position.x - modelBounds.center.x,
+                transform.position.y + 0.08f - modelBounds.min.y,
+                transform.position.z - modelBounds.center.z);
+            model.position += delta;
+            // World-space spin must pivot around the real visible gun center,
+            // not the arbitrary FBX import origin (which can be far away).
+            // One lightweight Transform per pickup, never a per-frame Bounds scan.
+            var visualPivot = new GameObject("Loot centered rotation pivot");
+            visualPivot.transform.SetParent(transform, false);
+            visualPivot.transform.position = modelBounds.center + delta;
+            model.SetParent(visualPivot.transform, true);
+            model = visualPivot.transform;
 
             // Small nonphysical highlight for dark grass; no bright 50m
             // spotlight and no additional real-time mobile lighting.

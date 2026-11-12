@@ -118,8 +118,8 @@ namespace Aaris.MapReview.Editor
                     }
                     Check(materials > 0, "Native tree materials loaded");
                     var soundClips = Resources.LoadAll<AudioClip>("SFX");
-                    Check(soundClips.Length >= 43 && soundClips.All(clip =>
-                        clip.samples > 1000 && clip.channels == 1), "All 43 offline AudioClips load from Resources");
+                    Check(soundClips.Length >= AarisAudioDirector.RequiredCueKeys.Count + 15 && soundClips.All(clip =>
+                        clip.samples > 1000 && clip.channels == 1), "All original and recorded offline AudioClips load from Resources");
                     var glooClip = soundClips.Single(clip => clip.name == "gloo_deploy");
                     var waveform = new float[glooClip.samples];
                     Check(glooClip.GetData(waveform, 0) && waveform.Any(sample => Mathf.Abs(sample) > 0.05f),
@@ -158,8 +158,12 @@ namespace Aaris.MapReview.Editor
                     "Gameplay has one active camera AudioListener and an audio director");
                 var audioRoot = (GameObject)typeof(AarisAudioDirector).GetField("audioRoot", Private).GetValue(audio);
                 var sources = audioRoot.GetComponentsInChildren<AudioSource>();
-                Check(sources.Length == 15, "Audio sources are pooled with 12 spatial voices and 3 loops");
-                bool Cue(string name) => sources.Any(source => source.clip != null && source.clip.name == name);
+                Check(sources.Length == 16 && sources.Count(s => s.loop) == 4 &&
+                    sources.Count(s => !s.loop && s.spatialBlend == 0f) == 4 &&
+                    sources.Count(s => !s.loop && s.spatialBlend == 1f) == 8,
+                    "Four local voices, eight spatial world voices and four loops are pooled");
+                bool Cue(string name, float blend = 0f) => sources.Any(source =>
+                    source.clip != null && source.clip.name == name && source.spatialBlend == blend);
                 void TickAudio() => typeof(AarisAudioDirector).GetMethod("LateUpdate", Private).Invoke(audio, null);
                 var drop = player.GetComponent<AarisOfflineDrop>();
                 Check(drop != null && drop.Phase == AarisOfflineDrop.DropPhase.InPlane, "Audio test starts in the airplane");
@@ -171,19 +175,21 @@ namespace Aaris.MapReview.Editor
                 typeof(AarisOfflineDrop).GetField("airborneSince", Private).SetValue(drop, Time.time - 1f);
                 drop.OnAction();
                 TickAudio();
-                Check(drop.IsUnderCanopy && Cue("parachute_open"), "Parachute opening emits its cue");
+                Check(drop.IsUnderCanopy && Cue("parachute_open") && Cue("canopy_glide_loop"),
+                    "Parachute opening starts the local deployment cue and canopy loop");
                 player.transform.position = new Vector3(SessionState.GetFloat(Session + "X", 0), SessionState.GetFloat(Session + "Y", 0), SessionState.GetFloat(Session + "Z", 0));
                 typeof(AarisOfflineDrop).GetMethod("Land", Private).Invoke(drop, null);
                 TickAudio();
                 Check(Cue("parachute_land"), "Parachute touchdown emits its cue");
-                var jumpTimestamp = typeof(AarisThirdPersonPlayer).GetField("lastJumpStarted", Private);
-                float previousJump = player.LastJumpStartedTime;
-                jumpTimestamp.SetValue(player, Time.unscaledTime);
-                TickAudio();
-                jumpTimestamp.SetValue(player, previousJump);
-                Check(Cue("jump_start"), "Player jump event emits its cue");
+                foreach (var source in sources)
+                    if (!source.loop) source.Stop();
+                typeof(AarisAudioDirector).GetMethod("PlayJump", Private).Invoke(audio, null);
+                typeof(AarisAudioDirector).GetMethod("PlayLanding", Private).Invoke(audio, new object[] { 4f });
+                Check(Cue("jump_start") && Cue("land_thud"), "Ground jump and landing use the local feedback pool");
                 AarisAudioDirector.GunShot("SMG", "", player.transform.position);
-                Check(Cue("smg_shot"), "Gunfire selects its weapon-category cue");
+                AarisAudioDirector.BulletImpact(player.transform.position);
+                Check(Cue("smg_shot") && Cue("bullet_impact", 1f),
+                    "Local gunfire and spatial bullet impact use their separate pools");
                 Physics.SyncTransforms();
                 battle = player.GetComponent<AarisBattleActions>();
                 wall = player.GetComponent<AarisOfflineGlooWall>();

@@ -1,0 +1,5 @@
+Mesh source: ModKit v1.2 by Jaron K. Bragg (CC0-1.0).
+https://github.com/JaronKBragg7337/asset-pack-ue-threejs-blender-unity/releases/tag/v1.2
+ModKit-v1.2.zip SHA-256: 3393f2d34f046daa0f5a670f89704d274ffeb86674568ae0eb402f773dcec1fb
+Selected glTF source modules: Wall_Doorway_4m, Wall_Window_4m, Wall_Damaged_4m, Roof_Pitched_4m, Roof_Flat_4m, Rubble_Pile.
+The saved Unity meshes combine, resize and simplify these modules, with a shared masonry atlas.

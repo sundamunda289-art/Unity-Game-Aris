@@ -9,7 +9,7 @@ namespace Aaris.MapReview
     /// pointer up, a disabled button, scene unload or application pause.
     /// </summary>
     public sealed class AarisHudButton : MonoBehaviour,
-        IPointerDownHandler, IPointerUpHandler, ICancelHandler
+        IPointerDownHandler, IPointerUpHandler, ICancelHandler, IDragHandler
     {
         private AarisBattleHUD owner;
         private AarisBattleHUD.Action kind;
@@ -50,6 +50,15 @@ namespace Aaris.MapReview
             if (!isHoldAction && heldPointers.Count > 0) return;
             if (!heldPointers.Add(eventData.pointerId)) return;
             if (heldPointers.Count == 1) owner.Down(kind);
+        }
+
+        // The UI owns this finger while Fire or Jump is held.
+        public void OnDrag(PointerEventData eventData)
+        {
+            if (owner == null || eventData == null || !AarisBattleHUD.IsVisible ||
+                !heldPointers.Contains(eventData.pointerId)) return;
+            if (kind == AarisBattleHUD.Action.Fire || kind == AarisBattleHUD.Action.Jump)
+                owner.ForwardLookDelta(eventData.delta);
         }
 
         public void OnPointerUp(PointerEventData eventData)
