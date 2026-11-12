@@ -161,7 +161,11 @@ jobs:
           test -z "$(git ls-files -u)"
           test "$(git rev-parse HEAD:Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity)" = "$(git hash-object Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity)"
           echo AARIS_MAIN_NATIVE_SCENE_AND_ALL_CONFLICTED_ASSETS_PRESERVED
+          # These two branch tests target features in deliberately excluded
+          # conflicting source files. Retain main's matched regression contracts.
+          git checkout "$MAIN_SHA" -- Tools/Validation/check_armed_locomotion.py Tools/Validation/test_settlement_expansion.py
           for testfile in Tools/Validation/check_weapon_loot.py Tools/Validation/check_armed_locomotion.py Tools/Validation/check_battle_hardening.py Tools/Validation/check_vehicle_system.py Tools/Validation/test_loot_cell_streaming.py Tools/Validation/test_settlement_expansion.py; do
+            echo "RUN_SAFE_REGRESSION $testfile"
             timeout 45 python3 "$testfile"
           done
           test "$(git diff --cached --name-only | wc -l)" -gt 100
