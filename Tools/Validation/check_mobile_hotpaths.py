@@ -473,6 +473,33 @@ def audit():
         assert writes < 2 * fps
         assert not (level != target)  # Steady-state setter is skipped.
 
+    # A player teleport can invalidate all 40 physical gun pickups at once.
+    # Bound Unity Destroy() calls per 330 ms streaming poll: gameplay state,
+    # reachability and planned drops must remain owned by the loot world.
+    loot = (SRC / "AarisWeaponLootWorld.cs").read_text(encoding="utf-8")
+    refresh = loot[loot.index("private bool RefreshPickups("):
+                   loot.index("private bool StreamNearby(")]
+    assert "private const int MaximumActiveLoot = 40;" in loot
+    assert "private const int MaximumUnloadsPerRefresh = 6;" in loot
+    assert "int unloaded = 0;" in refresh
+    assert "if (unloaded >= MaximumUnloadsPerRefresh) continue;" in refresh
+    assert refresh.index("if (unloaded >= MaximumUnloadsPerRefresh)") < refresh.index("Destroy(pickup.gameObject);")
+    assert "unloaded++;" in refresh
+    assert refresh.count("Destroy(pickup.gameObject);") == 1
+    assert "if (d2 <= bestDistance && !IsBlockedDrop(pickup)" in refresh
+    assert "if (record.visible != null) continue;" in loot
+    for fps in (15, 20, 30, 60, 90, 120):
+        remaining, next_poll, maximum_burst = 40, 0.0, 0
+        for frame in range(fps * 4):
+            now = frame / fps
+            if now < next_poll:
+                continue
+            next_poll = now + 0.33
+            destroyed = min(6, remaining)
+            remaining -= destroyed
+            maximum_burst = max(maximum_burst, destroyed)
+        assert remaining == 0 and maximum_burst <= 6, (fps, remaining)
+
     # Ground loot can be abundant in the original offline map. Hidden weapon
     # meshes must not dirty Unity Transform state at 30/60/120 FPS, while
     # reappearing meshes catch up to the exact elapsed-time spin angle.
@@ -515,7 +542,7 @@ def audit():
     assert 0 <= pending < 360
 
     print("PASS: airborne support reuse, single motor, steady FOV writes, "
-          "bounded player/animation optional-component lookup, budgeted vehicle streaming, legacy idle pose, collision-safe camera, deadline-gated SFX, offscreen loot spin, audio/gloo hotpaths, refresh-aware pacing and adaptive Android quality contracts")
+          "bounded player/animation optional-component lookup, budgeted vehicle/loot streaming, legacy idle pose, collision-safe camera, deadline-gated SFX, offscreen loot spin, audio/gloo hotpaths, refresh-aware pacing and adaptive Android quality contracts")
     print("NOT TESTED: Unity compilation, live camera occlusion and device FPS.")
 
 
