@@ -8,6 +8,7 @@ on:
       - 'Tools/Turbo/eye_v5.py'
       - 'Tools/Turbo/aaris-eye'
       - 'Tools/Turbo/install_super_control.sh'
+      - '.devcontainer/start_screen.sh'
       - 'Assets/AarisWorld/Editor/AarisV4EditorDriver.cs'
       - '.github/workflows/aaris-ai-control-v4-tests.yml'
   workflow_dispatch:
@@ -31,7 +32,8 @@ jobs:
           /usr/bin/python3 Tools/Turbo/gui_v4.py --selftest
           /usr/bin/python3 Tools/Turbo/unity_v4.py --selftest
           /usr/bin/python3 Tools/Turbo/eye_v5.py --selftest
-          bash -n Tools/Turbo/aaris-eye Tools/Turbo/install_super_control.sh
+          bash -n Tools/Turbo/aaris-eye Tools/Turbo/install_super_control.sh .devcontainer/start_screen.sh
+          grep -q AARIS_AI_EYE_HANDS_READY .devcontainer/start_screen.sh
       - name: Real X11 input + screenshot replay smoke test (not Unity)
         run: |
           Xvfb :99 -screen 0 1280x720x24 -nolisten tcp >/tmp/aaris-xvfb.log 2>&1 &
