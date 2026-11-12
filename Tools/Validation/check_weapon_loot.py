@@ -129,6 +129,14 @@ def run():
     assert "requestPickupUntil = Time.unscaledTime + 0.7f;" in world
     assert "allowInitialAutoPickup = false;" in world
     assert "IsBlockedDrop(pickup)" in world
+    # A nearby gun must actually complete the pickup transaction before the
+    # one-time landing fallback is marked settled. Merely seeing a floor gun
+    # can strand a fast-moving player unarmed between streaming polls.
+    starter = world.split("private void EnsureStarterLoot(Vector3 playerPosition)", 1)[1]
+    starter = starter.split("private bool IsCurrentlyActive", 1)[0]
+    assert "if (TryTake(pickup))" in starter
+    assert "foreach (var pickup in active)" not in starter
+    assert "starterLootSettled = true;" in starter
     assert 'Add("PICK"' in hud and 'Add("DROP"' in hud
     assert 'Add("SWAP"' not in hud
     assert "private bool CanReachPickup(AarisWeaponPickup pickup)" in world
