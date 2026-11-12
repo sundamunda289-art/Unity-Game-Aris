@@ -54,9 +54,9 @@ def audit() -> None:
     assert "part == AvatarMaskBodyPart.RightArm" in visual
     assert "layered.SetLayerMaskFromAvatarMask(1, upperBodyMask);" in visual
     assert "mixer = AnimationMixerPlayable.Create(graph, 12);" in visual
-    assert "weaponUpperMixer.SetInputWeight(0, 1f - attackRatio);" in visual
-    assert "layered.SetInputWeight(1, layerWeight);" in visual
-    assert all(f"mixer.SetInputWeight({i}," in visual for i in range(12))
+    assert "WriteWeightIfChanged(weaponUpperMixer, lastUpperWeights, 0, 1f - attackRatio);" in visual
+    assert "WriteLayerWeightIfChanged(layerWeight);" in visual
+    assert all(f"WriteWeightIfChanged(mixer, lastBaseWeights, {i}," in visual for i in range(12))
     assert "mixer.SetInputWeight(12" not in visual
     assert "float stanceScale = stanceTotal > 1f ? pose / stanceTotal : 1f;" in visual
     assert "crouchBlend * stanceScale" in visual and "proneBlend * stanceScale" in visual
