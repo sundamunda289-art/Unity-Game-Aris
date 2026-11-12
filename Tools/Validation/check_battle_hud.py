@@ -58,6 +58,18 @@ def check() -> None:
     assert len(set(controls)) == 5
     assert "Screen.safeArea" in hud and "CanvasScaler.ScaleMode.ScaleWithScreenSize" in hud
     assert "OnPointerDown" in button and "OnPointerUp" in button
+    # Android may pause while a Fire/Jump pointer is held without delivering
+    # another pointer-up event. No stale finger may lock the next press.
+    for fragment in (
+        "private void OnApplicationPause(bool paused)",
+        "if (paused) Release();",
+        "private void OnApplicationFocus(bool focused)",
+        "if (!focused) Release();",
+        "private void OnDisable() => Release();",
+        "heldPointers.Clear();",
+        "if (owner != null) owner.Up(kind);",
+    ):
+        assert fragment in button, "Missing held-touch interruption cleanup: " + fragment
     assert "SetFireHeld(false)" in hud and "CapturesScreenPosition" in hud
     # The HUD forwards Fire-button drag to the player's ONLY look motor.
     # Without this exact player method Unity fails compilation (CS1061),
