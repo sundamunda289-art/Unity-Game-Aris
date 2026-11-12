@@ -40,6 +40,7 @@ namespace Aaris.MapReview
         private UniversalRenderPipelineAsset androidPipeline;
         private float originalRenderScale = 1f;
         private int slowIntervals, steadyIntervals, lastTargetFps;
+        private float lastEffectiveTargetFps;
 #endif
         public static string LatestReport { get; private set; } = "Starting map...";
 
@@ -133,6 +134,7 @@ namespace Aaris.MapReview
             if (androidPipeline == null) return;
             originalRenderScale = androidPipeline.renderScale;
             lastTargetFps = Application.targetFrameRate;
+            lastEffectiveTargetFps = EffectiveAndroidTargetFps(lastTargetFps);
             float initialScale = memoryMB <= 2304 ? 0.85f : 0.92f;
             androidPipeline.renderScale = Mathf.Min(originalRenderScale, initialScale);
             // Mipmap streaming was already enabled by the saved QualitySettings.
@@ -164,13 +166,22 @@ namespace Aaris.MapReview
             if (androidPipeline == null || !adaptiveAndroidResolution) return;
             int targetFps = Application.targetFrameRate;
             if (targetFps <= 0) return;
-            if (lastTargetFps != targetFps)
+            float effectiveFps = EffectiveAndroidTargetFps(targetFps);
+            // Android can change display refresh during play (e.g. 90 Hz to
+            // 60 Hz). Never combine consecutive slow windows measured against
+            // different frame budgets or blur the world on the transition.
+            if (lastTargetFps != targetFps ||
+                Mathf.Abs(lastEffectiveTargetFps - effectiveFps) > 0.5f)
             {
                 lastTargetFps = targetFps;
+                lastEffectiveTargetFps = effectiveFps;
                 slowIntervals = steadyIntervals = 0;
+                // Old ring-buffer frames were paced against another budget.
+                // Refill from the new refresh mode before making a decision.
+                frameIndex = frameCount = 0;
+                sample.renderScale = androidPipeline.renderScale;
                 return;
             }
-            float effectiveFps = EffectiveAndroidTargetFps(targetFps);
             float budgetMs = 1000f / effectiveFps;
             if (sample.p95FrameMs > budgetMs * 1.20f &&
                 sample.p75FrameMs > budgetMs * 1.06f)
