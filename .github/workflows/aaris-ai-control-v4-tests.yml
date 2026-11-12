@@ -1,0 +1,118 @@
+name: Aaris AI Control V4 smoke tests
+
+on:
+  pull_request:
+    paths:
+      - 'Tools/Turbo/gui_v4.py'
+      - 'Tools/Turbo/unity_v4.py'
+      - 'Tools/Turbo/eye_v5.py'
+      - 'Tools/Turbo/aaris-eye'
+      - 'Tools/Turbo/install_super_control.sh'
+      - '.devcontainer/start_screen.sh'
+      - 'Assets/AarisWorld/Editor/AarisV4EditorDriver.cs'
+      - '.github/workflows/aaris-ai-control-v4-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-and-x11:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install headless X11 test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb scrot xdotool x11-utils python3-pil
+      - name: Validate Python syntax and command allowlists
+        run: |
+          /usr/bin/python3 -m py_compile Tools/Turbo/gui_v4.py Tools/Turbo/unity_v4.py Tools/Turbo/eye_v5.py
+          /usr/bin/python3 Tools/Turbo/gui_v4.py --selftest
+          /usr/bin/python3 Tools/Turbo/unity_v4.py --selftest
+          /usr/bin/python3 Tools/Turbo/eye_v5.py --selftest
+          bash -n Tools/Turbo/aaris-eye Tools/Turbo/install_super_control.sh .devcontainer/start_screen.sh
+          grep -q AARIS_AI_EYE_HANDS_READY .devcontainer/start_screen.sh
+      - name: Real X11 input + screenshot replay smoke test (not Unity)
+        run: |
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp >/tmp/aaris-xvfb.log 2>&1 &
+          sleep 2
+          export DISPLAY=:99
+          xdotool getdisplaygeometry
+          /usr/bin/python3 Tools/Turbo/gui_v4.py \
+            --id ci_v4_smoke --seconds 2 --fps 8 \
+            --sequence '[{"op":"mark","label":"before"},{"op":"key_down","key":"w"},{"op":"wait","seconds":0.4},{"op":"key_up","key":"w"},{"op":"mark","label":"after"}]'
+          /usr/bin/python3 - <<'PY'
+          import json,zipfile
+          from pathlib import Path
+          root=Path('/tmp/aaris-v4-evidence/ci_v4_smoke')
+          manifest=json.loads((root/'manifest.json').read_text())
+          assert manifest['actual_frames'] >= 4,manifest
+          assert manifest['frames'][0]['file'] == 'frame_0000.jpg'
+          assert (root/'contact_sheet.jpg').stat().st_size > 1000
+          with zipfile.ZipFile(root/'replay.zip') as z:
+              assert 'manifest.json' in z.namelist()
+              assert len([x for x in z.namelist() if x.startswith('frames/')]) == manifest['actual_frames']
+          assert manifest['timeline'][-1]['event'] == 'release_all'
+          print('AARIS_V4_X11_REPLAY_SMOKE_PASS')
+          PY
+      - name: V5 one-command evidence package test (real X11, not Unity)
+        run: |
+          export DISPLAY=:99
+          /usr/bin/python3 Tools/Turbo/eye_v5.py --id ci_v5_bundle --seconds 2 --fps 8 \
+            --script '[{"op":"os_key","key":"w"},{"op":"mark","label":"after_key"}]'
+          /usr/bin/python3 - <<'PY'
+          import json,zipfile
+          from pathlib import Path
+          root=Path('/tmp/aaris-v5-evidence/ci_v5_bundle')
+          data=json.loads((root/'manifest.json').read_text())
+          assert data['actual_frames']>=4
+          assert data['events'][0]['op']=='os_key'
+          assert all('image' in e for e in data['events'])
+          assert data['result']=='captured'
+          with zipfile.ZipFile(root/'replay.zip') as z:
+              assert 'contact_sheet.jpg' in z.namelist()
+              assert 'manifest.json' in z.namelist()
+              assert len([n for n in z.namelist() if n.startswith('frames/')])==data['actual_frames']
+              assert len([n for n in z.namelist() if n.startswith('events/')])==2
+          print('AARIS_V5_E2E_X11_BUNDLE_PASS')
+          PY
+      - name: V5 arbitrary X,Y long press and auto-release verified by X11
+        run: |
+          export DISPLAY=:99
+          bash Tools/Turbo/install_super_control.sh
+          xev -root -event mouse > /tmp/aaris-v5-mouse-events.log 2>&1 &
+          XEV_PID=$!
+          sleep .4
+          "$HOME/.local/bin/aaris-eye" hold 340 280 1 1 > /tmp/aaris-v5-hold-result.json
+          sleep .3
+          kill "$XEV_PID" || true
+          /usr/bin/python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('/tmp/aaris-v5-hold-result.json').read_text())
+          e=Path('/tmp/aaris-v5-mouse-events.log').read_text()
+          assert d['result']=='captured'
+          assert d['events'][0]['op']=='os_hold'
+          assert d['actual_frames']>=3
+          assert e.count('ButtonPress')>=1,e[-1000:]
+          assert e.count('ButtonRelease')>=1,e[-1000:]
+          assert Path(d['bundle']).is_file()
+          print('AARIS_V5_ANYWHERE_MOUSE_HOLD_AND_RELEASE_PASS')
+          PY
+      - name: C# syntax parser and safe named Unity UI coverage (static only)
+        run: |
+          python -m pip install -q tree-sitter==0.26.0 tree-sitter-c-sharp==0.23.5
+          python - <<'PY'
+          from pathlib import Path
+          import tree_sitter,tree_sitter_c_sharp
+          src=Path('Assets/AarisWorld/Editor/AarisV4EditorDriver.cs').read_bytes()
+          parser=tree_sitter.Parser(tree_sitter.Language(tree_sitter_c_sharp.language()))
+          tree=parser.parse(src)
+          assert not tree.root_node.has_error, 'V4 C# parse error'
+          for name in ['EditorApplication.Step()', 'ReleaseInputs()', 'BuildUiMap()', 'TapNamedUi(req)', 'ExecuteEvents.Execute']:
+              assert name in src.decode(), name
+          print('AARIS_V4_CSHARP_SYNTAX_PASS')
+          PY
+          echo 'C# still requires a real Unity Editor compilation and Play Mode validation before merge.'
