@@ -164,10 +164,20 @@ jobs:
           # These two branch tests target features in deliberately excluded
           # conflicting source files. Retain main's matched regression contracts.
           git checkout "$MAIN_SHA" -- Tools/Validation/check_armed_locomotion.py Tools/Validation/test_settlement_expansion.py
+          failures=0
           for testfile in Tools/Validation/check_weapon_loot.py Tools/Validation/check_armed_locomotion.py Tools/Validation/check_battle_hardening.py Tools/Validation/check_vehicle_system.py Tools/Validation/test_loot_cell_streaming.py Tools/Validation/test_settlement_expansion.py; do
             echo "RUN_SAFE_REGRESSION $testfile"
-            timeout 45 python3 "$testfile"
+            if timeout 45 python3 "$testfile"; then
+              echo "REGRESSION_PASS $testfile"
+            else
+              echo "REGRESSION_FAIL $testfile"
+              failures=$((failures + 1))
+            fi
           done
+          if test "$failures" -ne 0; then
+            echo "AARIS_MIXED_SOURCE_CONTRACTS_NEED_RECONCILIATION $failures"
+            exit 26
+          fi
           test "$(git diff --cached --name-only | wc -l)" -gt 100
           TREE="$(git write-tree)"
           export GIT_AUTHOR_NAME='Aaris Safe Integration'
