@@ -7,7 +7,7 @@ The scene replaces **only the rendered/collision geometry of this one instance**
 
 ## Transform & layout safety
 - Keeps the same TownHall root object/fileID and coordinates, parenting, foundations, roads, surrounding houses, loot and vehicle spawns.
-- New scaled mesh dimensions: approx 27.862 m × 12.805 m × 21.359 m, within the prior ~37.24 m × 39.20 m × 24.62 m landmark footprint.
+- New unscaled mesh dimensions: approx 12.383 m × 10.244 m × 16.430 m, occupying a small open-house footprint in the older ~37.24 m × 39.20 m × 24.62 m landmark parcel. The TownHall root transform remains exactly [1,1,1], required by existing saved-layout CI; this also retains a spacious surrounding courtyard.
 - Uses a physically open entry and unglazed openings; no interactive/closed door or glass meshes are introduced.
 - Uses the prefab's existing shared combined geometry with a MeshCollider of the *same* mesh (enabled), so no legacy tower collision remains.
 - Preserves the scene's existing three authored LOD renderer slots and screen thresholds (required by map CI) while replacing **all three** TownHall LOD mesh/material references with the same low-poly, open-entry Kenney mesh and shared atlas. The former tower meshes never render at any LOD distance. A single common mesh keeps visual silhouettes consistent; additional decimated LODs can be authored later if mobile profiling warrants them.
