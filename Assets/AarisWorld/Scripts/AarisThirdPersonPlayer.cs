@@ -380,11 +380,16 @@ namespace Aaris.MapReview
             // Sole controller motor: no extra movement component or double
             // gravity. Touch, keyboard and auto-sprint use one intent pipeline.
             if (running && moveInput.y < -0.25f) running = false;
-            if (battle != null && battle.FireHeld) running = false;
+            // Shooting while grounded switches to combat gait. In a jump the
+            // previous running momentum is already in horizontalVelocity;
+            // do not erase sprint intent merely because Fire is held mid-air.
+            // Landing restores the standard slower grounded combat gait.
+            bool airborneIntent = launchJump || !wasGrounded;
+            if (battle != null && battle.FireHeld && !airborneIntent) running = false;
             bool isAiming = weaponInventory != null && weaponInventory.Aiming;
             if (isAiming) running = false;
             bool sprinting = (running || Input.GetKey(KeyCode.LeftShift)) &&
-                !isAiming && (battle == null || !battle.FireHeld);
+                !isAiming && (battle == null || !battle.FireHeld || airborneIntent);
             if (sprinting && battle != null && !battle.TryStand())
                 sprinting = false;
             Vector2 intent = moveInput;
