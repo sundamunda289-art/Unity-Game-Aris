@@ -162,10 +162,19 @@ namespace Aaris.MapReview
             int mask = Physics.DefaultRaycastLayers;
             int count = Physics.OverlapCapsuleNonAlloc(low, high, radius, nearHits,
                 mask, QueryTriggerInteraction.Ignore);
-            if (count == nearHits.Length) return false; // Buffer saturation: stay low.
+            Collider[] headroomHits = nearHits;
+            if (count >= nearHits.Length)
+            {
+                // A filled NonAlloc result is incomplete, not proof of a wall.
+                // In dense settlements resolve ALL contacts, then still reject
+                // every real ceiling while ignoring only our own colliders.
+                headroomHits = Physics.OverlapCapsule(low, high, radius, mask,
+                    QueryTriggerInteraction.Ignore);
+                count = headroomHits.Length;
+            }
             for (int i = 0; i < count; i++)
             {
-                Collider hit = nearHits[i];
+                Collider hit = headroomHits[i];
                 if (hit != null && !hit.transform.IsChildOf(transform)) return false;
             }
             return true;
@@ -196,10 +205,19 @@ namespace Aaris.MapReview
             int mask = Physics.DefaultRaycastLayers;
             int count = Physics.OverlapCapsuleNonAlloc(head, legs, 0.245f, nearHits,
                 mask, QueryTriggerInteraction.Ignore);
-            if (count == nearHits.Length) return false;
+            Collider[] proneHits = nearHits;
+            if (count >= nearHits.Length)
+            {
+                // Crowded terrain can fill the reusable buffer with floors and
+                // the player's own colliders. Query every hit on overflow so
+                // real walls still block crawling without falsely locking pose.
+                proneHits = Physics.OverlapCapsule(head, legs, 0.245f, mask,
+                    QueryTriggerInteraction.Ignore);
+                count = proneHits.Length;
+            }
             for (int i = 0; i < count; i++)
             {
-                Collider obstacle = nearHits[i];
+                Collider obstacle = proneHits[i];
                 if (obstacle == null || obstacle.transform.IsChildOf(transform)) continue;
                 // The character rests ON terrain or paved bridges/steps.
                 // The horizontal prone footprint must not interpret a flat
