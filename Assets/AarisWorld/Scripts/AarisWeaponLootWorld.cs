@@ -380,6 +380,12 @@ namespace Aaris.MapReview
         {
             if (state == null || state.Spec == null ||
                 dropped.Count >= MaximumDroppedLoot) return null;
+            // Player-initiated drops bypass the nearby stream builder. Cap
+            // their immediate 3D visuals too, or repeated drops can create
+            // hundreds of pickups around the player on a 2 GB phone.
+            // Deferred weapon swaps keep their persistent records and are
+            // visualized later by the same capped streamer.
+            if (!deferVisual && active.Count >= MaximumActiveLoot) return null;
             int id = nextDropId--;
             var record = new AarisDroppedWeapon
             {
@@ -485,7 +491,10 @@ namespace Aaris.MapReview
         /// </summary>
         public bool TryDropEquipped()
         {
+            // Refuse the action before its physics checks when the visual
+            // budget is full. The held gun remains owned by the player.
             if (inventory == null || !inventory.HasGun ||
+                active.Count >= MaximumActiveLoot ||
                 !TryFindDropSpot(out Vector3 point)) return false;
             var state = inventory.Current.CaptureState();
             var record = CreateDropped(state, point, 1.25f);

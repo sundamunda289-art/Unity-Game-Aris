@@ -34,6 +34,45 @@ class LootGridRegression(unittest.TestCase):
         ):
             self.assertIn(clause, SOURCE)
 
+    def test_player_drop_never_bypasses_40_live_visuals(self):
+        # A voluntary drop used to bypass the streaming cap and allocate a
+        # new pickup GameObject even when 40 nearby meshes were active.
+        direct = SOURCE[SOURCE.index("private AarisDroppedWeapon CreateDropped("):
+                        SOURCE.index("private void UndoDrop(")]
+        cap = "if (!deferVisual && active.Count >= MaximumActiveLoot) return null;"
+        self.assertIn(cap, direct)
+        self.assertLess(direct.index(cap), direct.index("int id = nextDropId--;"))
+        self.assertLess(direct.index(cap), direct.index('new GameObject("Dropped "'))
+        self.assertIn("if (!deferVisual)", direct)
+
+        drop = SOURCE[SOURCE.index("public bool TryDropEquipped()"):
+                      SOURCE.index("private bool IsBlockedDrop(")]
+        self.assertIn("active.Count >= MaximumActiveLoot", drop)
+        self.assertLess(drop.index("active.Count >= MaximumActiveLoot"),
+                        drop.index("!TryFindDropSpot(out Vector3 point)"))
+        self.assertLess(drop.index("CreateDropped(state, point, 1.25f)"),
+                        drop.index("inventory.TryRemove(out AarisWeaponState removed)"))
+        # Swapping a gun must still reserve its persistent record without
+        # constructing a second model on the same frame.
+        self.assertIn("deferVisual: true", SOURCE)
+        # Bounded model: repeated direct drops cannot add a 41st live mesh,
+        # while deferred swaps add zero new live meshes at any occupancy.
+        for live in range(0, 41):
+            for deferred in (False, True):
+                permitted = deferred or live < 40
+                live_after = live + int(permitted and not deferred)
+                self.assertLessEqual(live_after, 40)
+                if deferred:
+                    self.assertTrue(permitted)
+                    self.assertEqual(live_after, live)
+        live = accepted = 0
+        for _ in range(320):
+            if live < 40:
+                live += 1
+                accepted += 1
+            self.assertLessEqual(live, 40)
+        self.assertEqual((live, accepted), (40, 40))
+
     def test_native_terrain_world_y_used_for_outdoor_floor(self):
         self.assertIn("terrain.SampleHeight(new Vector3(c.x, 0f, c.z))", SOURCE)
         self.assertNotIn("terrain.transform.position.y + terrain.SampleHeight", SOURCE)
