@@ -53,7 +53,6 @@ namespace Aaris.MapReview
         private const float RetryDelaySeconds = 3f;
         private const int MaximumDroppedLoot = 320;
         private const float PickupDistance = 2.15f;
-        private const float StarterLootRange = 10f;
         private const float SeaLevel = -38.07552f;
         private const float CandidateCellMetres = 64f;
 
@@ -574,7 +573,14 @@ namespace Aaris.MapReview
                 nextRefresh = now + .33f;
                 streamFramesRemaining = RefreshPickups(playerPosition, now) ? 0 : StreamFramesPerRefresh;
             }
-            if (streamFramesRemaining == 0) return;
+            if (streamFramesRemaining == 0)
+            {
+                // A busy nearby streamer may repeatedly exhaust its bounded
+                // build budget. Still guarantee a single starter after landing,
+                // with this fallback check capped to the 330 ms poll interval.
+                if (!starterLootSettled) EnsureStarterLoot(playerPosition);
+                return;
+            }
 
             streamFramesRemaining--;
             if (!StreamNearby(playerPosition, now))
@@ -722,7 +728,7 @@ namespace Aaris.MapReview
             foreach (var pickup in active)
             {
                 if (pickup != null && !IsBlockedDrop(pickup) &&
-                    (pickup.transform.position - playerPosition).sqrMagnitude <= StarterLootRange * StarterLootRange &&
+                    (pickup.transform.position - playerPosition).sqrMagnitude <= PickupDistance * PickupDistance &&
                     CanReachPickup(pickup))
                 {
                     starterLootSettled = true;
