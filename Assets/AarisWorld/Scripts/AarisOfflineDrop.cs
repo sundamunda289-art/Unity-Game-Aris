@@ -40,6 +40,7 @@ namespace Aaris.MapReview
         private bool battleRaycasterWasEnabled, weaponRaycasterWasEnabled, controlsSuspended;
         private bool canopyRequested;
         private float nextHeightSample, nextContactSample;
+        private float noGroundContactSince = -1f;
         private GameObject plane, canopy;
         private Transform[] propellers;
         private Renderer[] initialPlayerRenderers;
@@ -448,6 +449,7 @@ namespace Aaris.MapReview
                 nextContactSample = Time.time + 0.10f;
                 if (TryGetDistanceToSupport(out float height, 1.25f) && height <= 0.48f)
                 {
+                    if (noGroundContactSince < 0f) noGroundContactSince = Time.time;
                     if (TryNativeTerrainTouchdown(beforeMove)) return;
                     // ALT 0 over water is not a collider contact. Do not inject
                     // another 0.5 m downward unless a real walkable floor exists.
@@ -462,7 +464,17 @@ namespace Aaris.MapReview
                         Land();
                         return;
                     }
+                    // The terrain height field or sea plane can report ALT 0
+                    // before the physics body has actually touched ground.
+                    // A prolonged no-contact glide is a softlock; recover
+                    // after normal collision and native ground probes fail.
+                    if (Time.time - noGroundContactSince >= 1.25f)
+                    {
+                        RecoverFromOceanFall();
+                        return;
+                    }
                 }
+                else noGroundContactSince = -1f;
             }
             // This offline mode has no swimming logic. Never remain stuck
             // below the ocean with a shore-clamped aerial camera.
