@@ -268,6 +268,26 @@ namespace Aaris.MapReview
         private void ReadInput()
         {
             Layout();
+            // On some Android devices a finger can disappear from the touch
+            // snapshot without a delivered Ended event (navigation gesture,
+            // app interruption, multi-finger cancel). Recover each authority
+            // independently; an absent joystick must not keep the player
+            // moving and an absent look finger must not freeze camera swipes.
+            if (Input.touchCount > 0 && (moveFinger >= 0 || lookFinger >= 0))
+            {
+                bool movePresent = moveFinger < 0;
+                bool lookPresent = lookFinger < 0;
+                for (int i = 0; i < Input.touchCount; i++)
+                {
+                    Touch finger = Input.GetTouch(i);
+                    if (finger.phase == TouchPhase.Ended ||
+                        finger.phase == TouchPhase.Canceled) continue;
+                    if (finger.fingerId == moveFinger) movePresent = true;
+                    if (finger.fingerId == lookFinger) lookPresent = true;
+                }
+                if (!movePresent) { moveFinger = -1; moveInput = Vector2.zero; }
+                if (!lookPresent) lookFinger = -1;
+            }
             for (int i = 0; i < Input.touchCount; i++)
             {
                 Touch t = Input.GetTouch(i);
