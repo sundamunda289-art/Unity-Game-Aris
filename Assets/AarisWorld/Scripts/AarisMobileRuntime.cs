@@ -39,6 +39,9 @@ namespace Aaris.MapReview
         private Task<string> pendingLogWrite;
         private UniversalRenderPipelineAsset androidPipeline;
         private float originalRenderScale = 1f;
+        private float lastAppliedRenderScale = 1f;
+        private float originalMipBudgetMB, appliedMipBudgetMB;
+        private bool modifiedMipBudget;
         private int slowIntervals, steadyIntervals, lastTargetFps;
         private float lastEffectiveTargetFps;
 #endif
@@ -137,12 +140,18 @@ namespace Aaris.MapReview
             lastEffectiveTargetFps = EffectiveAndroidTargetFps(lastTargetFps);
             float initialScale = memoryMB <= 2304 ? 0.85f : 0.92f;
             androidPipeline.renderScale = Mathf.Min(originalRenderScale, initialScale);
+            lastAppliedRenderScale = androidPipeline.renderScale;
             // Mipmap streaming was already enabled by the saved QualitySettings.
             // Bound its texture residency on low-RAM phones without modifying
             // the four native TerrainData control textures or their readability.
             float mipBudgetMB = memoryMB <= 2304 ? 160f : 224f;
-            QualitySettings.streamingMipmapsMemoryBudget =
-                Mathf.Min(QualitySettings.streamingMipmapsMemoryBudget, mipBudgetMB);
+            originalMipBudgetMB = QualitySettings.streamingMipmapsMemoryBudget;
+            appliedMipBudgetMB = Mathf.Min(originalMipBudgetMB, mipBudgetMB);
+            if (appliedMipBudgetMB < originalMipBudgetMB)
+            {
+                QualitySettings.streamingMipmapsMemoryBudget = appliedMipBudgetMB;
+                modifiedMipBudget = true;
+            }
         }
 
         // Android rounds requested FPS down to a divisor of the display rate.
@@ -206,13 +215,21 @@ namespace Aaris.MapReview
             if (slowIntervals >= 2)
             {
                 float reduced = Mathf.Max(floor, current - 0.05f);
-                if (reduced < current - 0.001f) androidPipeline.renderScale = reduced;
+                if (reduced < current - 0.001f)
+                {
+                    androidPipeline.renderScale = reduced;
+                    lastAppliedRenderScale = reduced;
+                }
                 slowIntervals = 0;
             }
             else if (steadyIntervals >= 4)
             {
                 float recovered = Mathf.Min(originalRenderScale, current + 0.025f);
-                if (recovered > current + 0.001f) androidPipeline.renderScale = recovered;
+                if (recovered > current + 0.001f)
+                {
+                    androidPipeline.renderScale = recovered;
+                    lastAppliedRenderScale = recovered;
+                }
                 steadyIntervals = 0;
             }
             sample.renderScale = androidPipeline.renderScale;
@@ -265,6 +282,17 @@ namespace Aaris.MapReview
         {
             Application.lowMemory -= OnLowMemory;
             Application.logMessageReceived -= OnLog;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // URP pipeline assets and QualitySettings survive scene reloads.
+            // Restore only values still owned by this instance; avoid undoing
+            // a deliberate change made by another quality controller.
+            if (androidPipeline != null &&
+                Mathf.Approximately(androidPipeline.renderScale, lastAppliedRenderScale))
+                androidPipeline.renderScale = originalRenderScale;
+            if (modifiedMipBudget &&
+                Mathf.Approximately(QualitySettings.streamingMipmapsMemoryBudget, appliedMipBudgetMB))
+                QualitySettings.streamingMipmapsMemoryBudget = originalMipBudgetMB;
+#endif
         }
 
         private void OnLog(string message, string stackTrace, LogType type)
