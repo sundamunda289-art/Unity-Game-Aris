@@ -435,7 +435,9 @@ def audit():
     one_shot = audio[audio.index("private void OneShot("):
                      audio.index("private void Schedule(")]
     assert "int selected = nextVoice;" in one_shot
-    assert "if (voices[selected].isPlaying)" in one_shot
+    assert "bool idleVoice = !voices[selected].isPlaying;" in one_shot
+    assert "idleVoice = true;" in one_shot
+    assert "if (!idleVoice && IsLowPriorityCue(name)) return;" in one_shot
     assert "for (int offset = 1; offset < voices.Length; offset++)" in one_shot
     assert "if (voices[candidate].isPlaying) continue;" in one_shot
     assert "selected = candidate;" in one_shot
@@ -465,6 +467,31 @@ def audit():
                 assert not busy[chosen], (mask, cursor, chosen)
             else:
                 assert chosen == cursor  # Existing all-busy fallback.
+
+    # Audio pressure policy: only low-value foley may be skipped; important
+    # gunfire/explosions preserve the previous all-busy round-robin fallback.
+    # The early return must happen BEFORE changing the voice/cursor.
+    assert one_shot.index("if (!idleVoice && IsLowPriorityCue(name)) return;") < (
+        one_shot.index("nextVoice = (selected + 1) % voices.Length;")
+    )
+    low_priority = ("shell_drop", "step_dirt", "step_road",
+                    "step_water", "grenade_bounce")
+    policy = audio[audio.index("private static bool IsLowPriorityCue("):
+                   audio.index("private void OneShot(")]
+    for key in low_priority:
+        assert f'key == "{key}"' in policy
+    assert "new " not in policy
+    for mask in range(1 << 12):
+        busy = [(mask & (1 << i)) != 0 for i in range(12)]
+        for cursor in (0, 7):
+            chosen, new_cursor = select_idle_voice(busy, cursor)
+            for sound in (*low_priority, "smg_shot", "grenade_boom"):
+                accepted = not (all(busy) and sound in low_priority)
+                if accepted:
+                    assert new_cursor == (chosen + 1) % 12
+                else:
+                    assert all(busy) and chosen == cursor
+    # Tests model routing only; native AudioSource scheduling is not simulated.
 
     # Delayed SFX should do zero slot scans until the earliest cue is due.
     # Overwriting a saturated queue must also discard the old deadline.

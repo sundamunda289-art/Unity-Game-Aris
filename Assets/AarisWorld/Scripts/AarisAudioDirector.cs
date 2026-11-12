@@ -128,6 +128,14 @@ namespace Aaris.MapReview
             return clips.TryGetValue(name, out AudioClip value) ? value : null;
         }
 
+        // Under dense firefights, incidental footsteps/shells should never
+        // cut an important shot or explosion when all pooled voices are busy.
+        // Exact string keys and a fixed voice pool keep this branch allocation-free.
+        private static bool IsLowPriorityCue(string key) =>
+            key == "shell_drop" || key == "step_dirt" ||
+            key == "step_road" || key == "step_water" ||
+            key == "grenade_bounce";
+
         private void OneShot(string name, Vector3 point, float volume = 1f, float pitch = 1f)
         {
             AudioClip clip = GetClip(name);
@@ -136,16 +144,22 @@ namespace Aaris.MapReview
             // A shotgun/impact cue must not be stolen by round-robin wrapping
             // while another of the 12 existing channels has already finished.
             int selected = nextVoice;
-            if (voices[selected].isPlaying)
+            bool idleVoice = !voices[selected].isPlaying;
+            if (!idleVoice)
             {
                 for (int offset = 1; offset < voices.Length; offset++)
                 {
                     int candidate = (nextVoice + offset) % voices.Length;
                     if (voices[candidate].isPlaying) continue;
                     selected = candidate;
+                    idleVoice = true;
                     break;
                 }
             }
+            // Preserve the cursor and currently playing channels if a minor
+            // cue cannot find an idle voice. Critical cues retain the original
+            // all-busy round-robin preemption behaviour.
+            if (!idleVoice && IsLowPriorityCue(name)) return;
             AudioSource voice = voices[selected];
             nextVoice = (selected + 1) % voices.Length;
             // When all voices are busy, preserve the old round-robin fallback.
