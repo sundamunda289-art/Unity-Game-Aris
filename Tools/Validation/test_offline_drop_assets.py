@@ -295,6 +295,22 @@ class OfflineCombatAssetChecks(unittest.TestCase):
             self.assertNotIn("https://", source)
             self.assertNotIn("http://", source)
 
+    def test_aerial_camera_collision_and_native_terrain_clearance(self):
+        drop = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
+        helper = drop[drop.index("private Vector3 ClampCameraAboveTerrain("):
+                      drop.index("private void LateUpdate()")]
+        camera = drop[drop.index("private void LateUpdate()"):
+                      drop.index("private void RestoreFootControls()")]
+        self.assertIn("tile.SampleHeight(point) + 0.8f", helper)
+        self.assertNotIn("tile.transform.position.y + tile.SampleHeight", helper)
+        self.assertIn("if ((next - pos).sqrMagnitude > 0.00000001f)", camera)
+        self.assertIn("next = CameraSafePosition(focus, next);", camera)
+        self.assertIn("next = ClampCameraAboveTerrain(next);", camera)
+        self.assertLess(camera.index("next = CameraSafePosition(focus, next);"),
+                        camera.index("next = ClampCameraAboveTerrain(next);"))
+        self.assertLess(camera.index("next = ClampCameraAboveTerrain(next);"),
+                        camera.index("view.transform.position = next;"))
+
     def test_pc_combat_keys_do_not_trigger_two_actions(self):
         # Regression: V used to aim AND deploy cover; G dropped the gun
         # while throwing a grenade. Mobile touch actions remain unchanged.

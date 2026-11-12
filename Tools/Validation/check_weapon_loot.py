@@ -128,7 +128,11 @@ def run():
     assert "SetWeaponAimFov" in player and "ApplyWeaponRecoil" in player
     assert "AarisWeaponHUD.CapturesScreenPosition" in player
     assert "MaximumActiveLoot = 40" in world
-    assert "ActivationMetres = 42f" in world and "ReleaseMetres = 69f" in world
+    assert "ActivationMetres = 50f" in world and "ReleaseMetres = 69f" in world
+    assert "streamLimit = MaximumActiveLoot -" in world
+    assert "active.Count >= streamLimit" in world
+    assert "candidate.collider.attachedRigidbody != null" in world
+    assert "Mathf.Abs(candidate.point.y - expectedGround) > 0.38f" in world
     assert "TryResolve" in world and "Physics.CheckCapsule" in world
     assert "if (roof.collider is TerrainCollider)" in world
     assert "float chance = indoor ? 0.72f :" in world
