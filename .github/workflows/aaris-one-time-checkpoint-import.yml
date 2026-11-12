@@ -81,3 +81,95 @@ jobs:
             git push origin "refs/heads/aaris-import-snapshot:refs/heads/$BRANCH"
             echo AARIS_CHECKPOINT_GITHUB_BRANCH_PUBLISHED
           fi
+
+  safe-checkpoint-part:
+    if: >-
+      github.repository == 'sundamunda289-art/Unity-Game-Aris' &&
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 77 &&
+      github.event.comment.user.login == 'sundamunda289-art' &&
+      github.event.comment.body == 'CS CHECKPOINT SAFE-PART 1a56c09f'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    concurrency:
+      group: aaris-one-time-safe-part-20261112
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          lfs: false
+      - name: Merge safe paths only, keeping current main on every unresolved conflict
+        shell: bash
+        env:
+          GIT_LFS_SKIP_SMUDGE: '1'
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags origin 'refs/heads/integration/multi-agent-checkpoint-20261112:refs/remotes/origin/aaris-checkpoint'
+          test "$(git rev-parse refs/remotes/origin/aaris-checkpoint)" = '1a56c09fab08ae1f03751ca95eac4c01eeaa7f84'
+          MAIN_SHA="$(git rev-parse HEAD)"
+          git switch -c aaris-safe-part
+          set +e
+          git merge --no-commit --no-ff refs/remotes/origin/aaris-checkpoint > "$RUNNER_TEMP/aaris-merge.log" 2>&1
+          MERGE_RESULT=$?
+          set -e
+          test "$MERGE_RESULT" -le 1
+          python3 - <<'PY'
+          import subprocess
+          out=subprocess.check_output(['git','diff','--name-only','--diff-filter=U','-z'])
+          conflicted=[p.decode() for p in out.split(b'\0') if p]
+          supported={
+            'Assets/AarisWorld/Scripts/AarisAudioDirector.cs',
+            'Assets/AarisWorld/Scripts/AarisBattleActions.cs',
+            'Assets/AarisWorld/Scripts/AarisCharacterVisual.cs',
+            'Assets/AarisWorld/Scripts/AarisExpansionCatalog.cs',
+            'Assets/AarisWorld/Scripts/AarisSettlementExpansion.cs',
+            'Assets/AarisWorld/Scripts/AarisWeaponHUD.cs',
+            'Tools/Validation/check_vehicle_system.py',
+            'Assets/Resources/AarisExpansion/AarisExpansionCatalog.asset',
+            'Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity',
+            'Assets/AarisWorld/Generated/KenneyOpenHomes/KenneyAtlasURP.mat',
+            'Assets/AarisWorld/ThirdParty/KenneyBuildingKit/License.txt',
+          }
+          unexpected=[p for p in conflicted if p not in supported and not (p.startswith('Assets/') and p.endswith('.meta'))]
+          if unexpected:raise SystemExit('UNEXPECTED_CONFLICT_PATHS: '+repr(unexpected))
+          for p in conflicted:
+            if not p.endswith('.meta'):continue
+            def get(side):
+              x=subprocess.check_output(['git','show',f':{side}:{p}'],text=True)
+              import re
+              m=re.search(r'^guid:\s*([a-f0-9]{32})\s*$',x,re.M)
+              return m.group(1) if m else None
+            a,b=get(2),get(3)
+            if not a or a!=b:raise SystemExit('GUID_CONFLICT_NOT_SAFE: '+p)
+          print('AARIS_CONFLICTS_IDENTIFIED',len(conflicted))
+          print('AARIS_ALL_META_GUIDS_MATCH')
+          PY
+          while IFS= read -r -d '' path; do
+            git checkout --ours -- "$path"
+            git add -- "$path"
+          done < <(git diff --name-only --diff-filter=U -z)
+          test -z "$(git ls-files -u)"
+          test "$(git rev-parse HEAD:Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity)" = "$(git hash-object Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity)"
+          echo AARIS_MAIN_NATIVE_SCENE_AND_ALL_CONFLICTED_ASSETS_PRESERVED
+          for testfile in Tools/Validation/check_weapon_loot.py Tools/Validation/check_armed_locomotion.py Tools/Validation/check_battle_hardening.py Tools/Validation/check_vehicle_system.py Tools/Validation/test_loot_cell_streaming.py Tools/Validation/test_settlement_expansion.py; do
+            timeout 45 python3 "$testfile"
+          done
+          test "$(git diff --cached --name-only | wc -l)" -gt 100
+          TREE="$(git write-tree)"
+          export GIT_AUTHOR_NAME='Aaris Safe Integration'
+          export GIT_AUTHOR_EMAIL='aaris-integrations@users.noreply.github.com'
+          export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+          export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+          SAFE_SHA="$(printf '%s\n' 'Integrate non-conflicting Codespace changes; preserve main on 35 scene, GUID and code conflicts' | git commit-tree "$TREE" -p "$MAIN_SHA")"
+          git update-ref refs/heads/aaris-safe-snapshot "$SAFE_SHA"
+          BRANCH='integration/checkpoint-safe-part-20261112'
+          if git ls-remote --exit-code --heads origin "refs/heads/$BRANCH" >/dev/null 2>&1; then
+            echo AARIS_SAFE_BRANCH_ALREADY_EXISTS_FAIL_CLOSED
+            exit 20
+          fi
+          GIT_LFS_SKIP_PUSH=1 git push origin "refs/heads/aaris-safe-snapshot:refs/heads/$BRANCH"
+          echo "AARIS_SAFE_PART_GITHUB_BRANCH_PUBLISHED $SAFE_SHA"
