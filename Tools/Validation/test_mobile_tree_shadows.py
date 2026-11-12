@@ -70,5 +70,20 @@ class NativeSpeedTreeMobileShadowBudget(unittest.TestCase):
                 self.assertTrue(source.startswith("%YAML"))
                 self.assertNotIn("version https://git-lfs.github.com/spec/v1",source)
 
+    def test_native_detail_prefabs_receive_without_caster_passes(self):
+        # Tiny undergrowth remains fully visible and receives tree/house
+        # shadows, but no longer adds extra real-time shadow caster passes.
+        # Keep every native mesh, material, Unity GUID and prefab in place.
+        details = sorted((ROOT / "Assets/TerrainDemoScene_URP/Prefabs/Details").glob("*.prefab"))
+        self.assertEqual(len(details), 20)
+        for path in details:
+            with self.subTest(detail=path.stem):
+                source = path.read_text(encoding="utf-8")
+                self.assertEqual(re.findall(r"(?m)^  m_CastShadows: (\d+)$", source), ["0"])
+                self.assertEqual(re.findall(r"(?m)^  m_ReceiveShadows: (\d+)$", source), ["1"])
+                self.assertEqual(source.count("m_Mesh: {fileID: "), 1)
+                self.assertTrue(path.with_suffix(".prefab.meta").exists())
+                self.assertTrue(source.startswith("%YAML"))
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
