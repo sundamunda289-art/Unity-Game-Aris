@@ -42,6 +42,8 @@ namespace Aaris.MapReview
         private float lastAppliedRenderScale = 1f;
         private float originalMipBudgetMB, appliedMipBudgetMB;
         private bool modifiedMipBudget;
+        private float originalShadowDistance, appliedShadowDistance;
+        private bool modifiedShadowDistance;
         private int slowIntervals, steadyIntervals, lastTargetFps;
         private float lastEffectiveTargetFps;
 #endif
@@ -161,6 +163,20 @@ namespace Aaris.MapReview
             {
                 QualitySettings.streamingMipmapsMemoryBudget = appliedMipBudgetMB;
                 modifiedMipBudget = true;
+            }
+            // The authored URP shadow distance spans 1000 m of a 2 km map.
+            // Rendering distant tree/house shadow casters consumes fill,
+            // draw and bandwidth budget on tile-based mobile GPUs. Keep
+            // nearby buildings and foliage grounded by real shadows, but
+            // avoid drawing shadow casters for most of the distant map.
+            // Keep the 4 native cascades / atlas and all source assets intact.
+            originalShadowDistance = androidPipeline.shadowDistance;
+            float mobileShadowDistance = memoryMB <= 2304 ? 160f : 240f;
+            appliedShadowDistance = Mathf.Min(originalShadowDistance, mobileShadowDistance);
+            if (appliedShadowDistance < originalShadowDistance)
+            {
+                androidPipeline.shadowDistance = appliedShadowDistance;
+                modifiedShadowDistance = true;
             }
         }
 
@@ -302,6 +318,11 @@ namespace Aaris.MapReview
             if (modifiedMipBudget &&
                 Mathf.Approximately(QualitySettings.streamingMipmapsMemoryBudget, appliedMipBudgetMB))
                 QualitySettings.streamingMipmapsMemoryBudget = originalMipBudgetMB;
+            // Do not leave a shortened shadow range across scene reloads.
+            // Nor overwrite an unrelated controller's later quality choice.
+            if (modifiedShadowDistance && androidPipeline != null &&
+                Mathf.Approximately(androidPipeline.shadowDistance, appliedShadowDistance))
+                androidPipeline.shadowDistance = originalShadowDistance;
 #endif
         }
 
