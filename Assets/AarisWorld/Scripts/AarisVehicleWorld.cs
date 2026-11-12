@@ -291,15 +291,24 @@ namespace Aaris.MapReview
             var terrain = TerrainAt(center.x, center.z);
             if (terrain == null) return false;
             Vector3 rayOrigin = new Vector3(center.x, expected + 3f, center.z);
-            int hits = Physics.RaycastNonAlloc(new Ray(rayOrigin, Vector3.down),
-                rayHits, 5f, Physics.DefaultRaycastLayers,
-                QueryTriggerInteraction.Ignore);
-            if (hits >= rayHits.Length) return false;
+            Ray supportRay = new Ray(rayOrigin, Vector3.down);
+            int hits = Physics.RaycastNonAlloc(supportRay, rayHits, 5f,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            RaycastHit[] supportHits = rayHits;
+            if (hits >= rayHits.Length)
+            {
+                // A full NonAlloc buffer is unordered and may omit the
+                // closest drivable floor behind car/house colliders.
+                // Preserve the same surface-height and slope validation.
+                supportHits = Physics.RaycastAll(supportRay, 5f,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                hits = supportHits.Length;
+            }
             float bestError = 1.05f;
             bool found = false;
             for (int i = 0; i < hits; i++)
             {
-                var h = rayHits[i];
+                var h = supportHits[i];
                 if (h.collider == null || h.normal.y < .9781f) continue; // <=12 deg
                 if (player != null && h.collider.transform.IsChildOf(player)) continue;
                 float error = Mathf.Abs(expected - h.point.y);
@@ -347,13 +356,24 @@ namespace Aaris.MapReview
             // Clearance is above the supporting ground so TerrainCollider
             // will not be counted as a vehicle-sized wall.
             Vector3 center = new Vector3(x, y + 1.15f, z);
-            int count = Physics.OverlapBoxNonAlloc(center,
-                new Vector3(1.14f, .64f, 2.35f), collisionHits, angle,
-                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            if (count >= collisionHits.Length) return false;
+            Vector3 halfExtents = new Vector3(1.14f, .64f, 2.35f);
+            int count = Physics.OverlapBoxNonAlloc(center, halfExtents,
+                collisionHits, angle, Physics.DefaultRaycastLayers,
+                QueryTriggerInteraction.Ignore);
+            Collider[] obstacles = collisionHits;
+            if (count >= collisionHits.Length)
+            {
+                // Only on saturation: inspect the FULL collider set.
+                // Ignoring any unseen wall here would place a car inside
+                // a house; automatically failing also rejects safe lots
+                // surrounded by harmless ground/terrain colliders.
+                obstacles = Physics.OverlapBox(center, halfExtents, angle,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                count = obstacles.Length;
+            }
             for (int i = 0; i < count; i++)
             {
-                var obstacle = collisionHits[i];
+                var obstacle = obstacles[i];
                 if (obstacle == null || obstacle is TerrainCollider) continue;
                 if (player != null && obstacle.transform.IsChildOf(player)) return false;
                 // Roads can be a valid floor, but anything occupying the
