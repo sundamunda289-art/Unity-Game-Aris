@@ -40,6 +40,8 @@ namespace Aaris.MapReview
         private Quaternion spawnRotation;
         private Quaternion leftArmRest, rightArmRest, leftLegRest, rightLegRest;
         private float yaw, pitch = 12f, verticalVelocity, gait, lastGrounded = -10f, jumpUntil = -10f;
+        private float pendingAerialYaw, pendingAerialPitch;
+        private bool hasPendingAerialLook;
         private float uiScale = 1f, travelSpeed;
         private bool running, previousSimulateMouse, inputConfigured;
         private int moveFinger = -1, lookFinger = -1;
@@ -653,22 +655,26 @@ namespace Aaris.MapReview
         /// Refresh cached yaw/gravity/camera AND reset the HOME point to the landing spot.
         /// This is deliberately not an extra motor and never teleports the player.
         /// </summary>
-        public void ResumeFromAerialDrop()
+        /// <summary>
+        /// Preserve flight camera direction across motor ownership changes.
+        /// Keeping the original no-argument touchdown API also lets older
+        /// scene/controller callers continue using their default look.
+        /// </summary>
+        public void PrepareAerialCameraHandoff(float lookYaw, float lookPitch)
         {
-            ResumeFromAerialDrop(transform.eulerAngles.y, 12f);
+            pendingAerialYaw = lookYaw;
+            pendingAerialPitch = lookPitch;
+            hasPendingAerialLook = true;
         }
 
-        /// <summary>
-        /// Hand off the aerial look direction without snapping to the
-        /// default camera pitch at touchdown. Existing no-argument callers
-        /// retain their original reset behavior.
-        /// </summary>
-        public void ResumeFromAerialDrop(float lookYaw, float lookPitch)
+        public void ResumeFromAerialDrop()
         {
             if (controller == null) controller = GetComponent<CharacterController>();
             if (controller == null) return;
-            yaw = lookYaw;
-            pitch = Mathf.Clamp(lookPitch, minLookPitch, maxLookPitch);
+            yaw = hasPendingAerialLook ? pendingAerialYaw : transform.eulerAngles.y;
+            pitch = hasPendingAerialLook
+                ? Mathf.Clamp(pendingAerialPitch, minLookPitch, maxLookPitch) : 12f;
+            hasPendingAerialLook = false;
             spawn = transform.position;
             spawnRotation = transform.rotation;
             horizontalVelocity = Vector3.zero;
