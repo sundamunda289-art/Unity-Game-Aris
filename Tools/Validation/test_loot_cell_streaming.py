@@ -55,10 +55,23 @@ class LootGridRegression(unittest.TestCase):
         # Swapping a gun must still reserve its persistent record without
         # constructing a second model on the same frame.
         self.assertIn("deferVisual: true", SOURCE)
-        for active_count in range(0, 48):
+        # Bounded model: repeated direct drops cannot add a 41st live mesh,
+        # while deferred swaps add zero new live meshes at any occupancy.
+        for live in range(0, 41):
             for deferred in (False, True):
-                accepted = deferred or active_count < 40
-                self.assertEqual(accepted, deferred or active_count < 40)
+                permitted = deferred or live < 40
+                live_after = live + int(permitted and not deferred)
+                self.assertLessEqual(live_after, 40)
+                if deferred:
+                    self.assertTrue(permitted)
+                    self.assertEqual(live_after, live)
+        live = accepted = 0
+        for _ in range(320):
+            if live < 40:
+                live += 1
+                accepted += 1
+            self.assertLessEqual(live, 40)
+        self.assertEqual((live, accepted), (40, 40))
 
     def test_native_terrain_world_y_used_for_outdoor_floor(self):
         self.assertIn("terrain.SampleHeight(new Vector3(c.x, 0f, c.z))", SOURCE)
