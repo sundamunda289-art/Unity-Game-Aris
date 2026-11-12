@@ -102,12 +102,21 @@ class LootGridRegression(unittest.TestCase):
                        "if (floor == null) continue;", "if (!clear) continue;",
                        "if (requireReachable && !CanReachPoint(candidate)) continue;"):
             self.assertIn(safety, placement)
-        self.assertIn("for (int attempt = 0; attempt < 8; attempt++)", placement)
+        self.assertIn("for (int attempt = 0; attempt < 12; attempt++)", placement)
+        self.assertIn("else if (attempt < 8)", placement)
+        self.assertIn("distance = 1.55f;", placement)
         self.assertIn("direction = (forward * f + right * r).normalized;", placement)
         self.assertIn("distance = .65f;", placement)
         self.assertIn("distance = 1.12f;", placement)
         self.assertNotIn("new Vector3[]", placement)
-        self.assertLess(1.12, 2.15)  # diagonal fallback stays inside pickup range
+        self.assertLess(1.12, 2.15)  # diagonal ring
+        self.assertLess(1.55, 2.15)  # final cardinal ring: still reachable
+        # Fall back only when close/diagonal placements were physically
+        # blocked; never ignore water/roof/obstruction checks.
+        self.assertLess(placement.index("distance = .65f;"),
+                        placement.index("distance = 1.12f;"))
+        self.assertLess(placement.index("distance = 1.12f;"),
+                        placement.index("distance = 1.55f;"))
 
     def test_native_terrain_world_y_used_for_outdoor_floor(self):
         self.assertIn("terrain.SampleHeight(new Vector3(c.x, 0f, c.z))", SOURCE)

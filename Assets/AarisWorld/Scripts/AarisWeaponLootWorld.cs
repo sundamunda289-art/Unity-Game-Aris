@@ -451,11 +451,11 @@ namespace Aaris.MapReview
             if (player == null) return false;
             Vector3 forward = player.forward;
             Vector3 right = player.right;
-            // Four close cardinal positions, then four slightly farther
-            // diagonals when a tree, doorway or rocky bank blocks the first
-            // ring. All eight candidates stay inside pickup reach; no
-            // allocation, large-area search or per-frame terrain scanning.
-            for (int attempt = 0; attempt < 8; attempt++)
+            // Four close cardinal positions, four diagonals, then four
+            // farther cardinals for dense tree cover / narrow doorways.
+            // All twelve remain inside the same 2.15m pickup reach. Only
+            // used when placing a gun, never on each gameplay frame.
+            for (int attempt = 0; attempt < 12; attempt++)
             {
                 Vector3 direction;
                 float distance;
@@ -465,12 +465,18 @@ namespace Aaris.MapReview
                         attempt == 1 ? -forward : attempt == 2 ? right : -right;
                     distance = .65f;
                 }
-                else
+                else if (attempt < 8)
                 {
                     float f = (attempt & 1) == 0 ? 1f : -1f;
                     float r = (attempt & 2) == 0 ? 1f : -1f;
                     direction = (forward * f + right * r).normalized;
                     distance = 1.12f;
+                }
+                else
+                {
+                    direction = attempt == 8 ? forward :
+                        attempt == 9 ? -forward : attempt == 10 ? right : -right;
+                    distance = 1.55f;
                 }
                 Vector3 place = player.position + direction * distance;
                 if (place.x < -957f || place.x > 957f ||
