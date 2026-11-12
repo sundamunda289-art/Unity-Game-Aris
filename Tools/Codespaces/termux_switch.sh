@@ -11,7 +11,7 @@ BASE="$HOME/.config/aaris-ai"
 MASTER="$BASE/master-gh"
 WORKER="$BASE/codespace-gh"
 command -v pkg >/dev/null || { echo 'Use Termux on Android'; exit 2; }
-pkg install -y gh jq
+pkg install -y gh jq curl coreutils
 umask 077
 mkdir -p "$MASTER" "$WORKER"
 chmod 700 "$BASE" "$MASTER" "$WORKER"
@@ -66,3 +66,16 @@ echo "Actions: https://github.com/$REPO/actions/workflows/aaris-turbo-bootstrap.
 echo "Switch or reauthorize next time: bash \"\$HOME/aaris-switch.sh\""
 echo "Reuse current login next time: bash \"\$HOME/aaris-switch.sh\" --resume"
 
+
+# After the existing account switch/bootstrap, grant this selected Codespace
+# a private canonical Git push/pull helper. It never changes the Unity tree.
+GIT_BRIDGE="$HOME/aaris-git-bridge.sh"
+if curl -fsSL --retry 3 "https://raw.githubusercontent.com/$REPO/main/Tools/Codespaces/termux_git_bridge.sh" -o "$GIT_BRIDGE" && bash -n "$GIT_BRIDGE"; then
+  if bash "$GIT_BRIDGE"; then
+    echo 'AARIS_CANONICAL_GIT_READY_FOR_ROTATED_CODESPACE'
+  else
+    echo 'AARIS_CANONICAL_GIT_PENDING: bootstrap may be starting; retry only bash "$HOME/aaris-git-bridge.sh"'
+  fi
+else
+  echo 'AARIS_CANONICAL_GIT_BRIDGE_DOWNLOAD_FAILED; existing Codespace switch remains valid'
+fi
