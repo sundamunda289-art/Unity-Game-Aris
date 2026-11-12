@@ -197,6 +197,11 @@ namespace Aaris.MapReview
             }
         }
 
+        internal void ForwardLookDelta(Vector2 pixels)
+        {
+            if (IsVisible && player != null) player.ForwardLookDelta(pixels);
+        }
+
         internal void Up(Action action)
         {
             if (action == Action.Fire && actions != null) actions.SetFireHeld(false);

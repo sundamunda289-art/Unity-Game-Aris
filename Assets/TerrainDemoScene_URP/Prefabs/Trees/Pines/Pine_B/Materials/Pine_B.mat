@@ -25,10 +25,11 @@ Material:
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
-  - _WINDQUALITY_FAST
   - EFFECT_BUMP
+  - EFFECT_EXTRA_TEX
   - EFFECT_HUE_VARIATION
   - EFFECT_SUBSURFACE
+  - _WINDQUALITY_FAST
   m_InvalidKeywords: []
   m_LightmapFlags: 2
   m_EnableInstancingVariants: 1
@@ -76,8 +77,6 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _BillboardKwToggle: 0
-    - _TwoSided: 0
     - BACKFACE_NORMAL_MODE: 1
     - Diffusion_Profile: 3.5648174
     - EFFECT_BILLBOARD: 0
@@ -90,6 +89,8 @@ Material:
     - _AlphaSrcBlend: 1
     - _AlphaToMask: 0
     - _AlphaToMaskInspectorValue: 0
+    - _BillboardKwToggle: 0
+    - _BillboardShadowFade: 0.5
     - _Blend: 0
     - _BlendMode: 0
     - _CanopyBaseHeight: 8
@@ -151,6 +152,7 @@ Material:
     - _TransparentSortPriority: 0
     - _TransparentWritingMotionVec: 0
     - _TransparentZWrite: 0
+    - _TwoSided: 0
     - _UseShadowThreshold: 0
     - _WINDQUALITY: 2
     - _WindQuality: 2
