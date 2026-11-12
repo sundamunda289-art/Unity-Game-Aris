@@ -194,25 +194,44 @@ namespace Aaris.MapReview.Editor
             foreach (var name in UiNames)
             {
                 var ui = GameObject.Find(name);
-                var entry = new UiTarget { name = name, visible = ui != null };
+                var entry = new UiTarget { name = name, visible = false };
                 if (ui != null)
                 {
                     var rect = ui.GetComponent<RectTransform>();
                     var select = ui.GetComponent<Selectable>();
-                    entry.enabled = ui.activeInHierarchy && (select == null || select.interactable);
+                    entry.visible = IsRenderedUi(ui);
+                    entry.enabled = entry.visible && (select == null || select.IsActive() && select.IsInteractable());
                     if (rect != null)
                     {
                         Vector3 center = rect.TransformPoint(rect.rect.center);
                         Vector2 point = RectTransformUtility.WorldToScreenPoint(null, center);
                         entry.screenX = point.x;
                         entry.screenY = point.y;
-                        entry.blockedBy = BlockedBy(ui, point);
-                        entry.topmost = String.IsNullOrEmpty(entry.blockedBy);
+                        entry.blockedBy = entry.visible ? BlockedBy(ui, point) : "CanvasOrRaycasterDisabled";
+                        entry.topmost = entry.enabled && String.IsNullOrEmpty(entry.blockedBy);
                     }
                 }
                 result.Add(entry);
             }
             return result.ToArray();
+        }
+
+        // An active GameObject is not necessarily an on-screen button.
+        // Plane Drop intentionally disables the actual Canvas and Raycaster.
+        private static bool IsRenderedUi(GameObject ui)
+        {
+            if (ui == null || !ui.activeInHierarchy) return false;
+            var canvas = ui.GetComponentInParent<Canvas>();
+            var raycaster = ui.GetComponentInParent<GraphicRaycaster>();
+            if (canvas == null || !canvas.isActiveAndEnabled ||
+                raycaster == null || !raycaster.isActiveAndEnabled) return false;
+            var graphic = ui.GetComponent<Graphic>();
+            if (graphic == null || !graphic.isActiveAndEnabled || !graphic.raycastTarget)
+                return false;
+            foreach (var group in ui.GetComponentsInParent<CanvasGroup>())
+                if (!group.interactable || !group.blocksRaycasts || group.alpha <= 0.001f)
+                    return false;
+            return true;
         }
 
         private static string BlockedBy(GameObject ui, Vector2 point)
@@ -235,8 +254,8 @@ namespace Aaris.MapReview.Editor
             if (heldUiObject != null)
                 throw new InvalidOperationException("another named UI hold is active");
             var ui = GameObject.Find(req.target);
-            if (ui == null || !ui.activeInHierarchy)
-                throw new InvalidOperationException("UI item hidden/not found");
+            if (ui == null || !IsRenderedUi(ui))
+                throw new InvalidOperationException("UI item hidden or Canvas/Raycaster disabled");
             var select = ui.GetComponent<Selectable>();
             if (select != null && !select.interactable)
                 throw new InvalidOperationException("UI item disabled");
