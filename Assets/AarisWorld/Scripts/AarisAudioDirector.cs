@@ -29,7 +29,7 @@ namespace Aaris.MapReview
         private static readonly string[] Keys =
         {
             "plane_engine_loop", "jump_whoosh", "wind_rush_loop",
-            "parachute_open", "parachute_land", "step_dirt", "step_road",
+            "canopy_glide_loop", "parachute_open", "parachute_land", "step_dirt", "step_road",
             "step_water", "jump_start", "land_thud", "smg_shot",
             "ar_shot", "battle_rifle_shot", "sniper_shot", "shotgun_shot",
             "bolt_reload", "shell_drop", "bullet_impact", "punch_hit",
@@ -372,14 +372,23 @@ namespace Aaris.MapReview
                          (!hasDropPhase || lastDropPhase == AarisOfflineDrop.DropPhase.Freefall)))
                         OneShot("parachute_open", pos, 0.9f);
                     if (phase != AarisOfflineDrop.DropPhase.Landing)
-                        BeginLoop(windLoop, GetClip("wind_rush_loop"));
+                    {
+                        // Reuse the same pooled 2D loop source: audible canopy
+                        // flutter during slow glide, full wind rush in freefall.
+                        bool underCanopy = phase == AarisOfflineDrop.DropPhase.Opening ||
+                            phase == AarisOfflineDrop.DropPhase.Gliding;
+                        BeginLoop(windLoop, GetClip(underCanopy ?
+                            "canopy_glide_loop" : "wind_rush_loop"));
+                    }
                 }
                 lastDropPhase = phase;
                 hasDropPhase = true;
             }
             float planeVol = phase == AarisOfflineDrop.DropPhase.InPlane ? 0.65f : 0f;
             float windVol = phase == AarisOfflineDrop.DropPhase.Freefall
-                ? Mathf.Lerp(0.35f, 0.85f, fallSpeed / 54f) : 0.18f;
+                ? Mathf.Lerp(0.35f, 0.85f, fallSpeed / 54f) :
+                phase == AarisOfflineDrop.DropPhase.Opening ||
+                phase == AarisOfflineDrop.DropPhase.Gliding ? 0.30f : 0f;
             float windPitch = phase == AarisOfflineDrop.DropPhase.Freefall
                 ? Mathf.Lerp(0.9f, 1.25f, fallSpeed / 54f) : 0.85f;
             AdjustLoop(planeLoop, planeVol, 1f, dt);
