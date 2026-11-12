@@ -41,6 +41,8 @@ namespace Aaris.MapReview
         public AarisVehicleMotor visible;
         public float nextProbe;
         public bool previouslySpawned;
+        // Rotate the one nearby fallback position only after a failed spawn.
+        public int failedSpawnProbes;
     }
 
     /// <summary>
@@ -75,6 +77,9 @@ namespace Aaris.MapReview
         // Bound structural changes per 300 ms poll; retain all 44 authored plans.
         private int spawnBudgetPerPoll = 2;
         private int unloadBudgetPerPoll = 4;
+        // Even a failed spawn has up to five ground rays + one box overlap.
+        // Limit physics probes as well as successful Instantiate operations.
+        private int spawnProbeBudgetPerPoll = 8;
 
         private void Awake()
         {
@@ -84,6 +89,7 @@ namespace Aaris.MapReview
             {
                 spawnBudgetPerPoll = 1;
                 unloadBudgetPerPoll = 2;
+                spawnProbeBudgetPerPoll = 3;
             }
 #endif
         }
@@ -326,24 +332,27 @@ namespace Aaris.MapReview
             return found;
         }
 
-        private bool TryResolve(AarisVehicleRecord record, out Vector3 spot)
+        private bool TryResolve(AarisVehicleRecord record, out Vector3 spot,
+            float offsetX = 0f, float offsetZ = 0f)
         {
             spot = default(Vector3);
             var p = record.point;
             // A driven vehicle can be parked miles away from its original
             // marker. Never teleport it back when its physics mesh streams in.
-            float x = record.previouslySpawned ? record.position.x : p.x;
-            float z = record.previouslySpawned ? record.position.z : p.z;
+            float x = (record.previouslySpawned ? record.position.x : p.x) + offsetX;
+            float z = (record.previouslySpawned ? record.position.z : p.z) + offsetZ;
             var terrain = TerrainAt(x, z);
             if (terrain == null) return false;
             // Terrain.SampleHeight already returns a WORLD-SPACE Y.
             // Adding terrain.transform.position.y again breaks placement
             // on our four elevated/negative-height native Terrain tiles.
             float ground = terrain.SampleHeight(new Vector3(x, 0f, z));
-            float expectedY = record.previouslySpawned ? record.position.y - .71f : p.y;
-            // Ground map author stores garage Y and road Y; use sampled
-            // Terrain only as a sanity check, not as a rooftop substitute.
-            if (Mathf.Abs(ground - expectedY) > 2.5f) return false;
+            float authoredY = record.previouslySpawned ? record.position.y - .71f : p.y;
+            // Any fallback stays near the original authored road elevation.
+            // At an offset, prefer local terrain as the down-ray floor target,
+            // without ever trusting a distant rooftop or tall slope.
+            if (Mathf.Abs(ground - authoredY) > 2.5f) return false;
+            float expectedY = (offsetX != 0f || offsetZ != 0f) ? ground : authoredY;
             if (!HasSupport(new Vector3(x, 0f, z), expectedY, out float y))
                 return false;
             Quaternion angle = record.rotation;
@@ -395,6 +404,21 @@ namespace Aaris.MapReview
             }
             spot = new Vector3(x, y + .71f, z);
             return true;
+        }
+
+        // Original garage/roadside nodes can be blocked by later building
+        // edits. Retain the full five-ray support and inactive-building checks,
+        // but try one small adjacent parking location on each later poll.
+        // Previously driven cars NEVER shift from their saved parking place.
+        private bool TryResolvePlanned(AarisVehicleRecord record, out Vector3 spot)
+        {
+            if (TryResolve(record, out spot)) return true;
+            if (record.previouslySpawned) return false;
+            int direction = record.failedSpawnProbes++ & 3;
+            Vector3 axis = record.rotation *
+                (direction < 2 ? Vector3.right : Vector3.forward);
+            float offset = direction % 2 == 0 ? 5.5f : -5.5f;
+            return TryResolve(record, out spot, axis.x * offset, axis.z * offset);
         }
 
         private bool Build(AarisVehicleRecord record, Vector3 pos)
@@ -468,6 +492,7 @@ namespace Aaris.MapReview
             // One native Transform read per poll, not one per vehicle record.
             Vector3 playerPosition = player.position;
             int active = 0, built = 0, unloaded = 0;
+            int spawnProbes = 0;
             foreach (var record in plans)
             {
                 if (record.visible == null) continue;
@@ -486,11 +511,14 @@ namespace Aaris.MapReview
             }
             foreach (var record in plans)
             {
-                if (active >= MaximumNearbyVehicles || built >= spawnBudgetPerPoll) break;
+                if (active >= MaximumNearbyVehicles ||
+                    built >= spawnBudgetPerPoll ||
+                    spawnProbes >= spawnProbeBudgetPerPoll) break;
                 if (record.visible != null || now < record.nextProbe) continue;
                 if ((record.position - playerPosition).sqrMagnitude > LoadRadius * LoadRadius)
                     continue;
-                if (TryResolve(record, out Vector3 pos) && Build(record, pos))
+                spawnProbes++;
+                if (TryResolvePlanned(record, out Vector3 pos) && Build(record, pos))
                 {
                     active++;
                     built++;
