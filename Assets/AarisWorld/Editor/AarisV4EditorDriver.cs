@@ -2,8 +2,11 @@
 #if UNITY_EDITOR
 using System;
 using System.IO;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using Aaris.MapReview;
 
@@ -20,12 +23,21 @@ namespace Aaris.MapReview.Editor
         }
 
         [Serializable]
+        private sealed class UiTarget
+        {
+            public string name, blockedBy;
+            public float screenX, screenY;
+            public bool visible, enabled, topmost;
+        }
+
+        [Serializable]
         private sealed class Response
         {
             public string id, op, result, detail, scene, playerPosition, weapon, stance;
             public bool playing, paused, compiling, updating, weaponEquipped, fireHeld, aiming, pickupAvailable;
             public int frame, magazine, reserve, consoleErrors;
             public float fpsEstimate;
+            public UiTarget[] ui;
         }
 
         private static readonly string Root = Path.Combine(Directory.GetCurrentDirectory(), "ci-live-control");
@@ -35,6 +47,13 @@ namespace Aaris.MapReview.Editor
         private static double fireUntil = -1, jumpUntil = -1;
         private static AarisBattleActions heldFire;
         private static AarisThirdPersonPlayer heldJump;
+        private static GameObject heldUiObject;
+        private static PointerEventData heldUiPointer;
+        private static double heldUiUntil = -1;
+        private static readonly string[] UiNames = {
+            "HUD Fire", "HUD Jump", "HUD Crouch", "HUD Prone", "HUD Sprint",
+            "ADS", "PICK", "DROP", "RELOAD"
+        };
         private static int errors;
 
         static AarisV4EditorDriver()
@@ -42,6 +61,7 @@ namespace Aaris.MapReview.Editor
             EditorApplication.update += Tick;
             EditorApplication.playModeStateChanged += OnPlayStateChanged;
             Application.logMessageReceived += OnLog;
+            AssemblyReloadEvents.beforeAssemblyReload += ReleaseInputs;
         }
 
         private static void OnLog(string text, string stack, LogType type)
@@ -63,11 +83,25 @@ namespace Aaris.MapReview.Editor
             heldFire = null;
             heldJump = null;
             fireUntil = jumpUntil = -1;
+            ReleaseUiPointer();
+        }
+
+        private static void ReleaseUiPointer()
+        {
+            if (heldUiObject != null && heldUiPointer != null)
+            {
+                try { ExecuteEvents.Execute(heldUiObject, heldUiPointer, ExecuteEvents.pointerUpHandler); }
+                catch (Exception ex) { Debug.LogWarning("[Aaris V4] release UI failed: " + ex.GetType().Name); }
+            }
+            heldUiObject = null;
+            heldUiPointer = null;
+            heldUiUntil = -1;
         }
 
         private static void Tick()
         {
             double now = EditorApplication.timeSinceStartup;
+            if (heldUiUntil > 0 && now >= heldUiUntil) ReleaseUiPointer();
             if (fireUntil > 0 && now >= fireUntil)
             {
                 if (heldFire != null) heldFire.SetFireHeld(false);
@@ -149,7 +183,85 @@ namespace Aaris.MapReview.Editor
                     }
                 }
             }
+            if (req != null && req.op == "uimap")
+                response.ui = BuildUiMap();
             return response;
+        }
+
+        private static UiTarget[] BuildUiMap()
+        {
+            var result = new List<UiTarget>();
+            foreach (var name in UiNames)
+            {
+                var ui = GameObject.Find(name);
+                var entry = new UiTarget { name = name, visible = ui != null };
+                if (ui != null)
+                {
+                    var rect = ui.GetComponent<RectTransform>();
+                    var select = ui.GetComponent<Selectable>();
+                    entry.enabled = ui.activeInHierarchy && (select == null || select.interactable);
+                    if (rect != null)
+                    {
+                        Vector3 center = rect.TransformPoint(rect.rect.center);
+                        Vector2 point = RectTransformUtility.WorldToScreenPoint(null, center);
+                        entry.screenX = point.x;
+                        entry.screenY = point.y;
+                        entry.blockedBy = BlockedBy(ui, point);
+                        entry.topmost = String.IsNullOrEmpty(entry.blockedBy);
+                    }
+                }
+                result.Add(entry);
+            }
+            return result.ToArray();
+        }
+
+        private static string BlockedBy(GameObject ui, Vector2 point)
+        {
+            if (EventSystem.current == null) return "EventSystemMissing";
+            var pointer = new PointerEventData(EventSystem.current) { position = point };
+            var hits = new List<RaycastResult>();
+            EventSystem.current.RaycastAll(pointer, hits);
+            if (hits.Count == 0) return "NoRaycastTarget";
+            var top = hits[0].gameObject;
+            return top == ui || top.transform.IsChildOf(ui.transform) ? "" : top.name;
+        }
+
+        private static void TapNamedUi(Request req)
+        {
+            if (!EditorApplication.isPlaying || EditorApplication.isPaused)
+                throw new InvalidOperationException("Named UI input requires running Play Mode");
+            if (Array.IndexOf(UiNames, req.target) < 0)
+                throw new ArgumentException("UI name not allowlisted");
+            if (heldUiObject != null)
+                throw new InvalidOperationException("another named UI hold is active");
+            var ui = GameObject.Find(req.target);
+            if (ui == null || !ui.activeInHierarchy)
+                throw new InvalidOperationException("UI item hidden/not found");
+            var select = ui.GetComponent<Selectable>();
+            if (select != null && !select.interactable)
+                throw new InvalidOperationException("UI item disabled");
+            var rect = ui.GetComponent<RectTransform>();
+            if (rect == null) throw new InvalidOperationException("UI RectTransform missing");
+            var point = RectTransformUtility.WorldToScreenPoint(null, rect.TransformPoint(rect.rect.center));
+            string blocker = BlockedBy(ui, point);
+            if (!String.IsNullOrEmpty(blocker)) throw new InvalidOperationException("blocked_by:" + blocker);
+            var pointer = new PointerEventData(EventSystem.current) {
+                pointerId = -9001, position = point, button = PointerEventData.InputButton.Left,
+                pointerPress = ui, rawPointerPress = ui, eligibleForClick = true,
+            };
+            ExecuteEvents.Execute(ui, pointer, ExecuteEvents.pointerDownHandler);
+            if (req.op == "tap_ui")
+            {
+                ExecuteEvents.Execute(ui, pointer, ExecuteEvents.pointerUpHandler);
+                ExecuteEvents.Execute(ui, pointer, ExecuteEvents.pointerClickHandler);
+            }
+            else
+            {
+                ValidateNumber(req.seconds, 0.05f, 3f);
+                heldUiObject = ui;
+                heldUiPointer = pointer;
+                heldUiUntil = EditorApplication.timeSinceStartup + req.seconds;
+            }
         }
 
         private static void Publish(Response response)
@@ -163,7 +275,8 @@ namespace Aaris.MapReview.Editor
 
         private static void Execute(Request req)
         {
-            if (req.op == "status") return;
+            if (req.op == "status" || req.op == "uimap") return;
+            if (req.op == "tap_ui" || req.op == "hold_ui") { TapNamedUi(req); return; }
             if (req.op == "play") { EditorApplication.isPlaying = true; return; }
             if (req.op == "stop") { ReleaseInputs(); EditorApplication.isPlaying = false; return; }
             if (req.op == "pause") { EditorApplication.isPaused = true; return; }
