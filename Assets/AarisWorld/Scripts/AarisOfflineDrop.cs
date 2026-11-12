@@ -460,21 +460,29 @@ namespace Aaris.MapReview
                         support = Mathf.Max(support, t.SampleHeight(position));
                 }
 
-            int n = Physics.RaycastNonAlloc(
-                new Ray(position + Vector3.up * 0.75f, Vector3.down),
+            Ray groundRay = new Ray(position + Vector3.up * 0.75f, Vector3.down);
+            int n = Physics.RaycastNonAlloc(groundRay,
                 groundHits, rayLength, Physics.DefaultRaycastLayers,
                 QueryTriggerInteraction.Ignore);
-            if (n < groundHits.Length)
-                for (int i = 0; i < n; i++)
-                {
-                    RaycastHit h = groundHits[i];
-                    if (h.collider == null || h.collider.transform.IsChildOf(transform) ||
-                        h.normal.y < 0.5f || h.point.y > position.y + 0.05f) continue;
-                    support = Mathf.Max(support, h.point.y);
-                }
-            // A full hit buffer can trigger early deployment, but cannot prove touchdown.
+            RaycastHit[] supportHits = groundHits;
+            if (n >= groundHits.Length)
+            {
+                // Full NonAlloc buffers are unordered and incomplete. Resolve
+                // all contacts only on rare saturation, rather than disabling
+                // parachute landing on crowded ground or bridge geometry.
+                supportHits = Physics.RaycastAll(groundRay, rayLength,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                n = supportHits.Length;
+            }
+            for (int i = 0; i < n; i++)
+            {
+                RaycastHit h = supportHits[i];
+                if (h.collider == null || h.collider.transform.IsChildOf(transform) ||
+                    h.normal.y < 0.5f || h.point.y > position.y + 0.05f) continue;
+                support = Mathf.Max(support, h.point.y);
+            }
             height = Mathf.Max(0f, position.y - support);
-            return n < groundHits.Length;
+            return true;
         }
 
         public void OnAction()
