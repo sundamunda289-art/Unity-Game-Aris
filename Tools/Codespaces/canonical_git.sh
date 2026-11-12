@@ -4,7 +4,8 @@
 set -euo pipefail
 umask 077
 
-TARGET="https://github.com/sundamunda289-art/Unity-Game-Aris.git"
+TARGET="git@github.com:sundamunda289-art/Unity-Game-Aris.git"
+PUBLIC="https://github.com/sundamunda289-art/Unity-Game-Aris.git"
 REMOTE="aaris-master"
 PROJECT="$PWD"
 if [[ -d /workspaces/Unity-Game-Aris/.git ]]; then
@@ -18,7 +19,12 @@ if [[ ! -f ProjectSettings/ProjectVersion.txt || ! -d Assets ]]; then
   echo "AARIS_SYNC_NOT_UNITY_GAME_PROJECT"; exit 21
 fi
 if git remote get-url "$REMOTE" >/dev/null 2>&1; then
-  [[ "$(git remote get-url "$REMOTE")" == "$TARGET" ]] || {
+  existing_url="$(git remote get-url "$REMOTE")"
+  if [[ "$existing_url" == "$PUBLIC" ]]; then
+    git remote set-url "$REMOTE" "$TARGET"
+    existing_url="$TARGET"
+  fi
+  [[ "$existing_url" == "$TARGET" ]] || {
     echo "AARIS_SYNC_CANONICAL_REMOTE_MISMATCH"; exit 22;
   }
 else
@@ -26,27 +32,26 @@ else
 fi
 
 export GIT_TERMINAL_PROMPT=0 GIT_LFS_SKIP_SMUDGE=1
-TOKEN_FILE="$HOME/.config/aaris-ai/canonical-push.token"
-ASKPASS="$HOME/.config/aaris-ai/canonical-git-askpass.sh"
+KEY_FILE="$HOME/.config/aaris-ai/canonical-deploy-key"
 
 set_push_auth() {
-  if [[ ! -f "$TOKEN_FILE" || -L "$TOKEN_FILE" || ! -s "$TOKEN_FILE" ||
-        ! -x "$ASKPASS" || -L "$ASKPASS" ]]; then
-    echo "AARIS_SYNC_PUSH_AUTH_MISSING: run the existing Termux account switch/bridge setup"
+  if [[ ! -f "$KEY_FILE" || -L "$KEY_FILE" || ! -s "$KEY_FILE" ]]; then
+    echo "AARIS_SYNC_DEPLOY_KEY_MISSING: run the existing Termux switch/bridge setup"
     exit 23
   fi
-  local owner mode
-  owner="$(stat -c %u "$TOKEN_FILE")"
-  mode="$(stat -c %a "$TOKEN_FILE")"
+  local owner mode quoted_key
+  owner="$(stat -c %u "$KEY_FILE")"
+  mode="$(stat -c %a "$KEY_FILE")"
   if [[ "$owner" != "$(id -u)" || "$mode" != 600 ]]; then
-    echo "AARIS_SYNC_UNSAFE_PRIVATE_CREDENTIAL"; exit 24
+    echo "AARIS_SYNC_UNSAFE_PRIVATE_DEPLOY_KEY"; exit 24
   fi
-  export GIT_ASKPASS="$ASKPASS"
+  printf -v quoted_key '%q' "$KEY_FILE"
+  export GIT_SSH_COMMAND="ssh -F /dev/null -i $quoted_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
 }
 
 fetch_main() {
   # Public fetch works even without push credentials. Never hydrate LFS here.
-  git -c credential.helper= fetch --no-tags "$REMOTE" main
+  git -c credential.helper= fetch --no-tags "$PUBLIC" main
   git update-ref refs/remotes/aaris-master/main "$(git rev-parse FETCH_HEAD)"
   echo "AARIS_SYNC_CANONICAL_MAIN_FETCHED=$(git rev-parse --short FETCH_HEAD)"
 }
@@ -73,7 +78,7 @@ case "$mode" in
     echo "AARIS_SYNC_BRANCH=$(current_branch)"
     echo "AARIS_SYNC_HEAD=$(git rev-parse --short HEAD)"
     echo "AARIS_SYNC_CANONICAL_REMOTE=$TARGET"
-    echo "AARIS_SYNC_AUTH=$([[ -s "$TOKEN_FILE" ]] && echo installed || echo not_installed)"
+    echo "AARIS_SYNC_AUTH=$([[ -s "$KEY_FILE" ]] && echo deploy_key_installed || echo not_installed)"
     echo "AARIS_SYNC_LFS=$(git lfs version 2>/dev/null | head -1 || echo unavailable)"
     git status --short --untracked-files=no | head -40 || :
     ;;
@@ -93,6 +98,11 @@ case "$mode" in
       echo "AARIS_SYNC_DIVERGED: no reset/rebase/force merge; review conflicts or use a PR"
       exit 28
     fi
+    ;;
+  verify)
+    set_push_auth
+    git ls-remote --exit-code --heads "$REMOTE" main >/dev/null
+    echo "AARIS_SYNC_CANONICAL_DEPLOY_KEY_VERIFIED"
     ;;
   publish)
     branch="$(current_branch)"
@@ -148,7 +158,7 @@ case "$mode" in
     fi
     ;;
   *)
-    echo 'Usage: canonical_git.sh {status|fetch|pull|commit "message" path...|publish|push-main}'
+    echo 'Usage: canonical_git.sh {status|fetch|pull|commit "message" path...|verify|publish|push-main}'
     exit 2
     ;;
 esac
