@@ -71,6 +71,16 @@ def run():
     assert "public static GameObject ModelFor(AarisWeaponSpec spec)" in catalog_cs
     assert "Resources.Load<GameObject>(modelPath)" in catalog_cs
     assert "modelCache[modelPath] = prefab;" in catalog_cs
+    # One missing or renderer-less Android gun FBX must not disable all
+    # other imported weapons. Invalid catalog data still fails closed.
+    assert "var available = new List<AarisWeaponSpec>(doc.weapons.Length);" in catalog_cs
+    assert "GetComponentInChildren<Renderer>(true) == null" in catalog_cs
+    assert 'Debug.LogWarning("Aaris: unavailable local weapon model; skipping "' in catalog_cs
+    assert 'Debug.LogWarning("Aaris: weapon model has no renderer; skipping "' in catalog_cs
+    assert "if (available.Count == 0)" in catalog_cs
+    assert "specs = available.ToArray();" in catalog_cs
+    assert 'throw new FormatException("Invalid weapon entry at " + i)' in catalog_cs
+    assert 'throw new FormatException("Duplicate weapon identifier.")' in catalog_cs
     assert "TryFirstOtherHit" not in gun_cs # renamed and rewritten, not a second weapon motor
     assert "FirstExternalHit" in gun_cs and "SameTarget" in gun_cs
     assert "magazine--;" in gun_cs and "nextFire = Time.time + spec.ShotInterval;" in gun_cs
