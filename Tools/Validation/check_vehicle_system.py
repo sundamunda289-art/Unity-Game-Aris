@@ -104,6 +104,16 @@ def test():
     assert "MaximumNearbyVehicles = 10" in world
     assert "Physics.OverlapBoxNonAlloc" in world
     assert "Physics.RaycastNonAlloc" in world
+    # Dense saved settlements may exceed the fixed hit-array capacity.
+    # Preserve the cheap NonAlloc normal path; only full buffers use the
+    # complete overlap/ray result before applying the same safety checks.
+    assert "if (hits >= rayHits.Length)" in world
+    assert "supportHits = Physics.RaycastAll(supportRay, 5f," in world
+    assert "var h = supportHits[i];" in world
+    assert "if (count >= collisionHits.Length)" in world
+    assert "obstacles = Physics.OverlapBox(center, halfExtents, angle," in world
+    assert "var obstacle = obstacles[i];" in world
+    assert "obstacle is TerrainCollider" in world
     assert "float ground = terrain.SampleHeight(" in world
     assert "terrain.transform.position.y +" not in world
     assert "Terrain.SampleHeight already returns a WORLD-SPACE Y." in world
