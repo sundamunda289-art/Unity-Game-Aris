@@ -50,8 +50,18 @@ jobs:
           assert manifest['timeline'][-1]['event'] == 'release_all'
           print('AARIS_V4_X11_REPLAY_SMOKE_PASS')
           PY
-      - name: Check Editor bridge action surface (static only)
+      - name: C# syntax parser and safe named Unity UI coverage (static only)
         run: |
-          grep -q 'EditorApplication.Step()' Assets/AarisWorld/Editor/AarisV4EditorDriver.cs
-          grep -q 'ReleaseInputs()' Assets/AarisWorld/Editor/AarisV4EditorDriver.cs
-          echo 'C# requires a real Unity Editor compile and Play Mode validation before merge.'
+          python -m pip install -q tree-sitter==0.26.0 tree-sitter-c-sharp==0.23.5
+          python - <<'PY'
+          from pathlib import Path
+          import tree_sitter,tree_sitter_c_sharp
+          src=Path('Assets/AarisWorld/Editor/AarisV4EditorDriver.cs').read_bytes()
+          parser=tree_sitter.Parser(tree_sitter.Language(tree_sitter_c_sharp.language()))
+          tree=parser.parse(src)
+          assert not tree.root_node.has_error, 'V4 C# parse error'
+          for name in ['EditorApplication.Step()', 'ReleaseInputs()', 'BuildUiMap()', 'TapNamedUi(req)', 'ExecuteEvents.Execute']:
+              assert name in src.decode(), name
+          print('AARIS_V4_CSHARP_SYNTAX_PASS')
+          PY
+          echo 'C# still requires a real Unity Editor compilation and Play Mode validation before merge.'
