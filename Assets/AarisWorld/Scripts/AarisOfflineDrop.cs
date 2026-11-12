@@ -275,10 +275,41 @@ namespace Aaris.MapReview
             pitch = Mathf.Clamp(pitch + pixels.y * 0.15f * scale, -55f, 70f);
         }
 
+        // Android may remove a canceled camera touch without a final Ended
+        // sample while the movement thumb remains down. Clear stale ownership
+        // so the next valid right-side swipe can acquire the camera.
+        private void OnApplicationPause(bool paused)
+        {
+            if (paused) lookFinger = -1;
+            previousMouse = Input.mousePosition;
+        }
+
+        private void OnApplicationFocus(bool focused)
+        {
+            if (!focused) lookFinger = -1;
+            previousMouse = Input.mousePosition;
+        }
+
         private void ReadLookInput()
         {
             if (Input.touchCount > 0)
             {
+                if (lookFinger >= 0)
+                {
+                    bool stillTouching = false;
+                    for (int i = 0; i < Input.touchCount; i++)
+                    {
+                        Touch touch = Input.GetTouch(i);
+                        if (touch.fingerId == lookFinger &&
+                            touch.phase != TouchPhase.Ended &&
+                            touch.phase != TouchPhase.Canceled)
+                        {
+                            stillTouching = true;
+                            break;
+                        }
+                    }
+                    if (!stillTouching) lookFinger = -1;
+                }
                 for (int i = 0; i < Input.touchCount; i++)
                 {
                     Touch t = Input.GetTouch(i);
