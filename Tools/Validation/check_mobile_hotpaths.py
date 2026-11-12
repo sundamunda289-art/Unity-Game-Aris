@@ -488,6 +488,14 @@ def audit():
     assert "memoryMB > 0 && memoryMB <= 3072" in quality
     assert "spawnBudgetPerPoll = 1;" in quality
     assert "unloadBudgetPerPoll = 2;" in quality
+    # Blocked garage locations can require two full collision probes.
+    # Keep failed-placement queries bounded even before a car is built.
+    assert "private int spawnProbeBudgetPerPoll = 8;" in vehicle
+    assert "spawnProbeBudgetPerPoll = 3;" in quality
+    assert "int spawnProbes = 0;" in stream
+    assert "spawnProbes >= spawnProbeBudgetPerPoll" in stream
+    assert "spawnProbes++;" in stream
+    assert stream.index("spawnProbes++;") < stream.index("TryResolvePlanned(record")
     assert "unloaded < unloadBudgetPerPoll" in stream
     assert "built >= spawnBudgetPerPoll" in stream
     assert "record.visible.CanPark" in stream
