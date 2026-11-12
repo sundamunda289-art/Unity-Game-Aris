@@ -391,7 +391,10 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         source = (SCRIPTS / "AarisVehicleWorld.cs").read_text("utf-8")
         self.assertIn("MaximumNearbyVehicles = 10", source)
         self.assertIn("Physics.OverlapBoxNonAlloc", source)
-        self.assertIn("TryResolve(record, out Vector3 pos)", source)
+        self.assertIn("TryResolvePlanned(record, out Vector3 pos)", source)
+        # All fallback vehicle candidates share the original physics solver.
+        self.assertIn("if (TryResolve(record, out spot)) return true;", source)
+        self.assertIn("return TryResolve(record, out spot, axis.x * offset, axis.z * offset);", source)
         door = (SCRIPTS / "AarisBreakablePanel.cs").read_text("utf-8")
         self.assertIn("ClosingBlocked()", door)
         self.assertIn("Physics.OverlapBoxNonAlloc", door)
@@ -453,7 +456,8 @@ class OfflineCombatAssetChecks(unittest.TestCase):
                       drop.index("private void RestoreFootControls()")]
         self.assertIn("tile.SampleHeight(point) + 0.8f", helper)
         self.assertNotIn("tile.transform.position.y + tile.SampleHeight", helper)
-        self.assertIn("if ((next - pos).sqrMagnitude > 0.00000001f)", camera)
+        self.assertIn("if (phase != DropPhase.InPlane &&", camera)
+        self.assertIn("(next - pos).sqrMagnitude > 0.00000001f)", camera)
         self.assertIn("next = CameraSafePosition(focus, next);", camera)
         self.assertIn("next = ClampCameraAboveTerrain(next);", camera)
         self.assertLess(camera.index("next = CameraSafePosition(focus, next);"),
