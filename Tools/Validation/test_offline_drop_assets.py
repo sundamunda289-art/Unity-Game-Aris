@@ -336,6 +336,25 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertLess(camera.index("next = ClampCameraAboveTerrain(next);"),
                         camera.index("view.transform.position = next;"))
 
+    def test_aerial_hud_fingers_never_steal_camera_swipe(self):
+        drop = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
+        look = drop[drop.index("private void ReadLookInput()"):
+                    drop.index("private Vector2 MovementIntent()")]
+        hud = drop[drop.index("public sealed class AarisOfflineDropHud"):
+                   drop.index("public sealed class AarisOfflineDropStick")]
+        # Unity EventSystem may process the initial pointer after Drop.Update.
+        # Check the already-authored action and thumbstick rectangles directly.
+        self.assertIn("hud.CapturesScreenPosition(t.position)", look)
+        self.assertIn("t.phase == TouchPhase.Began", look)
+        self.assertIn("IsPointerOverGameObject(t.fingerId)", look)
+        self.assertIn("internal bool CapturesScreenPosition(Vector2 screenPosition)", hud)
+        self.assertIn("RectTransformUtility.RectangleContainsScreenPoint(", hud)
+        self.assertIn("actionHitRect.gameObject.activeInHierarchy", hud)
+        self.assertIn("stickHitRect.gameObject.activeInHierarchy", hud)
+        self.assertIn("actionHitRect = buttonRect;", hud)
+        self.assertIn("stickHitRect = rect;", hud)
+        self.assertNotIn("new GameObject(", look)  # No hotpath allocations.
+
     def test_pc_combat_keys_do_not_trigger_two_actions(self):
         # Regression: V used to aim AND deploy cover; G dropped the gun
         # while throwing a grenade. Mobile touch actions remain unchanged.
