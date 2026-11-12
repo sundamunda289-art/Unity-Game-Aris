@@ -245,8 +245,14 @@ namespace Aaris.MapReview
         }
         private void Look(Vector2 delta)
         {
-            yaw += delta.x * lookSensitivity / uiScale;
-            pitch = Mathf.Clamp(pitch - delta.y * lookSensitivity / uiScale, minLookPitch, maxLookPitch);
+            // Match the airborne camera's device-independent drag response.
+            // Keep the serialized sensitivity as a user-tunable multiplier.
+            // Upward touch movement looks up in both gameplay phases.
+            float scale = Mathf.Clamp(720f / Mathf.Max(360f, Screen.height), 0.75f, 1.5f);
+            float sensitivity = lookSensitivity / 0.12f;
+            yaw += delta.x * 0.18f * scale * sensitivity;
+            pitch = Mathf.Clamp(pitch - delta.y * 0.15f * scale * sensitivity,
+                minLookPitch, maxLookPitch);
         }
         private void ReadInput()
         {
@@ -649,10 +655,20 @@ namespace Aaris.MapReview
         /// </summary>
         public void ResumeFromAerialDrop()
         {
+            ResumeFromAerialDrop(transform.eulerAngles.y, 12f);
+        }
+
+        /// <summary>
+        /// Hand off the aerial look direction without snapping to the
+        /// default camera pitch at touchdown. Existing no-argument callers
+        /// retain their original reset behavior.
+        /// </summary>
+        public void ResumeFromAerialDrop(float lookYaw, float lookPitch)
+        {
             if (controller == null) controller = GetComponent<CharacterController>();
             if (controller == null) return;
-            yaw = transform.eulerAngles.y;
-            pitch = 12f;
+            yaw = lookYaw;
+            pitch = Mathf.Clamp(lookPitch, minLookPitch, maxLookPitch);
             spawn = transform.position;
             spawnRotation = transform.rotation;
             horizontalVelocity = Vector3.zero;
