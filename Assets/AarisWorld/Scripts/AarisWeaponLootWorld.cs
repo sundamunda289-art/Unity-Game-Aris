@@ -78,6 +78,9 @@ namespace Aaris.MapReview
         private float nextRefresh, requestPickupUntil;
         private int streamFramesRemaining;
         private int nextDropId = -1;
+        // Only the one match-start fallback may auto-equip like authored loot.
+        // Never auto-pick player-dropped or exchanged negative-ID guns.
+        private int starterLootId;
         private bool allowInitialAutoPickup = true;
         private bool starterLootSettled;
         private uint rng, matchSeed;
@@ -625,7 +628,8 @@ namespace Aaris.MapReview
             HasPickupInRange = bestPickup != null;
             return bestPickup != null &&
                 (explicitPickup || (!inventory.HasGun && allowInitialAutoPickup &&
-                    bestPickup.CandidateIndex >= 0)) && TryTake(bestPickup);
+                    (bestPickup.CandidateIndex >= 0 ||
+                     bestPickup.CandidateIndex == starterLootId))) && TryTake(bestPickup);
         }
 
         private bool StreamNearby(Vector3 playerPosition, float now)
@@ -731,7 +735,12 @@ namespace Aaris.MapReview
             var spec = AarisWeaponCatalog.Select(ref rng, false);
             if (spec == null) return;
             var state = new AarisWeaponState(spec, matchSeed ^ 0x4F67A2C1u);
-            starterLootSettled = CreateDropped(state, point, 0f) != null;
+            var starter = CreateDropped(state, point, 0f);
+            if (starter != null)
+            {
+                starterLootId = starter.id;
+                starterLootSettled = true;
+            }
         }
 
         private bool IsCurrentlyActive(int candidateIndex)
