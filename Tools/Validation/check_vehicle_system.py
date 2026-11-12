@@ -144,8 +144,10 @@ def test():
     for guard in ("Mathf.Abs(ground - authoredY) > 2.5f",
                   "HasSupport(", "Mathf.Abs(localY - y) > .37f",
                   "nearbyColliders.HasPotentialInactiveObstacle(",
-                  "Physics.OverlapBoxNonAlloc(", "if (obstacle is TerrainCollider)"):
+                  "Physics.OverlapBoxNonAlloc("):
         assert guard in physical, "Vehicle fallback bypassed safety: " + guard
+    assert "if (obstacle == null || obstacle is TerrainCollider) continue;" in physical, (
+        "Vehicle fallback must ignore null/terrain hits without ignoring solid obstacles")
     assert "record.visible.CanPark" in world and "record.visible.IsOccupied" in world
     assert "Resources.Load<GameObject>(item.modelResource)" in world
     assert "if (validModels == 0 || availableWeight <= 0)" in world
