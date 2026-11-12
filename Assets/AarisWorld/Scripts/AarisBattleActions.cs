@@ -30,6 +30,9 @@ namespace Aaris.MapReview
         private Vector3 standingCenter;
         private float standingHeight, standingStepOffset, nextAttack;
         private readonly Collider[] nearHits = new Collider[32];
+        // A second reusable buffer handles dense forests/settlements without
+        // allocating a Collider[] on every prone movement frame.
+        private readonly Collider[] crowdedHits = new Collider[128];
         private PlayerStance stance;
         private bool fireHeld;
         private bool semiShotQueued;
@@ -168,9 +171,15 @@ namespace Aaris.MapReview
                 // A filled NonAlloc result is incomplete, not proof of a wall.
                 // In dense settlements resolve ALL contacts, then still reject
                 // every real ceiling while ignoring only our own colliders.
-                headroomHits = Physics.OverlapCapsule(low, high, radius, mask,
-                    QueryTriggerInteraction.Ignore);
-                count = headroomHits.Length;
+                headroomHits = crowdedHits;
+                count = Physics.OverlapCapsuleNonAlloc(low, high, radius,
+                    crowdedHits, mask, QueryTriggerInteraction.Ignore);
+                if (count >= crowdedHits.Length)
+                {
+                    headroomHits = Physics.OverlapCapsule(low, high, radius, mask,
+                        QueryTriggerInteraction.Ignore);
+                    count = headroomHits.Length;
+                }
             }
             for (int i = 0; i < count; i++)
             {
@@ -211,9 +220,15 @@ namespace Aaris.MapReview
                 // Crowded terrain can fill the reusable buffer with floors and
                 // the player's own colliders. Query every hit on overflow so
                 // real walls still block crawling without falsely locking pose.
-                proneHits = Physics.OverlapCapsule(head, legs, 0.245f, mask,
-                    QueryTriggerInteraction.Ignore);
-                count = proneHits.Length;
+                proneHits = crowdedHits;
+                count = Physics.OverlapCapsuleNonAlloc(head, legs, 0.245f,
+                    crowdedHits, mask, QueryTriggerInteraction.Ignore);
+                if (count >= crowdedHits.Length)
+                {
+                    proneHits = Physics.OverlapCapsule(head, legs, 0.245f, mask,
+                        QueryTriggerInteraction.Ignore);
+                    count = proneHits.Length;
+                }
             }
             for (int i = 0; i < count; i++)
             {
