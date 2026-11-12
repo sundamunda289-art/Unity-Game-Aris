@@ -92,7 +92,7 @@ def test():
     battle=script("AarisBattleHUD")
 
     # Bound 2km car plans, floor/bridge/mountain and wall clearance.
-    assert "TargetVehicles = 26" in world
+    assert "TargetVehicles = 44" in world
     assert "file.hubCount != 45" in world
     assert "var sectors = new HashSet<int>();" in world
     assert "int sector = Mathf.Clamp" in world
@@ -186,13 +186,13 @@ def test():
             if cell not in seen and add(p,100): seen.add(cell)
         pool.sort(key=lambda p: 0 if p["kind"]=="hub" else 1)
         for p in pool:
-            if len(selected)>=26: break
+            if len(selected)>=44: break
             add(p,105)
         counts.append(len(selected))
         assert len(seen)>=14
-        assert 22<=len(selected)<=26,(seed,len(selected))
+        assert 40<=len(selected)<=44,(seed,len(selected))
     print("PASS: 45 real garages +33 authored roadside points, 14 500m sectors, "
-          "300 balanced 26-car plans, 6 real car + 3 real wheel FBX models, "
+          "300 balanced 44-car plans, 6 real car + 3 real wheel FBX models, "
           "WheelCollider physics, safe enter/exit and 4-arrow mobile UX.")
     print("NOT TESTED: Unity Editor FBX import, in-game car handling, Android rendering/FPS.")
 
