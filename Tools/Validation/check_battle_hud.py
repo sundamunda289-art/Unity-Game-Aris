@@ -76,6 +76,14 @@ def check() -> None:
     # even when tree-sitter accepts every individual C# source file.
     assert "player.ForwardLookDelta(pixels);" in hud
     assert "owner.ForwardLookDelta(eventData.delta);" in button
+    # Claw controls: holding Jump and Fire simultaneously must NEVER add
+    # two camera drags. The Fire thumb is allowed to aim; the Jump thumb
+    # only requests a buffered jump. An independent look finger still wins.
+    jump_drag = button.split("public void OnDrag(PointerEventData eventData)", 1)[1].split(
+        "public void OnPointerUp(", 1)[0]
+    assert "if (kind == AarisBattleHUD.Action.Fire)" in jump_drag
+    assert "kind == AarisBattleHUD.Action.Jump" not in jump_drag
+    assert jump_drag.count("owner.ForwardLookDelta(eventData.delta);") == 1
     assert "public void ForwardLookDelta(Vector2 pixels)" in motor
     forwarded = motor.split("public void ForwardLookDelta(Vector2 pixels)", 1)[1]
     forwarded = forwarded.split("private void ReadInput()", 1)[0]
