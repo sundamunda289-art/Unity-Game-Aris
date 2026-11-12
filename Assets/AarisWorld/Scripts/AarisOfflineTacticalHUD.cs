@@ -27,6 +27,9 @@ namespace Aaris.MapReview
             public float retry;
         }
         private readonly List<MedicalSite> medicalSites = new List<MedicalSite>(80);
+        // Recycle at most eight case hierarchies; avoid per-cell GameObject churn.
+        private readonly Stack<GameObject> medicalVisualPool =
+            new Stack<GameObject>(MaxMedicalVisuals);
         private readonly Collider[] medicalHits = new Collider[20];
         private readonly RaycastHit[] medicalSightHits = new RaycastHit[24];
         private Terrain[] medicalTerrains;
@@ -354,14 +357,12 @@ namespace Aaris.MapReview
                 {
                     site.taken = true;
                     medkits++;
-                    Destroy(site.visual);
-                    site.visual = null;
+                    RecycleMedicalCase(site);
                     continue;
                 }
                 if (distanceSq > 56f * 56f)
                 {
-                    Destroy(site.visual);
-                    site.visual = null;
+                    RecycleMedicalCase(site);
                 }
                 else live++;
             }
@@ -377,6 +378,15 @@ namespace Aaris.MapReview
                 if (TrySpawnMedicalCase(site)) live++;
                 else site.retry = Time.unscaledTime + 5f;
             }
+        }
+
+        private void RecycleMedicalCase(MedicalSite site)
+        {
+            GameObject visual = site.visual;
+            site.visual = null;
+            if (visual == null) return;
+            visual.SetActive(false);
+            medicalVisualPool.Push(visual);
         }
 
         private bool CanCollectMedical(MedicalSite site)
@@ -452,6 +462,18 @@ namespace Aaris.MapReview
                 if (c != null && !(c is TerrainCollider) &&
                     !c.transform.IsChildOf(transform)) return false;
             }
+            // All reused positions passed the same full overlap test above.
+            if (medicalVisualPool.Count > 0)
+            {
+                GameObject reused = medicalVisualPool.Pop();
+                if (reused != null)
+                {
+                    reused.transform.position = spot;
+                    reused.SetActive(true);
+                    site.visual = reused;
+                    return true;
+                }
+            }
             var root = new GameObject("Aaris Streamed Medkit");
             root.transform.position = spot;
             Material shell = MedicalPaint(ref medcasePaint,
@@ -512,6 +534,13 @@ namespace Aaris.MapReview
         {
             foreach (var site in medicalSites)
                 if (site.visual != null) Destroy(site.visual);
+            while (medicalVisualPool.Count > 0)
+            {
+                GameObject visual = medicalVisualPool.Pop();
+                if (visual != null) Destroy(visual);
+            }
+            if (medcasePaint != null) Destroy(medcasePaint);
+            if (medcrossPaint != null) Destroy(medcrossPaint);
             if (canvas != null) Destroy(canvas.gameObject);
         }
     }

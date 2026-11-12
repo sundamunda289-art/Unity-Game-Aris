@@ -51,6 +51,23 @@ def audit() -> None:
     assert "!(c is TerrainCollider)" in medical_spawn
     assert "if (count >= medicalHits.Length) return false;" not in medical_spawn
 
+    # The eight streamed 3D medkits must reuse visuals without relaxing
+    # terrain, rooftop or wall checks or leaking their shared materials.
+    medical_stream = tactical.split("private void StreamMedicalSites()", 1)[1].split(
+        "private bool CanCollectMedical(", 1
+    )[0]
+    assert medical_stream.count("RecycleMedicalCase(site);") == 2
+    assert "Destroy(site.visual);" not in medical_stream
+    assert "medicalVisualPool.Push(visual);" in tactical
+    assert "visual.SetActive(false);" in tactical
+    assert "GameObject reused = medicalVisualPool.Pop();" in medical_spawn
+    assert medical_spawn.index("Physics.OverlapBoxNonAlloc(") < medical_spawn.index(
+        "GameObject reused = medicalVisualPool.Pop();"
+    )
+    assert "reused.SetActive(true);" in medical_spawn
+    assert "while (medicalVisualPool.Count > 0)" in tactical
+    assert "if (medcasePaint != null) Destroy(medcasePaint);" in tactical
+
 
     assert "Mathf.Clamp(Time.deltaTime, 0f, 0.15f)" in motor, "Low-FPS movement discards time"
     assert motor.count("controller.Move(") == 1, "Two movement authorities detected"
