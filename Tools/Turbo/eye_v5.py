@@ -126,7 +126,7 @@ def os_action(step):
     elif op=="os_key":
         gui_v4.execute_steps([{"op":"key_tap","key":step["key"]}],[],time.monotonic())
     elif op=="os_drag":
-        gui_v4.invoke("xdotool","mousemove","--sync",str(step["x"]),str(step["y"]))
+        gui_v4.invoke("xdotool","mousemove",str(step["x"]),str(step["y"]))
         gui_v4.invoke("xdotool","mousedown","1")
         try:
             gui_v4.smoothly_move(step["to_x"],step["to_y"],step["seconds"])
