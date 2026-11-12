@@ -45,10 +45,12 @@ fi
 CS_COUNT="$(GH_CONFIG_DIR="$WORKER" gh codespace list --limit 100 --json name,state,repository \
   --jq '[.[]|select((.repository // "")|endswith("/Unity-Game-Aris"))]|length')"
 if test "$CS_COUNT" = 0; then
-  GH_CONFIG_DIR="$WORKER" gh repo view "$CS_USER/Unity-Game-Aris" --json name -q .name >/dev/null || {
-    echo 'No existing Unity-Game-Aris Codespace or authorized hosting fork; old secret unchanged.'
-    exit 4
-  }
+  if GH_CONFIG_DIR="$WORKER" gh repo view "$CS_USER/Unity-Game-Aris" --json name -q .name >/dev/null 2>&1; then
+    echo 'AARIS_HOST_FORK_PRESENT_NO_CODESPACE: Actions will create exactly one.'
+  else
+    echo 'AARIS_HOST_FORK_MISSING: Actions will create the fork AND its Codespace using this new login.'
+    echo "AARIS_NEW_FORK_OWNER=$CS_USER"
+  fi
 fi
 MASTER_TOKEN="$(GH_CONFIG_DIR="$MASTER" gh auth token)"
 CS_TOKEN="$(GH_CONFIG_DIR="$WORKER" gh auth token)"
@@ -57,7 +59,7 @@ unset MASTER_TOKEN CS_TOKEN
 echo "Codespace account authorized: $CS_USER; original repository unchanged."
 echo 'Starting one isolated GitHub Actions bootstrap for dynamic Codespace selection and Cloudflare agent installation.'
 GH_CONFIG_DIR="$MASTER" gh workflow run aaris-turbo-bootstrap.yml \
-  --repo "$REPO" --ref main --field machine=auto || {
+  --repo "$REPO" --ref main --field machine=auto --field hosting_login="$CS_USER" || {
     echo 'Bootstrap dispatch failed. Secret was updated; no Codespace was deleted.'
     exit 6
   }
