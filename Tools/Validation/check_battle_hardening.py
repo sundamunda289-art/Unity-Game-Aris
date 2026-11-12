@@ -70,7 +70,11 @@ def audit() -> None:
     assert "FindFirstObjectByType<AarisMobileRuntime>() == null" in motor, (
         "Player Awake must not overwrite AarisMobileRuntime FPS settings"
     )
-    assert "count == nearHits.Length" in state
+    # Saturation must never accept a partial hit set or falsely reject
+    # valid standing/crawling solely because the fixed buffer filled.
+    assert "if (count >= nearHits.Length)" in state
+    assert "headroomHits = Physics.OverlapCapsule(low, high, radius, mask," in state
+    assert "proneHits = Physics.OverlapCapsule(head, legs, 0.245f, mask," in state
     assert "muzzleHit" in gun
     # The fixed NonAlloc ray buffer can saturate inside dense buildings.
     # A full unsorted buffer is never enough to decide the nearest impact.

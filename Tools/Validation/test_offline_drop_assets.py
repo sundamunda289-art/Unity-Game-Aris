@@ -113,6 +113,31 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         # Do not replace the existing touch HUD or introduce a second motor.
         self.assertEqual(player.count("controller.Move("), 1)
 
+    def test_dense_colliders_do_not_permanently_lock_stance_transitions(self):
+        # A full non-alloc collider buffer is an incomplete answer. On rare
+        # dense spots, preserve actual wall/ceiling checks with a complete
+        # query; do not reject safe stand/prone transitions just for overflow.
+        source = (SCRIPTS / "AarisBattleActions.cs").read_text("utf-8")
+        room = source.split("private bool HasRoomAbove(", 1)[1].split(
+            "public bool CanAdvanceProne(", 1)[0]
+        prone = source.split("private bool HasProneClearance(", 1)[1].split(
+            "private void Update()", 1)[0]
+        for segment, complete_query, hit_array in (
+            (room, "Physics.OverlapCapsule(low, high, radius, mask,",
+             "headroomHits[i]"),
+            (prone, "Physics.OverlapCapsule(head, legs, 0.245f, mask,",
+             "proneHits[i]"),
+        ):
+            self.assertIn("Physics.OverlapCapsuleNonAlloc", segment)
+            self.assertIn("if (count >= nearHits.Length)", segment)
+            self.assertIn(complete_query, segment)
+            self.assertIn(hit_array, segment)
+            self.assertNotIn("if (count == nearHits.Length) return false;", segment)
+            self.assertIn("obstacle.transform.IsChildOf(transform)" if segment == prone
+                          else "hit.transform.IsChildOf(transform)", segment)
+        self.assertIn("if (obstacle is TerrainCollider) continue;", prone)
+        self.assertIn("floorHit.normal.y", prone)
+
     def test_mobile_jump_and_prone_movement_safety(self):
         motor = (SCRIPTS / "AarisThirdPersonPlayer.cs").read_text("utf-8")
         stance = (SCRIPTS / "AarisBattleActions.cs").read_text("utf-8")

@@ -110,7 +110,13 @@ def assert_regression() -> None:
     assert "currentTop - radius * 0.35f" in ACTION
     assert "floor + radius" in ACTION
     assert "capsule.radius - capsule.skinWidth" in ACTION
-    assert "count == nearHits.Length" in ACTION
+    # A filled 32-contact buffer no longer locks crouch/prone by default.
+    # It must escalate to reusable storage and finally a complete query,
+    # while preserving the existing floor/ceiling exclusion rules.
+    assert "if (count >= nearHits.Length)" in ACTION
+    assert "private readonly Collider[] crowdedHits = new Collider[128];" in ACTION
+    assert "headroomHits = Physics.OverlapCapsule(low, high, radius, mask," in ACTION
+    assert "proneHits = Physics.OverlapCapsule(head, legs, 0.245f, mask," in ACTION
     assert "HasProneClearance" in ACTION
     assert "Physics.OverlapCapsuleNonAlloc(head, legs" in ACTION
     assert "CanAdvanceProne(candidate, horizontalVelocity)" in MOTOR
