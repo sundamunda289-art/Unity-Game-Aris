@@ -30,7 +30,11 @@ namespace Aaris.MapReview
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
         {
-            var existing = FindFirstObjectByType<AarisThirdPersonPlayer>();
+            EnsureForPlayer(FindFirstObjectByType<AarisThirdPersonPlayer>());
+        }
+
+        internal static void EnsureForPlayer(AarisThirdPersonPlayer existing)
+        {
             if (existing == null || FindFirstObjectByType<AarisBattleHUD>() != null) return;
 
             var state = existing.GetComponent<AarisBattleActions>();
