@@ -1,0 +1,144 @@
+name: Aaris Android v8 verified APK release
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+jobs:
+  publish:
+    if: >-
+      github.event.issue.number == 77 &&
+      github.event.comment.user.login == 'sundamunda289-art' &&
+      github.event.comment.body == 'APK RELEASE INSTALLFIX V8 20261112'
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    permissions:
+      contents: write
+      issues: write
+    concurrency:
+      group: aaris-v8-release
+      cancel-in-progress: false
+    env:
+      MACHINE: aaris-ai-ubuntu-minimal-4qr6v94w9rwvhjgp6
+      TAG: apk-installfix-v8-20261112
+      NAME: AarisGame-InstallFix-v8.apk
+    steps:
+      - name: Verify exact Codespace from selected hosting account
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          gh codespace list --limit 100 --json name,state,repository > "$RUNNER_TEMP/machines.json"
+          jq -e --arg n "$MACHINE" '[.[] | select(.name == $n and .state == "Available" and
+            ((if (.repository | type) == "string" then .repository
+              else (.repository.nameWithOwner // .repository.full_name // "") end)
+             | test("^[^/]+/Unity-Game-Aris$")))] | length == 1' "$RUNNER_TEMP/machines.json" >/dev/null
+
+      - name: Confirm real rebuilt APK, package identity and signing certificate
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          timeout 600 gh codespace ssh -c "$MACHINE" -- 'bash -s' <<'REMOTE' > "$RUNNER_TEMP/verified-source.txt"
+          set -euo pipefail
+          B=/tmp/aaris-codespaces/android-apk
+          SDK="$B/managed-editors/6000.3.26f1/Editor/Data/PlaybackEngines/AndroidPlayer"
+          APK="$B/Build/AarisGame-v8-signed.apk"
+          grep -qxF AARIS_V8_READY_FOR_REAL_DEVICE_INSTALL_TEST "$B/installfix-v8-stage"
+          grep -qxF AARIS_V8_APK_MULTISCHEME_SIGNATURE_MANIFEST_SHA256_VERIFIED "$B/installfix-v8-stage"
+          export JAVA_HOME="$SDK/OpenJDK" PATH="$SDK/OpenJDK/bin:$PATH"
+          "$SDK/SDK/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" > "$B/private-release-v8-signature.log"
+          for s in v1 v2 v3; do grep -q "Verified using $s scheme.*: true" "$B/private-release-v8-signature.log"; done
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json
+          B=Path("/tmp/aaris-codespaces/android-apk")
+          f=B/"Build/AarisGame-v8-signed.apk"
+          j=json.loads((B/"installfix-v8-report.json").read_text())
+          h=hashlib.sha256()
+          with f.open("rb") as a:
+            for b in iter(lambda:a.read(1024*1024),b""): h.update(b)
+          assert j["status"]=="verified_locally_device_install_not_confirmed"
+          assert j["versionCode"]==20261112 and j["package"]=="com.aaris.game"
+          assert j["certificateSha256"]=="c469f27b142a0d85c766700d05bbfe7c3fd55b888ffa9e36a5a72cda65aa3eb1"
+          assert j["sha256"]==h.hexdigest() and j["bytes"]==f.stat().st_size
+          print("SHA256="+j["sha256"])
+          print("BYTES="+str(j["bytes"]))
+          print("APK_V8_SOURCE_VERIFIED")
+          PY
+          REMOTE
+          grep -qxF APK_V8_SOURCE_VERIFIED "$RUNNER_TEMP/verified-source.txt"
+          grep '^SHA256=' "$RUNNER_TEMP/verified-source.txt" | cut -d= -f2 > "$RUNNER_TEMP/sha256"
+          grep '^BYTES=' "$RUNNER_TEMP/verified-source.txt" | cut -d= -f2 > "$RUNNER_TEMP/bytes"
+          grep -Eq '^[0-9a-f]{64}$' "$RUNNER_TEMP/sha256"
+          grep -Eq '^[0-9]{8,10}$' "$RUNNER_TEMP/bytes"
+          echo VERIFIED_V8_BUILD_AND_MULTISCHEME_SIGNATURE
+
+      - name: Copy APK from Codespace and verify bytes independently
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -euo pipefail
+          if ! timeout 2400 gh codespace cp -e -c "$MACHINE" \
+            'remote:/tmp/aaris-codespaces/android-apk/Build/AarisGame-v8-signed.apk' "dist/$NAME"; then
+            rm -f "dist/$NAME"
+            timeout 2400 gh codespace ssh -c "$MACHINE" -- \
+              'cat /tmp/aaris-codespaces/android-apk/Build/AarisGame-v8-signed.apk' > "dist/$NAME"
+          fi
+          test "$(stat -c %s "dist/$NAME")" = "$(cat "$RUNNER_TEMP/bytes")"
+          printf '%s  %s\n' "$(cat "$RUNNER_TEMP/sha256")" "$NAME" > "dist/$NAME.sha256"
+          (cd dist && sha256sum -c "$NAME.sha256")
+          python3 - <<'PY'
+          from zipfile import ZipFile
+          with ZipFile("dist/AarisGame-InstallFix-v8.apk") as z:
+            names=set(z.namelist())
+            assert len(names)==len(z.infolist()) and z.testzip() is None
+            assert "AndroidManifest.xml" in names and "classes.dex" in names
+            assert any(x.startswith("lib/arm64-v8a/") for x in names)
+            assert any(x.startswith("lib/armeabi-v7a/") for x in names)
+          print("APK_V8_RELEASE_ZIP_VERIFIED")
+          PY
+
+      - name: Publish direct download in canonical GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo RELEASE_TAG_EXISTS
+            exit 41
+          fi
+          cat > "$RUNNER_TEMP/notes.txt" <<EOF
+          Aaris Game Android test APK rebuilt November 12, 2026.
+          Source: Codespace feature-branch snapshot 1a56c09fab08ae1f03751ca95eac4c01eeaa7f84, NOT latest canonical main.
+          New com.aaris.game version 0.3.2, versionCode 20261112; Android minSdk 26, targetSdk 33; ARMv7 and ARM64.
+          The APK has Android v1, v2 and v3 signatures signed with the SAME debug certificate as prior v7.
+          File hash validated before upload, signature, manifest, ZIP CRC, native ARM libraries and archive checked.
+          The screenshot error is generic: device installation has NOT yet been confirmed. A partial download or app installed with a different signing key can still fail; preserve app data before attempting uninstall.
+          EOF
+          gh release create "$TAG" "dist/$NAME" "dist/$NAME.sha256" \
+            -R "$GITHUB_REPOSITORY" --target main \
+            --title "Aaris Game Android install-fix v8" \
+            --notes-file "$RUNNER_TEMP/notes.txt" --prerelease
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[] | select(.name == "AarisGame-InstallFix-v8.apk") | .size' \
+            | grep -qxF "$(cat "$RUNNER_TEMP/bytes")"
+          echo RELEASE_APK_UPLOADED_AND_SIZE_CONFIRMED
+
+      - name: Report completion on owner issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Aaris Game install-fix v8 release result: $RESULT"
+            if test "$RESULT" = success; then
+              echo "Direct APK: https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$NAME"
+            fi
+            echo "Run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > "$RUNNER_TEMP/report.txt"
+          gh issue comment 77 -R "$GITHUB_REPOSITORY" -F "$RUNNER_TEMP/report.txt"
