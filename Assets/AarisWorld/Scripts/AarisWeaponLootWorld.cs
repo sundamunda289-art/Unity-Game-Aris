@@ -156,7 +156,7 @@ namespace Aaris.MapReview
                 // Apply the probability to ALL sectors. An early cap on
                 // sorted candidates unfairly stocked the west side first
                 // and left the east half of the 2km map with no outdoor loot.
-                // Memory is bounded by 514 authored slots plus at most 32
+                // Memory is bounded by 514 authored slots plus at most 48
                 // native-tree spots per terrain tile. Spawned GameObjects
                 // remain separately capped at MaximumActiveLoot.
                 if (!WithinMap(c)) continue;
@@ -225,13 +225,14 @@ namespace Aaris.MapReview
                 var data = terrain.terrainData;
                 // TreeInstance[] is requested ONCE per tile, not once per
                 // update. The saved map currently contains ~7.5k instances
-                // in total. Keep the sample budget fixed for mobile memory.
+                // in total. Increase planned tree-side pickups without new
+                // trees, per-frame terrain scans or extra live weapon meshes.
                 TreeInstance[] trees = data.treeInstances;
                 if (trees == null || trees.Length == 0) continue;
                 int accepted = 0, attempts = 0;
                 Vector3 origin = terrain.transform.position;
                 Vector3 size = data.size;
-                while (accepted < 32 && attempts++ < 160)
+                while (accepted < 48 && attempts++ < 240)
                 {
                     int idx = (int)(AarisWeaponRandom.Next(ref rng) % (uint)trees.Length);
                     Vector3 tree = origin + Vector3.Scale(trees[idx].position, size);
