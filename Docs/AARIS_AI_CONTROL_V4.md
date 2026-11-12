@@ -100,3 +100,37 @@ Use telemetry and replay to verify the effect.
    and measure recorder's achieved FPS.
 5. Only then consider merge to canonical main. Never overwrite another
    agent's uncommitted changes.
+
+## AARIS Eyes & Hands V5: anywhere long press
+
+After the reviewed V5 branch is available on a Codespace, install or refresh
+the safe per-user CLI without editing Unity assets or launching a second Editor:
+
+    bash Tools/Turbo/install_super_control.sh
+
+The existing Cloudflare terminal can then issue these short commands:
+
+    aaris-eye hold 450 350 5
+    aaris-eye hold 450 350 2 3
+    aaris-eye click 500 450
+    aaris-eye drag 300 250 600 350 0.5
+    aaris-eye snap 3 12
+    aaris-eye scenario '[{"op":"mark","label":"start"},{"op":"os_hold","x":600,"y":420,"seconds":1.5},{"op":"state"}]'
+    aaris-eye status
+
+- Coordinates are real X11 desktop pixels; choose them from a fresh image.
+  Long press works on the whole desktop, not just Unity or the Fire button.
+  The default button is left; 3 selects right. Holds are bounded to 0.05–20 sec.
+- A real X11 ButtonPress and matching ButtonRelease were observed on the
+  replacement Codespace for a single long-press command.
+- Normal completion, caught errors and SIGTERM cancellation release the input.
+  An independent interrupted-hold test verified ButtonRelease. No software
+  guarantee is possible under SIGKILL, machine shutdown or X server crash.
+- Each V5 test can produce a ZIP, contact sheet, event images and timestamped
+  timeline. Observed capture FPS is reported; nominal 30 FPS does not imply
+  30 distinct rendered Unity frames on CPU-only Codespaces.
+- The CLI runs locally through the already authenticated Cloudflare terminal;
+  there is no public control port or new Cloudflare Tunnel.
+- GitHub Actions tests cover wrapper installation, Xvfb press/release events
+  and real-frame packages. Real Unity and Android gameplay require separate
+  testing on their corresponding environments.
