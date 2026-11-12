@@ -363,12 +363,18 @@ namespace Aaris.MapReview
         private void UpdateFreefall(float dt)
         {
             Vector2 input = MovementIntent();
-            float targetSink = pitch <= -30f ? -freefallFastSink : -freefallSlowSink;
+            // Camera pitch is a VIEW preference, not a dive command.
+            // Previously looking up/down during freefall changed the
+            // player's fall rate and forward motion, making touch look feel
+            // inverted and unpredictable. Only deliberate left-stick forward
+            // input accelerates the dive; free-look remains independent.
+            bool fastDive = input.y > 0.75f;
+            float targetSink = fastDive ? -freefallFastSink : -freefallSlowSink;
             downwardSpeed = Mathf.MoveTowards(downwardSpeed, targetSink, 35f * dt);
             Vector3 forward = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
             Vector3 right = Quaternion.Euler(0f, yaw, 0f) * Vector3.right;
             Vector3 desired = (forward * Mathf.Max(0.28f, input.y) * freefallForwardSpeed
-                + right * input.x * 15f) * (pitch <= -30f ? 0.62f : 1f);
+                + right * input.x * 15f) * (fastDive ? 0.62f : 1f);
             horizontalVelocity = Vector3.MoveTowards(horizontalVelocity, desired, 40f * dt);
             transform.rotation = Quaternion.Slerp(transform.rotation,
                 Quaternion.Euler(0f, yaw, 0f), 1f - Mathf.Exp(-4f * dt));
