@@ -81,12 +81,13 @@ namespace Aaris.MapReview.Editor
                     clip.lockRootRotation = true;
                     clip.lockRootHeightY = true;
                     clip.lockRootPositionXZ = true;
+                    // Primary and KayKit clips must preserve authored forward
+                    // orientation; averaging hips across cycles can bake a
+                    // crooked root direction into in-place walk/run/jump.
+                    clip.keepOriginalPositionY = true;
+                    clip.keepOriginalOrientation = true;
                     if (kayKit)
-                    {
                         clip.name = clipName;
-                        clip.keepOriginalPositionY = true;
-                        clip.keepOriginalOrientation = true;
-                    }
                 }
                 if (clips.Length > 0) importer.clipAnimations = clips;
             }
