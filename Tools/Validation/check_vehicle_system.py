@@ -130,6 +130,22 @@ def test():
     assert "terrain.transform.position.y +" not in world
     assert "Terrain.SampleHeight already returns a WORLD-SPACE Y." in world
     assert "record.previouslySpawned" in world and "record.rotation" in world
+    # New houses and rocks can block a planned 45-garage/33-roadside node.
+    # Nearby recovery is allowed only for never-driven cars and must use
+    # the SAME terrain/support/obstruction checks as their original slot.
+    planned = world.split("private bool TryResolvePlanned(", 1)[1].split(
+        "private bool Build(", 1)[0]
+    assert "if (TryResolve(record, out spot)) return true;" in planned
+    assert "if (record.previouslySpawned) return false;" in planned
+    assert "record.failedSpawnProbes++ & 3" in planned
+    assert "return TryResolve(record, out spot, axis.x * offset, axis.z * offset);" in planned
+    physical = world.split("private bool TryResolve(AarisVehicleRecord", 1)[1].split(
+        "private bool TryResolvePlanned(", 1)[0]
+    for guard in ("Mathf.Abs(ground - authoredY) > 2.5f",
+                  "HasSupport(", "Mathf.Abs(localY - y) > .37f",
+                  "nearbyColliders.HasPotentialInactiveObstacle(",
+                  "Physics.OverlapBoxNonAlloc(", "if (obstacle is TerrainCollider)"):
+        assert guard in physical, "Vehicle fallback bypassed safety: " + guard
     assert "record.visible.CanPark" in world and "record.visible.IsOccupied" in world
     assert "Resources.Load<GameObject>(item.modelResource)" in world
     assert "if (validModels == 0 || availableWeight <= 0)" in world
