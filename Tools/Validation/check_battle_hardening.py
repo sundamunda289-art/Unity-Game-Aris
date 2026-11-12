@@ -72,6 +72,13 @@ def audit() -> None:
     )
     assert "count == nearHits.Length" in state
     assert "muzzleHit" in gun
+    # The fixed NonAlloc ray buffer can saturate inside dense buildings.
+    # A full unsorted buffer is never enough to decide the nearest impact.
+    assert "if (count >= rayHits.Length)" in gun
+    assert "candidates = Physics.RaycastAll(ray, range," in gun
+    assert "count = candidates.Length;" in gun
+    assert "candidates[i].distance" in gun
+    assert "if (saturated) continue" not in gun
 
     # Android may drop a pointer without PointerUp on app pause, focus loss
     # or orientation changes. Reset the underlying identifier set, not just
