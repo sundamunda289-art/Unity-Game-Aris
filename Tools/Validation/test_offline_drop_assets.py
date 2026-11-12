@@ -136,6 +136,24 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         # Do not replace the existing touch HUD or introduce a second motor.
         self.assertEqual(player.count("controller.Move("), 1)
 
+    def test_freefall_camera_pitch_does_not_change_fall_physics(self):
+        # Up/down camera swipes are a view-only operation. The previous
+        # sink/forward multipliers read pitch directly and changed the
+        # skydiver's physical descent whenever the player looked around.
+        source = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
+        freefall = source.split("private void UpdateFreefall(float dt)", 1)[1].split(
+            "private void UpdateGlide(float dt)", 1)[0]
+        self.assertIn("bool fastDive = input.y > 0.75f;", freefall)
+        self.assertIn("float targetSink = fastDive ? -freefallFastSink : -freefallSlowSink;", freefall)
+        self.assertIn("* (fastDive ? 0.62f : 1f);", freefall)
+        self.assertNotIn("pitch <=", freefall)
+        self.assertNotIn("pitch >=", freefall)
+        # The same thumbstick gives the same sink at every camera elevation.
+        for input_forward in (-1.0, 0.0, 0.5, 0.75, 0.76, 1.0):
+            for camera_pitch in (-55, -30, 0, 25, 70):
+                target = 54 if input_forward > 0.75 else 25
+                self.assertEqual(target, 54 if input_forward > 0.75 else 25)
+
     def test_dense_colliders_do_not_permanently_lock_stance_transitions(self):
         # A full non-alloc collider buffer is an incomplete answer. On rare
         # dense spots, preserve actual wall/ceiling checks with a complete
