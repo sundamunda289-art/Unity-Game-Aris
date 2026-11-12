@@ -132,8 +132,23 @@ namespace Aaris.MapReview
         {
             AudioClip clip = GetClip(name);
             if (!isActiveAndEnabled || clip == null) return;
-            AudioSource voice = voices[nextVoice];
-            nextVoice = (nextVoice + 1) % voices.Length;
+            // Reuse an idle pooled voice before cutting off an ongoing sound.
+            // A shotgun/impact cue must not be stolen by round-robin wrapping
+            // while another of the 12 existing channels has already finished.
+            int selected = nextVoice;
+            if (voices[selected].isPlaying)
+            {
+                for (int offset = 1; offset < voices.Length; offset++)
+                {
+                    int candidate = (nextVoice + offset) % voices.Length;
+                    if (voices[candidate].isPlaying) continue;
+                    selected = candidate;
+                    break;
+                }
+            }
+            AudioSource voice = voices[selected];
+            nextVoice = (selected + 1) % voices.Length;
+            // When all voices are busy, preserve the old round-robin fallback.
             if (voice.isPlaying) voice.Stop();
             voice.transform.position = point;
             voice.pitch = Mathf.Clamp(pitch, 0.75f, 1.3f);
