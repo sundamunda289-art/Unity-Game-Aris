@@ -265,19 +265,23 @@ def audit():
     ):
         live_scale, live_budget = starting_scale, starting_budget
         for _ in range(8):
-            applied_scale = min(live_scale, 0.85 if ram <= 2304 else 0.92)
-            applied_budget = min(live_budget, 160 if ram <= 2304 else 224)
+            original_scale, original_budget = live_scale, live_budget
+            applied_scale = min(original_scale, 0.85 if ram <= 2304 else 0.92)
+            applied_budget = min(original_budget, 160 if ram <= 2304 else 224)
             # After dynamic tuning, the tracked last-applied scale changes.
-            applied_scale = max(min(live_scale, 0.72), applied_scale - .05)
-            modified_budget = applied_budget < live_budget
-            live_scale = starting_scale if abs(applied_scale - applied_scale) < 1e-6 else applied_scale
-            live_budget = starting_budget if modified_budget else live_budget
+            last_applied_scale = max(min(original_scale, 0.72), applied_scale - .05)
+            live_scale, live_budget = last_applied_scale, applied_budget
+            # A matching tracked value is owned by the outgoing runtime.
+            if abs(live_scale - last_applied_scale) < 1e-6:
+                live_scale = original_scale
+            if applied_budget < original_budget and abs(live_budget - applied_budget) < 1e-6:
+                live_budget = original_budget
             assert live_scale == starting_scale and live_budget == starting_budget
         # An unrelated renderer's newer quality choice must not be reverted.
         external_scale, external_budget = .68, 72.0
         last_applied_scale, last_applied_budget = .85, 160.0
-        assert external_scale != last_applied_scale
-        assert external_budget != last_applied_budget
+        assert abs(external_scale - last_applied_scale) > 1e-6
+        assert abs(external_budget - last_applied_budget) > 1e-6
 
     def simulate_quality(p75_p95_p99_samples, starting_scale=.85, original_scale=1., floor=.72):
         scale = starting_scale
