@@ -102,9 +102,13 @@ class LootGridRegression(unittest.TestCase):
                        "if (floor == null) continue;", "if (!clear) continue;",
                        "if (requireReachable && !CanReachPoint(candidate)) continue;"):
             self.assertIn(safety, placement)
-        self.assertIn("for (int attempt = 0; attempt < 12; attempt++)", placement)
+        self.assertIn("for (int attempt = 0; attempt < (requireReachable ? 20 : 12); attempt++)", placement)
         self.assertIn("else if (attempt < 8)", placement)
         self.assertIn("distance = 1.55f;", placement)
+        self.assertIn("else if (attempt < 12)", placement)
+        self.assertIn("distance = 1.80f;", placement)
+        self.assertIn("Mathf.PI / 8f", placement)
+        self.assertLess(1.80, 2.15)  # optional starter ring remains reachable
         self.assertIn("direction = (forward * f + right * r).normalized;", placement)
         self.assertIn("distance = .65f;", placement)
         self.assertIn("distance = 1.12f;", placement)

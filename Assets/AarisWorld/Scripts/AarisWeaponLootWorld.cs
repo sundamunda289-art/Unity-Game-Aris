@@ -522,11 +522,13 @@ namespace Aaris.MapReview
             if (player == null) return false;
             Vector3 forward = player.forward;
             Vector3 right = player.right;
-            // Four close cardinal positions, four diagonals, then four
-            // farther cardinals for dense tree cover / narrow doorways.
-            // All twelve remain inside the same 2.15m pickup reach. Only
-            // used when placing a gun, never on each gameplay frame.
-            for (int attempt = 0; attempt < 12; attempt++)
+            // Preserve the original twelve probes for voluntary weapon drops.
+            // After a parachute landing only, eight interleaved directions
+            // explore the remaining close ground before resorting to an
+            // invisible emergency equip. All probes stay within 2.15m pickup
+            // reach and retain floor, clearance and line-of-sight validation.
+            // This runs only on the bounded loot tick, not every frame.
+            for (int attempt = 0; attempt < (requireReachable ? 20 : 12); attempt++)
             {
                 Vector3 direction;
                 float distance;
@@ -543,11 +545,19 @@ namespace Aaris.MapReview
                     direction = (forward * f + right * r).normalized;
                     distance = 1.12f;
                 }
-                else
+                else if (attempt < 12)
                 {
                     direction = attempt == 8 ? forward :
                         attempt == 9 ? -forward : attempt == 10 ? right : -right;
                     distance = 1.55f;
+                }
+                else
+                {
+                    // Landing starter only: diagonally staggered outer ring.
+                    // 1.80m plus pickup-height difference remains in reach.
+                    float angle = (attempt - 12) * (Mathf.PI / 4f) + Mathf.PI / 8f;
+                    direction = forward * Mathf.Cos(angle) + right * Mathf.Sin(angle);
+                    distance = 1.80f;
                 }
                 Vector3 place = player.position + direction * distance;
                 if (place.x < -957f || place.x > 957f ||
