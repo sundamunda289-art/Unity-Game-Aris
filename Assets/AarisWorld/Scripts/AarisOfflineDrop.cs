@@ -52,7 +52,7 @@ namespace Aaris.MapReview
         private Vector3 previousMouse;
         private DropPhase phase = DropPhase.InPlane;
         private readonly RaycastHit[] groundHits = new RaycastHit[72];
-        private readonly RaycastHit[] cameraHits = new RaycastHit[28];
+        private readonly RaycastHit[] cameraHits = new RaycastHit[64];
         private Terrain[] flightTerrains;
         private const float InitialCanopyScale = 0.30f;
 
@@ -559,11 +559,22 @@ namespace Aaris.MapReview
             int n = Physics.SphereCastNonAlloc(new Ray(focus, direction), 0.17f,
                 cameraHits, distance, Physics.DefaultRaycastLayers,
                 QueryTriggerInteraction.Ignore);
-            if (n >= cameraHits.Length) return focus + direction * 0.35f;
+            RaycastHit[] hits = cameraHits;
+            if (n >= cameraHits.Length)
+            {
+                // A saturated NonAlloc buffer has no guaranteed nearest hit.
+                // Never collapse the camera to 35 cm just because foliage or
+                // nearby geometry fills it. Allocate only on the rare overflow
+                // and still exclude the player and departing aircraft.
+                hits = Physics.SphereCastAll(new Ray(focus, direction), 0.17f,
+                    distance, Physics.DefaultRaycastLayers,
+                    QueryTriggerInteraction.Ignore);
+                n = hits.Length;
+            }
             float allowed = distance;
             for (int i = 0; i < n; i++)
             {
-                var hit = cameraHits[i];
+                var hit = hits[i];
                 if (hit.collider == null || hit.collider.transform.IsChildOf(transform) ||
                     (plane != null && hit.collider.transform.IsChildOf(plane.transform))) continue;
                 allowed = Mathf.Min(allowed, Mathf.Max(0.35f, hit.distance - 0.2f));

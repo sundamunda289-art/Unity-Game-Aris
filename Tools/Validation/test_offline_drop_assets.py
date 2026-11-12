@@ -400,6 +400,29 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertLess(camera.index("next = ClampCameraAboveTerrain(next);"),
                         camera.index("view.transform.position = next;"))
 
+    def test_overflowed_aerial_camera_cast_keeps_nearest_valid_obstacle(self):
+        # A saturated non-alloc buffer is unordered and may consist entirely
+        # of player/aircraft contacts. It must never clamp the view to 35 cm.
+        drop = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
+        camera = drop.split("private Vector3 CameraSafePosition(", 1)[1].split(
+            "private Vector3 ClampCameraAboveTerrain(", 1)[0]
+        self.assertIn("new RaycastHit[64]", drop)
+        self.assertIn("Physics.SphereCastNonAlloc(", camera)
+        self.assertIn("if (n >= cameraHits.Length)", camera)
+        self.assertIn("hits = Physics.SphereCastAll(", camera)
+        self.assertIn("n = hits.Length;", camera)
+        self.assertIn("var hit = hits[i];", camera)
+        self.assertIn("hit.collider.transform.IsChildOf(transform)", camera)
+        self.assertIn("hit.collider.transform.IsChildOf(plane.transform)", camera)
+        self.assertNotIn("return focus + direction * 0.35f", camera)
+        self.assertLess(camera.index("hits = Physics.SphereCastAll("),
+                        camera.index("float allowed = distance;"))
+        # The solver always chooses the nearest valid hit, irrespective of
+        # the unordered output from the physics engine.
+        for distances in ((3.1, 0.8, 1.9), (1.9, 3.1, 0.8)):
+            clamped = min(max(0.35, x - 0.2) for x in distances)
+            self.assertAlmostEqual(clamped, 0.6)
+
     def test_aerial_hud_fingers_never_steal_camera_swipe(self):
         drop = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
         look = drop[drop.index("private void ReadLookInput()"):
