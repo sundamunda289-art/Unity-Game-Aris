@@ -570,5 +570,19 @@ class OfflineCombatAssetChecks(unittest.TestCase):
             found.add(match.group(1))
 
 
+    def test_medical_ground_loot_and_stationary_healing_are_bounded(self):
+        script = (SCRIPTS / "AarisOfflineTacticalHUD.cs").read_text("utf-8")
+        self.assertIn("MaxMedicalVisuals = 8", script)
+        self.assertIn('Resources.Load<TextAsset>("AarisWeapons/loot_candidates")', script)
+        self.assertIn('if (c == null || c.kind != "open" || i % 5 != 0', script)
+        self.assertIn("site.taken = true;", script)
+        self.assertIn("CanCollectMedical(site)", script)
+        self.assertIn("Physics.RaycastNonAlloc(ray, medicalSightHits", script)
+        self.assertIn("healing = true;", script)
+        self.assertIn("healEnd = Time.time + 3f;", script)
+        self.assertIn("new Vector2(velocity.x, velocity.z).sqrMagnitude > 0.04f", script)
+        self.assertIn("medicalHealth.RestoreHealth(medicalHealing);", script)
+        self.assertIn("renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;", script)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

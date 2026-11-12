@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -14,6 +15,29 @@ namespace Aaris.MapReview
         [SerializeField, Range(0, 10)] private int fragGrenades = 3;
         [SerializeField, Min(0.3f)] private float grenadeCooldown = 1.1f;
 
+        [Header("Medical supplies (streamed offline loot)")]
+        [SerializeField, Range(1, 5)] private int maxMedkits = 5;
+        [SerializeField, Range(25f, 100f)] private float medicalHealing = 75f;
+        private const int MaxMedicalVisuals = 8;
+        private sealed class MedicalSite
+        {
+            public Vector3 position;
+            public GameObject visual;
+            public bool taken;
+            public float retry;
+        }
+        private readonly List<MedicalSite> medicalSites = new List<MedicalSite>(80);
+        private readonly Collider[] medicalHits = new Collider[20];
+        private readonly RaycastHit[] medicalSightHits = new RaycastHit[24];
+        private Terrain[] medicalTerrains;
+        private AarisOfflineHealth medicalHealth;
+        private AarisBattleActions medicalBattle;
+        private CharacterController medicalController;
+        private Text medicalText;
+        private int medkits, shownMedkits = -1, shownSeconds = -1;
+        private bool healing;
+        private float healEnd, healthAtHealStart, nextMedicalScan;
+        private static Material medcasePaint, medcrossPaint;
         private AarisThirdPersonPlayer motor;
         private AarisOfflineGlooWall gloo;
         private AarisGlooTouchButton wallTouch;
@@ -55,7 +79,12 @@ namespace Aaris.MapReview
             gloo = GetComponent<AarisOfflineGlooWall>();
             drop = GetComponent<AarisOfflineDrop>();
             vehicle = GetComponent<AarisVehicleSession>();
+            medicalHealth = GetComponent<AarisOfflineHealth>();
+            medicalBattle = GetComponent<AarisBattleActions>();
+            medicalController = GetComponent<CharacterController>();
+            medicalTerrains = Terrain.activeTerrains;
             if (motor == null || gloo == null) { enabled = false; return; }
+            LoadMedicalSites();
             Build();
             initialized = true;
         }
@@ -83,6 +112,7 @@ namespace Aaris.MapReview
             }
             if (!onFoot)
             {
+                StopHealing();
                 // Canvas.enabled=false does not invoke the touch button's OnDisable.
                 // Clear its pointer ID so re-entering on-foot mode never locks WALL.
                 if (wallTouch != null) wallTouch.CancelHold();
@@ -90,6 +120,24 @@ namespace Aaris.MapReview
                 return;
             }
             if (Input.GetKeyDown(KeyCode.Q)) ThrowFrag();
+            if (Input.GetKeyDown(KeyCode.M)) StartHealing();
+            UpdateHealing();
+            StreamMedicalSites();
+            if (healing)
+            {
+                int seconds = Mathf.CeilToInt(Mathf.Max(0f, healEnd - Time.time));
+                if (seconds != shownSeconds)
+                {
+                    shownSeconds = seconds;
+                    medicalText.text = "HEAL\n" + seconds + "s";
+                }
+            }
+            else if (shownMedkits != medkits || shownSeconds >= 0)
+            {
+                shownMedkits = medkits;
+                shownSeconds = -1;
+                medicalText.text = "MED\n×" + medkits;
+            }
             if (shownWalls != gloo.Count)
             {
                 shownWalls = gloo.Count;
@@ -167,6 +215,12 @@ namespace Aaris.MapReview
             var button = grenadeButton.AddComponent<Button>();
             button.targetGraphic = grenadeButton.GetComponent<Image>();
             button.onClick.AddListener(ThrowFrag);
+            medicalText = CreateAction("Medkit", new Vector2(1f, 0.45f),
+                new Vector2(-255f, 0f), new Color(0.8f, 0.96f, 0.78f),
+                out GameObject medButton);
+            var healButton = medButton.AddComponent<Button>();
+            healButton.targetGraphic = medButton.GetComponent<Image>();
+            healButton.onClick.AddListener(StartHealing);
             AarisHudGlyphs.ApplyCanvasShader(canvasObject.transform);
         }
 
@@ -210,12 +264,243 @@ namespace Aaris.MapReview
             safe.offsetMin = safe.offsetMax = Vector2.zero;
         }
 
+        private void LoadMedicalSites()
+        {
+            TextAsset json = Resources.Load<TextAsset>("AarisWeapons/loot_candidates");
+            if (json == null) return;
+            try
+            {
+                var doc = JsonUtility.FromJson<AarisLootDocument>(json.text);
+                if (doc == null || doc.schema != 1 || doc.sizeMetres != 2000 ||
+                    doc.candidates == null) return;
+                for (int i = 0; i < doc.candidates.Length; i++)
+                {
+                    var c = doc.candidates[i];
+                    if (c == null || c.kind != "open" || i % 5 != 0 ||
+                        float.IsNaN(c.x) || float.IsNaN(c.z) ||
+                        float.IsInfinity(c.x) || float.IsInfinity(c.z) ||
+                        Mathf.Abs(c.x) > 955f || Mathf.Abs(c.z) > 955f) continue;
+                    medicalSites.Add(new MedicalSite {
+                        position = new Vector3(c.x, 0f, c.z) });
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("Aaris medkits: " + e.GetType().Name);
+            }
+        }
+
+        private void StartHealing()
+        {
+            RefreshOptionalComponents(true);
+            if (healing || medkits <= 0 || medicalHealth == null ||
+                medicalHealth.IsDead || medicalHealth.CurrentHealth >=
+                medicalHealth.MaximumHealth - 0.5f ||
+                (drop != null && !drop.HasLanded) ||
+                (vehicle != null && vehicle.IsDriving)) return;
+            healing = true;
+            healEnd = Time.time + 3f;
+            healthAtHealStart = medicalHealth.CurrentHealth;
+            shownSeconds = -1;
+        }
+
+        private void StopHealing()
+        {
+            if (!healing) return;
+            healing = false;
+            shownSeconds = shownMedkits = -1;
+        }
+
+        private void UpdateHealing()
+        {
+            if (!healing) return;
+            Vector3 velocity = medicalController != null
+                ? medicalController.velocity : Vector3.zero;
+            if (medicalHealth == null || medicalHealth.IsDead ||
+                medicalHealth.CurrentHealth + 0.001f < healthAtHealStart ||
+                new Vector2(velocity.x, velocity.z).sqrMagnitude > 0.04f ||
+                (medicalBattle != null && medicalBattle.FireHeld) ||
+                (motor != null && motor.IsInAir))
+            {
+                StopHealing();
+                return;
+            }
+            if (Time.time < healEnd) return;
+            if (medkits > 0 && medicalHealth.CurrentHealth < medicalHealth.MaximumHealth)
+            {
+                medkits--;
+                medicalHealth.RestoreHealth(medicalHealing);
+            }
+            StopHealing();
+        }
+
+        private void StreamMedicalSites()
+        {
+            if (Time.unscaledTime < nextMedicalScan ||
+                medicalSites.Count == 0) return;
+            nextMedicalScan = Time.unscaledTime + 0.65f;
+            Vector3 playerPosition = transform.position;
+            int live = 0;
+            for (int i = 0; i < medicalSites.Count; i++)
+            {
+                var site = medicalSites[i];
+                if (site.visual == null) continue;
+                float dx = site.position.x - playerPosition.x;
+                float dz = site.position.z - playerPosition.z;
+                float distanceSq = dx * dx + dz * dz;
+                if (distanceSq <= 2.15f * 2.15f && medkits < maxMedkits &&
+                    Mathf.Abs(site.visual.transform.position.y - playerPosition.y) < 1.25f &&
+                    CanCollectMedical(site))
+                {
+                    site.taken = true;
+                    medkits++;
+                    Destroy(site.visual);
+                    site.visual = null;
+                    continue;
+                }
+                if (distanceSq > 56f * 56f)
+                {
+                    Destroy(site.visual);
+                    site.visual = null;
+                }
+                else live++;
+            }
+            if (live >= MaxMedicalVisuals) return;
+            for (int i = 0; i < medicalSites.Count && live < MaxMedicalVisuals; i++)
+            {
+                var site = medicalSites[i];
+                if (site.taken || site.visual != null ||
+                    Time.unscaledTime < site.retry) continue;
+                float dx = site.position.x - playerPosition.x;
+                float dz = site.position.z - playerPosition.z;
+                if (dx * dx + dz * dz > 42f * 42f) continue;
+                if (TrySpawnMedicalCase(site)) live++;
+                else site.retry = Time.unscaledTime + 5f;
+            }
+        }
+
+        private bool CanCollectMedical(MedicalSite site)
+        {
+            // A medkit behind a real wall must not be collected through it.
+            Vector3 from = transform.position + Vector3.up * 0.95f;
+            Vector3 to = site.visual.transform.position + Vector3.up * 0.25f - from;
+            float distance = to.magnitude;
+            if (distance < 0.001f) return true;
+            Ray ray = new Ray(from, to / distance);
+            int count = Physics.RaycastNonAlloc(ray, medicalSightHits, distance,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            RaycastHit[] hits = medicalSightHits;
+            if (count >= hits.Length)
+            {
+                hits = Physics.RaycastAll(ray, distance,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                count = hits.Length;
+            }
+            for (int i = 0; i < count; i++)
+            {
+                Collider c = hits[i].collider;
+                if (c != null && !c.transform.IsChildOf(transform)) return false;
+            }
+            return true;
+        }
+
+        private bool TrySpawnMedicalCase(MedicalSite site)
+        {
+            if (medicalTerrains == null || medicalTerrains.Length == 0)
+                medicalTerrains = Terrain.activeTerrains;
+            if (medicalTerrains == null) return false;
+            Vector3 p = site.position;
+            float ground = float.NegativeInfinity;
+            bool supported = false;
+            for (int i = 0; i < medicalTerrains.Length; i++)
+            {
+                Terrain tile = medicalTerrains[i];
+                if (tile == null || tile.terrainData == null) continue;
+                Vector3 origin = tile.transform.position;
+                Vector3 size = tile.terrainData.size;
+                if (p.x < origin.x || p.x > origin.x + size.x ||
+                    p.z < origin.z || p.z > origin.z + size.z) continue;
+                float u = (p.x - origin.x) / size.x;
+                float v = (p.z - origin.z) / size.z;
+                if (tile.terrainData.GetInterpolatedNormal(u, v).y < 0.87f)
+                    return false;
+                ground = tile.SampleHeight(p);
+                supported = true;
+                break;
+            }
+            if (!supported || ground <= -37.35f) return false;
+            Vector3 spot = new Vector3(p.x, ground + 0.08f, p.z);
+            int count = Physics.OverlapBoxNonAlloc(spot + Vector3.up * 0.26f,
+                new Vector3(0.31f, 0.16f, 0.24f), medicalHits,
+                Quaternion.identity, Physics.DefaultRaycastLayers,
+                QueryTriggerInteraction.Ignore);
+            if (count >= medicalHits.Length) return false;
+            for (int i = 0; i < count; i++)
+            {
+                Collider c = medicalHits[i];
+                if (c != null && !(c is TerrainCollider) &&
+                    !c.transform.IsChildOf(transform)) return false;
+            }
+            var root = new GameObject("Aaris Streamed Medkit");
+            root.transform.position = spot;
+            Material shell = MedicalPaint(ref medcasePaint,
+                new Color(0.24f, 0.29f, 0.25f), "Aaris Medkit Case");
+            Material red = MedicalPaint(ref medcrossPaint,
+                new Color(0.88f, 0.18f, 0.13f), "Aaris Medkit Cross");
+            MedicalCube(root.transform, "Case", new Vector3(0f, 0.11f, 0f),
+                new Vector3(0.52f, 0.21f, 0.38f), shell);
+            MedicalCube(root.transform, "Cross A", new Vector3(0f, 0.219f, 0f),
+                new Vector3(0.075f, 0.008f, 0.24f), red);
+            MedicalCube(root.transform, "Cross B", new Vector3(0f, 0.220f, 0f),
+                new Vector3(0.24f, 0.008f, 0.075f), red);
+            site.visual = root;
+            return true;
+        }
+
+        private static Material MedicalPaint(ref Material material, Color color, string name)
+        {
+            if (material != null) return material;
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Simple Lit");
+            if (shader == null) shader = Shader.Find("Standard");
+            if (shader == null) return null;
+            material = new Material(shader) { name = name };
+            if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
+            else material.color = color;
+            if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", 0.13f);
+            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.32f);
+            material.enableInstancing = true;
+            return material;
+        }
+
+        private static void MedicalCube(Transform parent, string name,
+            Vector3 position, Vector3 scale, Material material)
+        {
+            var part = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            part.name = name;
+            part.transform.SetParent(parent, false);
+            part.transform.localPosition = position;
+            part.transform.localScale = scale;
+            var collider = part.GetComponent<Collider>();
+            if (collider != null) { collider.enabled = false; Destroy(collider); }
+            var renderer = part.GetComponent<Renderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+        }
+
         private void LateUpdate() => RefreshSafeArea();
 
-        private void OnDisable() { if (wallTouch != null) wallTouch.CancelHold(); }
+        private void OnDisable()
+        {
+            StopHealing();
+            if (wallTouch != null) wallTouch.CancelHold();
+        }
 
         private void OnDestroy()
         {
+            foreach (var site in medicalSites)
+                if (site.visual != null) Destroy(site.visual);
             if (canvas != null) Destroy(canvas.gameObject);
         }
     }
