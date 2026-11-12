@@ -145,18 +145,31 @@ namespace Aaris.MapReview
                     item.maxSpeedMetres > 28f) continue;
                 prefabs[i] = Resources.Load<GameObject>(item.modelResource);
                 wheelPrefabs[i] = Resources.Load<GameObject>(item.wheelResource);
-                if (prefabs[i] == null || wheelPrefabs[i] == null) continue;
-                if (prefabs[i].GetComponentInChildren<Renderer>(true) == null ||
+                // A valid GameObject without a usable mesh is not a drivable
+                // 3D model. Remove both references so weighted selection
+                // cannot plan an invisible car for an entire map sector.
+                if (prefabs[i] == null || wheelPrefabs[i] == null ||
+                    prefabs[i].GetComponentInChildren<Renderer>(true) == null ||
                     wheelPrefabs[i].GetComponentInChildren<Renderer>(true) == null)
+                {
+                    prefabs[i] = null;
+                    wheelPrefabs[i] = null;
                     continue;
+                }
                 availableWeight += item.weight;
                 validModels++;
             }
-            if (validModels < 3 || availableWeight <= 0)
+            // A single missing imported FBX must not disable every valid
+            // vehicle on a low-memory Android device. We still refuse to
+            // spawn white primitive placeholders or cars without real wheels.
+            if (validModels == 0 || availableWeight <= 0)
             {
-                Debug.LogError("Aaris vehicles: not all required local CC0 3D vehicles imported; fail closed.");
+                Debug.LogError("Aaris vehicles: no usable local CC0 car and wheel models.");
                 return false;
             }
+            if (validModels < vehicleTypes.Length)
+                Debug.LogWarning("Aaris vehicles: " + validModels + "/" +
+                    vehicleTypes.Length + " local vehicle types available.");
             Texture2D palette = Resources.Load<Texture2D>("AarisVehicles/Models/colormap");
             Shader shader = Shader.Find("Universal Render Pipeline/Lit");
             if (shader == null || palette == null)
@@ -239,6 +252,8 @@ namespace Aaris.MapReview
             for (int i = 0; i < vehicleTypes.Length; i++)
                 if (prefabs[i] != null && wheelPrefabs[i] != null)
                     total += vehicleTypes[i].weight;
+            // No remainder by zero even if future catalog validation changes.
+            if (total <= 0) return false;
             int pick = (int)(Next() % (uint)total), which = -1;
             for (int i = 0; i < vehicleTypes.Length; i++)
             {

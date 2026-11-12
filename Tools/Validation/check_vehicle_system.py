@@ -110,6 +110,14 @@ def test():
     assert "record.previouslySpawned" in world and "record.rotation" in world
     assert "record.visible.CanPark" in world and "record.visible.IsOccupied" in world
     assert "Resources.Load<GameObject>(item.modelResource)" in world
+    assert "if (validModels == 0 || availableWeight <= 0)" in world
+    assert "prefabs[i] = null;" in world and "wheelPrefabs[i] = null;" in world
+    assert "prefabs[i].GetComponentInChildren<Renderer>(true) == null" in world
+    assert "wheelPrefabs[i].GetComponentInChildren<Renderer>(true) == null" in world
+    # Weighted map planning must use only *validated* imported meshes.
+    assert "if (prefabs[i] != null && wheelPrefabs[i] != null)" in world
+    assert "if (total <= 0) return false;" in world
+    assert "GameObject.CreatePrimitive" not in world
     assert "Resources.Load<Texture2D>" in world
     assert "Universal Render Pipeline/Lit" in world
     assert "new Material(shader)" in world
