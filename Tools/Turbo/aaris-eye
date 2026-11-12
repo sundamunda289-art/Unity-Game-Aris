@@ -2,6 +2,9 @@
 # AARIS AI Eyes & Hands V5 — compact, authenticated-Codespace-local command surface.
 set -euo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+if [[ ! -f "$HERE/eye_v5.py" ]]; then
+  HERE="${AARIS_EYE_HOME:-$HOME/.local/share/aaris-v4}"
+fi
 PYTHON="${AARIS_PYTHON:-python3}"
 export DISPLAY="${DISPLAY:-:99}"
 
