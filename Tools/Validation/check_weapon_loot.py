@@ -149,7 +149,15 @@ def run():
     assert 'c.kind == "tree" ? 0.85f : 0.60f;' in world
     assert "FindObjectsByType<Collider>" not in world
     assert "TreeInstance[] trees = data.treeInstances;" in world
-    assert "while (accepted < 32 && attempts++ < 160)" in world
+    assert "while (accepted < 48 && attempts++ < 240)" in world
+    # 4 tiles x 48 accepted tree-side nodes, still strictly planning-only.
+    # Existing 50m stream radius, 40 visible pickup cap and 2 builds/frame
+    # remain unchanged on 2 GB Android devices.
+    assert "int accepted = 0, attempts = 0;" in world
+    assert 'kind = "tree", x = x, y = 0f, z = z,' in world
+    assert "distance = 2f + AarisWeaponRandom.Next01(ref rng) * 7f;" in world
+    assert "private const int MaximumActiveLoot = 40;" in world
+    assert "private const int MaximumBuildAttemptsPerFrame = 2;" in world
     assert "float distance = 2f + AarisWeaponRandom.Next01(ref rng) * 7f;" in world
     assert "AppendNativeTreeCover(allCandidates);" in world
     # Compare authored outdoor access across an evenly sampled 2 km map.
