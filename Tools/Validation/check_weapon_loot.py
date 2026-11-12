@@ -107,7 +107,10 @@ def run():
     # Multi-mesh FBX pickups must size from all renderers and rest fully
     # above the ground, including meshes with an offset source pivot.
     assert "visible.GetComponentsInChildren<Renderer>(true)" in pickup_cs
-    assert "modelBounds.Encapsulate(renderers[i].bounds)" in pickup_cs
+    assert pickup_cs.count("modelBounds.Encapsulate(modelRenderers[i].bounds)") == 2
+    assert pickup_cs.count("visible.GetComponentsInChildren<Renderer>(true)") == 1
+    assert "if (modelRenderers.Length == 0)" in pickup_cs
+    assert "visible.GetComponentInChildren<Renderer>(true)" not in pickup_cs
     assert "transform.position.y + 0.08f - modelBounds.min.y" in pickup_cs
     assert "modelBounds.center + delta" in pickup_cs
     assert "model.SetParent(visualPivot.transform, true);" in pickup_cs
