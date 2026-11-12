@@ -85,6 +85,30 @@ class LootGridRegression(unittest.TestCase):
             self.assertLessEqual(live, 40)
         self.assertEqual((live, accepted), (40, 40))
 
+    def test_starter_uses_verified_floor_not_stale_grounded_flag(self):
+        # A newly restored CharacterController can report false for its
+        # previous Move even though the drop phase has completed.
+        starter = SOURCE[SOURCE.index("private void EnsureStarterLoot("):
+                         SOURCE.index("private bool IsCurrentlyActive(")]
+        self.assertIn("if (player.TryGetComponent(out AarisOfflineDrop flight) && !flight.HasLanded) return;", starter)
+        self.assertIn("CharacterController controller) || !controller.enabled", starter)
+        self.assertNotIn("!controller.isGrounded", starter)
+        self.assertIn("TryFindDropSpot(out Vector3 point, requireReachable: true)", starter)
+        self.assertIn("starterLootId = starter.id;", starter)
+        # No new gun is spawned without a nearby real supporting collider:
+        placement = SOURCE[SOURCE.index("private bool TryFindDropSpot("):
+                           SOURCE.index("public bool TryDropEquipped()")]
+        for safety in ("Physics.RaycastNonAlloc(", "Physics.OverlapCapsuleNonAlloc(",
+                       "if (floor == null) continue;", "if (!clear) continue;",
+                       "if (requireReachable && !CanReachPoint(candidate)) continue;"):
+            self.assertIn(safety, placement)
+        self.assertIn("for (int attempt = 0; attempt < 8; attempt++)", placement)
+        self.assertIn("direction = (forward * f + right * r).normalized;", placement)
+        self.assertIn("distance = .65f;", placement)
+        self.assertIn("distance = 1.12f;", placement)
+        self.assertNotIn("new Vector3[]", placement)
+        self.assertLess(1.12, 2.15)  # diagonal fallback stays inside pickup range
+
     def test_native_terrain_world_y_used_for_outdoor_floor(self):
         self.assertIn("terrain.SampleHeight(new Vector3(c.x, 0f, c.z))", SOURCE)
         self.assertNotIn("terrain.transform.position.y + terrain.SampleHeight", SOURCE)
