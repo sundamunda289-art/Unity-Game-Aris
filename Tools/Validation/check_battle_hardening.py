@@ -84,6 +84,23 @@ def audit() -> None:
     assert "candidates[i].distance" in gun
     assert "if (saturated) continue" not in gun
 
+    # Melee must not silently cancel a valid target when 32 nearby static
+    # colliders fill the unsorted NonAlloc buffer. Even the 128-slot retry
+    # needs a complete-query fallback in pathological dense settlements.
+    punch = state.split("private void Punch()", 1)[1].split(
+        "private void OnDisable()", 1
+    )[0]
+    assert "Collider[] punchHits = nearHits;" in punch
+    assert "if (count >= nearHits.Length)" in punch
+    assert "punchHits = crowdedHits;" in punch
+    assert "Physics.OverlapSphereNonAlloc(center, 0.48f, crowdedHits," in punch
+    assert "if (count >= crowdedHits.Length)" in punch
+    assert "punchHits = Physics.OverlapSphere(center, 0.48f, mask," in punch
+    assert "count = punchHits.Length;" in punch
+    assert "var collider = punchHits[i];" in punch
+    assert "Collider victim = punchHits[best];" in punch
+    assert "if (count >= nearHits.Length) return;" not in punch
+
     # Android may drop a pointer without PointerUp on app pause, focus loss
     # or orientation changes. Reset the underlying identifier set, not just
     # the public fireHeld Boolean.

@@ -306,11 +306,28 @@ namespace Aaris.MapReview
             int mask = Physics.DefaultRaycastLayers;
             int count = Physics.OverlapSphereNonAlloc(center, 0.48f, nearHits, mask,
                 QueryTriggerInteraction.Ignore);
+            // Full NonAlloc buffers are unordered. A target beyond the first
+            // 32 foliage/house colliders must not make a valid punch vanish.
+            // Retry with the reusable large buffer, allocating only if even
+            // that rare crowd query saturates. Always evaluate complete hits.
+            Collider[] punchHits = nearHits;
+            if (count >= nearHits.Length)
+            {
+                punchHits = crowdedHits;
+                count = Physics.OverlapSphereNonAlloc(center, 0.48f, crowdedHits,
+                    mask, QueryTriggerInteraction.Ignore);
+                if (count >= crowdedHits.Length)
+                {
+                    punchHits = Physics.OverlapSphere(center, 0.48f, mask,
+                        QueryTriggerInteraction.Ignore);
+                    count = punchHits.Length;
+                }
+            }
             int best = -1;
             float distance = float.MaxValue;
             for (int i = 0; i < count; i++)
             {
-                var collider = nearHits[i];
+                var collider = punchHits[i];
                 if (collider == null || collider.transform.IsChildOf(transform)) continue;
                 Vector3 nearest = collider.ClosestPoint(origin);
                 Vector3 candidateOffset = nearest - origin;
@@ -322,9 +339,8 @@ namespace Aaris.MapReview
                     best = i;
                 }
             }
-            if (count >= nearHits.Length) return; // Do not select a random hit on overflow.
             if (best < 0) return;
-            Collider victim = nearHits[best];
+            Collider victim = punchHits[best];
             Vector3 point = victim.ClosestPoint(origin);
             Vector3 delta = point - origin;
             // A fist cannot hit a player through a wall or a solid rock.
