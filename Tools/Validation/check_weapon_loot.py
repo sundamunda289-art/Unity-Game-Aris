@@ -137,6 +137,11 @@ def run():
     assert "if (TryTake(pickup))" in starter
     assert "foreach (var pickup in active)" not in starter
     assert "starterLootSettled = true;" in starter
+    # The newly created fallback weapon is subject to the same transaction:
+    # merely creating its ground model must never settle the starter.
+    assert "if (starter.visible != null && TryTake(starter.visible))" in starter
+    assert "UndoDrop(starter);" in starter
+    assert "starterLootId = 0;" in starter
     assert 'Add("PICK"' in hud and 'Add("DROP"' in hud
     assert 'Add("SWAP"' not in hud
     assert "private bool CanReachPickup(AarisWeaponPickup pickup)" in world
