@@ -199,6 +199,7 @@ class OfflineCombatAssetChecks(unittest.TestCase):
     def test_replacement_cargo_plane_has_swept_four_engine_art(self):
         verts, faces, materials, size = read_obj(MODELS["aircraft"][0])
         self.assertGreaterEqual(len(faces), 750)
+        self.assertIn("o Aaris_TacticalTransport_V3", MODELS["aircraft"][0].read_text("utf-8"))
         self.assertLessEqual(len(faces), 2400, "Avoid mobile overdraw and oversized plane geometry")
         self.assertLessEqual(len(verts), 1300)
         self.assertGreater(size[0], 31)
