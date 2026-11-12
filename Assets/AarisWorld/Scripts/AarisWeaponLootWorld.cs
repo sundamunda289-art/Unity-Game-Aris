@@ -74,7 +74,7 @@ namespace Aaris.MapReview
         private float[] nextCandidateProbeAt;
         private AarisWeaponInventory inventory;
         private Transform player;
-        private float nextRefresh, requestPickupUntil;
+        private float nextRefresh, requestPickupUntil, nextStarterRetryAt;
         private int streamFramesRemaining;
         private int nextDropId = -1;
         // Only the one match-start fallback may auto-equip like authored loot.
@@ -576,9 +576,13 @@ namespace Aaris.MapReview
             if (streamFramesRemaining == 0)
             {
                 // A busy nearby streamer may repeatedly exhaust its bounded
-                // build budget. Still guarantee a single starter after landing,
-                // with this fallback check capped to the 330 ms poll interval.
-                if (!starterLootSettled) EnsureStarterLoot(playerPosition);
+                // build budget. Keep the fallback reachable after landing
+                // without running extra physics queries on every mobile frame.
+                if (!starterLootSettled && now >= nextStarterRetryAt)
+                {
+                    nextStarterRetryAt = now + 0.5f;
+                    EnsureStarterLoot(playerPosition);
+                }
                 return;
             }
 
