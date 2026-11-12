@@ -12,6 +12,10 @@ on:
         type: choice
         options: [preflight, build, build_hud]
         default: preflight
+      machine:
+        description: 'Optional exact existing authorized Codespace name (required if multiple)'
+        required: false
+        type: string
 permissions:
   contents: read
   issues: read
@@ -65,18 +69,40 @@ jobs:
           test "$(git rev-parse HEAD)" = "$AARIS_CONTROLLER_SHA" || { echo APK_WORKFLOW_CHECKOUT_NOT_EVENT_COMMIT; exit 15; }
           mkdir -p apk-evidence
           echo "APK_STATIC_SCENE_AND_BUILDER_VALID"
-      - name: Select the same exact authorized Codespace, fail on ambiguity
+      - name: Select an existing authorized Codespace without creating another
+        env:
+          REQUESTED_CODESPACE: ${{ github.event_name == 'workflow_dispatch' && inputs.machine || '' }}
         run: |
           set -euo pipefail
           test -n "${GH_TOKEN:-}" || { echo 'APK_CODESPACE_PAT_MISSING'; exit 10; }
-          # Build only on the owner-specified Codespace; previous fallback
-          # selection pointed at an unrelated legacy machine.
-          CS=aaris-ai-ubuntu-minimal-xr4p7jj6p4qjc6q5x
-          [[ "$CS" =~ ^[A-Za-z0-9-]{3,110}$ ]] || exit 12
-          CS_STATE="$(gh codespace list -R "$GITHUB_REPOSITORY" --json name,state --limit 50 |
-            jq -er --arg n "$CS" '[.[] | select(.name == $n)] | if length == 1 then .[0].state else empty end')" || {
-              echo APK_EXACT_OWNER_CODESPACE_NOT_FOUND; exit 11;
+          # The authenticated Codespace may be hosted in an authorized fork,
+          # while the immutable source/build controller stays in the main repo.
+          # Do not use -R "$GITHUB_REPOSITORY" here: that silently hides forks.
+          # No fallback to an arbitrary machine and no Codespace creation.
+          MATCHES="$(gh codespace list --json name,state,repository --limit 100 |
+            jq -c '[.[] | select(
+              ((if (.repository | type) == "string" then .repository
+                 else (.repository.nameWithOwner // .repository.full_name // "") end)
+                | test("^[^/]+/Unity-Game-Aris$")))]')"
+          if test -n "${REQUESTED_CODESPACE:-}"; then
+            [[ "$REQUESTED_CODESPACE" =~ ^[A-Za-z0-9-]{3,110}$ ]] || {
+              echo APK_CODESPACE_NAME_INVALID; exit 12;
             }
+            CHOICE="$(jq -cer --arg n "$REQUESTED_CODESPACE"
+              '[.[] | select(.name == $n)] | if length == 1 then .[0] else empty end'
+              <<< "$MATCHES")" || {
+                echo APK_REQUESTED_CODESPACE_NOT_FOUND; exit 11;
+              }
+          else
+            # Refuse ambiguous accounts. The owner can dispatch with 'machine'
+            # instead of accidentally building in a different Codespace.
+            CHOICE="$(jq -cer 'if length == 1 then .[0] else empty end'
+              <<< "$MATCHES")" || {
+                echo APK_CODESPACE_SELECTION_AMBIGUOUS_OR_EMPTY; exit 11;
+              }
+          fi
+          CS="$(jq -er '.name' <<< "$CHOICE")"
+          CS_STATE="$(jq -er '.state' <<< "$CHOICE")"
           echo APK_EXACT_OWNER_CODESPACE_CONFIRMED
           case "$CS_STATE" in
             Available) echo APK_CODESPACE_ALREADY_AVAILABLE ;;
