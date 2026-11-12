@@ -15,6 +15,8 @@ namespace Aaris.MapReview
         private Renderer[] modelRenderers;
         private float pendingSpinDegrees;
         private LineRenderer beacon;
+        private Camera beaconObserver;
+        private float nextBeaconVisibilityCheck;
         private bool reserved, consumed;
 
         public AarisWeaponSpec Spec => state != null ? state.Spec : null;
@@ -124,11 +126,31 @@ namespace Aaris.MapReview
                 beacon.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 beacon.receiveShadows = false;
             }
+            // Share the main camera reference; never search the scene every frame.
+            beaconObserver = Camera.main;
             return true;
         }
 
         private void Update()
         {
+            // The subtle beam matters only around reachable loot. Far beams
+            // consume a transparent draw call per pickup on tile-based mobile GPUs.
+            // Hysteresis and a 0.45s sampling interval prevent toggle thrash while
+            // leaving the actual gun models, collision, persistence and pickup
+            // range completely unchanged. No new materials or scene objects.
+            if (beacon != null && Time.unscaledTime >= nextBeaconVisibilityCheck)
+            {
+                nextBeaconVisibilityCheck = Time.unscaledTime + 0.45f;
+                if (beaconObserver == null) beaconObserver = Camera.main;
+                if (beaconObserver != null)
+                {
+                    float rangeSq = (beaconObserver.transform.position -
+                        transform.position).sqrMagnitude;
+                    bool show = beacon.enabled ? rangeSq < 36f * 36f :
+                        rangeSq < 31f * 31f;
+                    if (beacon.enabled != show) beacon.enabled = show;
+                }
+            }
             if (model == null || Time.deltaTime <= 0f) return;
             // Off-screen pickups must not dirty Transform hierarchies every
             // Android frame. Keep elapsed rotation so the mesh resumes at
