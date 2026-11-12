@@ -399,6 +399,43 @@ def audit():
                 tint_initialized = True
         assert updates == 3, (fps, updates)
 
+    # In a busy match, pooled SFX must use a finished channel before
+    # interrupting a still-playing gunshot, grenade or impact. The search is
+    # bounded to the 12 existing voices and allocates no new AudioSources.
+    one_shot = audio[audio.index("private void OneShot("):
+                     audio.index("private void Schedule(")]
+    assert "int selected = nextVoice;" in one_shot
+    assert "if (voices[selected].isPlaying)" in one_shot
+    assert "for (int offset = 1; offset < voices.Length; offset++)" in one_shot
+    assert "if (voices[candidate].isPlaying) continue;" in one_shot
+    assert "selected = candidate;" in one_shot
+    assert "nextVoice = (selected + 1) % voices.Length;" in one_shot
+    assert "if (voice.isPlaying) voice.Stop();" in one_shot
+    assert "new AudioSource" not in one_shot and "new GameObject" not in one_shot
+
+    def select_idle_voice(busy, cursor):
+        selected = cursor
+        if busy[selected]:
+            for offset in range(1, len(busy)):
+                candidate = (cursor + offset) % len(busy)
+                if not busy[candidate]:
+                    selected = candidate
+                    break
+        return selected, (selected + 1) % len(busy)
+
+    # Exercise all 4096 channel occupancy patterns and cursor positions;
+    # never cut a playing voice if a finished channel exists.
+    for mask in range(1 << 12):
+        busy = [(mask & (1 << i)) != 0 for i in range(12)]
+        for cursor in (0, 3, 7, 11):
+            chosen, next_cursor = select_idle_voice(busy, cursor)
+            assert 0 <= chosen < 12 and 0 <= next_cursor < 12
+            assert next_cursor == (chosen + 1) % 12
+            if not all(busy):
+                assert not busy[chosen], (mask, cursor, chosen)
+            else:
+                assert chosen == cursor  # Existing all-busy fallback.
+
     # Delayed SFX should do zero slot scans until the earliest cue is due.
     # Overwriting a saturated queue must also discard the old deadline.
     # This is a source + scheduling model test, not Unity audio hardware timing.
@@ -542,7 +579,7 @@ def audit():
     assert 0 <= pending < 360
 
     print("PASS: airborne support reuse, single motor, steady FOV writes, "
-          "bounded player/animation optional-component lookup, budgeted vehicle/loot streaming, legacy idle pose, collision-safe camera, deadline-gated SFX, offscreen loot spin, audio/gloo hotpaths, refresh-aware pacing and adaptive Android quality contracts")
+          "bounded player/animation optional-component lookup, budgeted vehicle/loot streaming, legacy idle pose, collision-safe camera, idle-first pooled SFX, deadline-gated SFX, offscreen loot spin, audio/gloo hotpaths, refresh-aware pacing and adaptive Android quality contracts")
     print("NOT TESTED: Unity compilation, live camera occlusion and device FPS.")
 
 
