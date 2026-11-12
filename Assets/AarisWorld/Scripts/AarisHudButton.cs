@@ -52,12 +52,16 @@ namespace Aaris.MapReview
             if (heldPointers.Count == 1) owner.Down(kind);
         }
 
-        // The UI owns this finger while Fire or Jump is held.
+        // Fire can drag to aim while held. Jump is a vertical ACTION,
+        // not a second look joystick: routing its drag into camera aim while
+        // also dragging Fire made jump-shots rotate the camera twice and
+        // produced unpredictable left/right swipes on 2-thumb Android play.
+        // Keep independent held-pointer ownership and jumping unchanged.
         public void OnDrag(PointerEventData eventData)
         {
             if (owner == null || eventData == null || !AarisBattleHUD.IsVisible ||
                 !heldPointers.Contains(eventData.pointerId)) return;
-            if (kind == AarisBattleHUD.Action.Fire || kind == AarisBattleHUD.Action.Jump)
+            if (kind == AarisBattleHUD.Action.Fire)
                 owner.ForwardLookDelta(eventData.delta);
         }
 
