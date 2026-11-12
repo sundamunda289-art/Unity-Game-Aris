@@ -5,6 +5,8 @@
 # Does not delete/stop the old Codespace or create Git worktrees.
 set -Eeuo pipefail
 umask 077
+# Never let a shell-level GitHub token override the two isolated gh CLI profiles.
+unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN 2>/dev/null || true
 
 REPO="sundamunda289-art/Unity-Game-Aris"
 RAW="https://raw.githubusercontent.com/$REPO/main/Tools/Codespaces"
