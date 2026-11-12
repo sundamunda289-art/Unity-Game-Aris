@@ -52,7 +52,9 @@ namespace Aaris.MapReview
     [DefaultExecutionOrder(-70), DisallowMultipleComponent]
     public sealed class AarisVehicleWorld : MonoBehaviour
     {
-        private const float LoadRadius = 42f;
+        // Long enough to reveal parked cars before the player reaches them;
+        // the 10-car active cap and 2GB Android spawn budget stay unchanged.
+        private const float LoadRadius = 105f;
         private const float UnloadRadius = 160f;
         private const float SeaLevel = -38.07552f;
         private const int TargetVehicles = 26;
@@ -317,9 +319,12 @@ namespace Aaris.MapReview
             Quaternion angle = record.rotation;
             var forward = angle * Vector3.forward * 1.42f;
             var right = angle * Vector3.right * .79f;
-            foreach (var delta in new[] { forward + right, forward - right,
-                -forward + right, -forward - right })
+            // Avoid allocating a new four-corner array on every streamed
+            // car retry. This hot path is polled repeatedly on low-RAM phones.
+            for (int corner = 0; corner < 4; corner++)
             {
+                Vector3 delta = (corner < 2 ? forward : -forward) +
+                    ((corner & 1) == 0 ? right : -right);
                 var check = new Vector3(x + delta.x, 0f, z + delta.z);
                 if (!HasSupport(check, y, out float localY) ||
                     Mathf.Abs(localY - y) > .37f) return false;
