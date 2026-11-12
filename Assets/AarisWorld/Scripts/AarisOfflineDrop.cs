@@ -533,7 +533,9 @@ namespace Aaris.MapReview
             if (weaponRaycaster != null) weaponRaycaster.enabled = weaponRaycasterWasEnabled;
             if (footMotor != null)
             {
-                footMotor.ResumeFromAerialDrop();
+                // Aerial orbit uses -pitch; the grounded orbit uses +pitch.
+                // Convert the sign once to keep the same look direction.
+                footMotor.ResumeFromAerialDrop(yaw, -pitch);
                 footMotor.enabled = true;
             }
         }
