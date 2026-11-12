@@ -111,11 +111,19 @@ say AARIS_V8_SIGNING_STARTED
 "$SIGN" verify --verbose --print-certs "$OUT" >"$BASE/private-v8-verify.log" 2>&1 || {
  say AARIS_V8_SIGNATURE_VERIFICATION_FAILED; exit 24;
 }
-for scheme in v1 v2 v3; do
+for scheme in v2 v3; do
  grep -q "Verified using $scheme scheme.*: true" "$BASE/private-v8-verify.log" || {
  say AARIS_V8_SIGNING_SCHEME_MISSING; exit 25;
  }
 done
+# Android SDK verifies v1 only if the requested platform window includes
+# pre-Android-7 devices; this is a verifier display rule, not a missing v1.
+"$SIGN" verify --min-sdk-version 21 --verbose "$OUT" > "$BASE/private-v8-verify-v1.log" 2>&1 || {
+ say AARIS_V8_V1_VERIFICATION_FAILED; exit 25;
+}
+grep -q 'Verified using v1 scheme.*: true' "$BASE/private-v8-verify-v1.log" || {
+ say AARIS_V8_V1_SIGNING_MISSING; exit 25;
+}
 NEWCERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' \
  "$BASE/private-v8-verify.log" | head -1 | tr '[:upper:]' '[:lower:]')"
 test "$NEWCERT" = "$CERT" || { say AARIS_V8_CERT_MISMATCH; exit 26; }
