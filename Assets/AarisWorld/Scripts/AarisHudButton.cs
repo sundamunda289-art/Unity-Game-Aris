@@ -20,6 +20,8 @@ namespace Aaris.MapReview
         // the previous single-pointer implementation that stopped Fire early.
         private readonly System.Collections.Generic.HashSet<int> heldPointers =
             new System.Collections.Generic.HashSet<int>();
+        // One Fire finger owns camera aim; other fingers only hold Fire.
+        private int aimPointerId = int.MinValue;
         private static readonly Color Normal = Color.white;
         private static readonly Color Selected = new Color(1f, 0.85f, 0.62f, 1f);
 
@@ -49,7 +51,11 @@ namespace Aaris.MapReview
                 kind == AarisBattleHUD.Action.Jump;
             if (!isHoldAction && heldPointers.Count > 0) return;
             if (!heldPointers.Add(eventData.pointerId)) return;
-            if (heldPointers.Count == 1) owner.Down(kind);
+            if (heldPointers.Count == 1)
+            {
+                if (kind == AarisBattleHUD.Action.Fire) aimPointerId = eventData.pointerId;
+                owner.Down(kind);
+            }
         }
 
         // Fire can drag to aim while held. Jump is a vertical ACTION,
@@ -62,12 +68,26 @@ namespace Aaris.MapReview
             if (owner == null || eventData == null || !AarisBattleHUD.IsVisible ||
                 !heldPointers.Contains(eventData.pointerId)) return;
             if (kind == AarisBattleHUD.Action.Fire)
-                owner.ForwardLookDelta(eventData.delta);
+            {
+                if (eventData.pointerId == aimPointerId)
+                    owner.ForwardLookDelta(eventData.delta);
+            }
         }
 
         public void OnPointerUp(PointerEventData eventData)
         {
             if (eventData == null || !heldPointers.Remove(eventData.pointerId)) return;
+            // Promote a remaining Fire finger without cancelling the shot.
+            if (eventData.pointerId == aimPointerId)
+            {
+                aimPointerId = int.MinValue;
+                foreach (int pointer in heldPointers)
+                {
+                    aimPointerId = pointer;
+                    break;
+                }
+            }
+            if (heldPointers.Count == 0) aimPointerId = int.MinValue;
             if (heldPointers.Count == 0 && owner != null) owner.Up(kind);
         }
 
@@ -77,8 +97,13 @@ namespace Aaris.MapReview
 
         private void Release()
         {
-            if (heldPointers.Count == 0) return;
+            if (heldPointers.Count == 0)
+            {
+                aimPointerId = int.MinValue;
+                return;
+            }
             heldPointers.Clear();
+            aimPointerId = int.MinValue;
             if (owner != null) owner.Up(kind);
         }
 
