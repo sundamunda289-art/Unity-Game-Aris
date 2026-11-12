@@ -1,0 +1,83 @@
+name: Aaris one-time safe Codespace checkpoint import
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  import-checkpoint:
+    if: >-
+      github.repository == 'sundamunda289-art/Unity-Game-Aris' &&
+      (
+        (github.event_name == 'issue_comment' &&
+         github.event.issue.number == 77 &&
+         github.event.comment.user.login == 'sundamunda289-art' &&
+         github.event.comment.body == 'CS CHECKPOINT PUBLISH 1a56c09f') ||
+        (github.event_name == 'workflow_dispatch' &&
+         github.actor == 'sundamunda289-art')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: aaris-one-time-checkpoint-20261112
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          lfs: false
+      - name: Verify exact existing Codespace and fetch sealed Git/LFS package
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$GH_TOKEN"
+          MACHINE='aaris-ai-ubuntu-minimal-4qr6v94w9rwvhjgp6'
+          test "$(gh codespace list --json name,state --limit 80 | jq -r --arg m "$MACHINE" '[.[] | select(.name==$m and .state=="Available")] | length')" = 1
+          timeout 120 gh codespace ssh -c "$MACHINE" -- 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          cd /workspaces/Unity-Game-Aris
+          test "$(git rev-parse HEAD)" = '1a56c09fab08ae1f03751ca95eac4c01eeaa7f84'
+          echo '46bb03c490ad763d50422ae42501f9db497e2f565f5e9067d3854bdb8a8f63b3  /tmp/aaris-checkpoint-20261112-transfer.tar.gz' | sha256sum -c - > /dev/null
+          echo AARIS_SOURCE_SHA_AND_TRANSFER_VERIFIED
+          REMOTE
+          timeout 300 gh codespace cp -e -c "$MACHINE" 'remote:/tmp/aaris-checkpoint-20261112-transfer.tar.gz' "$RUNNER_TEMP/aaris-checkpoint.tar.gz"
+          echo "46bb03c490ad763d50422ae42501f9db497e2f565f5e9067d3854bdb8a8f63b3  $RUNNER_TEMP/aaris-checkpoint.tar.gz" | sha256sum -c -
+          echo AARIS_CODE_AND_LFS_ARCHIVE_TRANSFER_VERIFIED
+      - name: Import exact checkpoint into a dedicated GitHub branch (never overwrite main)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          git remote add aaris-fork 'https://github.com/cgfdgvhvg-ship-it/Unity-Game-Aris.git'
+          git fetch --no-tags aaris-fork 'refs/heads/fix/character-motion-original-icewall-20261111:refs/remotes/aaris-fork/character-motion-original-icewall'
+          git cat-file -e '5259ec0f0a99624366a64cb3b623611e29c2dc28^{commit}'
+          mkdir -p "$RUNNER_TEMP/aaris-import"
+          tar -xzf "$RUNNER_TEMP/aaris-checkpoint.tar.gz" -C "$RUNNER_TEMP/aaris-import"
+          git bundle verify "$RUNNER_TEMP/aaris-import/checkpoint.bundle"
+          git fetch "$RUNNER_TEMP/aaris-import/checkpoint.bundle" 'HEAD:refs/heads/aaris-import-snapshot'
+          test "$(git rev-parse refs/heads/aaris-import-snapshot)" = '1a56c09fab08ae1f03751ca95eac4c01eeaa7f84'
+          git lfs install --local
+          LFS_DEST="$(git rev-parse --git-path lfs/objects)"
+          mkdir -p "$LFS_DEST"
+          cp -a "$RUNNER_TEMP/aaris-import/lfs/." "$LFS_DEST/"
+          mapfile -t OIDS < <(find "$RUNNER_TEMP/aaris-import/lfs" -type f -printf '%f\n' | sort)
+          test "${#OIDS[@]}" -eq 29
+          for oid in "${OIDS[@]}"; do
+            [[ "$oid" =~ ^[0-9a-f]{64}$ ]]
+          done
+          git lfs push --object-id origin "${OIDS[@]}"
+          BRANCH='integration/multi-agent-checkpoint-20261112'
+          if git ls-remote --exit-code --heads origin "refs/heads/$BRANCH" > "$RUNNER_TEMP/existing-ref" 2>/dev/null; then
+            grep -q '^1a56c09fab08ae1f03751ca95eac4c01eeaa7f84[[:space:]]' "$RUNNER_TEMP/existing-ref"
+            echo AARIS_CHECKPOINT_ALREADY_PUBLISHED
+          else
+            git push origin "refs/heads/aaris-import-snapshot:refs/heads/$BRANCH"
+            echo AARIS_CHECKPOINT_GITHUB_BRANCH_PUBLISHED
+          fi
