@@ -132,7 +132,7 @@ def make_capture(path, width=640, height=360, quality=72):
 
 
 class Recorder:
-    def __init__(self, folder, fps, max_frames=180):
+    def __init__(self, folder, fps, max_frames=900):
         self.folder = folder
         self.fps = fps
         self.max_frames = max_frames
