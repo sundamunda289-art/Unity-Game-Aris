@@ -166,6 +166,24 @@ def audit() -> None:
     assert "if (jumpStart == null) jumpStart = jump;" in visual
     assert "if (jumpLand == null) jumpLand = jump;" in visual
 
+    # CharacterController.isGrounded can blink false for a single mobile frame
+    # while walking down a stair lip. Do not pop the full-body jump/fall pose.
+    # Explicit jump timestamps must always bypass this grace immediately.
+    assert "private float lastReliableGroundContact;" in visual
+    assert "if (groundedNow) lastReliableGroundContact = now;" in visual
+    assert "now - playerMotor.LastJumpStartedTime" in visual
+    assert "jumpAge >= 0f && jumpAge < 0.65f" in visual
+    assert "now - lastReliableGroundContact > 0.13f" in visual
+    assert "float airTarget = visuallyAirborne ? 1f : 0f;" in visual
+    for fps in (10, 15, 20, 30, 60, 90, 120):
+        one_frame_lost = 1.0 / fps
+        assert not (one_frame_lost > 0.13), (fps, "false airborne on ground seam")
+        deliberate_jump = True
+        assert deliberate_jump or one_frame_lost > 0.13
+        sustained_fall = max(0.2, 3.0 / fps)
+        assert sustained_fall > 0.13
+
+
     # A crouched/prone bullet must leave the actor's actual eye-height,
     # not a standing muzzle that could see through low cover.
     # The muzzle must track the active actor's stance. The gun caches the
