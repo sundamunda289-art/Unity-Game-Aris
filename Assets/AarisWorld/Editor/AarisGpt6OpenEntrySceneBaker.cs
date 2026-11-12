@@ -34,6 +34,13 @@ public static class AarisGpt6OpenEntrySceneBaker
   var log=new List<string>();
   try{
    if(EditorApplication.isPlayingOrWillChangePlaymode)throw new Exception("PLAY_MODE_BLOCKED");
+   // Opening the authored scene in Single mode closes other loaded scenes.
+   // Never discard unsaved edits from another agent or the active Editor user.
+   for(int i=0;i<SceneManager.sceneCount;i++){
+    Scene openScene=SceneManager.GetSceneAt(i);
+    if(openScene.IsValid() && openScene.isDirty)
+     throw new Exception("UNSAVED_OPEN_SCENE_BLOCKED "+openScene.path);
+   }
    string hash=Sha();
    if(apply && (!File.Exists(Path.Combine(Dir,"preview.report"))||
      !File.ReadAllLines(Path.Combine(Dir,"preview.report")).Contains("SCENE_SHA="+hash)||

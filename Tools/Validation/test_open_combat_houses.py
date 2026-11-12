@@ -115,5 +115,16 @@ class OpenCombatHouseContracts(unittest.TestCase):
                     rf"(?m)^  {key}: \{{fileID: \d+, guid: {guid.group(1)}, type: 3\}}$")
 
 
+    def test_native_house_baker_preserves_unsaved_editor_scenes(self):
+        src = (ROOT / "Assets/AarisWorld/Editor/AarisGpt6OpenEntrySceneBaker.cs").read_text(encoding="utf-8")
+        self.assertIn("SceneManager.sceneCount", src)
+        self.assertIn("SceneManager.GetSceneAt(i)", src)
+        self.assertIn("openScene.IsValid() && openScene.isDirty", src)
+        self.assertIn("UNSAVED_OPEN_SCENE_BLOCKED", src)
+        self.assertLess(src.index("openScene.isDirty"),
+                        src.index("EditorSceneManager.OpenScene"))
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
