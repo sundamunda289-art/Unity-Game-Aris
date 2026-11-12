@@ -64,6 +64,9 @@ namespace Aaris.MapReview
         private readonly RaycastHit[] dropFloorHits = new RaycastHit[32];
         private readonly RaycastHit[] candidateFloorHits = new RaycastHit[32];
         private readonly Collider[] dropBlockers = new Collider[32];
+        // Shared overflow scratch keeps crowded-house collision retries GC-free.
+        private readonly RaycastHit[] overflowRayHits = new RaycastHit[128];
+        private readonly Collider[] overflowBlockers = new Collider[128];
         // Immutable map candidate slots stay indexed, while only nearby cells
         // are considered for instantiation each 330ms. No world/loot state is
         // discarded when the player moves out of range.
@@ -285,6 +288,22 @@ namespace Aaris.MapReview
             return null;
         }
 
+        // Never trust saturated, unordered NonAlloc hit lists. Only allocate
+        // when even a larger reusable buffer is incomplete.
+        private int CompleteRaycastOverflow(Ray ray, float distance, out RaycastHit[] results)
+        {
+            results = overflowRayHits;
+            int count = Physics.RaycastNonAlloc(ray, overflowRayHits, distance,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            if (count >= overflowRayHits.Length)
+            {
+                results = Physics.RaycastAll(ray, distance,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                count = results.Length;
+            }
+            return count;
+        }
+
         private bool TryResolve(AarisLootCandidate c, Terrain[] terrains,
             out Vector3 spot, float offsetX = 0f, float offsetZ = 0f,
             bool forceOutdoor = false)
@@ -315,9 +334,7 @@ namespace Aaris.MapReview
             // usable ground can still win without accepting rooftop loot.
             if (hits >= candidateFloorHits.Length)
             {
-                floorHits = Physics.RaycastAll(groundRay, 3.3f,
-                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                hits = floorHits.Length;
+                hits = CompleteRaycastOverflow(groundRay, 3.3f, out floorHits);
             }
             RaycastHit floor = default(RaycastHit);
             bool foundFloor = false;
@@ -438,9 +455,7 @@ namespace Aaris.MapReview
             // occlusion data; inspect every hit only on this rare overflow.
             if (hits >= pickupObstructions.Length)
             {
-                sightHits = Physics.RaycastAll(sightLine, distance,
-                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                hits = sightHits.Length;
+                hits = CompleteRaycastOverflow(sightLine, distance, out sightHits);
             }
             for (int i = 0; i < hits; i++)
             {
@@ -568,9 +583,7 @@ namespace Aaris.MapReview
                 RaycastHit[] resolvedFloors = dropFloorHits;
                 if (count >= dropFloorHits.Length)
                 {
-                    resolvedFloors = Physics.RaycastAll(ray, 3.5f,
-                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                    count = resolvedFloors.Length;
+                    count = CompleteRaycastOverflow(ray, 3.5f, out resolvedFloors);
                 }
                 float best = float.PositiveInfinity;
                 Collider floor = null;
@@ -600,10 +613,17 @@ namespace Aaris.MapReview
                 {
                     // Never treat a partial collider set as an empty space.
                     // Preserve the complete floor/player exclusion checks.
-                    nearbyBlockers = Physics.OverlapCapsule(
-                        capsuleBottom, capsuleTop, .22f,
+                    nearbyBlockers = overflowBlockers;
+                    blockers = Physics.OverlapCapsuleNonAlloc(
+                        capsuleBottom, capsuleTop, .22f, overflowBlockers,
                         Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                    blockers = nearbyBlockers.Length;
+                    if (blockers >= overflowBlockers.Length)
+                    {
+                        nearbyBlockers = Physics.OverlapCapsule(
+                            capsuleBottom, capsuleTop, .22f,
+                            Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                        blockers = nearbyBlockers.Length;
+                    }
                 }
                 bool clear = true;
                 for (int i = 0; i < blockers; i++)
