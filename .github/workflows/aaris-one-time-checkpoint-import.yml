@@ -112,11 +112,17 @@ jobs:
           test "$(git rev-parse refs/remotes/origin/aaris-checkpoint)" = '1a56c09fab08ae1f03751ca95eac4c01eeaa7f84'
           MAIN_SHA="$(git rev-parse HEAD)"
           git switch -c aaris-safe-part
+          git config user.name 'Aaris Safe Integration'
+          git config user.email 'aaris-integrations@users.noreply.github.com'
           set +e
-          git merge --no-commit --no-ff refs/remotes/origin/aaris-checkpoint > "$RUNNER_TEMP/aaris-merge.log" 2>&1
+          git -c filter.lfs.required=false merge --no-commit --no-ff refs/remotes/origin/aaris-checkpoint > "$RUNNER_TEMP/aaris-merge.log" 2>&1
           MERGE_RESULT=$?
           set -e
-          test "$MERGE_RESULT" -le 1
+          if test "$MERGE_RESULT" -gt 1; then
+            sed -n '1,55p' "$RUNNER_TEMP/aaris-merge.log"
+            echo AARIS_MERGE_ABORTED_NO_BRANCH_PUSH
+            exit 15
+          fi
           python3 - <<'PY'
           import subprocess
           out=subprocess.check_output(['git','diff','--name-only','--diff-filter=U','-z'])
