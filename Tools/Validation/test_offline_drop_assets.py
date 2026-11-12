@@ -72,6 +72,22 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("now.y < groundY - 1.0f", move)
         self.assertEqual(drop.count("private void RecoverFromOceanFall()"), 1)
 
+    def test_overlapping_terrain_tiles_do_not_block_touchdown_or_camera(self):
+        # A border position may belong to more than one terrain tile.
+        # Reject one unsuitable sample without hiding another valid ground.
+        drop = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
+        touchdown = drop.split("private bool TryNativeTerrainTouchdown(", 1)[1].split(
+            "private void RecoverFromOceanFall()", 1)[0]
+        self.assertIn("beforeMove.y < groundY - 1.0f) continue;", touchdown)
+        self.assertIn(
+            "Mathf.Cos(capsule.slopeLimit * Mathf.Deg2Rad)) continue;",
+            touchdown)
+        camera = drop.split("private Vector3 ClampCameraAboveTerrain(", 1)[1].split(
+            "private void LateUpdate()", 1)[0]
+        self.assertIn("point.y = Mathf.Max(point.y, tile.SampleHeight(point) + 0.8f);",
+                      camera)
+        self.assertNotIn("break;", camera)
+
     def test_original_3d_models_are_complete_and_local(self):
         for name, (path, min_x, min_y, min_z) in MODELS.items():
             with self.subTest(model=name):
