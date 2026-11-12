@@ -88,16 +88,13 @@ jobs:
             [[ "$REQUESTED_CODESPACE" =~ ^[A-Za-z0-9-]{3,110}$ ]] || {
               echo APK_CODESPACE_NAME_INVALID; exit 12;
             }
-            CHOICE="$(jq -cer --arg n "$REQUESTED_CODESPACE"
-              '[.[] | select(.name == $n)] | if length == 1 then .[0] else empty end'
-              <<< "$MATCHES")" || {
+            CHOICE="$(jq -cer --arg n "$REQUESTED_CODESPACE" '[.[] | select(.name == $n)] | if length == 1 then .[0] else empty end' <<< "$MATCHES")" || {
                 echo APK_REQUESTED_CODESPACE_NOT_FOUND; exit 11;
               }
           else
             # Refuse ambiguous accounts. The owner can dispatch with 'machine'
             # instead of accidentally building in a different Codespace.
-            CHOICE="$(jq -cer 'if length == 1 then .[0] else empty end'
-              <<< "$MATCHES")" || {
+            CHOICE="$(jq -cer 'if length == 1 then .[0] else empty end' <<< "$MATCHES")" || {
                 echo APK_CODESPACE_SELECTION_AMBIGUOUS_OR_EMPTY; exit 11;
               }
           fi
