@@ -129,7 +129,12 @@ def check() -> None:
     combat_update = state[state.index("private void Update()"):
                           state.index("private void Punch()")]
     assert "bool newPress = held && !fireHeld;" in press
-    assert "if (!held) semiShotQueued = false;" in press
+    # A released semi-auto trigger must stay queued briefly when the prior
+    # shot's cooldown outlasts a very short tap. Automatic and unarmed
+    # releases still stop immediately.
+    assert "if (!held && (!IsArmed || equippedGun.Automatic))" in press
+    assert "fireBufferUntil = Time.time + SemiTapBufferSeconds;" in press
+    assert "private const float SemiTapBufferSeconds = 0.16f;" in state
     assert "if (!newPress) return;" in press
     assert "Time.time < nextAttack) return;" in press
     assert "if (IsArmed) ShootEquippedWeapon();" in press
@@ -137,7 +142,13 @@ def check() -> None:
     assert "ShootEquippedWeapon();" in press
     assert "QueuePunch();" in combat_update
     assert combat_update.count("lastPunchTime = Time.time;") == 1
-    assert "if (!equippedGun.Automatic && !semiShotQueued) return;" in combat_update
+    assert "bool bufferedSemi = IsArmed && !equippedGun.Automatic &&" in combat_update
+    assert "semiShotQueued && Time.time <= fireBufferUntil;" in combat_update
+    assert "if ((!fireHeld && !bufferedSemi) || Time.time < nextAttack) return;" in combat_update
+    assert "if (!equippedGun.Automatic && !bufferedSemi) return;" in combat_update
+    # Consume the trigger edge only when TryFire actually succeeds.
+    assert combat_update.index("if (equippedGun.TryFire(motor.AimCamera, gameObject))") < combat_update.index("semiShotQueued = false;")
+    assert "fireBufferUntil = 0f;" in combat_update
     assert "ShootEquippedWeapon();" in combat_update
     assert combat_update.count("equippedGun.TryFire(motor.AimCamera, gameObject)") == 1
     # Per-shot GetComponent costs must not scale with weapon fire rate.
