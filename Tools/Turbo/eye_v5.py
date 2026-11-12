@@ -26,7 +26,7 @@ import unity_v4
 
 ROOT = Path("/tmp/aaris-v5-evidence")
 MAX_STEPS = 12
-STEP_NAMES = {"state", "ui_tap", "ui_hold", "action", "camera", "os_click",
+STEP_NAMES = {"state", "ui_tap", "ui_hold", "action", "camera", "os_click", "os_hold",
               "os_drag", "os_key", "wait", "mark"}
 ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,55}$")
 
@@ -59,6 +59,13 @@ def validate(script, width, height):
         elif op == "os_click":
             allowed.update(("x", "y"))
             gui_v4.verify_sequence([{"op": "click", "x": item.get("x"), "y": item.get("y")}],width,height)
+        elif op == "os_hold":
+            allowed.update(("x", "y", "seconds"))
+            gui_v4.verify_sequence([{"op":"mouse_hold","x":item.get("x"),
+                                    "y":item.get("y"),"seconds":item.get("seconds"),
+                                    "button":item.get("button",1)}],width,height)
+            if "button" in item:
+                allowed.add("button")
         elif op == "os_drag":
             allowed.update(("x", "y", "to_x", "to_y", "seconds"))
             gui_v4.verify_sequence([{"op": "move", "x": item.get("x"), "y": item.get("y")},
@@ -80,12 +87,12 @@ def validate(script, width, height):
             if op!="wait" and seconds < .05:
                 raise ValueError("hold needs at least 0.05 seconds")
             delay += seconds
-        if op=="os_drag":
+        if op in ("os_drag","os_hold"):
             delay+=item["seconds"]
         if set(item)!=allowed:
             raise ValueError("unexpected scenario arguments")
         result.append(dict(item))
-    if delay > 12:
+    if delay > 30:
         raise ValueError("scenario duration budget exceeded")
     return result
 
@@ -111,6 +118,10 @@ def os_action(step):
     op=step["op"]
     if op=="os_click":
         gui_v4.execute_steps([{"op":"click","x":step["x"],"y":step["y"]}],[],time.monotonic())
+    elif op=="os_hold":
+        gui_v4.execute_steps([{"op":"mouse_hold","x":step["x"],"y":step["y"],
+                              "seconds":step["seconds"],"button":step.get("button",1)}],
+                             [],time.monotonic())
     elif op=="os_key":
         gui_v4.execute_steps([{"op":"key_tap","key":step["key"]}],[],time.monotonic())
     elif op=="os_drag":
@@ -150,7 +161,7 @@ def editor_health():
 
 
 def evidence(run_id, script, fps, seconds, timeout, inline_preview):
-    if not ID.fullmatch(run_id) or not 1<=fps<=30 or not 1<=seconds<=6 or not 2<=timeout<=60:
+    if not ID.fullmatch(run_id) or not 1<=fps<=30 or not 1<=seconds<=30 or not 2<=timeout<=60:
         raise ValueError("invalid run limits")
     width,height=gui_v4.screen_size()
     script=validate(script,width,height)
@@ -229,13 +240,17 @@ def selftest():
     examples=[[{"op":"state"},{"op":"mark","label":"after"}],
               [{"op":"ui_tap","target":"HUD Crouch"},{"op":"state"}],
               [{"op":"ui_hold","target":"HUD Fire","seconds":0.6}],
-              [{"op":"os_drag","x":10,"y":20,"to_x":100,"to_y":110,"seconds":.2}]]
+              [{"op":"os_drag","x":10,"y":20,"to_x":100,"to_y":110,"seconds":.2}],
+              [{"op":"os_hold","x":100,"y":200,"seconds":3}],
+              [{"op":"os_hold","x":1279,"y":719,"seconds":12,"button":3}]]
     for s in examples:assert validate(s,1280,720)==s
     for bad in [[{"op":"shell","command":"rm -rf ."}],
                 [{"op":"ui_tap","target":"NotButton"}],
                 [{"op":"os_click","x":9999,"y":5}],
                 [{"op":"wait","seconds":60}],
-                [{"op":"state","extra":True}]]:
+                [{"op":"state","extra":True}],
+                [{"op":"os_hold","x":20,"y":30,"seconds":50}],
+                [{"op":"os_hold","x":20,"y":30,"seconds":1,"button":8}]]:
         try:validate(bad,1280,720)
         except ValueError:continue
         raise AssertionError("unsafe scenario accepted")
@@ -247,6 +262,10 @@ def main():
     p.add_argument("--selftest",action="store_true")
     p.add_argument("--id",default="")
     p.add_argument("--script",default="[]",help="bounded JSON array; empty is a visual-only inspection")
+    p.add_argument("--hold",nargs=3,type=float,metavar=("X","Y","SECONDS"),
+                   help="one-step mouse long press at any screen X,Y for SECONDS")
+    p.add_argument("--button",type=int,default=1,choices=(1,2,3),
+                   help="mouse button to hold, default 1 (left)")
     p.add_argument("--fps",type=int,default=12)
     p.add_argument("--seconds",type=float,default=3.0)
     p.add_argument("--unity-timeout",type=float,default=15.0)
@@ -255,7 +274,19 @@ def main():
     if args.selftest:
         selftest();return 0
     run_id=args.id or "v5_"+uuid.uuid4().hex[:14]
-    return evidence(run_id,json.loads(args.script),args.fps,args.seconds,args.unity_timeout,args.inline_preview)
+    if args.hold is not None:
+        if args.script != "[]":
+            p.error("use --hold or --script, not both")
+        x,y,duration=args.hold
+        if not x.is_integer() or not y.is_integer():
+            p.error("X and Y must be whole-screen pixels")
+        script=[{"op":"os_hold","x":int(x),"y":int(y),
+                 "seconds":duration,"button":args.button}]
+        seconds=max(args.seconds,duration+0.5)
+    else:
+        script=json.loads(args.script)
+        seconds=args.seconds
+    return evidence(run_id,script,args.fps,seconds,args.unity_timeout,args.inline_preview)
 
 
 if __name__=="__main__":
