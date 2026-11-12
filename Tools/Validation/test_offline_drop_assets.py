@@ -429,6 +429,22 @@ class OfflineCombatAssetChecks(unittest.TestCase):
             self.assertNotIn("https://", source)
             self.assertNotIn("http://", source)
 
+    def test_airplane_camera_starts_at_plane_and_avoids_high_altitude_casts(self):
+        source = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
+        start = source.split("private void Start()", 1)[1].split(
+            "private void BuildFlightPath()", 1)[0]
+        late = source.split("private void LateUpdate()", 1)[1].split(
+            "private void RestoreFootControls()", 1)[0]
+        self.assertIn("phase = DropPhase.InPlane;", start)
+        self.assertIn("Vector3 initialPosition = plane.transform.position + orbit * 28f +", start)
+        self.assertIn("view.transform.SetPositionAndRotation(initialPosition,", start)
+        self.assertLess(start.index("phase = DropPhase.InPlane;"),
+                        start.index("view.transform.SetPositionAndRotation(initialPosition,"))
+        self.assertIn("if (phase != DropPhase.InPlane) pos = CameraSafePosition(focus, pos);", late)
+        self.assertIn("if (phase != DropPhase.InPlane &&", late)
+        self.assertIn("next = CameraSafePosition(focus, next);", late)
+        self.assertIn("next = ClampCameraAboveTerrain(next);", late)
+
     def test_aerial_camera_collision_and_native_terrain_clearance(self):
         drop = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
         helper = drop[drop.index("private Vector3 ClampCameraAboveTerrain("):
