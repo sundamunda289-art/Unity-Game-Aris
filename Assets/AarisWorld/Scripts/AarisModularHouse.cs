@@ -6,6 +6,8 @@ namespace Aaris.MapReview
     /// <summary>
     /// Only used at explicitly marked expansion sites. Creates a real
     /// hollow home with wall segments around the doorway/windows.
+    /// New battle-royale homes default to clear, physically open passages:
+    /// no door leaf, glass renderer, pane collider or breakable-panel Update.
     /// Never attaches fake doors to original one-piece MeshColliders.
     /// </summary>
     internal static class AarisModularHouse
@@ -37,17 +39,27 @@ namespace Aaris.MapReview
             return m;
         }
 
-        private static bool Prepare()
+        private static bool Prepare(bool includePanels)
         {
-            if (wall != null && roof != null && door != null && trim != null && glass != null)
+            if (wall != null && roof != null && trim != null &&
+                (!includePanels || (door != null && glass != null)))
                 return true;
             var shader = Shader.Find("Universal Render Pipeline/Lit");
             if (shader == null) return false;
-            wall = Make(shader, "Aaris Warm Stucco", new Color(.74f, .70f, .62f), .16f);
-            roof = Make(shader, "Aaris Slate Roof", new Color(.28f, .32f, .36f), .23f);
-            door = Make(shader, "Aaris Walnut Door", new Color(.39f, .24f, .15f), .22f);
-            trim = Make(shader, "Aaris Dark Frames", new Color(.16f, .21f, .23f), .29f);
-            glass = Make(shader, "Aaris Glass Pane", new Color(.54f, .78f, .83f, .60f), .60f, true);
+            if (wall == null)
+                wall = Make(shader, "Aaris Warm Stucco", new Color(.74f, .70f, .62f), .16f);
+            if (roof == null)
+                roof = Make(shader, "Aaris Slate Roof", new Color(.28f, .32f, .36f), .23f);
+            if (trim == null)
+                trim = Make(shader, "Aaris Dark Frames", new Color(.16f, .21f, .23f), .29f);
+            // Do not allocate a transparent material on budget Android houses.
+            if (includePanels)
+            {
+                if (door == null)
+                    door = Make(shader, "Aaris Walnut Door", new Color(.39f, .24f, .15f), .22f);
+                if (glass == null)
+                    glass = Make(shader, "Aaris Glass Pane", new Color(.54f, .78f, .83f, .60f), .60f, true);
+            }
             return true;
         }
 
@@ -93,16 +105,22 @@ namespace Aaris.MapReview
                 new Vector3(x1-x0,y1-y0,WallThickness), wall);
         }
 
-        private static void Window(Transform root, float center, float z, string id)
+        private static void Window(Transform root, float center, float z, string id,
+            bool includePanels)
         {
-            GameObject mount = new GameObject(id + "_WindowBreakable");
-            mount.transform.SetParent(root, false);
-            mount.transform.localPosition = new Vector3(center, 0f, z);
-            GameObject pane = Box(mount.transform, "ShootableGlass",
-                new Vector3(0f,Sill+WindowHeight*.5f,0f),
-                new Vector3(WindowWidth-.12f,WindowHeight-.11f,.075f),glass);
-            mount.AddComponent<AarisBreakablePanel>().Configure(
-                pane.transform,pane.GetComponent<BoxCollider>(),null,false,15f,root);
+            // The frame stays visible, but the opening remains empty in the
+            // default battle-royale layout; neither glass nor its collider exists.
+            if (includePanels)
+            {
+                GameObject mount = new GameObject(id + "_WindowBreakable");
+                mount.transform.SetParent(root, false);
+                mount.transform.localPosition = new Vector3(center, 0f, z);
+                GameObject pane = Box(mount.transform, "ShootableGlass",
+                    new Vector3(0f,Sill+WindowHeight*.5f,0f),
+                    new Vector3(WindowWidth-.12f,WindowHeight-.11f,.075f),glass);
+                mount.AddComponent<AarisBreakablePanel>().Configure(
+                    pane.transform,pane.GetComponent<BoxCollider>(),null,false,15f,root);
+            }
             Box(root, id+"_Sill",new Vector3(center,Sill-.06f,z-.09f),
                 new Vector3(WindowWidth+.13f,.11f,.22f),trim);
             Box(root, id+"_Lintel",new Vector3(center,Sill+WindowHeight+.06f,z-.09f),
@@ -114,7 +132,7 @@ namespace Aaris.MapReview
         }
 
         private static void Front(Transform root, float width, float depth,
-            float height, Transform player)
+            float height, Transform player, bool includePanels)
         {
             float z = -depth*.5f, last = -width*.5f;
             float winX = width*.31f;
@@ -128,14 +146,17 @@ namespace Aaris.MapReview
                 if (isDoor)
                 {
                     WallSection(root,left,right,DoorHeight,height,z);
-                    GameObject hinge = new GameObject("AutomaticBreakableDoorHinge");
-                    hinge.transform.SetParent(root,false);
-                    hinge.transform.localPosition = new Vector3(left+.05f,0f,z);
-                    GameObject leaf = Box(hinge.transform,"RealDoorLeaf",
-                        new Vector3((DoorWidth-.10f)*.5f,DoorHeight*.5f,0f),
-                        new Vector3(DoorWidth-.10f,DoorHeight-.08f,.11f),door);
-                    hinge.AddComponent<AarisBreakablePanel>().Configure(
-                        leaf.transform,leaf.GetComponent<BoxCollider>(),player,true,85f,root);
+                    if (includePanels)
+                    {
+                        GameObject hinge = new GameObject("AutomaticBreakableDoorHinge");
+                        hinge.transform.SetParent(root,false);
+                        hinge.transform.localPosition = new Vector3(left+.05f,0f,z);
+                        GameObject leaf = Box(hinge.transform,"RealDoorLeaf",
+                            new Vector3((DoorWidth-.10f)*.5f,DoorHeight*.5f,0f),
+                            new Vector3(DoorWidth-.10f,DoorHeight-.08f,.11f),door);
+                        hinge.AddComponent<AarisBreakablePanel>().Configure(
+                            leaf.transform,leaf.GetComponent<BoxCollider>(),player,true,85f,root);
+                    }
                     Box(root,"DoorLintel",new Vector3(0f,DoorHeight+.06f,z-.1f),
                         new Vector3(DoorWidth+.25f,.12f,.21f),trim);
                     Box(root,"DoorLeftJamb",new Vector3(left-.05f,DoorHeight*.5f,z-.1f),
@@ -147,14 +168,15 @@ namespace Aaris.MapReview
                 {
                     WallSection(root,left,right,0f,Sill,z);
                     WallSection(root,left,right,Sill+WindowHeight,height,z);
-                    Window(root,x,z,i==0?"FrontLeft":"FrontRight");
+                    Window(root,x,z,i==0?"FrontLeft":"FrontRight",includePanels);
                 }
                 last=right;
             }
             WallSection(root,last,width*.5f,0f,height,z);
         }
 
-        private static void Back(Transform root,float width,float depth,float height)
+        private static void Back(Transform root,float width,float depth,float height,
+            bool includePanels)
         {
             float z=depth*.5f;
             float left=-WindowWidth*.5f,right=WindowWidth*.5f;
@@ -162,22 +184,24 @@ namespace Aaris.MapReview
             WallSection(root,left,right,0f,Sill,z);
             WallSection(root,left,right,Sill+WindowHeight,height,z);
             WallSection(root,right,width*.5f,0f,height,z);
-            Window(root,0f,z,"Rear");
+            Window(root,0f,z,"Rear",includePanels);
         }
 
         public static GameObject Create(Vector3 position,Quaternion rotation,
             float width,float depth,float height,Transform parent,Transform player,
-            GameObject originalPrefab)
+            GameObject originalPrefab,bool includePanels = false)
         {
             if (float.IsNaN(width) || float.IsInfinity(width) ||
                 float.IsNaN(depth) || float.IsInfinity(depth) ||
                 float.IsNaN(height) || float.IsInfinity(height) ||
-                width<8f || depth<9f || height<5f || !Prepare()) return null;
+                width<8f || depth<9f || height<5f || !Prepare(includePanels)) return null;
             wall = Match(originalPrefab, "sandstone|plaster|brick|stone|concrete", wall);
             roof = Match(originalPrefab, "slate|roof|tile|thatch", roof);
-            door = Match(originalPrefab, "wood|timber|oak", door);
+            if (includePanels)
+                door = Match(originalPrefab, "wood|timber|oak", door);
             trim = Match(originalPrefab, "metal|iron|steel", trim);
-            GameObject home=new GameObject("Aaris Modular Door Window House");
+            GameObject home=new GameObject(includePanels
+                ? "Aaris Modular Door Window House" : "Aaris Open Combat House");
             home.transform.SetParent(parent,false);
             home.transform.SetPositionAndRotation(position,rotation);
             Transform t=home.transform;
@@ -190,8 +214,8 @@ namespace Aaris.MapReview
                 new Vector3(WallThickness,h,depth),wall);
             Box(t,"EastSolidWall",new Vector3(width*.5f,h*.5f,0f),
                 new Vector3(WallThickness,h,depth),wall);
-            Front(t,width,depth,h,player);
-            Back(t,width,depth,h);
+            Front(t,width,depth,h,player,includePanels);
+            Back(t,width,depth,h,includePanels);
             Box(t,"EntranceStep",new Vector3(0f,-.02f,-depth*.5f-.32f),
                 new Vector3(2.35f,.12f,.64f),roof);
             Box(t,"RainAwning",new Vector3(0f,DoorHeight+.32f,-depth*.5f-.50f),
