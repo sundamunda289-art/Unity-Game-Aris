@@ -32,6 +32,13 @@ def validate(command):
     if op not in ALLOWED:
         raise ValueError("unknown operation")
     expected = {"id", "op"}
+    # An unresponsive Editor must not execute old Fire/Jump/Play intents
+    # after they have timed out at the terminal.
+    if "expiresUnixMs" in command:
+        expected.add("expiresUnixMs")
+        expiry = command["expiresUnixMs"]
+        if type(expiry) is not int or expiry <= 0:
+            raise ValueError("invalid expiry timestamp")
     if not isinstance(command.get("id"), str) or not RE_ID.fullmatch(command["id"]):
         raise ValueError("invalid id")
     if op == "focus":
@@ -70,7 +77,11 @@ def validate(command):
 
 
 def send(command, folder, timeout):
-    command = validate(command)
+    command = dict(validate(command))
+    if "expiresUnixMs" not in command:
+        # Clock-time deadline enforced inside Unity before executing the action.
+        command["expiresUnixMs"] = int((time.time() + min(timeout, 120)) * 1000)
+    validate(command)
     folder = Path(folder)
     if not folder.is_dir():
         raise RuntimeError("Unity bridge folder is missing; run inside the Unity project root")
@@ -106,6 +117,7 @@ def selftest():
     assert validate({"id": "abc", "op": "action", "target": "Fire", "seconds": 1.5})
     assert validate({"id": "abc", "op": "tap_ui", "target": "PICK"})
     assert validate({"id": "abc", "op": "hold_ui", "target": "HUD Fire", "seconds": 1})
+    assert validate({"id": "abc", "op": "status", "expiresUnixMs": 1700000000000})
     for data in [
         {"id": "abc", "op": "eval", "target": "rm -rf"},
         {"id": "abc", "op": "camera", "x": 0},
@@ -114,6 +126,7 @@ def selftest():
         {"id": "abc", "op": "tap_ui", "target": "Settings"},
         {"id": "abc", "op": "hold_ui", "target": "PICK", "seconds": 999},
         {"id": "abc", "op": "status", "script": "anything"},
+        {"id": "abc", "op": "status", "expiresUnixMs": -1},
     ]:
         try:
             validate(data)
