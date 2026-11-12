@@ -163,7 +163,11 @@ jobs:
           echo AARIS_MAIN_NATIVE_SCENE_AND_ALL_CONFLICTED_ASSETS_PRESERVED
           # These two branch tests target features in deliberately excluded
           # conflicting source files. Retain main's matched regression contracts.
-          git checkout "$MAIN_SHA" -- Tools/Validation/check_armed_locomotion.py Tools/Validation/test_settlement_expansion.py
+          git checkout "$MAIN_SHA" -- \
+            Assets/AarisWorld/Scripts/AarisThirdPersonPlayer.cs \
+            Assets/Resources/AarisExpansion/WorldExpansionPlan.json \
+            Tools/Validation/check_armed_locomotion.py \
+            Tools/Validation/test_settlement_expansion.py
           failures=0
           for testfile in Tools/Validation/check_weapon_loot.py Tools/Validation/check_armed_locomotion.py Tools/Validation/check_battle_hardening.py Tools/Validation/check_vehicle_system.py Tools/Validation/test_loot_cell_streaming.py Tools/Validation/test_settlement_expansion.py; do
             echo "RUN_SAFE_REGRESSION $testfile"
