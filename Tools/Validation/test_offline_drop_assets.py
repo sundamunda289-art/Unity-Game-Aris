@@ -74,6 +74,21 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertNotIn("origin.y + t.SampleHeight(position)", player)
         self.assertIn("if (GroundHeight(position) >= seaLevel + 0.35f)", player)
 
+    def test_drop_resolves_components_added_after_its_awake(self):
+        # AfterSceneLoad callbacks have no cross-type order guarantee.
+        # Drop.Start must resolve other bootstraps before disabling combat
+        # and checking whether the player is already driving.
+        drop = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
+        start = drop.split("private void Start()", 1)[1].split(
+            "private void BuildFlightPath()", 1)[0]
+        for dependency in ("AarisBattleActions", "AarisVehicleSession",
+                           "AarisCharacterVisual"):
+            self.assertIn(f"= GetComponent<{dependency}>();", start)
+        self.assertLess(start.index("combat = GetComponent<AarisBattleActions>();"),
+                        start.index("combatWasEnabled = combat != null"))
+        self.assertLess(start.index("vehicle = GetComponent<AarisVehicleSession>();"),
+                        start.index("if (vehicle != null && vehicle.IsDriving)"))
+
     def test_mobile_jump_and_prone_movement_safety(self):
         motor = (SCRIPTS / "AarisThirdPersonPlayer.cs").read_text("utf-8")
         stance = (SCRIPTS / "AarisBattleActions.cs").read_text("utf-8")
