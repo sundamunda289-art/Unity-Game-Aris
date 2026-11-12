@@ -14,6 +14,15 @@ SRC = ROOT / "Assets" / "AarisWorld" / "Scripts"
 def audit():
     motor = (SRC / "AarisThirdPersonPlayer.cs").read_text(encoding="utf-8")
     audio = (SRC / "AarisAudioDirector.cs").read_text(encoding="utf-8")
+    # The pre-existing local glide loop should actually play after canopy
+    # opens, using the same pooled voice instead of a new Android mixer.
+    glide = ROOT / "Assets/Resources/SFX/canopy_glide_loop.wav"
+    assert glide.is_file() and glide.stat().st_size > 1000
+    assert glide.with_name(glide.name + ".meta").is_file()
+    assert '"canopy_glide_loop", "parachute_open"' in audio
+    assert 'BeginLoop(windLoop, GetClip(underCanopy ?' in audio
+    assert '"canopy_glide_loop" : "wind_rush_loop"' in audio
+    assert "phase == AarisOfflineDrop.DropPhase.Gliding ? 0.30f" in audio
 
     # Support is queried before CharacterController.Move; a failed first
     # SphereCast must not be repeated with identical pre-Move geometry.
