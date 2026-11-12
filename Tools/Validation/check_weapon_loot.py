@@ -145,9 +145,12 @@ def run():
     assert 'Add("PICK"' in hud and 'Add("DROP"' in hud
     assert 'Add("SWAP"' not in hud
     assert "private bool CanReachPickup(AarisWeaponPickup pickup)" in world
-    assert "Physics.RaycastNonAlloc(new Ray(eye, toTarget / distance)" in world
+    assert "Physics.RaycastNonAlloc(sightLine, pickupObstructions, distance" in world
+    assert "sightHits = Physics.RaycastAll(sightLine, distance," in world
     assert "CanReachPickup(pickup)" in world
-    assert "if (hits >= pickupObstructions.Length) return false;" in world
+    assert "if (hits >= pickupObstructions.Length)" in world
+    assert "var collider = sightHits[i].collider;" in world
+    assert "collider.transform.IsChildOf(player)" in world
     assert "SetWeaponAimFov" in player and "ApplyWeaponRecoil" in player
     assert "AarisWeaponHUD.CapturesScreenPosition" in player
     assert "MaximumActiveLoot = 40" in world

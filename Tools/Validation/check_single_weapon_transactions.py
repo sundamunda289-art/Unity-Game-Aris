@@ -81,9 +81,15 @@ def audit():
     assert "requestPickupUntil = Time.unscaledTime + 0.7f;" in world
     assert "allowInitialAutoPickup = false;" in world
     assert "HasPickupInRange = bestPickup != null;" in world
-    assert "Physics.RaycastNonAlloc(new Ray(eye, toTarget / distance)" in world
-    assert "Physics.RaycastNonAlloc(new Ray(start, Vector3.down)" in world
-    assert "if (hits >= candidateFloorHits.Length) return false;" in world
+    assert "Physics.RaycastNonAlloc(sightLine, pickupObstructions, distance" in world
+    assert "sightHits = Physics.RaycastAll(sightLine, distance," in world
+    assert "Physics.RaycastNonAlloc(groundRay," in world
+    assert "floorHits = Physics.RaycastAll(groundRay, 3.3f," in world
+    assert "if (hits >= candidateFloorHits.Length)" in world
+    assert "RaycastHit candidate = floorHits[i];" in world
+    assert "resolvedFloors = Physics.RaycastAll(ray, 3.5f," in world
+    assert "nearbyBlockers = Physics.OverlapCapsule(" in world
+    assert "var obstacle = nearbyBlockers[i];" in world
     assert "RetryDelaySeconds = 3f;" in world
     assert "nextCandidateProbeAt[i] = now + RetryDelaySeconds;" in world
     assert 'Add("PICK"' in hud and 'Add("DROP"' in hud
