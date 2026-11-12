@@ -20,6 +20,7 @@ namespace Aaris.MapReview.Editor
         {
             public string id, op, target;
             public float x, y, z, yaw, pitch, seconds;
+            public long expiresUnixMs;
         }
 
         [Serializable]
@@ -128,6 +129,12 @@ namespace Aaris.MapReview.Editor
                 if (req == null || String.IsNullOrEmpty(req.id) || req.id.Length > 64 ||
                     !System.Text.RegularExpressions.Regex.IsMatch(req.id, @"^[A-Za-z0-9_-]+$"))
                     throw new ArgumentException("invalid request id");
+                long nowUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                // An Editor recovering from a long renderer stall must never
+                // execute previously timed-out Fire, Jump, UI or Play actions.
+                if (req.expiresUnixMs <= nowUnixMs ||
+                    req.expiresUnixMs > nowUnixMs + 120000L)
+                    throw new TimeoutException("Command expired or missing a valid deadline");
                 Response result = Build(req, "ok", "");
                 Execute(req);
                 result = Build(req, "ok", "Action accepted by Editor driver");
