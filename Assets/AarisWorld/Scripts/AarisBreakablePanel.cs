@@ -15,7 +15,8 @@ namespace Aaris.MapReview
         private const float OpenSpeed = 230f;
         private Transform leaf, player, house;
         private Collider solid;
-        private Vector3 doorwayCenter;
+        private Vector3 doorwayCenter, worldDoorwayCenter;
+        private float nextFarCheck;
         private float health, lastNear = -999f, currentAngle, openDirection = 1f;
         private bool isDoor, destroyed;
         private readonly Collider[] blockers = new Collider[16];
@@ -31,7 +32,15 @@ namespace Aaris.MapReview
             player = nearbyPlayer;
             isDoor = door;
             house = houseRoot;
-            if (isDoor) doorwayCenter = new Vector3(0f, 0f, transform.localPosition.z);
+            if (isDoor)
+            {
+                doorwayCenter = new Vector3(0f, 0f, transform.localPosition.z);
+                // These modular houses are static after construction. Cache
+                // their world doorway position rather than multiplying the
+                // house transform on every Android frame.
+                worldDoorwayCenter = house != null
+                    ? house.TransformPoint(doorwayCenter) : transform.position;
+            }
             health = Mathf.Max(1f, hitPoints);
             enabled = door; // windows do no per-frame polling
         }
@@ -42,7 +51,17 @@ namespace Aaris.MapReview
             bool near = false;
             if (player != null && house != null)
             {
-                Vector3 approach = player.position - house.TransformPoint(doorwayCenter);
+                Vector3 approach = player.position - worldDoorwayCenter;
+                // Closed doors far from the player need only a 4 Hz check.
+                // Once approached/opened they continue animating at full
+                // frame rate so closing safety and swing are unchanged.
+                if (approach.sqrMagnitude > 16f * 16f &&
+                    Mathf.Abs(currentAngle) < 0.01f &&
+                    Time.time - lastNear > 1.5f)
+                {
+                    if (Time.time < nextFarCheck) return;
+                    nextFarCheck = Time.time + 0.25f;
+                }
                 near = Mathf.Abs(approach.y) <= NearFloorTolerance &&
                     approach.x * approach.x + approach.z * approach.z <= NearRadius * NearRadius;
             }

@@ -33,6 +33,10 @@ namespace Aaris.MapReview
         private PlayerStance stance;
         private bool fireHeld;
         private bool semiShotQueued;
+        // Short trigger edges survive a cooldown / slow Android input frame,
+        // but must not manufacture a delayed shot after a long reload.
+        private const float SemiTapBufferSeconds = 0.16f;
+        private float fireBufferUntil;
         private int attackSequence;
         private float lastPunchTime = -10f;
         private float punchContactTime = -1f;
@@ -74,6 +78,7 @@ namespace Aaris.MapReview
             lastPunchTime = -10f;
             nextAttack = 0f;
             semiShotQueued = false;
+            fireBufferUntil = 0f;
         }
 
         public void SetFireHeld(bool held)
@@ -83,12 +88,19 @@ namespace Aaris.MapReview
             // otherwise a quick tap is discarded before Update can see it.
             bool newPress = held && !fireHeld;
             fireHeld = held;
-            if (!held) semiShotQueued = false;
+            // A released semi-auto press retains its brief buffer until it
+            // fires or expires; automatic fire stops immediately on release.
+            if (!held && (!IsArmed || equippedGun.Automatic))
+            {
+                semiShotQueued = false;
+                fireBufferUntil = 0f;
+            }
             // The single player motor owns sprint cancellation. Clearing it
             // here would erase jump-shot momentum before its Update runs when
             // Jump and Fire arrive during the same mobile input frame.
             if (!newPress) return;
             semiShotQueued = true;
+            fireBufferUntil = Time.time + SemiTapBufferSeconds;
             // Do not bypass the gun's ammo, reload, cooldown or cover checks.
             // An unarmed tap must also begin its punch wind-up immediately,
             // otherwise a short Down/Up pair is lost before the next Update.
@@ -212,15 +224,19 @@ namespace Aaris.MapReview
                 punchContactTime = -1f;
                 Punch();
             }
-            if (!fireHeld || Time.time < nextAttack) return;
+            // A quick semi-auto press can start and end between Updates.
+            // Only carry a release across a short cooldown, never indefinitely.
+            bool bufferedSemi = IsArmed && !equippedGun.Automatic &&
+                semiShotQueued && Time.time <= fireBufferUntil;
+            if ((!fireHeld && !bufferedSemi) || Time.time < nextAttack) return;
             if (IsArmed)
             {
-                if (!equippedGun.Automatic && !semiShotQueued) return;
+                if (!equippedGun.Automatic && !bufferedSemi) return;
                 ShootEquippedWeapon();
                 return;
             }
 
-            QueuePunch();
+            if (fireHeld) QueuePunch();
         }
 
         private void QueuePunch()
@@ -236,9 +252,10 @@ namespace Aaris.MapReview
             // One trigger edge consumes at most one shot. Shared by the HUD
             // press path and the held-fire Update path, so their cooldown and
             // animation sequencing cannot drift apart.
-            semiShotQueued = false;
             if (equippedGun.TryFire(motor.AimCamera, gameObject))
             {
+                semiShotQueued = false;
+                fireBufferUntil = 0f;
                 attackSequence++;
                 lastShootTime = Time.time;
                 nextAttack = Time.time + equippedGun.SecondsBetweenShots;
@@ -294,6 +311,7 @@ namespace Aaris.MapReview
         {
             fireHeld = false;
             semiShotQueued = false;
+            fireBufferUntil = 0f;
             punchContactTime = -1f;
         }
 
@@ -301,6 +319,8 @@ namespace Aaris.MapReview
         {
             if (!paused) return;
             fireHeld = false;
+            semiShotQueued = false;
+            fireBufferUntil = 0f;
             punchContactTime = -1f;
         }
     }

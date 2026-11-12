@@ -128,7 +128,15 @@ namespace Aaris.MapReview
                 if (buttons[i].gameObject.activeSelf != show)
                     buttons[i].gameObject.SetActive(show);
             }
-            if (!armed) return;
+            if (!armed)
+            {
+                // A drop while aiming must not retain stale ADS text or
+                // cached ammo when another weapon is picked up.
+                if (captions[0].text != "ADS") captions[0].text = "ADS";
+                shownMagazine = shownReserve = -1;
+                shownReloading = false;
+                return;
+            }
             string aimCaption = inventory.Aiming ? "ADS ON" : "ADS";
             if (captions[0].text != aimCaption)
                 captions[0].text = aimCaption;

@@ -214,6 +214,15 @@ namespace Aaris.MapReview
             if (!IsVisible) return false;
             foreach (var b in instance.buttons)
                 if (b != null && b.IsWithin(screenPosition)) return true;
+            // The decorative stick is not a raycast target. Capture its
+            // screen-space area so a second thumb never becomes lookFinger.
+            // The player motor claims the FIRST stick finger before this test.
+            if (instance.player != null)
+            {
+                Vector2 delta = screenPosition - instance.player.MoveStickScreenCenter;
+                float radius = 110f * instance.player.MoveStickScreenScale;
+                if (delta.sqrMagnitude <= radius * radius) return true;
+            }
             return false;
         }
 

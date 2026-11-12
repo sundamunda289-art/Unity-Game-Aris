@@ -271,11 +271,19 @@ namespace Aaris.MapReview
                 }
                 if (t.phase == TouchPhase.Began)
                 {
-                    if (AarisBattleHUD.CapturesScreenPosition(t.position) ||
-                        AarisWeaponHUD.CapturesScreenPosition(t.position)) continue;
-                    if (OverButton(p)) { PressButton(p); continue; }
-                    if (moveFinger == -1 && (p - stickCenter).sqrMagnitude < 110f * 110f) moveFinger = t.fingerId;
-                    else if (lookFinger == -1 && p.x > Screen.width / uiScale * 0.4f) lookFinger = t.fingerId;
+                    // The joystick takes ownership BEFORE HUD capture rejects
+                    // touches in its visual ring. A second finger in the ring
+                    // cannot become a camera swipe or steal the first finger.
+                    if (moveFinger == -1 && (p - stickCenter).sqrMagnitude < 110f * 110f)
+                        moveFinger = t.fingerId;
+                    else
+                    {
+                        if (AarisBattleHUD.CapturesScreenPosition(t.position) ||
+                            AarisWeaponHUD.CapturesScreenPosition(t.position)) continue;
+                        if (OverButton(p)) { PressButton(p); continue; }
+                        if (lookFinger == -1 && p.x > Screen.width / uiScale * 0.4f)
+                            lookFinger = t.fingerId;
+                    }
                 }
                 if (moveFinger == t.fingerId)
                 {
@@ -390,7 +398,10 @@ namespace Aaris.MapReview
             if (isAiming) running = false;
             bool sprinting = (running || Input.GetKey(KeyCode.LeftShift)) &&
                 !isAiming && (battle == null || !battle.FireHeld || airborneIntent);
-            if (sprinting && battle != null && !battle.TryStand())
+            // Holding Shift while crouched/prone must not silently force
+            // a stand transition or apply sprint speed under low ceilings.
+            if (sprinting && battle != null &&
+                battle.Stance != AarisBattleActions.PlayerStance.Standing)
                 sprinting = false;
             Vector2 intent = moveInput;
             if (running && intent.sqrMagnitude < 0.04f) intent = Vector2.up;
