@@ -136,6 +136,19 @@ namespace Aaris.MapReview
             hud = AarisOfflineDropHud.Create(this);
             hud.SetAction("EJECT", true);
             phase = DropPhase.InPlane;
+            // Before the first flight frame, the saved walking camera is
+            // still positioned at the ground spawn. Snap it to the real
+            // aircraft once instead of lerping through terrain for seconds.
+            // Every subsequent swipe continues through the normal orbit.
+            if (view != null && plane != null)
+            {
+                Vector3 orbit = Quaternion.Euler(-pitch, yaw, 0f) * Vector3.back;
+                Vector3 initialPosition = plane.transform.position + orbit * 28f +
+                    Vector3.up * 9f;
+                Vector3 focus = plane.transform.position + plane.transform.forward * 4f;
+                view.transform.SetPositionAndRotation(initialPosition,
+                    Quaternion.LookRotation(focus - initialPosition, Vector3.up));
+            }
             previousMouse = Input.mousePosition;
         }
 
@@ -631,12 +644,16 @@ namespace Aaris.MapReview
                     + Vector3.up * (phase == DropPhase.Freefall ? 3.2f : 4.6f);
                 focus = transform.position + Vector3.up * 2.8f;
             }
-            pos = CameraSafePosition(focus, pos);
+            // The aircraft flies hundreds of metres above the highest saved
+            // terrain point; its own collider is excluded from this sweep.
+            // Skip the two unnecessary per-frame physics casts in plane mode.
+            if (phase != DropPhase.InPlane) pos = CameraSafePosition(focus, pos);
             Vector3 next = Vector3.Lerp(view.transform.position,
                 pos, 1f - Mathf.Exp(-7f * Time.deltaTime));
             // The camera can cross a wall during the interpolated step even
             // when the final target is safe. Sweep that actual step too.
-            if ((next - pos).sqrMagnitude > 0.00000001f)
+            if (phase != DropPhase.InPlane &&
+                (next - pos).sqrMagnitude > 0.00000001f)
                 next = CameraSafePosition(focus, next);
             // Near a mountain, a collision sweep alone may start below the
             // native Terrain surface. Check only the active tile on descent.
