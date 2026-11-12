@@ -129,6 +129,39 @@ namespace Aaris.MapReview
             // Renderer visibility, terrain and native tree collisions are unchanged.
             if (forcePhysicsSync) Physics.SyncTransforms();
         }
+        // Parked cars can stream as far as 105 m away, while authored house/wall
+        // colliders only activate near the player. A remote Physics overlap query
+        // cannot see the disabled geometry. Reject such candidate locations using
+        // cached world bounds until the real collider enters the active radius.
+        // This check does NOT toggle a collider or allocate per probe.
+        internal bool HasPotentialInactiveObstacle(Vector3 center,
+            Vector3 halfExtents, Quaternion rotation)
+        {
+            if (!isActiveAndEnabled || obstacles == null || streamed == null ||
+                worldBounds == null) return false;
+            Vector3 right = rotation * (Vector3.right * halfExtents.x);
+            Vector3 up = rotation * (Vector3.up * halfExtents.y);
+            Vector3 forward = rotation * (Vector3.forward * halfExtents.z);
+            Vector3 extents = new Vector3(
+                Mathf.Abs(right.x) + Mathf.Abs(up.x) + Mathf.Abs(forward.x),
+                Mathf.Abs(right.y) + Mathf.Abs(up.y) + Mathf.Abs(forward.y),
+                Mathf.Abs(right.z) + Mathf.Abs(up.z) + Mathf.Abs(forward.z));
+            Bounds probe = new Bounds(center, 2f * extents);
+            for (int xCell = Cell(probe.min.x); xCell <= Cell(probe.max.x); xCell++)
+                for (int zCell = Cell(probe.min.z); zCell <= Cell(probe.max.z); zCell++)
+                {
+                    if (!cells.TryGetValue(Key(xCell, zCell), out List<int> entries)) continue;
+                    foreach (int i in entries)
+                    {
+                        Collider c = obstacles[i];
+                        if (streamed[i] && c != null && !c.enabled &&
+                            worldBounds[i].Intersects(probe))
+                            return true;
+                    }
+                }
+            return false;
+        }
+
         private void OnEnable()
         {
             // OnDisable temporarily restores all authored colliders. Without a

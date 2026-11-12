@@ -90,6 +90,7 @@ def test():
     hud=script("AarisVehicleHUD")
     foot=script("AarisThirdPersonPlayer")
     battle=script("AarisBattleHUD")
+    nearby=script("AarisNearbyColliders")
 
     # Bound 2km car plans, floor/bridge/mountain and wall clearance.
     assert "TargetVehicles = 44" in world
@@ -102,6 +103,17 @@ def test():
     # separate 160m unload hysteresis; the old 42m expectation was stale.
     assert "LoadRadius = 105f" in world and "UnloadRadius = 160f" in world
     assert "MaximumNearbyVehicles = 10" in world
+    # Car models stream at 105 m but authored wall colliders stream at 55 m.
+    # Never approve a parking volume only because nearby physics is inactive.
+    assert "activationDistance = 55" in nearby
+    assert "nearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();" in world
+    assert "nearbyColliders.HasPotentialInactiveObstacle(center, halfExtents, angle)" in world
+    assert world.index("nearbyColliders.HasPotentialInactiveObstacle") < world.index("Physics.OverlapBoxNonAlloc")
+    assert "internal bool HasPotentialInactiveObstacle(" in nearby
+    assert "cells.TryGetValue(Key(xCell, zCell)" in nearby
+    assert "streamed[i] && c != null && !c.enabled" in nearby
+    assert "worldBounds[i].Intersects(probe)" in nearby
+    assert "new Bounds(center, 2f * extents)" in nearby
     assert "Physics.OverlapBoxNonAlloc" in world
     assert "Physics.RaycastNonAlloc" in world
     # Dense saved settlements may exceed the fixed hit-array capacity.

@@ -63,6 +63,7 @@ namespace Aaris.MapReview
         private readonly RaycastHit[] rayHits = new RaycastHit[24];
         private readonly Collider[] collisionHits = new Collider[40];
         private Transform player;
+        private AarisNearbyColliders nearbyColliders;
         private float nextPoll;
         private uint randomState;
         private AarisVehicleType[] vehicleTypes;
@@ -110,6 +111,8 @@ namespace Aaris.MapReview
 
         private bool Setup()
         {
+            // Read the saved static-collider streamer once, never per car/frame.
+            nearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
             TextAsset points = Resources.Load<TextAsset>("AarisVehicles/vehicle_candidates");
             TextAsset catalog = Resources.Load<TextAsset>("AarisVehicles/vehicle_catalog");
             if (points == null || catalog == null)
@@ -360,6 +363,13 @@ namespace Aaris.MapReview
             // will not be counted as a vehicle-sized wall.
             Vector3 center = new Vector3(x, y + 1.15f, z);
             Vector3 halfExtents = new Vector3(1.14f, .64f, 2.35f);
+            // Remote 105 m car previews must not ignore house/wall colliders
+            // streamed out beyond the player's 55 m activation radius.
+            // Defer uncertain locations until their authored shapes are live;
+            // never globally enable distant colliders or inflate the mobile budget.
+            if (nearbyColliders != null &&
+                nearbyColliders.HasPotentialInactiveObstacle(center, halfExtents, angle))
+                return false;
             int count = Physics.OverlapBoxNonAlloc(center, halfExtents,
                 collisionHits, angle, Physics.DefaultRaycastLayers,
                 QueryTriggerInteraction.Ignore);
