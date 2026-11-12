@@ -297,16 +297,26 @@ namespace Aaris.MapReview
             // A single down-ray can stop on the roof of a low house before
             // reaching its floor. Inspect ALL bounded hits and select the
             // supporting surface nearest the authored ground elevation.
-            int hits = Physics.RaycastNonAlloc(new Ray(start, Vector3.down),
+            Ray groundRay = new Ray(start, Vector3.down);
+            int hits = Physics.RaycastNonAlloc(groundRay,
                 candidateFloorHits, 3.3f, Physics.DefaultRaycastLayers,
                 QueryTriggerInteraction.Ignore);
-            if (hits >= candidateFloorHits.Length) return false;
+            RaycastHit[] floorHits = candidateFloorHits;
+            // A saturated unsorted buffer is NOT a complete set of floor
+            // candidates. Query all hits only on overflow, so the nearest
+            // usable ground can still win without accepting rooftop loot.
+            if (hits >= candidateFloorHits.Length)
+            {
+                floorHits = Physics.RaycastAll(groundRay, 3.3f,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                hits = floorHits.Length;
+            }
             RaycastHit floor = default(RaycastHit);
             bool foundFloor = false;
             float closestHeight = .85f;
             for (int i = 0; i < hits; i++)
             {
-                RaycastHit candidate = candidateFloorHits[i];
+                RaycastHit candidate = floorHits[i];
                 if (candidate.collider == null ||
                     candidate.normal.y < (indoor ? .94f : .90f))
                     continue;
@@ -367,13 +377,22 @@ namespace Aaris.MapReview
             Vector3 toTarget = target - eye;
             float distance = toTarget.magnitude;
             if (distance <= 0.001f) return true;
-            int hits = Physics.RaycastNonAlloc(new Ray(eye, toTarget / distance),
-                pickupObstructions, distance,
+            Ray sightLine = new Ray(eye, toTarget / distance);
+            int hits = Physics.RaycastNonAlloc(sightLine, pickupObstructions, distance,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            if (hits >= pickupObstructions.Length) return false;
+            RaycastHit[] sightHits = pickupObstructions;
+            // The non-allocating buffer can be saturated by the player's own
+            // colliders before it includes a wall. Never accept incomplete
+            // occlusion data; inspect every hit only on this rare overflow.
+            if (hits >= pickupObstructions.Length)
+            {
+                sightHits = Physics.RaycastAll(sightLine, distance,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                hits = sightHits.Length;
+            }
             for (int i = 0; i < hits; i++)
             {
-                var collider = pickupObstructions[i].collider;
+                var collider = sightHits[i].collider;
                 if (collider == null || collider.transform.IsChildOf(player)) continue;
                 return false;
             }
@@ -484,13 +503,19 @@ namespace Aaris.MapReview
                 Ray ray = new Ray(place + Vector3.up * 1.6f, Vector3.down);
                 int count = Physics.RaycastNonAlloc(ray, dropFloorHits, 3.5f,
                     Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                if (count >= dropFloorHits.Length) continue;
+                RaycastHit[] resolvedFloors = dropFloorHits;
+                if (count >= dropFloorHits.Length)
+                {
+                    resolvedFloors = Physics.RaycastAll(ray, 3.5f,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                    count = resolvedFloors.Length;
+                }
                 float best = float.PositiveInfinity;
                 Collider floor = null;
                 Vector3 hitPoint = Vector3.zero;
                 for (int i = 0; i < count; i++)
                 {
-                    var hit = dropFloorHits[i];
+                    var hit = resolvedFloors[i];
                     if (hit.collider == null ||
                         hit.collider.transform.IsChildOf(player) ||
                         hit.normal.y < 0.83f || hit.distance >= best ||
@@ -503,15 +528,25 @@ namespace Aaris.MapReview
                 }
                 if (floor == null) continue;
                 Vector3 middle = hitPoint + Vector3.up * .44f;
+                Vector3 capsuleBottom = middle + Vector3.down * .06f;
+                Vector3 capsuleTop = middle + Vector3.up * .19f;
                 int blockers = Physics.OverlapCapsuleNonAlloc(
-                    middle + Vector3.down * .06f, middle + Vector3.up * .19f,
-                    .22f, dropBlockers, Physics.DefaultRaycastLayers,
-                    QueryTriggerInteraction.Ignore);
-                if (blockers >= dropBlockers.Length) continue;
+                    capsuleBottom, capsuleTop, .22f, dropBlockers,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                Collider[] nearbyBlockers = dropBlockers;
+                if (blockers >= dropBlockers.Length)
+                {
+                    // Never treat a partial collider set as an empty space.
+                    // Preserve the complete floor/player exclusion checks.
+                    nearbyBlockers = Physics.OverlapCapsule(
+                        capsuleBottom, capsuleTop, .22f,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                    blockers = nearbyBlockers.Length;
+                }
                 bool clear = true;
                 for (int i = 0; i < blockers; i++)
                 {
-                    var obstacle = dropBlockers[i];
+                    var obstacle = nearbyBlockers[i];
                     if (obstacle == null || obstacle == floor ||
                         obstacle.transform.IsChildOf(player)) continue;
                     clear = false;
