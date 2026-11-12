@@ -126,6 +126,13 @@ namespace Aaris.MapReview
                 }
             }
             if (!nearbyCar.TryTakeDriver(this)) return false;
+            // The four AfterSceneLoad Boot methods have no guaranteed
+            // ordering. The vehicle session may have been configured before
+            // the combat, weapon inventory or streamed loot world existed.
+            // Resolve once on successful entry, never once per driving frame.
+            if (actions == null) actions = GetComponent<AarisBattleActions>();
+            if (inventory == null) inventory = GetComponent<AarisWeaponInventory>();
+            if (lootWorld == null) lootWorld = FindFirstObjectByType<AarisWeaponLootWorld>();
             car = nearbyCar;
             nearbyCar = null;
             touchMove = touchSteer = 0f;
