@@ -366,7 +366,7 @@ def selftest():
            [{"op": "click", "x": 1280, "y": 2}],
            [{"op": "shell", "command": "whoami"}],
            [{"op": "key_up", "key": "a", "script": "hack"}],
-           [{"op": "wait", "seconds": 2.9}] * 4,
+           [{"op": "wait", "seconds": 2.9}] * 11,
            [{"op": "move_smooth", "x": 20, "y": 30, "seconds": 19}],
            [{"op":"mouse_hold","x":20,"y":30,"seconds":21}],
            [{"op":"mouse_hold","x":20,"y":30,"seconds":2,"button":4}]]
