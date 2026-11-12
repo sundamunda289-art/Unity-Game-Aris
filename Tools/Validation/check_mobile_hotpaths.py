@@ -169,6 +169,48 @@ def audit():
     assert "QualitySettings.streamingMipmapsMemoryBudget" in quality
     assert "memoryMB <= 2304 ? 160f : 224f" in quality
     assert "originalRenderScale = androidPipeline.renderScale;" in quality
+    # Map clarity must depend on physical display pixel load: a 720p phone
+    # needs fewer pixels than a 1080p phone, even with the same 2 GB RAM.
+    assert "(long)Screen.width * Screen.height <= 1280L * 720L" in quality
+    assert "Screen.width > 0 && Screen.height > 0" in quality
+    assert "(compactDisplay ? 0.92f : 0.85f)" in quality
+    assert "(compactDisplay ? 0.96f : 0.92f)" in quality
+    assert "androidPipeline.renderScale = Mathf.Min(originalRenderScale, initialScale);" in quality
+
+    def startup_scale(ram, width, height, original):
+        if ram <= 0 or ram > 3072:
+            return original
+        compact = width > 0 and height > 0 and width * height <= 1280 * 720
+        requested = (
+            (.92 if compact else .85) if ram <= 2304
+            else (.96 if compact else .92)
+        )
+        return min(original, requested)
+
+    # Preserve crisp assets on small screens and GPU headroom on larger ones.
+    for ram, width, height, native, expected in (
+        (2048, 1280, 720, 1., .92),
+        (2048, 720, 1280, 1., .92),
+        (2048, 1600, 900, 1., .85),
+        (3072, 1280, 720, 1., .96),
+        (3072, 1920, 1080, 1., .92),
+        (2048, 1280, 720, .8, .8),
+        (3072, 1280, 720, .7, .7),
+        (2048, 0, 720, 1., .85),
+        (4096, 1280, 720, 1., 1.),
+        (0, 1280, 720, 1., 1.)
+    ):
+        assert startup_scale(ram, width, height, native) == expected, (
+            ram, width, height, native
+        )
+    assert startup_scale(2048, 1280, 720, 1.) ** 2 < 1.
+    # 2 GB / 720p: initial render target has only ~17% more pixels than
+    # before, not the ~38% extra of immediate native scale 1.0.
+    relative_pixel_increase = (.92 / .85) ** 2 - 1.
+    assert 0.16 < relative_pixel_increase < 0.18
+    # The existing two-slow-window governor still restores fill-rate relief.
+    assert "slowIntervals >= 2" in quality
+    assert "current - 0.05f" in quality
     # The low-RAM adaptation must never be enabled on high-RAM or
     # unknown-RAM Android devices. Merely returning from ConfigureAndroidQuality
     # after storing androidPipeline would still enable TuneAndroidResolution.
