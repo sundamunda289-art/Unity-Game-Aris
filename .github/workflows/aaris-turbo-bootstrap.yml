@@ -7,6 +7,11 @@ on:
         required: false
         type: string
         default: "auto"
+      hosting_login:
+        description: "Expected GitHub account hosting the Codespace (prevents accidental old-account use)"
+        required: false
+        type: string
+        default: ""
   issue_comment:
     types: [created]
   pull_request:
@@ -222,6 +227,7 @@ jobs:
       GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
       ISSUE_BODY: ${{ github.event_name == 'issue_comment' && github.event.comment.body || '' }}
       INPUT_MACHINE: ${{ inputs.machine || '' }}
+      EXPECTED_HOST_LOGIN: ${{ inputs.hosting_login || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -241,6 +247,14 @@ jobs:
               echo "TURBO_INVALID_MACHINE_NAME"; exit 11;
             }
           fi
+          CS_LOGIN="$(gh api user --jq .login)"
+          [[ "$CS_LOGIN" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$ ]] || {
+            echo "TURBO_UNEXPECTED_CODESPACE_ACCOUNT"; exit 19;
+          }
+          if [[ -n "$EXPECTED_HOST_LOGIN" && "$CS_LOGIN" != "$EXPECTED_HOST_LOGIN" ]]; then
+            echo "TURBO_CODESPACE_ACCOUNT_MISMATCH_REFUSING_WRONG_ACCOUNT"; exit 19
+          fi
+          echo "TURBO_AUTHORIZED_CODESPACE_ACCOUNT=$CS_LOGIN"
           # The Codespace's GitHub account/repository can differ from the main
           # sundamunda289-art source repo. List the account selected by CODESPACE_PAT.
           gh codespace list --json name,displayName,state,repository --limit 100 \
@@ -254,13 +268,35 @@ jobs:
             test "$REQUEST" = auto || { echo "TURBO_EXPLICIT_AUTO_REQUIRED"; exit 12; }
             # Create a lightweight SSH Codespace once; no heavy Unity bootstrap
             # or Git LFS migration is necessary for the terminal connection.
-            CS_LOGIN="$(gh api user --jq .login)"
             CS_REPO="$CS_LOGIN/Unity-Game-Aris"
-            # If no Codespace exists, create only in the authenticated user's
-            # own verified repository — never in the permanent source repo.
-            gh repo view "$CS_REPO" --json name -q .name >/dev/null || {
-              echo "TURBO_CODESPACE_HOST_REPOSITORY_NOT_FOUND"; exit 13;
-            }
+            # If this NEW Codespaces account has no hosting fork, create exactly
+            # one from the permanent public source using its own scoped token.
+            # GitHub may initialize the fork asynchronously (HTTP 202).
+            if ! gh repo view "$CS_REPO" --json name -q .name >/dev/null 2>&1; then
+              [[ "$CS_LOGIN" != 'sundamunda289-art' ]] || {
+                echo "TURBO_MISSING_CANONICAL_REPOSITORY_REFUSING_SELF_FORK"; exit 13;
+              }
+              echo "TURBO_CREATING_MISSING_HOST_FORK"
+              gh repo fork "$GITHUB_REPOSITORY" --clone=false --default-branch-only ||
+                { echo "TURBO_HOST_FORK_CREATE_FAILED_CHECK_PERMISSIONS"; exit 13; }
+              FORK_READY=0
+              for ATTEMPT in $(seq 1 60); do
+                if gh repo view "$CS_REPO" --json name -q .name >/dev/null 2>&1 &&
+                   gh api "repos/$CS_REPO/contents/.devcontainer/minimal-ubuntu/devcontainer.json?ref=main" --jq .sha >/dev/null 2>&1; then
+                  FORK_READY=1
+                  break
+                fi
+                sleep 5
+              done
+              [[ "$FORK_READY" == 1 ]] || {
+                echo "TURBO_NEW_FORK_NOT_YET_READY"; exit 13;
+              }
+              PARENT="$(gh api "repos/$CS_REPO" --jq '.parent.full_name // ""')"
+              [[ "$PARENT" == "$GITHUB_REPOSITORY" ]] || {
+                echo "TURBO_HOST_FORK_PARENT_MISMATCH"; exit 13;
+              }
+              echo "TURBO_NEW_HOST_FORK_READY"
+            fi
             gh api "/repos/$CS_REPO/codespaces/machines" \
               --jq '.machines[].name' 2>/dev/null |
               grep -qxF standardLinux32gb || {
