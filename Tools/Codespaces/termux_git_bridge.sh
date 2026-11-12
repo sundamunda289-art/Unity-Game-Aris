@@ -120,11 +120,12 @@ print("AARIS_GIT_DEPLOY_PUBLIC_KEY " + parts[0] + " " + parts[1])
 print("AARIS_GIT_BRIDGE_PRIVATE_KEY_READY")
 PY
 )"
+REMOTE_INSTALL_B64="$(printf '%s' "$REMOTE_INSTALL" | base64 -w0)"
 {
   base64 -w0 "$TMP/canonical_git.sh"
   printf '\n'
 } | GH_CONFIG_DIR="$WORKER" gh codespace ssh -c "$MACHINE" -- \
-  "python3 -c '$REMOTE_INSTALL'" > "$TMP/install.log"
+  "python3 -c 'import base64;exec(base64.b64decode(\"$REMOTE_INSTALL_B64\"))'" > "$TMP/install.log"
 
 PUBLIC_KEY="$(sed -nE 's/^AARIS_GIT_DEPLOY_PUBLIC_KEY (ssh-ed25519 [A-Za-z0-9+\/=]+)$/\1/p' "$TMP/install.log" | tail -1)"
 [[ "$PUBLIC_KEY" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+$ ]] || {
