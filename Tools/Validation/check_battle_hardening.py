@@ -37,6 +37,20 @@ def audit() -> None:
     weapon_hud = source("AarisWeaponHUD.cs")
     vehicle_hud = source("AarisVehicleHUD.cs")
     tactical = source("AarisOfflineTacticalHUD.cs")
+    # Medkits cannot disappear solely because a dense settlement fills the
+    # bounded overlap buffer. A saturated query must inspect ALL colliders,
+    # still rejecting actual non-terrain blockers (no wall/floor clipping).
+    medical_spawn = tactical.split("private bool TrySpawnMedicalCase(", 1)[1].split(
+        "private static Material MedicalPaint", 1
+    )[0]
+    assert "Collider[] nearby = medicalHits;" in medical_spawn
+    assert "if (count >= medicalHits.Length)" in medical_spawn
+    assert "nearby = Physics.OverlapBox(center, halfExtents," in medical_spawn
+    assert "count = nearby.Length;" in medical_spawn
+    assert "Collider c = nearby[i];" in medical_spawn
+    assert "!(c is TerrainCollider)" in medical_spawn
+    assert "if (count >= medicalHits.Length) return false;" not in medical_spawn
+
 
     assert "Mathf.Clamp(Time.deltaTime, 0f, 0.15f)" in motor, "Low-FPS movement discards time"
     assert motor.count("controller.Move(") == 1, "Two movement authorities detected"

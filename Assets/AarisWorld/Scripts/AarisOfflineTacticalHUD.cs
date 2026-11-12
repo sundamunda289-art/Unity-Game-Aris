@@ -430,14 +430,25 @@ namespace Aaris.MapReview
             }
             if (!supported || ground <= -37.35f) return false;
             Vector3 spot = new Vector3(p.x, ground + 0.08f, p.z);
-            int count = Physics.OverlapBoxNonAlloc(spot + Vector3.up * 0.26f,
-                new Vector3(0.31f, 0.16f, 0.24f), medicalHits,
+            Vector3 center = spot + Vector3.up * 0.26f;
+            Vector3 halfExtents = new Vector3(0.31f, 0.16f, 0.24f);
+            int count = Physics.OverlapBoxNonAlloc(center, halfExtents, medicalHits,
                 Quaternion.identity, Physics.DefaultRaycastLayers,
                 QueryTriggerInteraction.Ignore);
-            if (count >= medicalHits.Length) return false;
+            // An exactly full NonAlloc result is not a complete physics query.
+            // Recheck rare dense settlements before rejecting a clear pickup
+            // location; preserve the normal allocation-free nearby scan.
+            Collider[] nearby = medicalHits;
+            if (count >= medicalHits.Length)
+            {
+                nearby = Physics.OverlapBox(center, halfExtents,
+                    Quaternion.identity, Physics.DefaultRaycastLayers,
+                    QueryTriggerInteraction.Ignore);
+                count = nearby.Length;
+            }
             for (int i = 0; i < count; i++)
             {
-                Collider c = medicalHits[i];
+                Collider c = nearby[i];
                 if (c != null && !(c is TerrainCollider) &&
                     !c.transform.IsChildOf(transform)) return false;
             }
