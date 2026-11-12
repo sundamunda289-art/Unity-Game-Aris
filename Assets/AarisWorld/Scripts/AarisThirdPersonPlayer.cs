@@ -70,7 +70,8 @@ namespace Aaris.MapReview
         }
         private float savedGroundStepOffset;
         private float smoothedEyeHeight, eyeHeightVelocity;
-        private bool jumpButtonHeld;
+        private bool jumpButtonHeld, jumpAwaitingAudioLanding;
+        private AarisAudioDirector audioDirector;
         private float lastJumpStarted = -10f;
         private float lastLanding = -10f;
         public bool IsInAir => controller != null && !controller.isGrounded;
@@ -169,8 +170,8 @@ namespace Aaris.MapReview
             lastMouse = Input.mousePosition;
             PlaceCamera(true);
             // The saved player and any later player spawn use the same audio setup.
-            if (GetComponent<AarisAudioDirector>() == null)
-                gameObject.AddComponent<AarisAudioDirector>();
+            audioDirector = GetComponent<AarisAudioDirector>();
+            if (audioDirector == null) audioDirector = gameObject.AddComponent<AarisAudioDirector>();
         }
 
         private void OnDestroy()
@@ -228,6 +229,14 @@ namespace Aaris.MapReview
             }
             else if (fpsButton.Contains(p)) Application.targetFrameRate = Application.targetFrameRate == 60 ? 30 : 60;
         }
+        // UI drag on Fire/Jump uses the same look scaling as the right thumb.
+        internal void ForwardLookDelta(Vector2 delta)
+        {
+            if (!isActiveAndEnabled || float.IsNaN(delta.x) || float.IsNaN(delta.y) ||
+                float.IsInfinity(delta.x) || float.IsInfinity(delta.y)) return;
+            Look(delta);
+        }
+
         private void Look(Vector2 delta)
         {
             yaw += delta.x * lookSensitivity / uiScale;
@@ -325,6 +334,8 @@ namespace Aaris.MapReview
                 verticalVelocity = Mathf.Sqrt(2f * gravity * jumpHeight);
                 lastJumpStarted = now;
                 jumpUntil = lastGrounded = -10f;
+                jumpAwaitingAudioLanding = true;
+                if (audioDirector != null) audioDirector.PlayJump();
             }
 
             // CharacterController.stepOffset is for grounded stair traversal.
@@ -339,11 +350,14 @@ namespace Aaris.MapReview
             // Sole controller motor: no extra movement component or double
             // gravity. Touch, keyboard and auto-sprint use one intent pipeline.
             if (running && moveInput.y < -0.25f) running = false;
-            if (battle != null && battle.FireHeld) running = false;
+            // Firing on the ground changes gait; firing in a jump does not
+            // cancel the stored running intent or its takeoff momentum.
+            bool airborneIntent = launchJump || !wasGrounded;
+            if (battle != null && battle.FireHeld && !airborneIntent) running = false;
             bool isAiming = weaponInventory != null && weaponInventory.Aiming;
             if (isAiming) running = false;
             bool sprinting = (running || Input.GetKey(KeyCode.LeftShift)) &&
-                !isAiming && (battle == null || !battle.FireHeld);
+                !isAiming && (battle == null || !battle.FireHeld || airborneIntent);
             if (sprinting && battle != null && !battle.TryStand())
                 sprinting = false;
             Vector2 intent = moveInput;
@@ -446,6 +460,13 @@ namespace Aaris.MapReview
             if ((flags & CollisionFlags.Below) != 0)
             {
                 if (!wasGrounded && !launchJump) lastLanding = now;
+                if (!launchJump && verticalStepSpeed <= 0f &&
+                    (jumpAwaitingAudioLanding || (!wasGrounded && previousVerticalVelocity < -3f)))
+                {
+                    jumpAwaitingAudioLanding = false;
+                    if (audioDirector != null)
+                        audioDirector.PlayLanding(-Mathf.Min(previousVerticalVelocity, verticalStepSpeed));
+                }
                 lastGrounded = now;
                 if (verticalVelocity < 0f) verticalVelocity = -groundedDownVelocity;
                 controller.stepOffset = groundedStep;
@@ -598,6 +619,7 @@ namespace Aaris.MapReview
             lastGrounded = Time.unscaledTime;
             lastLanding = Time.unscaledTime;
             lastJumpStarted = jumpUntil = -10f;
+            jumpAwaitingAudioLanding = false;
             travelSpeed = gait = 0f;
             running = jumpButtonHeld = false;
             moveFinger = lookFinger = -1;
@@ -624,6 +646,7 @@ namespace Aaris.MapReview
             lastGrounded = Time.unscaledTime;
             lastLanding = Time.unscaledTime;
             lastJumpStarted = jumpUntil = -10f;
+            jumpAwaitingAudioLanding = false;
             travelSpeed = gait = 0f;
             yaw = transform.eulerAngles.y;
             controller.stepOffset = battle != null
@@ -646,6 +669,7 @@ namespace Aaris.MapReview
                 ? battle.GroundStepOffset : savedGroundStepOffset;
             lastGrounded = -10f; gait = travelSpeed = 0f;
             lastJumpStarted = lastLanding = -10f;
+            jumpAwaitingAudioLanding = false;
             if (followCamera != null) followCamera.fieldOfView = normalCameraFov;
             weaponAimFov = -1f;
             cameraVelocity = Vector3.zero;

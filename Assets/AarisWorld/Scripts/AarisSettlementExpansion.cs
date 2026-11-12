@@ -22,6 +22,7 @@ namespace Aaris.MapReview
         public string district;
         public string prefabKey;
         public bool interactive;
+        public bool useRuinedPrefab;
         public float x, z, groundReferenceY, yaw;
         public float width, depth, height;
     }
@@ -120,7 +121,12 @@ namespace Aaris.MapReview
                     skippedResources++;
                     continue;
                 }
-                GameObject prefab = catalog.Resolve(site.prefabKey);
+                bool replaceClosedHouse = !site.interactive &&
+                    (site.prefabKey == "cottage" || site.prefabKey == "bungalow" ||
+                     site.prefabKey == "detached");
+                GameObject prefab = site.useRuinedPrefab
+                    ? catalog.ResolveRuined(site.prefabKey)
+                    : replaceClosedHouse ? catalog.ResolveOpen(site.prefabKey) : catalog.Resolve(site.prefabKey);
                 if (prefab == null)
                 {
                     skippedResources++;
@@ -147,7 +153,7 @@ namespace Aaris.MapReview
                 // Original vendor houses have ONE fused mesh/collider; an
                 // animated door pasted on top would stay physically blocked.
                 // Only marked, tested new sites use true modular wall holes.
-                GameObject instance = site.interactive
+                GameObject instance = site.interactive && !site.useRuinedPrefab
                     ? AarisModularHouse.Create(position, rotation, site.width,
                         site.depth, site.height, transform, interactionTarget, prefab)
                     : Instantiate(prefab, position, rotation, transform);

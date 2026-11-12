@@ -62,6 +62,7 @@ def run():
     catalog_cs = (SCRIPTS / "AarisWeaponCatalog.cs").read_text()
     gun_cs = (SCRIPTS / "AarisEquippedGun.cs").read_text()
     inventory = (SCRIPTS / "AarisWeaponInventory.cs").read_text()
+    pickup_cs = (SCRIPTS / "AarisWeaponPickup.cs").read_text()
     world = (SCRIPTS / "AarisWeaponLootWorld.cs").read_text()
     player = (SCRIPTS / "AarisThirdPersonPlayer.cs").read_text()
     action = (SCRIPTS / "AarisBattleActions.cs").read_text()
@@ -93,6 +94,13 @@ def run():
     assert "hand.TransformPoint(equipped.Spec.handOffset)" in inventory
     assert "hand.rotation * grip" in inventory
     assert "weaponRoot.SetParent(transform, false);" in inventory
+    # Multi-mesh FBX pickups must size from all renderers and rest fully
+    # above the ground, including meshes with an offset source pivot.
+    assert "visible.GetComponentsInChildren<Renderer>(true)" in pickup_cs
+    assert "modelBounds.Encapsulate(renderers[i].bounds)" in pickup_cs
+    assert "transform.position.y + 0.08f - modelBounds.min.y" in pickup_cs
+    assert "modelBounds.center + delta" in pickup_cs
+    assert "model.SetParent(visualPivot.transform, true);" in pickup_cs
     # Pickup swaps must reserve the old gun BEFORE committing, then retire
     # the collected world pickup without duping its ammo/weapon state.
     assert "private AarisDroppedWeapon CreateDropped" in world

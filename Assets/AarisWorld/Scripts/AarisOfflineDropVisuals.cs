@@ -32,6 +32,18 @@ namespace Aaris.MapReview
             return cached;
         }
 
+        // PBR material values are cached once, not allocated or updated per frame.
+        // Distinguish painted metal, rubber-dark engine parts and glazed cockpit
+        // without adding texture samples, normal maps or extra draw calls.
+        private static void SetAircraftFinish(Material material, float metallic, float smoothness)
+        {
+            if (material == null) return;
+            if (material.HasProperty("_Metallic"))
+                material.SetFloat("_Metallic", metallic);
+            if (material.HasProperty("_Smoothness"))
+                material.SetFloat("_Smoothness", smoothness);
+        }
+
         private static GameObject Part(Transform parent, string name, PrimitiveType primitive,
             Vector3 position, Quaternion rotation, Vector3 scale, Material material)
         {
@@ -129,6 +141,11 @@ namespace Aaris.MapReview
                 Material wingPaint = Paint(ref wingPanels, new Color(.39f, .43f, .40f));
                 Material enginePaint = Paint(ref engineDark, new Color(.095f, .12f, .13f));
                 Material safetyPaint = Paint(ref safetyAccent, new Color(.60f, .60f, .49f));
+                SetAircraftFinish(hullPaint, .38f, .32f);
+                SetAircraftFinish(cockpitPaint, .08f, .82f);
+                SetAircraftFinish(wingPaint, .30f, .25f);
+                SetAircraftFinish(enginePaint, .52f, .26f);
+                SetAircraftFinish(safetyPaint, .18f, .27f);
                 // Imported OBJ/MTL materials are not guaranteed to be URP-compatible.
                 // Map each authored submesh to one cached, shared URP material.
                 // Preserve wing/cockpit/intake contrast instead of flattening
@@ -167,6 +184,8 @@ namespace Aaris.MapReview
                 root.transform.SetPositionAndRotation(position, rotation);
                 Material shell = Paint(ref hull, new Color(0.36f, 0.44f, 0.47f));
                 Material trim = Paint(ref dark, new Color(0.09f, 0.14f, 0.17f));
+                SetAircraftFinish(shell, .38f, .32f);
+                SetAircraftFinish(trim, .08f, .82f);
                 Part(root.transform, "Fuselage", PrimitiveType.Capsule, Vector3.zero,
                     Quaternion.Euler(90f, 0f, 0f),
                     new Vector3(3.1f, 10.6f, 3.1f), shell);

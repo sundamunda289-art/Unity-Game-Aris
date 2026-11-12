@@ -128,7 +128,13 @@ namespace Aaris.MapReview
                 if (buttons[i].gameObject.activeSelf != show)
                     buttons[i].gameObject.SetActive(show);
             }
-            if (!armed) return;
+            if (!armed)
+            {
+                if (captions[0].text != "ADS") captions[0].text = "ADS";
+                shownMagazine = shownReserve = -1;
+                shownReloading = false;
+                return;
+            }
             captions[0].text = inventory.Aiming ? "ADS ON" : "ADS";
             var gun = inventory.Current;
             if (shownMagazine != gun.Magazine || shownReserve != gun.Reserve || shownReloading != gun.Reloading)

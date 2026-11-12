@@ -18,6 +18,9 @@ def audit():
     visual = file("AarisCharacterVisual.cs")
     gun = file("AarisEquippedGun.cs")
     actions = file("AarisBattleActions.cs")
+    battle_hud = file("AarisBattleHUD.cs")
+    hud_button = file("AarisHudButton.cs")
+    weapon_hud = file("AarisWeaponHUD.cs")
 
     # Previously E caused BOTH a pickup and an auto-sprint. Right-mouse
     # camera look also toggled ADS. Keep each desktop intent independent.
@@ -34,7 +37,9 @@ def audit():
     assert "if (aiming && motor != null) motor.CancelAutoSprint();" in inventory
     assert "if (isAiming) running = false;" in motor
     assert "if (isAiming) speed = Mathf.Min(speed, adsMoveSpeed);" in motor
-    assert "!isAiming && (battle == null || !battle.FireHeld)" in motor
+    assert "bool airborneIntent = launchJump || !wasGrounded;" in motor
+    assert "if (battle != null && battle.FireHeld && !airborneIntent) running = false;" in motor
+    assert "!isAiming && (battle == null || !battle.FireHeld || airborneIntent)" in motor
     assert "bool combatFacing = battle != null && battle.IsArmed &&" in motor
     assert "Quaternion.Euler(0f, yaw, 0f)" in motor
     assert "Mathf.Exp(-weaponTurnResponse * dt)" in motor
@@ -42,6 +47,24 @@ def audit():
     assert "unarmedSprintSpeed = 6.5f;" in motor
     assert "armedSprintSpeed = 5.7f;" in motor
     assert motor.count("controller.Move(") == 1
+
+    # Multi-touch Fire/Jump drags steer the same camera as free-look without
+    # giving the UI-held pointer to the gameplay look finger.
+    assert "ICancelHandler, IDragHandler" in hud_button
+    assert "!heldPointers.Contains(eventData.pointerId)" in hud_button
+    assert "owner.ForwardLookDelta(eventData.delta);" in hud_button
+    assert "internal void ForwardLookDelta(Vector2 pixels)" in battle_hud
+    assert "internal void ForwardLookDelta(Vector2 delta)" in motor
+
+    # A tap during the weapon cooldown may survive PointerUp briefly;
+    # only a real shot consumes it and focus loss cancels it.
+    assert "FireTapBufferSeconds = 0.14f" in actions
+    assert "if (semiShotQueued && Time.time > fireBufferUntil)" in actions
+    assert "if ((!fireHeld && !semiShotQueued) || Time.time < nextAttack) return;" in actions
+    assert "if (equippedGun.TryFire(motor.AimCamera, gameObject))" in actions
+    assert "private void OnApplicationFocus(bool focused)" in actions
+    assert "motor.CancelAutoSprint();" not in actions
+    assert 'if (captions[0].text != "ADS") captions[0].text = "ADS";' in weapon_hud
 
     # Critical gun-size bug: avatar import may use 0.01 / 100 bone scale.
     # Preserve root under player and follow hand WORLD pose in LateUpdate.

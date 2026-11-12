@@ -97,7 +97,9 @@ def test():
     assert "var sectors = new HashSet<int>();" in world
     assert "int sector = Mathf.Clamp" in world
     assert "AddPlan(point, 105f)" in world
-    assert "LoadRadius = 42f" in world and "UnloadRadius = 160f" in world
+    # Vehicles are visible earlier with the existing bounded 10-car cap.
+    # This test must follow the authored stream distance, not a stale 42m constant.
+    assert "LoadRadius = 105f" in world and "UnloadRadius = 160f" in world
     assert "MaximumNearbyVehicles = 10" in world
     assert "Physics.OverlapBoxNonAlloc" in world
     assert "Physics.RaycastNonAlloc" in world

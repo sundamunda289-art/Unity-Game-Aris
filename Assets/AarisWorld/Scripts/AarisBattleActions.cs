@@ -33,6 +33,8 @@ namespace Aaris.MapReview
         private PlayerStance stance;
         private bool fireHeld;
         private bool semiShotQueued;
+        private const float FireTapBufferSeconds = 0.14f;
+        private float fireBufferUntil = -10f;
         private int attackSequence;
         private float lastPunchTime = -10f;
         private float punchContactTime = -1f;
@@ -74,16 +76,21 @@ namespace Aaris.MapReview
             lastPunchTime = -10f;
             nextAttack = 0f;
             semiShotQueued = false;
+            fireBufferUntil = -10f;
         }
 
         public void SetFireHeld(bool held)
         {
-            // Semi-auto must fire on a NEW press only, never repeatedly
-            // while held. Full-auto retains the original held cadence.
-            if (held && !fireHeld) semiShotQueued = true;
+            // A quick tap survives a short cooldown, but a held semi-auto
+            // press is still only ONE request.
+            if (held && !fireHeld)
+            {
+                semiShotQueued = true;
+                fireBufferUntil = Time.time + FireTapBufferSeconds;
+            }
             fireHeld = held;
-            if (!held) semiShotQueued = false;
-            if (held && motor != null) motor.CancelAutoSprint();
+            // The movement motor decides grounded combat gait vs airborne
+            // jump momentum; Fire must never cancel auto-sprint here.
         }
 
         public bool ToggleCrouch() =>
@@ -199,13 +206,17 @@ namespace Aaris.MapReview
                 punchContactTime = -1f;
                 Punch();
             }
-            if (!fireHeld || Time.time < nextAttack) return;
+            if (semiShotQueued && Time.time > fireBufferUntil)
+                semiShotQueued = false;
+            if ((!fireHeld && !semiShotQueued) || Time.time < nextAttack) return;
             if (IsArmed)
             {
                 if (!equippedGun.Automatic && !semiShotQueued) return;
-                if (!equippedGun.Automatic) semiShotQueued = false;
                 if (equippedGun.TryFire(motor.AimCamera, gameObject))
                 {
+                    // The pending press is consumed only by a real shot.
+                    semiShotQueued = false;
+                    fireBufferUntil = -10f;
                     attackSequence++;
                     lastShootTime = Time.time;
                     nextAttack = Time.time + equippedGun.SecondsBetweenShots;
@@ -214,6 +225,8 @@ namespace Aaris.MapReview
                 return;
             }
 
+            semiShotQueued = false;
+            fireBufferUntil = -10f;
             lastPunchTime = Time.time;
             nextAttack = lastPunchTime + Mathf.Max(punchInterval, PunchVisualDuration);
             punchContactTime = lastPunchTime + PunchContactDelay;
@@ -268,6 +281,16 @@ namespace Aaris.MapReview
         {
             fireHeld = false;
             semiShotQueued = false;
+            fireBufferUntil = -10f;
+            punchContactTime = -1f;
+        }
+
+        private void OnApplicationFocus(bool focused)
+        {
+            if (focused) return;
+            fireHeld = false;
+            semiShotQueued = false;
+            fireBufferUntil = -10f;
             punchContactTime = -1f;
         }
 
@@ -275,6 +298,8 @@ namespace Aaris.MapReview
         {
             if (!paused) return;
             fireHeld = false;
+            semiShotQueued = false;
+            fireBufferUntil = -10f;
             punchContactTime = -1f;
         }
     }

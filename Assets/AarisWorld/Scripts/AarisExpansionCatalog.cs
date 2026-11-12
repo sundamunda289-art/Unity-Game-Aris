@@ -13,6 +13,36 @@ namespace Aaris.MapReview
         public GameObject bungalow;
         public GameObject detached;
         public GameObject watchtower;
+        // Baked, offline CC0 house prefabs with real open entrance/window apertures.
+        // Explicit serialized References (no Resources.Load per house).
+        public GameObject openCottage;
+        public GameObject openBungalow;
+        public GameObject openDetached;
+        public GameObject ruinedCottage;
+        public GameObject ruinedBungalow;
+        public GameObject ruinedDetached;
+
+        public GameObject ResolveOpen(string id)
+        {
+            switch (id)
+            {
+                case "cottage": return openCottage;
+                case "bungalow": return openBungalow;
+                case "detached": return openDetached;
+                default: return null;
+            }
+        }
+
+        public GameObject ResolveRuined(string id)
+        {
+            switch (id)
+            {
+                case "cottage": return ruinedCottage;
+                case "bungalow": return ruinedBungalow;
+                case "detached": return ruinedDetached;
+                default: return null;
+            }
+        }
 
         public GameObject Resolve(string id)
         {

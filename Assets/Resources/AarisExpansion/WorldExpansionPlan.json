@@ -242,7 +242,7 @@
       "style": "local_original_LOD_prefab",
       "name": "ARX_18_OldVillage_cottage",
       "designRole": "low-rise cover and habitation",
-      "interactive": true
+      "useRuinedPrefab": true
     },
     {
       "district": "NorthernRidgeTown",
@@ -257,7 +257,7 @@
       "style": "local_original_LOD_prefab",
       "name": "ARX_19_NorthernRidgeTown_bungalow",
       "designRole": "residential profile variation",
-      "interactive": true
+      "useRuinedPrefab": true
     },
     {
       "district": "ValleySettlement",
@@ -272,7 +272,7 @@
       "style": "local_original_LOD_prefab",
       "name": "ARX_20_ValleySettlement_cottage",
       "designRole": "route-side cover",
-      "interactive": true
+      "useRuinedPrefab": true
     },
     {
       "district": "CoastalHamlet",
@@ -287,7 +287,7 @@
       "style": "local_original_LOD_prefab",
       "name": "ARX_21_CoastalHamlet_detached",
       "designRole": "two-storey silhouette variation",
-      "interactive": true
+      "useRuinedPrefab": true
     }
   ]
 }

@@ -219,6 +219,16 @@ namespace Aaris.MapReview
             }
         }
 
+        // Screen-space swipe up must lift the view; the orbit uses -pitch,
+        // so increasing pitch positions the camera below its focal point.
+        // Normalize by screen height for consistent touch response on Android.
+        private void ApplyLookDrag(Vector2 pixels)
+        {
+            float scale = Mathf.Clamp(720f / Mathf.Max(360f, Screen.height), 0.75f, 1.5f);
+            yaw += pixels.x * 0.18f * scale;
+            pitch = Mathf.Clamp(pitch + pixels.y * 0.15f * scale, -55f, 70f);
+        }
+
         private void ReadLookInput()
         {
             if (Input.touchCount > 0)
@@ -232,8 +242,7 @@ namespace Aaris.MapReview
                             lookFinger = -1;
                         else if (t.phase == TouchPhase.Moved)
                         {
-                            yaw += t.deltaPosition.x * 0.11f;
-                            pitch = Mathf.Clamp(pitch - t.deltaPosition.y * 0.09f, -55f, 70f);
+                            ApplyLookDrag(t.deltaPosition);
                         }
                     }
                     else if (lookFinger < 0 && t.phase == TouchPhase.Began &&
@@ -249,8 +258,7 @@ namespace Aaris.MapReview
                 if (Input.GetMouseButton(1))
                 {
                     Vector3 delta = Input.mousePosition - previousMouse;
-                    yaw += delta.x * 0.12f;
-                    pitch = Mathf.Clamp(pitch - delta.y * 0.11f, -55f, 70f);
+                    ApplyLookDrag(new Vector2(delta.x, delta.y));
                 }
                 previousMouse = Input.mousePosition;
             }
@@ -487,7 +495,11 @@ namespace Aaris.MapReview
             Vector3 pos, focus;
             if (phase == DropPhase.InPlane && plane != null)
             {
-                pos = plane.transform.position - plane.transform.forward * 28f + Vector3.up * 10f;
+                // The previous fixed chase camera ignored all plane-phase
+                // swipes. Orbit the actual aircraft so players can inspect
+                // above, below and either side before ejecting.
+                Vector3 orbit = Quaternion.Euler(-pitch, yaw, 0f) * Vector3.back;
+                pos = plane.transform.position + orbit * 28f + Vector3.up * 9f;
                 focus = plane.transform.position + plane.transform.forward * 4f;
             }
             else

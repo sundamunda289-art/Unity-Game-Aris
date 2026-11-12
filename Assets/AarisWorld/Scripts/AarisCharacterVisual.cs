@@ -59,6 +59,8 @@ namespace Aaris.MapReview
         private Vector3 restingLocalPosition;
         private Quaternion restingLocalRotation;
         private float crouchBlend, proneBlend;
+        // CharacterController.isGrounded may briefly drop on stairs/terrain seams.
+        private float lastReliableGroundContact;
         private AnimationClip idleClip, walkClip, runClip;
         private float locomotionPhase, crouchPhase, crawlPhase;
         private bool primaryLoaded;
@@ -76,6 +78,7 @@ namespace Aaris.MapReview
         private void Awake()
         {
             controller = GetComponent<CharacterController>();
+            lastReliableGroundContact = Time.unscaledTime;
         }
 
         private void Start()
@@ -463,13 +466,23 @@ namespace Aaris.MapReview
             visual.transform.localPosition = restingLocalPosition +
                 new Vector3(0f, fallbackProne * 0.36f - landingDip, fallbackProne * 0.14f);
 
+            // Suppress one-frame false airborne visuals on slopes and low FPS.
+            // A deliberate jump overrides this grace period immediately.
+            bool groundedNow = controller.isGrounded;
+            if (groundedNow) lastReliableGroundContact = Time.unscaledTime;
+            float jumpAge = playerMotor != null
+                ? Time.unscaledTime - playerMotor.LastJumpStartedTime : 10f;
+            bool recentlyJumped = jumpAge >= 0f && jumpAge < 0.65f;
+            bool visuallyAirborne = !groundedNow &&
+                (recentlyJumped || Time.unscaledTime - lastReliableGroundContact > 0.13f);
+
             if (graphReady)
             {
                 float horizontal = planar;
                 float movementTarget = Mathf.InverseLerp(0.08f, 1.2f, horizontal);
                 float runTarget = Mathf.InverseLerp(3.3f, 4.9f, horizontal);
                 float sprintTarget = Mathf.InverseLerp(5.15f, Mathf.Max(5.3f, fullRunSpeed), horizontal);
-                float airTarget = controller.isGrounded ? 0f : 1f;
+                float airTarget = visuallyAirborne ? 1f : 0f;
                 runBlend = Mathf.Lerp(runBlend, movementTarget, alpha);
                 walkRunBlend = Mathf.Lerp(walkRunBlend, runTarget, alpha);
                 sprintBlend = Mathf.Lerp(sprintBlend, sprintTarget, alpha);
@@ -571,7 +584,7 @@ namespace Aaris.MapReview
 
                 // Keep standing gait contacts in phase across walk, run and sprint.
                 // Stance gaits use their own stride distances at the same motor speed.
-                if (controller.isGrounded)
+                if (!visuallyAirborne)
                 {
                     float standStride = Mathf.Lerp(1.25f,
                         Mathf.Lerp(2.55f, 3.65f, sprintBlend), walkRunBlend);
