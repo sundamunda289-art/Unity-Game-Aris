@@ -803,10 +803,23 @@ namespace Aaris.MapReview
             if (spec == null) return;
             var state = new AarisWeaponState(spec, matchSeed ^ 0x4F67A2C1u);
             var starter = CreateDropped(state, point, 0f);
-            if (starter != null)
+            if (starter == null) return;
+            starterLootId = starter.id;
+            // The backup must really reach the inventory before this one-shot
+            // fallback is exhausted. At sprint speed the player can leave the
+            // 2.15 m radius before the next 330 ms streaming/pickup poll.
+            // This one-time landing pickup uses the same reserve/commit path
+            // as authored guns, never a separate weapon controller.
+            if (starter.visible != null && TryTake(starter.visible))
             {
-                starterLootId = starter.id;
                 starterLootSettled = true;
+            }
+            else
+            {
+                // Roll back the failed floor object and retry later. Never
+                // permanently consume the fallback or leak duplicate guns.
+                UndoDrop(starter);
+                starterLootId = 0;
             }
         }
 
