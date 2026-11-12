@@ -24,11 +24,14 @@ namespace Aaris.MapReview
             public Vector3 position;
             public GameObject visual;
             public bool taken;
+            public bool isHelmet;
             public float retry;
         }
         private readonly List<MedicalSite> medicalSites = new List<MedicalSite>(80);
         // Recycle at most eight case hierarchies; avoid per-cell GameObject churn.
         private readonly Stack<GameObject> medicalVisualPool =
+            new Stack<GameObject>(MaxMedicalVisuals);
+        private readonly Stack<GameObject> helmetVisualPool =
             new Stack<GameObject>(MaxMedicalVisuals);
         private readonly Collider[] medicalHits = new Collider[20];
         private readonly RaycastHit[] medicalSightHits = new RaycastHit[24];
@@ -36,11 +39,12 @@ namespace Aaris.MapReview
         private AarisOfflineHealth medicalHealth;
         private AarisBattleActions medicalBattle;
         private CharacterController medicalController;
-        private Text medicalText;
+        private Text medicalText, helmetText;
         private int medkits, shownMedkits = -1, shownSeconds = -1;
+        private int shownHelmetDurability = -1;
         private bool healing;
         private float healEnd, healthAtHealStart, nextMedicalScan;
-        private static Material medcasePaint, medcrossPaint;
+        private static Material medcasePaint, medcrossPaint, helmetShellPaint, helmetTrimPaint;
         private AarisThirdPersonPlayer motor;
         private AarisOfflineGlooWall gloo;
         private AarisGlooTouchButton wallTouch;
@@ -141,6 +145,16 @@ namespace Aaris.MapReview
                 shownSeconds = -1;
                 medicalText.text = "MED\n×" + medkits;
             }
+            if (helmetText != null)
+            {
+                int durability = medicalHealth != null
+                    ? Mathf.CeilToInt(medicalHealth.HelmetDurability) : 0;
+                if (durability != shownHelmetDurability)
+                {
+                    shownHelmetDurability = durability;
+                    helmetText.text = "HELM\n" + durability;
+                }
+            }
             if (shownWalls != gloo.Count)
             {
                 shownWalls = gloo.Count;
@@ -224,6 +238,11 @@ namespace Aaris.MapReview
             var healButton = medButton.AddComponent<Button>();
             healButton.targetGraphic = medButton.GetComponent<Image>();
             healButton.onClick.AddListener(StartHealing);
+            helmetText = CreateAction("Helmet durability", new Vector2(1f, 0.45f),
+                new Vector2(-436f, 0f), new Color(0.80f, 0.87f, 0.95f, 1f),
+                out GameObject helmetIndicator);
+            // Status-only indicator must not intercept right-thumb aiming.
+            helmetIndicator.GetComponent<Image>().raycastTarget = false;
             AarisHudGlyphs.ApplyCanvasShader(canvasObject.transform);
         }
 
@@ -283,8 +302,10 @@ namespace Aaris.MapReview
                         float.IsNaN(c.x) || float.IsNaN(c.z) ||
                         float.IsInfinity(c.x) || float.IsInfinity(c.z) ||
                         Mathf.Abs(c.x) > 955f || Mathf.Abs(c.z) > 955f) continue;
+                    // Reuse authored outdoor sites; no additional world scan.
                     medicalSites.Add(new MedicalSite {
-                        position = new Vector3(c.x, 0f, c.z) });
+                        position = new Vector3(c.x, 0f, c.z),
+                        isHelmet = (i / 5) % 2 == 1 });
                 }
             }
             catch (System.Exception e)
@@ -351,14 +372,20 @@ namespace Aaris.MapReview
                 float dx = site.position.x - playerPosition.x;
                 float dz = site.position.z - playerPosition.z;
                 float distanceSq = dx * dx + dz * dz;
-                if (distanceSq <= 2.15f * 2.15f && medkits < maxMedkits &&
+                if (distanceSq <= 2.15f * 2.15f &&
                     Mathf.Abs(site.visual.transform.position.y - playerPosition.y) < 1.25f &&
                     CanCollectMedical(site))
                 {
-                    site.taken = true;
-                    medkits++;
-                    RecycleMedicalCase(site);
-                    continue;
+                    bool collected = site.isHelmet
+                        ? medicalHealth != null && medicalHealth.TryEquipHelmet()
+                        : medkits < maxMedkits;
+                    if (collected)
+                    {
+                        site.taken = true;
+                        if (!site.isHelmet) medkits++;
+                        RecycleMedicalCase(site);
+                        continue;
+                    }
                 }
                 if (distanceSq > 56f * 56f)
                 {
@@ -386,7 +413,8 @@ namespace Aaris.MapReview
             site.visual = null;
             if (visual == null) return;
             visual.SetActive(false);
-            medicalVisualPool.Push(visual);
+            if (site.isHelmet) helmetVisualPool.Push(visual);
+            else medicalVisualPool.Push(visual);
         }
 
         private bool CanCollectMedical(MedicalSite site)
@@ -440,6 +468,12 @@ namespace Aaris.MapReview
             }
             if (!supported || ground <= -37.35f) return false;
             Vector3 spot = new Vector3(p.x, ground + 0.08f, p.z);
+            // Reject loot hidden under sealed houses, including high ceilings.
+            if (Physics.Raycast(spot + Vector3.up * 0.65f, Vector3.up,
+                out RaycastHit overhead, 7f, Physics.DefaultRaycastLayers,
+                QueryTriggerInteraction.Ignore) &&
+                !(overhead.collider is TerrainCollider) && overhead.normal.y < -0.65f)
+                return false;
             Vector3 center = spot + Vector3.up * 0.26f;
             Vector3 halfExtents = new Vector3(0.31f, 0.16f, 0.24f);
             int count = Physics.OverlapBoxNonAlloc(center, halfExtents, medicalHits,
@@ -461,6 +495,39 @@ namespace Aaris.MapReview
                 Collider c = nearby[i];
                 if (c != null && !(c is TerrainCollider) &&
                     !c.transform.IsChildOf(transform)) return false;
+            }
+            // Separate type-safe pools keep helmet visuals from impersonating
+            // medical cases, with at most eight live pickups of either type.
+            if (site.isHelmet)
+            {
+                if (helmetVisualPool.Count > 0)
+                {
+                    GameObject recycledHelmet = helmetVisualPool.Pop();
+                    if (recycledHelmet != null)
+                    {
+                        recycledHelmet.transform.position = spot;
+                        recycledHelmet.SetActive(true);
+                        site.visual = recycledHelmet;
+                        return true;
+                    }
+                }
+                var helmetRoot = new GameObject("Aaris Streamed Helmet");
+                helmetRoot.transform.position = spot;
+                Material shell = MedicalPaint(ref helmetShellPaint,
+                    new Color(0.18f, 0.23f, 0.20f), "Aaris Helmet Shell");
+                Material trim = MedicalPaint(ref helmetTrimPaint,
+                    new Color(0.10f, 0.12f, 0.12f), "Aaris Helmet Trim");
+                HelmetPart(helmetRoot.transform, "Helmet shell",
+                    new Vector3(0f, 0.24f, 0f),
+                    new Vector3(0.58f, 0.37f, 0.54f), shell, PrimitiveType.Sphere);
+                HelmetPart(helmetRoot.transform, "Protective lower rim",
+                    new Vector3(0f, 0.11f, 0f),
+                    new Vector3(0.59f, 0.10f, 0.55f), trim, PrimitiveType.Cube);
+                HelmetPart(helmetRoot.transform, "Front visor lip",
+                    new Vector3(0f, 0.15f, -0.30f),
+                    new Vector3(0.40f, 0.06f, 0.16f), shell, PrimitiveType.Cube);
+                site.visual = helmetRoot;
+                return true;
             }
             // All reused positions passed the same full overlap test above.
             if (medicalVisualPool.Count > 0)
@@ -488,6 +555,22 @@ namespace Aaris.MapReview
                 new Vector3(0.24f, 0.008f, 0.075f), red);
             site.visual = root;
             return true;
+        }
+
+        private static void HelmetPart(Transform parent, string name,
+            Vector3 position, Vector3 scale, Material material, PrimitiveType primitive)
+        {
+            var part = GameObject.CreatePrimitive(primitive);
+            part.name = name;
+            part.transform.SetParent(parent, false);
+            part.transform.localPosition = position;
+            part.transform.localScale = scale;
+            var collider = part.GetComponent<Collider>();
+            if (collider != null) { collider.enabled = false; Destroy(collider); }
+            var renderer = part.GetComponent<Renderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
         }
 
         private static Material MedicalPaint(ref Material material, Color color, string name)
@@ -541,6 +624,13 @@ namespace Aaris.MapReview
             }
             if (medcasePaint != null) Destroy(medcasePaint);
             if (medcrossPaint != null) Destroy(medcrossPaint);
+            if (helmetShellPaint != null) Destroy(helmetShellPaint);
+            if (helmetTrimPaint != null) Destroy(helmetTrimPaint);
+            while (helmetVisualPool.Count > 0)
+            {
+                GameObject visual = helmetVisualPool.Pop();
+                if (visual != null) Destroy(visual);
+            }
             if (canvas != null) Destroy(canvas.gameObject);
         }
     }

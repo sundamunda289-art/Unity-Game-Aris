@@ -51,6 +51,18 @@ def audit() -> None:
     assert "!(c is TerrainCollider)" in medical_spawn
     assert "if (count >= medicalHits.Length) return false;" not in medical_spawn
 
+    health = source("AarisOfflineHealth.cs")
+    # Helmets share the bounded authored medical loot budget, mitigate only
+    # available durability and are never incorrectly counted as medkits.
+    assert "public bool TryEquipHelmet()" in health
+    assert "Mathf.Min(helmetDurability, amount * helmetProtection)" in health
+    assert "medicalHealth.TryEquipHelmet()" in tactical
+    assert "if (!site.isHelmet) medkits++;" in tactical
+    assert "helmetVisualPool.Push(visual)" in tactical
+    assert 'new GameObject("Aaris Streamed Helmet")' in tactical
+    assert "out RaycastHit overhead, 7f" in tactical
+    assert 'helmetIndicator.GetComponent<Image>().raycastTarget = false;' in tactical
+
     # The eight streamed 3D medkits must reuse visuals without relaxing
     # terrain, rooftop or wall checks or leaking their shared materials.
     medical_stream = tactical.split("private void StreamMedicalSites()", 1)[1].split(
