@@ -138,7 +138,17 @@ namespace Aaris.MapReview
             originalRenderScale = androidPipeline.renderScale;
             lastTargetFps = Application.targetFrameRate;
             lastEffectiveTargetFps = EffectiveAndroidTargetFps(lastTargetFps);
-            float initialScale = memoryMB <= 2304 ? 0.85f : 0.92f;
+            // Pixel cost depends on the actual display size, not RAM alone.
+            // On <=720p screens, the fixed low-RAM scale unnecessarily blurs
+            // nearby terrain, foliage and building silhouettes. Restore some
+            // native detail without raising the quality of 1080p+ devices.
+            // The existing sustained frame-time governor can still lower this
+            // scale if the GPU cannot keep up.
+            bool compactDisplay = Screen.width > 0 && Screen.height > 0 &&
+                (long)Screen.width * Screen.height <= 1280L * 720L;
+            float initialScale = memoryMB <= 2304
+                ? (compactDisplay ? 0.92f : 0.85f)
+                : (compactDisplay ? 0.96f : 0.92f);
             androidPipeline.renderScale = Mathf.Min(originalRenderScale, initialScale);
             lastAppliedRenderScale = androidPipeline.renderScale;
             // Mipmap streaming was already enabled by the saved QualitySettings.
