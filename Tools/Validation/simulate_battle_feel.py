@@ -117,8 +117,11 @@ def assert_regression() -> None:
 
     # No melee through cover; no hitscan overflow or behind-cover damage.
     assert "Physics.Raycast(origin, delta.normalized" in ACTION
-    assert "saturated = count >= rayHits.Length;" in GUN
-    assert "if (saturated) return false;" in GUN
+    assert "if (count >= rayHits.Length)" in GUN
+    assert "candidates = Physics.RaycastAll(ray, range," in GUN
+    assert "count = candidates.Length;" in GUN
+    assert "candidates[i].distance" in GUN
+    assert "if (saturated) return false;" not in GUN
     assert "SameTarget" in GUN
     assert "collider.transform.IsChildOf(owner)" in GUN
     assert "Physics.DefaultRaycastLayers" in GUN
