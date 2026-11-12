@@ -43,6 +43,8 @@ namespace Aaris.MapReview
         public bool HasWorkingHumanoid => graphReady && visual != null && animator != null;
         private float runBlend;
         private float airborneBlend;
+        // Ignore one-frame grounded loss across terrain seams without delaying a deliberate jump.
+        private float lastReliableGroundContact;
         private float walkRunBlend;
         private float sprintBlend;
         private AnimationClipPlayable idlePlayable, walkPlayable, runPlayable, jumpPlayable,
@@ -88,6 +90,7 @@ namespace Aaris.MapReview
         private void Awake()
         {
             controller = GetComponent<CharacterController>();
+            lastReliableGroundContact = Time.unscaledTime;
         }
 
         private void Start()
@@ -518,13 +521,24 @@ namespace Aaris.MapReview
             if (visualRoot.localPosition != desiredPosition)
                 visualRoot.localPosition = desiredPosition;
 
+            // Ground probes can flicker briefly on stair lips and uneven terrain.
+            // A real jump uses the motor's takeoff timestamp and bypasses the grace period.
+            // Keep this presentation-only: never alter the CharacterController or velocity.
+            bool groundedNow = controller.isGrounded;
+            float now = Time.unscaledTime;
+            if (groundedNow) lastReliableGroundContact = now;
+            float jumpAge = playerMotor != null ? now - playerMotor.LastJumpStartedTime : 10f;
+            bool deliberateJump = jumpAge >= 0f && jumpAge < 0.65f;
+            bool visuallyAirborne = !groundedNow &&
+                (deliberateJump || now - lastReliableGroundContact > 0.13f);
+
             if (graphReady)
             {
                 float horizontal = planar;
                 float movementTarget = Mathf.InverseLerp(0.08f, 1.2f, horizontal);
                 float runTarget = Mathf.InverseLerp(3.3f, 4.9f, horizontal);
                 float sprintTarget = Mathf.InverseLerp(5.15f, Mathf.Max(5.3f, fullRunSpeed), horizontal);
-                float airTarget = controller.isGrounded ? 0f : 1f;
+                float airTarget = visuallyAirborne ? 1f : 0f;
                 runBlend = Mathf.Lerp(runBlend, movementTarget, alpha);
                 walkRunBlend = Mathf.Lerp(walkRunBlend, runTarget, alpha);
                 sprintBlend = Mathf.Lerp(sprintBlend, sprintTarget, alpha);
