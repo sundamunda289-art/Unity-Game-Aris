@@ -501,11 +501,11 @@ namespace Aaris.MapReview
                 if (groundY < SeaSurfaceHeight + 0.35f ||
                     now.y > groundY + 0.25f ||
                     now.y < groundY - 1.0f ||
-                    beforeMove.y < groundY - 1.0f) return false;
+                    beforeMove.y < groundY - 1.0f) continue;
                 float u = Mathf.Clamp01((now.x - origin.x) / size.x);
                 float v = Mathf.Clamp01((now.z - origin.z) / size.z);
                 if (tile.terrainData.GetInterpolatedNormal(u, v).y <
-                    Mathf.Cos(capsule.slopeLimit * Mathf.Deg2Rad)) return false;
+                    Mathf.Cos(capsule.slopeLimit * Mathf.Deg2Rad)) continue;
                 capsule.enabled = false;
                 transform.position = new Vector3(now.x,
                     groundY + Mathf.Max(0.05f, capsule.skinWidth), now.z);
@@ -708,8 +708,10 @@ namespace Aaris.MapReview
                 Vector3 size = tile.terrainData.size;
                 if (point.x < origin.x || point.x > origin.x + size.x ||
                     point.z < origin.z || point.z > origin.z + size.z) continue;
+                // Overlapping terrain tiles can differ at their edges.
+                // Clamp to the highest actual surface rather than trusting
+                // whichever tile happens to be enumerated first.
                 point.y = Mathf.Max(point.y, tile.SampleHeight(point) + 0.8f);
-                break;
             }
             return point;
         }
