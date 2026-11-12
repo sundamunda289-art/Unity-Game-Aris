@@ -34,7 +34,20 @@ def audit():
     assert "if (aiming && motor != null) motor.CancelAutoSprint();" in inventory
     assert "if (isAiming) running = false;" in motor
     assert "if (isAiming) speed = Mathf.Min(speed, adsMoveSpeed);" in motor
-    assert "!isAiming && (battle == null || !battle.FireHeld)" in motor
+    assert "bool airborneIntent = launchJump || !wasGrounded;" in motor
+    assert "if (battle != null && battle.FireHeld && !airborneIntent) running = false;" in motor
+    assert "!isAiming && (battle == null || !battle.FireHeld || airborneIntent)" in motor
+    assert "if (battle != null && !sprinting)" in motor
+    # Hold Fire while jumping: keep momentum in the air. Landing changes back
+    # to the standard combat gait; ADS still cancels the sprint immediately.
+    for jumped, previous_grounded, aiming in (
+        (True, True, False), (False, False, False),
+        (False, True, False), (True, True, True)
+    ):
+        airborne = jumped or not previous_grounded
+        running = not (not airborne or aiming)
+        sprinting = running and not aiming and airborne
+        assert sprinting == (airborne and not aiming)
     assert "bool combatFacing = battle != null && battle.IsArmed &&" in motor
     assert "Quaternion.Euler(0f, yaw, 0f)" in motor
     assert "Mathf.Exp(-weaponTurnResponse * dt)" in motor
