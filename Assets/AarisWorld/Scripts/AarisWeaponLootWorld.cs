@@ -53,7 +53,6 @@ namespace Aaris.MapReview
         private const float RetryDelaySeconds = 3f;
         private const int MaximumDroppedLoot = 320;
         private const float PickupDistance = 2.15f;
-        private const float StarterLootRange = 10f;
         private const float SeaLevel = -38.07552f;
         private const float CandidateCellMetres = 64f;
 
@@ -75,7 +74,7 @@ namespace Aaris.MapReview
         private float[] nextCandidateProbeAt;
         private AarisWeaponInventory inventory;
         private Transform player;
-        private float nextRefresh, requestPickupUntil;
+        private float nextRefresh, requestPickupUntil, nextStarterRetryAt;
         private int streamFramesRemaining;
         private int nextDropId = -1;
         // Only the one match-start fallback may auto-equip like authored loot.
@@ -574,7 +573,18 @@ namespace Aaris.MapReview
                 nextRefresh = now + .33f;
                 streamFramesRemaining = RefreshPickups(playerPosition, now) ? 0 : StreamFramesPerRefresh;
             }
-            if (streamFramesRemaining == 0) return;
+            if (streamFramesRemaining == 0)
+            {
+                // A busy nearby streamer may repeatedly exhaust its bounded
+                // build budget. Keep the fallback reachable after landing
+                // without running extra physics queries on every mobile frame.
+                if (!starterLootSettled && now >= nextStarterRetryAt)
+                {
+                    nextStarterRetryAt = now + 0.5f;
+                    EnsureStarterLoot(playerPosition);
+                }
+                return;
+            }
 
             streamFramesRemaining--;
             if (!StreamNearby(playerPosition, now))
@@ -722,7 +732,7 @@ namespace Aaris.MapReview
             foreach (var pickup in active)
             {
                 if (pickup != null && !IsBlockedDrop(pickup) &&
-                    (pickup.transform.position - playerPosition).sqrMagnitude <= StarterLootRange * StarterLootRange &&
+                    (pickup.transform.position - playerPosition).sqrMagnitude <= PickupDistance * PickupDistance &&
                     CanReachPickup(pickup))
                 {
                     starterLootSettled = true;
