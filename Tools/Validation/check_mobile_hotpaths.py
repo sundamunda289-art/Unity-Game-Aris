@@ -749,6 +749,15 @@ def audit():
                   pickup.index("private void OnDisable()")]
     assert "private Renderer[] modelRenderers;" in pickup
     assert "modelRenderers = visible.GetComponentsInChildren<Renderer>(true);" in pickup
+    # FBX models may contain several renderer components, but discover them
+    # once on spawn and reuse the cached array for both world bounds passes.
+    # No duplicate managed array allocation on streamed gun construction.
+    pickup_init = pickup.split("public bool Initialize(", 1)[1].split(
+        "private void Update()", 1)[0]
+    assert pickup_init.count("visible.GetComponentsInChildren<Renderer>(true)") == 1
+    assert "Bounds modelBounds = modelRenderers[0].bounds;" in pickup_init
+    assert "modelBounds = modelRenderers[0].bounds;" in pickup_init
+    assert "modelRenderers[i].bounds" in pickup_init
     assert "pendingSpinDegrees += 19f * Time.deltaTime;" in spin
     assert "if (pendingSpinDegrees >= 360f)" in spin
     assert "Mathf.Repeat(pendingSpinDegrees, 360f)" in spin
