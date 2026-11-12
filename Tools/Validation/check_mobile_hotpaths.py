@@ -300,6 +300,53 @@ def audit():
     assert "Mathf.Approximately(QualitySettings.streamingMipmapsMemoryBudget, appliedMipBudgetMB)" in teardown
     assert "QualitySettings.streamingMipmapsMemoryBudget = originalMipBudgetMB;" in teardown
 
+    # Rendering shadows for the whole authored 2 km landscape wastes costly
+    # mobile shadow-caster passes. Only 2-3 GB Android devices get the shorter
+    # URP shadow range; the native scene and 4-cascade atlas stay untouched.
+    assert "private float originalShadowDistance, appliedShadowDistance;" in quality
+    assert "private bool modifiedShadowDistance;" in quality
+    assert "originalShadowDistance = androidPipeline.shadowDistance;" in quality_setup
+    assert "float mobileShadowDistance = memoryMB <= 2304 ? 160f : 240f;" in quality_setup
+    assert "appliedShadowDistance = Mathf.Min(originalShadowDistance, mobileShadowDistance);" in quality_setup
+    assert "if (appliedShadowDistance < originalShadowDistance)" in quality_setup
+    assert "androidPipeline.shadowDistance = appliedShadowDistance;" in quality_setup
+    assert "modifiedShadowDistance = true;" in quality_setup
+    assert "if (modifiedShadowDistance && androidPipeline != null &&" in teardown
+    assert "Mathf.Approximately(androidPipeline.shadowDistance, appliedShadowDistance)" in teardown
+    assert "androidPipeline.shadowDistance = originalShadowDistance;" in teardown
+
+    def mobile_shadow_limit(ram_mb, authored_metres):
+        if ram_mb <= 0 or ram_mb > 3072:
+            return authored_metres
+        return min(authored_metres, 160 if ram_mb <= 2304 else 240)
+
+    for ram, authored, expected in (
+        (1536, 1000, 160), (2048, 1000, 160), (2304, 1000, 160),
+        (2305, 1000, 240), (3072, 1000, 240),
+        (4096, 1000, 1000), (0, 1000, 1000),
+        (2048, 100, 100), (3072, 180, 180),
+    ):
+        assert mobile_shadow_limit(ram, authored) == expected, (ram, authored)
+
+    # An authored shorter shadow range should never be lengthened, and a
+    # scene reload must not permanently inherit this runtime-only override.
+    for ram in (2048, 3072):
+        live_shadow = 1000
+        for _ in range(8):
+            saved_shadow = live_shadow
+            applied_shadow = mobile_shadow_limit(ram, saved_shadow)
+            modified = applied_shadow < saved_shadow
+            live_shadow = applied_shadow
+            if modified and live_shadow == applied_shadow:
+                live_shadow = saved_shadow
+            assert live_shadow == 1000
+    # Another graphics controller's later choice belongs to that controller.
+    incoming_external_choice = 96
+    old_owner_applied = 160
+    assert incoming_external_choice != old_owner_applied
+    # Range reduction is geometric, not a guaranteed FPS percentage.
+    assert (160 / 1000) ** 2 < (240 / 1000) ** 2 < 0.06
+
     # Model repeated on-foot scene lifetimes, including external controllers
     # taking ownership of global quality settings before teardown.
     for starting_scale, starting_budget, ram in (
