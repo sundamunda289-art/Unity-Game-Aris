@@ -17,7 +17,7 @@ camera, or an autonomous background ChatGPT session.
   allowlisted request handler. It reads local requests from
   ci-live-control/ai_v4_request.json and writes
   ci-live-control/ai_v4_result.json. Commands: status, camera, focus,
-  play, stop, pause, resume, step, release, and action
+  play, stop, pause, resume, step, release, uimap, tap_ui, hold_ui, and action
   (Fire/Jump/Crouch/Prone/Sprint/Pickup/Scope/Reload/Drop).
 - .github/workflows/aaris-ai-control-v4-tests.yml — Python and Xvfb smoke tests.
 
@@ -64,11 +64,14 @@ After the new Editor script has compiled successfully in the real Unity
 6000.3 project, for example:
 
     python3 Tools/Turbo/unity_v4.py status
+    python3 Tools/Turbo/unity_v4.py uimap
+    python3 Tools/Turbo/unity_v4.py tap_ui --target "PICK"
+    python3 Tools/Turbo/unity_v4.py hold_ui --target "HUD Fire" --seconds 1.5
     python3 Tools/Turbo/unity_v4.py camera --x 450 --y 20 --z 800 --yaw 30 --pitch 15
     python3 Tools/Turbo/unity_v4.py focus --target "House_03"
     python3 Tools/Turbo/unity_v4.py action --target Fire --seconds 1.5
 
-The named target must be the exact **active** scene object name. Game actions
+The focus target must be the exact **active** scene object name. Named UI input is restricted to the nine known HUD names; it checks the EventSystem's current topmost raycast and reports `blocked_by` instead of clicking through a popup. It dispatches real Unity UI `pointerDown` / `pointerUp` / `pointerClick` handlers, but does not claim to simulate the legacy `Input.GetTouch` hardware path. Game actions
 require unpaused Play Mode and actual player components. They will report an
 error if those preconditions are missing; a successful command acknowledgement
 alone is not proof that the game animation, bullet, sound or UI is correct.
