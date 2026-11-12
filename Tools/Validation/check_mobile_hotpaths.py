@@ -578,6 +578,56 @@ def audit():
             pending %= 360.0
     assert 0 <= pending < 360
 
+    # Idle animation used to issue 16 native Playables weight setters and
+    # five identical gait SetTime calls every rendered frame. Keep breathing
+    # live while gating unchanged blend weights and distance-driven phases.
+    assert "private readonly float[] lastBaseWeights = new float[12];" in visual
+    assert "private readonly float[] lastUpperWeights = new float[3];" in visual
+    assert "lastBaseWeights[i] = startingWeight;" in visual
+    assert "lastUpperWeights[0] = 1f;" in visual
+    assert "private static void WriteWeightIfChanged(" in visual
+    assert "if (Mathf.Abs(previous[index] - weight) <= WeightWriteEpsilon) return;" in visual
+    assert "if (Mathf.Abs(lastLayerWeight - weight) <= WeightWriteEpsilon) return;" in visual
+    late_visual = visual[visual.index("private void LateUpdate()"):]
+    for index in range(12):
+        assert f"WriteWeightIfChanged(mixer, lastBaseWeights, {index}," in late_visual
+    for index in range(3):
+        assert f"WriteWeightIfChanged(weaponUpperMixer, lastUpperWeights, {index}," in late_visual
+    assert "WriteLayerWeightIfChanged(layerWeight);" in late_visual
+    for phase in ("locomotionPhase", "crouchPhase", "crawlPhase"):
+        assert f"if (last{phase[0].upper() + phase[1:]} != {phase})" in late_visual
+    assert "LoopPlayable(idlePlayable, idleClip," in late_visual
+    assert late_visual.index("LoopPlayable(idlePlayable, idleClip,") < late_visual.index(
+        "if (lastLocomotionPhase != locomotionPhase)")
+    assert "mixer.SetInputWeight(0, baseWeight" not in late_visual
+
+    # Pure math contract: settled mixer weights issue zero redundant calls;
+    # a changing run blend still emits updates and settles again afterward.
+    epsilon = 0.00025
+    previous = [1.0, 0.0]
+    def update_cached(index, requested):
+        target = 0.0 if requested <= epsilon else min(1.0, max(0.0, requested))
+        if abs(previous[index] - target) <= epsilon:
+            return 0
+        previous[index] = target
+        return 1
+    assert sum(update_cached(i, previous[i]) for _ in range(600) for i in range(2)) == 0
+    changing_writes = 0
+    for step in range(1, 91):
+        blend = step / 90
+        changing_writes += update_cached(0, 1.0 - blend)
+        changing_writes += update_cached(1, blend)
+    assert changing_writes >= 170
+    assert sum(update_cached(i, previous[i]) for _ in range(600) for i in range(2)) == 0
+    phases = [0.0] * 120 + [step * 0.01 for step in range(1, 31)] + [0.3] * 120
+    last_phase = float("nan")
+    phase_writes = 0
+    for phase in phases:
+        if last_phase != phase:
+            phase_writes += 1
+            last_phase = phase
+    assert phase_writes == 31
+
     print("PASS: airborne support reuse, single motor, steady FOV writes, "
           "bounded player/animation optional-component lookup, budgeted vehicle/loot streaming, legacy idle pose, collision-safe camera, idle-first pooled SFX, deadline-gated SFX, offscreen loot spin, audio/gloo hotpaths, refresh-aware pacing and adaptive Android quality contracts")
     print("NOT TESTED: Unity compilation, live camera occlusion and device FPS.")
