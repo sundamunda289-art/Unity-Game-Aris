@@ -26,12 +26,12 @@ import time
 import zipfile
 
 MAX_STEPS = 48
-MAX_SECONDS = 8.0
+MAX_SECONDS = 30.0
 ROOT = Path("/tmp/aaris-v4-evidence")
 SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,55}\Z")
 SAFE_KEY = re.compile(r"[A-Za-z0-9_+:-]{1,48}\Z")
 ALLOWED_OPS = {"key_down", "key_up", "key_tap", "mouse_down", "mouse_up",
-               "move", "move_smooth", "click", "wait", "mark"}
+               "move", "move_smooth", "click", "mouse_hold", "wait", "mark"}
 LOCK_PATH = "/tmp/aaris-v4-input.lock"
 
 
@@ -68,7 +68,7 @@ def verify_sequence(steps, width, height):
             if type(step.get("button")) is not int or step["button"] not in (1, 2, 3):
                 raise ValueError("invalid button")
             clean["button"] = step["button"]
-        elif op in ("move", "move_smooth", "click"):
+        elif op in ("move", "move_smooth", "click", "mouse_hold"):
             expected.update(("x", "y"))
             for name, bound in (("x", width), ("y", height)):
                 value = step.get(name)
@@ -82,6 +82,19 @@ def verify_sequence(steps, width, height):
                     raise ValueError("invalid smooth-move duration")
                 total_delay += seconds
                 clean["seconds"] = float(seconds)
+            if op == "mouse_hold":
+                expected.add("seconds")
+                seconds = step.get("seconds")
+                if type(seconds) not in (int, float) or not 0.05 <= seconds <= 20:
+                    raise ValueError("invalid mouse hold duration")
+                total_delay += seconds
+                clean["seconds"] = float(seconds)
+                button = step.get("button", 1)
+                if type(button) is not int or button not in (1, 2, 3):
+                    raise ValueError("invalid mouse hold button")
+                if "button" in step:
+                    expected.add("button")
+                clean["button"] = button
         elif op == "wait":
             expected.add("seconds")
             seconds = step.get("seconds")
@@ -202,6 +215,26 @@ def smoothly_move(x, y, seconds):
         if remaining > 0: time.sleep(remaining)
 
 
+def hold_at_point(x, y, seconds, button=1):
+    """Hold one X11 mouse button at any on-screen coordinate, always release.
+
+    Uses short interruptible sleeps instead of one uncontrolled long-press.
+    SIGTERM/KeyboardInterrupt also runs the finally release handler.
+    """
+    invoke("xdotool", "mousemove", "--sync", str(x), str(y))
+    invoke("xdotool", "mousedown", str(button))
+    try:
+        end = time.monotonic() + seconds
+        while True:
+            left = end - time.monotonic()
+            if left <= 0:
+                break
+            time.sleep(min(left, 0.1))
+    finally:
+        # Keep this in finally so an exception never leaves Fire pressed.
+        invoke("xdotool", "mouseup", str(button), timeout=3)
+
+
 def execute_steps(steps, trace, start):
     held_keys, held_buttons = set(), set()
     def log(event, **fields):
@@ -225,6 +258,8 @@ def execute_steps(steps, trace, start):
             elif op == "mouse_up":
                 invoke("xdotool", "mouseup", str(step["button"]))
                 held_buttons.discard(step["button"])
+            elif op == "mouse_hold":
+                hold_at_point(step["x"], step["y"], step["seconds"], step["button"])
             elif op == "move_smooth":
                 smoothly_move(step["x"], step["y"], step["seconds"])
             elif op in ("move", "click"):
@@ -273,7 +308,7 @@ def package(folder, frames, trace, errors, target_fps):
 
 
 def replay(steps, run_id, seconds, fps, inline_preview=False):
-    if not SAFE_ID.fullmatch(run_id) or not 1 <= seconds <= 6 or not 1 <= fps <= 30:
+    if not SAFE_ID.fullmatch(run_id) or not 1 <= seconds <= 30 or not 1 <= fps <= 30:
         raise ValueError("invalid replay duration, rate, or id")
     width, height = screen_size()
     steps = verify_sequence(steps, width, height)
@@ -323,13 +358,18 @@ def selftest():
           {"op": "move", "x": 3, "y": 4}]
     assert len(verify_sequence(ok, 1280, 720)) == len(ok)
     assert verify_sequence([{"op":"move_smooth","x":55,"y":66,"seconds":0.4}],1280,720)
+    hold = verify_sequence([{"op":"mouse_hold","x":1279,"y":719,"seconds":2}],1280,720)
+    assert hold[0]["button"] == 1
+    assert hold[0]["seconds"] == 2
     bad = [[{"op": "key_down", "key": "a;rm -rf"}],
            [{"op": "wait", "seconds": 25}],
            [{"op": "click", "x": 1280, "y": 2}],
            [{"op": "shell", "command": "whoami"}],
            [{"op": "key_up", "key": "a", "script": "hack"}],
            [{"op": "wait", "seconds": 2.9}] * 4,
-           [{"op": "move_smooth", "x": 20, "y": 30, "seconds": 19}]]
+           [{"op": "move_smooth", "x": 20, "y": 30, "seconds": 19}],
+           [{"op":"mouse_hold","x":20,"y":30,"seconds":21}],
+           [{"op":"mouse_hold","x":20,"y":30,"seconds":2,"button":4}]]
     for steps in bad:
         try: verify_sequence(steps, 1280, 720)
         except ValueError: continue
