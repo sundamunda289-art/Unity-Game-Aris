@@ -77,6 +77,7 @@ namespace Aaris.MapReview
         private AarisWeaponInventory inventory;
         private Transform player;
         private float nextRefresh, requestPickupUntil, nextStarterRetryAt;
+        private float starterUnarmedSince = -1f;
         private int streamFramesRemaining;
         private int nextDropId = -1;
         // Only the one match-start fallback may auto-equip like authored loot.
@@ -852,6 +853,7 @@ namespace Aaris.MapReview
             // The real floor ray, obstruction capsule and pickup line-of-sight
             // checks in TryFindDropSpot provide the ground truth here.
             if (!player.TryGetComponent(out CharacterController controller) || !controller.enabled) return;
+            if (starterUnarmedSince < 0f) starterUnarmedSince = Time.unscaledTime;
 
             // A visible gun within range is not the same as an equipped gun.
             // If the character moves away before the next 330ms pickup poll,
@@ -873,12 +875,20 @@ namespace Aaris.MapReview
             }
 
             // One fallback per match. Use the existing safe floor and pickup path.
-            if (!TryFindDropSpot(out Vector3 point, requireReachable: true)) return;
+            if (!TryFindDropSpot(out Vector3 point, requireReachable: true))
+            {
+                TryLastResortStarterEquip();
+                return;
+            }
             var spec = AarisWeaponCatalog.Select(ref rng, false);
             if (spec == null) return;
             var state = new AarisWeaponState(spec, matchSeed ^ 0x4F67A2C1u);
             var starter = CreateDropped(state, point, 0f);
-            if (starter == null) return;
+            if (starter == null)
+            {
+                TryLastResortStarterEquip();
+                return;
+            }
             starterLootId = starter.id;
             // The backup must really reach the inventory before this one-shot
             // fallback is exhausted. At sprint speed the player can leave the
@@ -895,7 +905,26 @@ namespace Aaris.MapReview
                 // permanently consume the fallback or leak duplicate guns.
                 UndoDrop(starter);
                 starterLootId = 0;
+                TryLastResortStarterEquip();
             }
+        }
+
+        // A valid touchdown must not strand a player unarmed forever when
+        // streamed/disabled floor colliders make every safe drop position fail.
+        // Retry normal visible loot for three seconds first; this emergency
+        // path uses the SAME inventory/FBX validation and runs once per match.
+        // It does not create fake world loot or touch terrain/render settings.
+        private void TryLastResortStarterEquip()
+        {
+            if (starterLootSettled || inventory == null || inventory.HasGun ||
+                starterUnarmedSince < 0f ||
+                Time.unscaledTime - starterUnarmedSince < 3f) return;
+            var spec = AarisWeaponCatalog.Select(ref rng, false);
+            if (spec == null) return;
+            var state = new AarisWeaponState(spec, matchSeed ^ 0xC2A2EF11u);
+            if (!inventory.TryPickup(state, out AarisWeaponState previous)) return;
+            starterLootSettled = true;
+            Debug.LogWarning("Aaris: emergency starter equipped after no reachable ground pickup; check local floor collider streaming.");
         }
 
         private bool IsCurrentlyActive(int candidateIndex)
