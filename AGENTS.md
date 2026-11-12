@@ -2,6 +2,31 @@
 
 Repository: sundamunda289-art/Unity-Game-Aris; branch: main. Public repository: NEVER commit or release passwords, tokens, Unity license files, Hub state, private content or secrets.
 
+## 2026-11-12: CANONICAL Git sync when Codespaces accounts rotate
+
+Canonical master stays sundamunda289-art/Unity-Game-Aris on main. The
+selected Codespace may be hosted in another account (and have a different
+origin). The EXISTING one-command Termux script
+Tools/Codespaces/termux_switch.sh now also runs
+Tools/Codespaces/termux_git_bridge.sh after bootstrap. It authorizes a
+separate **repository-only write deploy key** for the selected Codespace:
+the key pair is generated/stored privately INSIDE the Codespace; only its
+public key is registered in the permanent repository via the master's GitHub
+API. **NEVER copy the master's OAuth token into a Codespace.** The private key
+is outside the Git tree and 0600, never printed or committed.
+
+The installed universal helper is
+  bash "$HOME/.local/share/aaris-git/canonical_git.sh" status
+with modes verify, fetch, pull, commit (explicit paths), publish (safe
+codespace-sync/<machine>/<branch> remote review branch) and push-main (only
+fast-forward from clean main). Read Docs/CANONICAL_CODESPACE_GIT_SYNC.md.
+The Git sync has no automatic merge of divergent histories, NO git reset,
+git clean, stash, new worktree, force push or blind staging of other agents'
+changes. A Codespace does not automatically gain valid Git LFS binaries or
+a working Unity Editor merely by authenticating Git. PR #391 currently
+conflicts with canonical main; do not force it through. A fresh bootstrap
+and verified Git deploy-key test are needed on each new Codespace/account.
+
 ## 2026-11-11: FIRST-READ RUNBOOK — Cloudflare Turbo Codespace terminal + GUI (current preferred control)
 
 **READ THIS FIRST in a NEW CHAT.** The canonical file is **AGENTS.md** at the repository root (not agent.md). This section supersedes older descriptions of GitHub Actions *per-command* terminal control, but DOES NOT supersede Unity license rules, safety rules, preservation of dirty source assets, existing active APK builds, or evidence requirements elsewhere in this file. Detailed source/operational reference: [Docs/AARIS_TURBO_TERMINAL.md](Docs/AARIS_TURBO_TERMINAL.md). Work with the existing connected **GitHub (sundamunda289-art)** and **Cloudflare** connectors if those tools are available in the present chat; do not pretend their presence or live connection state if absent.
