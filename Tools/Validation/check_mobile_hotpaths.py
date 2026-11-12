@@ -242,6 +242,43 @@ def audit():
     assert "frameIndex = frameCount = 0;" in quality
     assert "slowIntervals = steadyIntervals = 0;" in quality
 
+    # Adaptive URP is temporary: its globally shared render scale and mipmap
+    # residency must not become the starting quality after death/scene reload.
+    assert "lastAppliedRenderScale = androidPipeline.renderScale;" in quality_setup
+    assert "lastAppliedRenderScale = reduced;" in governor
+    assert "lastAppliedRenderScale = recovered;" in governor
+    assert "originalMipBudgetMB = QualitySettings.streamingMipmapsMemoryBudget;" in quality_setup
+    assert "appliedMipBudgetMB = Mathf.Min(originalMipBudgetMB, mipBudgetMB);" in quality_setup
+    assert "if (appliedMipBudgetMB < originalMipBudgetMB)" in quality_setup
+    teardown = quality[quality.index("private void OnDestroy()"):
+                       quality.index("private void OnLog(")]
+    assert "Mathf.Approximately(androidPipeline.renderScale, lastAppliedRenderScale)" in teardown
+    assert "androidPipeline.renderScale = originalRenderScale;" in teardown
+    assert "modifiedMipBudget &&" in teardown
+    assert "Mathf.Approximately(QualitySettings.streamingMipmapsMemoryBudget, appliedMipBudgetMB)" in teardown
+    assert "QualitySettings.streamingMipmapsMemoryBudget = originalMipBudgetMB;" in teardown
+
+    # Model repeated on-foot scene lifetimes, including external controllers
+    # taking ownership of global quality settings before teardown.
+    for starting_scale, starting_budget, ram in (
+        (1.0, 512.0, 2048), (0.92, 256.0, 3072), (0.70, 128.0, 2048)
+    ):
+        live_scale, live_budget = starting_scale, starting_budget
+        for _ in range(8):
+            applied_scale = min(live_scale, 0.85 if ram <= 2304 else 0.92)
+            applied_budget = min(live_budget, 160 if ram <= 2304 else 224)
+            # After dynamic tuning, the tracked last-applied scale changes.
+            applied_scale = max(min(live_scale, 0.72), applied_scale - .05)
+            modified_budget = applied_budget < live_budget
+            live_scale = starting_scale if abs(applied_scale - applied_scale) < 1e-6 else applied_scale
+            live_budget = starting_budget if modified_budget else live_budget
+            assert live_scale == starting_scale and live_budget == starting_budget
+        # An unrelated renderer's newer quality choice must not be reverted.
+        external_scale, external_budget = .68, 72.0
+        last_applied_scale, last_applied_budget = .85, 160.0
+        assert external_scale != last_applied_scale
+        assert external_budget != last_applied_budget
+
     def simulate_quality(p75_p95_p99_samples, starting_scale=.85, original_scale=1., floor=.72):
         scale = starting_scale
         slow = steady = 0
