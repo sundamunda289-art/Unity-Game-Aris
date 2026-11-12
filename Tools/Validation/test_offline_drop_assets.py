@@ -217,6 +217,12 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         # After ejecting, the real aircraft and shared rotors continue moving
         # for a bounded time instead of freezing until delayed destruction.
         self.assertIn("AdvanceDepartingAircraft(dt);", movement)
+        self.assertIn("SimulateAirborne(dt);", movement)
+        self.assertIn("const float MaxSweepSeconds = 0.05f;", movement)
+        self.assertIn("Mathf.Clamp(Time.deltaTime, 0f, 0.20f)", movement)
+        self.assertIn("else break; // Touchdown during the current frame.", movement)
+        self.assertNotIn("UpdateFreefall(dt);", movement)
+        self.assertNotIn("UpdateGlide(dt);", movement)
         self.assertIn("plane.transform.position += plane.transform.forward * planeSpeed * dt;", movement)
         self.assertIn("Time.time - airborneSince >= 4.5f", movement)
         self.assertIn("horizontalVelocity = plane.transform.forward *", movement)
