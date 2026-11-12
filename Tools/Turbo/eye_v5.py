@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -290,6 +291,10 @@ def main():
 
 
 if __name__=="__main__":
+    # Ensure SIGTERM still executes the mouse/key release finally blocks.
+    def _cancel(signum, frame):
+        raise RuntimeError("cancelled; release held inputs")
+    signal.signal(signal.SIGTERM, _cancel)
     try:sys.exit(main())
     except (OSError,ValueError,RuntimeError,subprocess.SubprocessError,ImportError) as exc:
         print("AARIS_V5_ERROR:"+type(exc).__name__+":"+str(exc)[:180],file=sys.stderr)
