@@ -210,7 +210,7 @@ def smoothly_move(x, y, seconds):
         fraction = i / segments
         px = round(ox + (x - ox) * fraction)
         py = round(oy + (y - oy) * fraction)
-        invoke("xdotool", "mousemove", "--sync", str(px), str(py))
+        invoke("xdotool", "mousemove", str(px), str(py))
         remaining = start + seconds * fraction - time.monotonic()
         if remaining > 0: time.sleep(remaining)
 
@@ -221,7 +221,7 @@ def hold_at_point(x, y, seconds, button=1):
     Uses short interruptible sleeps instead of one uncontrolled long-press.
     SIGTERM/KeyboardInterrupt also runs the finally release handler.
     """
-    invoke("xdotool", "mousemove", "--sync", str(x), str(y))
+    invoke("xdotool", "mousemove", str(x), str(y))
     invoke("xdotool", "mousedown", str(button))
     try:
         end = time.monotonic() + seconds
@@ -263,7 +263,7 @@ def execute_steps(steps, trace, start):
             elif op == "move_smooth":
                 smoothly_move(step["x"], step["y"], step["seconds"])
             elif op in ("move", "click"):
-                invoke("xdotool", "mousemove", "--sync", str(step["x"]), str(step["y"]))
+                invoke("xdotool", "mousemove", str(step["x"]), str(step["y"]))
                 if op == "click":
                     invoke("xdotool", "click", "1")
             elif op == "wait":
