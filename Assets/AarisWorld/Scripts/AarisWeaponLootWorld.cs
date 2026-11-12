@@ -41,7 +41,9 @@ namespace Aaris.MapReview
     [DisallowMultipleComponent, DefaultExecutionOrder(-80)]
     public sealed class AarisWeaponLootWorld : MonoBehaviour
     {
-        private const float ActivationMetres = 42f; // below the 55m collider streaming radius
+        // Stay inside the 55m authored collider activation range, so loot
+        // floors and occluding walls are live before pickup validation.
+        private const float ActivationMetres = 50f;
         private const float ReleaseMetres = 69f;
         private const int MaximumActiveLoot = 40;
         private const int StreamFramesPerRefresh = 3;
@@ -305,8 +307,14 @@ namespace Aaris.MapReview
             {
                 RaycastHit candidate = candidateFloorHits[i];
                 if (candidate.collider == null ||
-                    candidate.normal.y < (indoor ? .966f : .970f) ||
-                    (!indoor && !(candidate.collider is TerrainCollider)))
+                    candidate.normal.y < (indoor ? .94f : .90f))
+                    continue;
+                // A road or porch slightly above the native ground can
+                // support outdoor loot. Require stationary, nearly ground-
+                // level geometry; never accept a moving car or elevated roof.
+                if (!indoor && !(candidate.collider is TerrainCollider) &&
+                    (candidate.collider.attachedRigidbody != null ||
+                     Mathf.Abs(candidate.point.y - expectedGround) > 0.38f))
                     continue;
                 float difference = Mathf.Abs(candidate.point.y - expectedGround);
                 if (difference >= closestHeight) continue;
@@ -329,8 +337,11 @@ namespace Aaris.MapReview
             }
             else if (!(floor.collider is TerrainCollider))
             {
-                // An outdoor loot entry must never turn into roof loot.
-                return false;
+                // Defence in depth against a roof/vehicle when an outdoor
+                // candidate resolves onto a built floor near terrain.
+                if (floor.collider.attachedRigidbody != null ||
+                    Mathf.Abs(floor.point.y - expectedGround) > 0.38f)
+                    return false;
             }
 
             Vector3 center = floor.point + Vector3.up * 0.43f;
@@ -648,7 +659,13 @@ namespace Aaris.MapReview
 
         private bool StreamNearby(Vector3 playerPosition, float now)
         {
-            if (active.Count >= MaximumActiveLoot) return false;
+            // Reserve one of the existing 40 live-model slots for a reachable
+            // starter when natural loot cannot be picked up at the landing
+            // location. This prevents nearby streamed meshes starving the
+            // fallback entirely on dense settlements.
+            int streamLimit = MaximumActiveLoot -
+                (!starterLootSettled && allowInitialAutoPickup && !inventory.HasGun ? 1 : 0);
+            if (active.Count >= streamLimit) return false;
             float loadSquared = ActivationMetres * ActivationMetres;
             int buildAttempts = 0;
 
@@ -659,7 +676,7 @@ namespace Aaris.MapReview
                 if (now < record.nextVisualAttemptAt) continue;
                 float dist = (record.position - playerPosition).sqrMagnitude;
                 if (dist > loadSquared) continue;
-                if (active.Count >= MaximumActiveLoot) return false;
+                if (active.Count >= streamLimit) return false;
                 if (buildAttempts == MaximumBuildAttemptsPerFrame) return true;
                 buildAttempts++;
                 var root = new GameObject("Dropped " + record.state.Spec.displayName);
@@ -681,7 +698,7 @@ namespace Aaris.MapReview
             CollectNearbyCandidateIndices(playerPosition);
             foreach (int i in nearbyCandidateIndices)
             {
-                if (active.Count >= MaximumActiveLoot) return false;
+                if (active.Count >= streamLimit) return false;
                 if (choices[i] == null || consumed[i] || IsCurrentlyActive(i)) continue;
                 var c = candidates[i];
                 float dx = c.x - playerPosition.x, dz = c.z - playerPosition.z;
