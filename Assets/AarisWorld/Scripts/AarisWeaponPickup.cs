@@ -53,16 +53,17 @@ namespace Aaris.MapReview
                 return false;
             }
             var visible = Instantiate(prefab, transform);
-            if (visible.GetComponentInChildren<Renderer>(true) == null)
+            // Cache the renderer array in one hierarchy traversal. A separate
+            // GetComponentInChildren followed by GetComponentsInChildren
+            // scans imported FBX hierarchies twice for every spawned pickup.
+            modelRenderers = visible.GetComponentsInChildren<Renderer>(true);
+            if (modelRenderers.Length == 0)
             {
                 Destroy(visible);
                 enabled = false;
                 return false;
             }
             model = visible.transform;
-            // Cache all mesh renderers once; the loot rotates only when at
-            // least one of them is visible in a camera view.
-            modelRenderers = visible.GetComponentsInChildren<Renderer>(true);
             model.name = "Local " + state.Spec.displayName + " Model";
             // Loot never interferes with player or map physics.
             foreach (var collider in visible.GetComponentsInChildren<Collider>(true))
