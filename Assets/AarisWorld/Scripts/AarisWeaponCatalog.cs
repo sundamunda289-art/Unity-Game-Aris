@@ -90,6 +90,14 @@ namespace Aaris.MapReview
                         }
                         modelCache[modelPath] = prefab;
                     }
+                    // A nominally imported FBX with no renderer is also
+                    // unusable as a floor pickup or held weapon on Android.
+                    if (prefab.GetComponentInChildren<Renderer>(true) == null)
+                    {
+                        Debug.LogWarning("Aaris: weapon model has no renderer; skipping " +
+                            doc.weapons[i].id);
+                        continue;
+                    }
                     available.Add(doc.weapons[i]);
                 }
                 if (available.Count == 0)
