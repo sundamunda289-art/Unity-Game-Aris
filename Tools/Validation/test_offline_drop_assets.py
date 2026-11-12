@@ -52,6 +52,23 @@ def read_obj(path):
 
 
 class OfflineCombatAssetChecks(unittest.TestCase):
+    def test_ocean_glide_requires_solid_contact_or_safe_recovery(self):
+        drop = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
+        move = drop.split("private void MoveAirborne(float dt)", 1)[1].split(
+            "private bool TryGetDistanceToSupport(", 1)[0]
+        self.assertIn("TryNativeTerrainTouchdown(beforeMove)", move)
+        self.assertIn("Physics.Raycast(probe, out RaycastHit floor", move)
+        self.assertIn("floor.point.y >= SeaSurfaceHeight + 0.35f", move)
+        self.assertIn("floor.normal.y >= Mathf.Cos(capsule.slopeLimit", move)
+        self.assertIn("if (transform.position.y < SeaSurfaceHeight - 2f)", move)
+        self.assertIn("RecoverFromOceanFall();", move)
+        self.assertIn("groundY < SeaSurfaceHeight + 0.35f", move)
+        self.assertIn("GetInterpolatedNormal(u, v)", move)
+        self.assertIn("preFlightGroundPosition = transform.position;", drop)
+        self.assertIn("transform.SetPositionAndRotation(preFlightGroundPosition,", move)
+        self.assertIn("now.y < groundY - 1.0f", move)
+        self.assertEqual(drop.count("private void RecoverFromOceanFall()"), 1)
+
     def test_original_3d_models_are_complete_and_local(self):
         for name, (path, min_x, min_y, min_z) in MODELS.items():
             with self.subTest(model=name):

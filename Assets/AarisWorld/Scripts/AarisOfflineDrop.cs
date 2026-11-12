@@ -44,7 +44,7 @@ namespace Aaris.MapReview
         private Transform[] propellers;
         private Renderer[] initialPlayerRenderers;
         private bool[] previousRendererStates;
-        private Vector3 pathStart, pathEnd, horizontalVelocity;
+        private Vector3 pathStart, pathEnd, horizontalVelocity, preFlightGroundPosition;
         private Quaternion cachedPlayerRotation;
         private float flightProgress, pathDuration, downwardSpeed, yaw, pitch, openingProgress, airborneSince;
         private float propellerAngle;
@@ -55,6 +55,7 @@ namespace Aaris.MapReview
         private readonly RaycastHit[] cameraHits = new RaycastHit[64];
         private Terrain[] flightTerrains;
         private const float InitialCanopyScale = 0.30f;
+        private const float SeaSurfaceHeight = -38.07552f;
 
         public DropPhase Phase => phase;
         public bool HasLanded => phase == DropPhase.Landed;
@@ -101,6 +102,7 @@ namespace Aaris.MapReview
             // Never start aerial transition while driving.
             if (vehicle != null && vehicle.IsDriving) { enabled = false; return; }
             cachedPlayerRotation = transform.rotation;
+            preFlightGroundPosition = transform.position;
             initialPlayerRenderers = GetComponentsInChildren<Renderer>(true);
             previousRendererStates = new bool[initialPlayerRenderers.Length];
             for (int i = 0; i < initialPlayerRenderers.Length; i++)
@@ -428,6 +430,7 @@ namespace Aaris.MapReview
         private void MoveAirborne(float dt)
         {
             if (capsule == null || !capsule.enabled) return;
+            Vector3 beforeMove = transform.position;
             Vector3 movement = (horizontalVelocity + Vector3.up * downwardSpeed) * dt;
             Vector3 candidate = transform.position + movement;
             if (Mathf.Abs(candidate.x) > 975f && Mathf.Abs(candidate.x) > Mathf.Abs(transform.position.x))
@@ -435,20 +438,87 @@ namespace Aaris.MapReview
             if (Mathf.Abs(candidate.z) > 975f && Mathf.Abs(candidate.z) > Mathf.Abs(transform.position.z))
                 movement.z = 0f;
             CollisionFlags flags = capsule.Move(movement);
-            if ((flags & CollisionFlags.Below) != 0 && downwardSpeed < -0.1f) Land();
-            else if (IsUnderCanopy && downwardSpeed < -0.1f && Time.time >= nextContactSample)
+            if ((flags & CollisionFlags.Below) != 0 && downwardSpeed < -0.1f)
+            {
+                Land();
+                return;
+            }
+            if (IsUnderCanopy && downwardSpeed < -0.1f && Time.time >= nextContactSample)
             {
                 nextContactSample = Time.time + 0.10f;
-                if (TryGetDistanceToSupport(out float height, 1.25f) && height <= 0.48f &&
-                    (capsule.Move(Vector3.down * 0.50f) & CollisionFlags.Below) != 0)
-                    Land();
+                if (TryGetDistanceToSupport(out float height, 1.25f) && height <= 0.48f)
+                {
+                    if (TryNativeTerrainTouchdown(beforeMove)) return;
+                    // ALT 0 over water is not a collider contact. Do not inject
+                    // another 0.5 m downward unless a real walkable floor exists.
+                    Ray probe = new Ray(transform.position + Vector3.up * 0.75f, Vector3.down);
+                    if (Physics.Raycast(probe, out RaycastHit floor, 1.60f,
+                            Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) &&
+                        floor.collider != null && !floor.collider.transform.IsChildOf(transform) &&
+                        floor.point.y >= SeaSurfaceHeight + 0.35f &&
+                        floor.normal.y >= Mathf.Cos(capsule.slopeLimit * Mathf.Deg2Rad) &&
+                        (capsule.Move(Vector3.down * 0.50f) & CollisionFlags.Below) != 0)
+                    {
+                        Land();
+                        return;
+                    }
+                }
             }
+            // This offline mode has no swimming logic. Never remain stuck
+            // below the ocean with a shore-clamped aerial camera.
+            if (transform.position.y < SeaSurfaceHeight - 2f)
+                RecoverFromOceanFall();
+        }
+
+        private bool TryNativeTerrainTouchdown(Vector3 beforeMove)
+        {
+            if (flightTerrains == null) return false;
+            Vector3 now = transform.position;
+            for (int i = 0; i < flightTerrains.Length; i++)
+            {
+                Terrain tile = flightTerrains[i];
+                if (tile == null || tile.terrainData == null) continue;
+                Vector3 origin = tile.transform.position;
+                Vector3 size = tile.terrainData.size;
+                if (now.x < origin.x || now.x > origin.x + size.x ||
+                    now.z < origin.z || now.z > origin.z + size.z) continue;
+                float groundY = tile.SampleHeight(now);
+                // Only a nearby, walkable, above-water surface qualifies.
+                // This bounded correction handles a missed Terrain collider
+                // contact without snapping distant airborne players or ocean.
+                if (groundY < SeaSurfaceHeight + 0.35f ||
+                    now.y > groundY + 0.25f ||
+                    now.y < groundY - 1.0f ||
+                    beforeMove.y < groundY - 1.0f) return false;
+                float u = Mathf.Clamp01((now.x - origin.x) / size.x);
+                float v = Mathf.Clamp01((now.z - origin.z) / size.z);
+                if (tile.terrainData.GetInterpolatedNormal(u, v).y <
+                    Mathf.Cos(capsule.slopeLimit * Mathf.Deg2Rad)) return false;
+                capsule.enabled = false;
+                transform.position = new Vector3(now.x,
+                    groundY + Mathf.Max(0.05f, capsule.skinWidth), now.z);
+                capsule.enabled = true;
+                Land();
+                return true;
+            }
+            return false;
+        }
+
+        private void RecoverFromOceanFall()
+        {
+            // Until swimming/death exists, safely return a submerged player
+            // to the existing validated on-foot spawn rather than softlock.
+            capsule.enabled = false;
+            transform.SetPositionAndRotation(preFlightGroundPosition, cachedPlayerRotation);
+            capsule.enabled = true;
+            Land();
+            Debug.LogWarning("AARIS_DROP_OCEAN_RECOVERY: returned to saved on-foot spawn.");
         }
 
         private bool TryGetDistanceToSupport(out float height, float rayLength)
         {
             Vector3 position = transform.position;
-            float support = -38.07552f;
+            float support = SeaSurfaceHeight;
             var terrains = flightTerrains;
             if (terrains != null)
                 foreach (var t in terrains)
