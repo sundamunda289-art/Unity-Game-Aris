@@ -82,12 +82,18 @@ def audit():
     assert "allowInitialAutoPickup = false;" in world
     assert "HasPickupInRange = bestPickup != null;" in world
     assert "Physics.RaycastNonAlloc(sightLine, pickupObstructions, distance" in world
-    assert "sightHits = Physics.RaycastAll(sightLine, distance," in world
+    # Full hit sets remain mandatory on overflow; reuse 128-slot scratch
+    # first so ordinary dense-house overflow does not allocate each time.
+    assert "CompleteRaycastOverflow(sightLine, distance, out sightHits)" in world
     assert "Physics.RaycastNonAlloc(groundRay," in world
-    assert "floorHits = Physics.RaycastAll(groundRay, 3.3f," in world
+    assert "CompleteRaycastOverflow(groundRay, 3.3f, out floorHits)" in world
     assert "if (hits >= candidateFloorHits.Length)" in world
     assert "RaycastHit candidate = floorHits[i];" in world
-    assert "resolvedFloors = Physics.RaycastAll(ray, 3.5f," in world
+    assert "CompleteRaycastOverflow(ray, 3.5f, out resolvedFloors)" in world
+    assert "Physics.RaycastNonAlloc(ray, overflowRayHits, distance," in world
+    assert "results = Physics.RaycastAll(ray, distance," in world
+    assert "Physics.OverlapCapsuleNonAlloc(" in world
+    assert "if (blockers >= overflowBlockers.Length)" in world
     assert "nearbyBlockers = Physics.OverlapCapsule(" in world
     assert "var obstacle = nearbyBlockers[i];" in world
     assert "RetryDelaySeconds = 3f;" in world
