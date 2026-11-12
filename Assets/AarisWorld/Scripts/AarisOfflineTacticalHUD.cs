@@ -33,7 +33,11 @@ namespace Aaris.MapReview
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
         {
-            AarisThirdPersonPlayer player = FindFirstObjectByType<AarisThirdPersonPlayer>();
+            EnsureForPlayer(FindFirstObjectByType<AarisThirdPersonPlayer>());
+        }
+
+        internal static void EnsureForPlayer(AarisThirdPersonPlayer player)
+        {
             if (player == null) return;
             bool hasDamageReceiver = false;
             foreach (var receiver in player.GetComponents<MonoBehaviour>())
