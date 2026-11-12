@@ -284,10 +284,12 @@ namespace Aaris.MapReview
             return null;
         }
 
-        private bool TryResolve(AarisLootCandidate c, Terrain[] terrains, out Vector3 spot)
+        private bool TryResolve(AarisLootCandidate c, Terrain[] terrains,
+            out Vector3 spot, float offsetX = 0f, float offsetZ = 0f)
         {
             spot = default(Vector3);
-            var terrain = TerrainAt(c.x, c.z, terrains);
+            float x = c.x + offsetX, z = c.z + offsetZ;
+            var terrain = TerrainAt(x, z, terrains);
             if (terrain == null) return false;
             bool indoor = c.kind == "indoor";
             // For outdoor positions use the native Terrain surface, NOT
@@ -295,9 +297,9 @@ namespace Aaris.MapReview
             // Terrain.SampleHeight is already in world-space Y; do not add tile Y twice.
             // Indoor locations retain the authored floor height.
             float expectedGround = indoor ? c.y :
-                terrain.SampleHeight(new Vector3(c.x, 0f, c.z));
+                terrain.SampleHeight(new Vector3(x, 0f, z));
             if (expectedGround <= SeaLevel + 0.7f) return false;
-            Vector3 start = new Vector3(c.x, expectedGround + 1.9f, c.z);
+            Vector3 start = new Vector3(x, expectedGround + 1.9f, z);
             // A single down-ray can stop on the roof of a low house before
             // reaching its floor. Inspect ALL bounded hits and select the
             // supporting surface nearest the authored ground elevation.
@@ -367,6 +369,36 @@ namespace Aaris.MapReview
 
             spot = floor.point + Vector3.up * .13f;
             return true;
+        }
+
+        // A newly authored rock, tree trunk or building can occupy a planned
+        // outdoor slot. Retrying that identical blocked slot forever leaves
+        // an area empty even though clear ground is a few metres away.
+        // Test only two deterministic neighbours and share a strict physics
+        // query budget across the entire mobile streaming frame. Indoor loot
+        // NEVER moves to an unintended outdoor room.
+        private bool TryResolveNearCandidate(AarisLootCandidate candidate,
+            int index, Terrain[] terrains, ref int alternateProbeBudget, out Vector3 spot)
+        {
+            if (TryResolve(candidate, terrains, out spot)) return true;
+            if (candidate.kind == "indoor") return false;
+
+            uint hash = matchSeed ^ (unchecked((uint)(index + 1)) * 2654435761u);
+            float angle = (hash & 65535u) * (Mathf.PI * 2f / 65536f);
+            for (int alternative = 0; alternative < 2 && alternateProbeBudget > 0; alternative++)
+            {
+                alternateProbeBudget--;
+                float heading = angle + (alternative == 0 ? 0f : Mathf.PI * 0.75f);
+                float distance = alternative == 0 ? 2.5f : 4.5f;
+                float x = candidate.x + Mathf.Cos(heading) * distance;
+                float z = candidate.z + Mathf.Sin(heading) * distance;
+                if (x < -957f || x > 957f || z < -957f || z > 957f)
+                    continue;
+                if (TryResolve(candidate, terrains, out spot,
+                    x - candidate.x, z - candidate.z))
+                    return true;
+            }
+            return false;
         }
 
         private bool CanReachPickup(AarisWeaponPickup pickup) => CanReachPoint(pickup.transform.position);
@@ -757,6 +789,9 @@ namespace Aaris.MapReview
             }
 
             int probes = 0;
+            // At most 3 extra ground probes per streaming frame on any device,
+            // even when all nearby candidates overlap new scenery.
+            int alternateProbeBudget = 3;
             Terrain[] terrains = null;
             CollectNearbyCandidateIndices(playerPosition);
             foreach (int i in nearbyCandidateIndices)
@@ -772,7 +807,8 @@ namespace Aaris.MapReview
 
                 probes++;
                 terrains ??= Terrain.activeTerrains;
-                if (!TryResolve(c, terrains, out Vector3 spot))
+                if (!TryResolveNearCandidate(c, i, terrains,
+                    ref alternateProbeBudget, out Vector3 spot))
                 {
                     nextCandidateProbeAt[i] = now + RetryDelaySeconds;
                     continue;
