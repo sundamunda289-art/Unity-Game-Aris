@@ -132,12 +132,31 @@ def run():
     assert "TryResolve" in world and "Physics.CheckCapsule" in world
     assert "if (roof.collider is TerrainCollider)" in world
     assert "float chance = indoor ? 0.72f :" in world
-    assert 'c.kind == "tree" ? 0.75f : 0.32f;' in world
+    assert 'c.kind == "tree" ? 0.85f : 0.60f;' in world
     assert "FindObjectsByType<Collider>" not in world
     assert "TreeInstance[] trees = data.treeInstances;" in world
-    assert "while (accepted < 12 && attempts++ < 72)" in world
+    assert "while (accepted < 32 && attempts++ < 160)" in world
     assert "float distance = 2f + AarisWeaponRandom.Next01(ref rng) * 7f;" in world
     assert "AppendNativeTreeCover(allCandidates);" in world
+    # Compare authored outdoor access across an evenly sampled 2 km map.
+    # This is the expected planned-loot coverage BEFORE physical floor
+    # validation, not a claim about rendered Android pickup visibility.
+    open_slots = [c for c in loot["candidates"] if c["kind"] == "open"]
+    assert len(open_slots) >= 300
+    old_expected = improved_expected = 0.0
+    count_samples = 0
+    for x in range(-925, 926, 50):
+        for z in range(-925, 926, 50):
+            n = sum((c["x"] - x) ** 2 + (c["z"] - z) ** 2 <= 42 ** 2
+                    for c in open_slots)
+            old_expected += 1.0 - 0.68 ** n
+            improved_expected += 1.0 - 0.40 ** n
+            count_samples += 1
+    assert count_samples > 1400
+    assert improved_expected > 1.7 * old_expected
+    assert "MaximumActiveLoot = 40" in world
+    assert "MaximumBuildAttemptsPerFrame = 2" in world
+
     assert "UnityWebRequest" not in "\n".join([catalog_cs,gun_cs,inventory,world,hud])
     print("PASS: 5 locally committed, SHA-verified CC0 weapon FBXs, single-weapon swap/drop, magazine/recoil/scope, "
           "authored 2km loot candidates, streaming and combat source contracts")
