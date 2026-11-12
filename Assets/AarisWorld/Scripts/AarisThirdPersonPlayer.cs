@@ -190,6 +190,20 @@ namespace Aaris.MapReview
                 gameObject.AddComponent<AarisAudioDirector>();
         }
 
+        // Recover gameplay systems when a player is added after the scene-load
+        // callbacks. Reuse original components, motor, camera and map assets.
+        private void Start()
+        {
+            if (!enabled) return;
+            AarisBattleHUD.EnsureForPlayer(this);
+            AarisWeaponHUD.EnsureForPlayer(this);
+            AarisWeaponLootWorld.EnsureForPlayer(this);
+            AarisVehicleWorld.EnsureForPlayer(this);
+            AarisCharacterVisual.EnsureForPlayer(this);
+            AarisOfflineDrop.EnsureForPlayer(this);
+            AarisOfflineTacticalHUD.EnsureForPlayer(this);
+        }
+
         private void OnDestroy()
         {
             if (inputConfigured) Input.simulateMouseWithTouches = previousSimulateMouse;

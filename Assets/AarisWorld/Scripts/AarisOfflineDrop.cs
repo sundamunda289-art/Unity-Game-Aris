@@ -64,7 +64,11 @@ namespace Aaris.MapReview
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
         {
-            var player = FindFirstObjectByType<AarisThirdPersonPlayer>();
+            EnsureForPlayer(FindFirstObjectByType<AarisThirdPersonPlayer>());
+        }
+
+        internal static void EnsureForPlayer(AarisThirdPersonPlayer player)
+        {
             if (player != null && player.GetComponent<AarisOfflineDrop>() == null)
                 player.gameObject.AddComponent<AarisOfflineDrop>();
         }

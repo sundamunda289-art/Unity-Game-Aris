@@ -134,6 +134,18 @@ def test():
     assert "GameObject.CreatePrimitive" not in world
     assert "UnityWebRequest" not in world
 
+    # The initial callbacks have no guaranteed player creation order.
+    # The existing player Start pass recovers all seven optional systems,
+    # without constructing a second movement motor or duplicate HUD.
+    startup = foot.split("private void Start()", 1)[1].split(
+        "private void OnDestroy()", 1)[0]
+    for component in ("AarisBattleHUD", "AarisWeaponHUD",
+                      "AarisWeaponLootWorld", "AarisVehicleWorld",
+                      "AarisCharacterVisual", "AarisOfflineDrop",
+                      "AarisOfflineTacticalHUD"):
+        assert f"{component}.EnsureForPlayer(this);" in startup
+        assert "internal static void EnsureForPlayer(AarisThirdPersonPlayer" in script(component)
+
     # Boot methods for the loot, battle HUD and vehicles have no guaranteed
     # order. Re-resolve optional references at actual car entry so gun Fire,
     # pickup, and HUD controls cannot remain active while driving.

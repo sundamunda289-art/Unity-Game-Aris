@@ -93,7 +93,11 @@ namespace Aaris.MapReview
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
         {
-            var motor = FindFirstObjectByType<AarisThirdPersonPlayer>();
+            EnsureForPlayer(FindFirstObjectByType<AarisThirdPersonPlayer>());
+        }
+
+        internal static void EnsureForPlayer(AarisThirdPersonPlayer motor)
+        {
             if (motor == null || FindFirstObjectByType<AarisWeaponLootWorld>() != null) return;
             var inventory = motor.GetComponent<AarisWeaponInventory>();
             if (inventory == null) inventory = motor.gameObject.AddComponent<AarisWeaponInventory>();
@@ -165,7 +169,7 @@ namespace Aaris.MapReview
                 // spots look empty. Plan more existing candidates without
                 // increasing the active mesh or per-frame physics budgets.
                 float chance = indoor ? 0.72f :
-                    c.kind == "tree" ? 0.85f : 0.60f;
+                    c.kind == "tree" ? 0.92f : 0.78f;
                 if (AarisWeaponRandom.Next01(ref rng) > chance) continue;
                 var spec = AarisWeaponCatalog.Select(ref rng, indoor);
                 if (spec == null) continue;

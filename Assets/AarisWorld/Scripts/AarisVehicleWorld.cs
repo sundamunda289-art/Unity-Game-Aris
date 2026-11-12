@@ -90,9 +90,12 @@ namespace Aaris.MapReview
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
         {
-            if (FindFirstObjectByType<AarisVehicleWorld>() != null) return;
-            var motor = FindFirstObjectByType<AarisThirdPersonPlayer>();
-            if (motor == null) return;
+            EnsureForPlayer(FindFirstObjectByType<AarisThirdPersonPlayer>());
+        }
+
+        internal static void EnsureForPlayer(AarisThirdPersonPlayer motor)
+        {
+            if (motor == null || FindFirstObjectByType<AarisVehicleWorld>() != null) return;
             var obj = new GameObject("Aaris 2km Match Vehicles (streamed)");
             var world = obj.AddComponent<AarisVehicleWorld>();
             world.player = motor.transform;
