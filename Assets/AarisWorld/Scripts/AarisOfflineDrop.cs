@@ -286,6 +286,10 @@ namespace Aaris.MapReview
                     }
                     else if (lookFinger < 0 && t.phase == TouchPhase.Began &&
                         t.position.x > Screen.width * 0.5f &&
+                        // EventSystem may not have processed the new touch yet
+                        // this frame; reserve the actual EJECT / OPEN rectangle
+                        // before ownership can be handed to camera look.
+                        (hud == null || !hud.CapturesScreenPosition(t.position)) &&
                         (EventSystem.current == null ||
                          !EventSystem.current.IsPointerOverGameObject(t.fingerId)))
                         lookFinger = t.fingerId;
@@ -628,6 +632,7 @@ namespace Aaris.MapReview
         private Canvas canvas;
         private RectTransform safe;
         private Button action;
+        private RectTransform actionHitRect, stickHitRect;
         private Text actionLabel, altitude;
         private Rect previousSafeArea;
         private Vector2Int previousScreen;
@@ -635,6 +640,16 @@ namespace Aaris.MapReview
         private AarisOfflineDropStick stick;
         public Vector2 MoveInput => stick != null ? stick.Value : Vector2.zero;
         internal bool TelemetryDue => Time.unscaledTime >= nextTelemetry;
+
+        // Direct screen-space ownership check on TouchPhase.Began, independent
+        // of EventSystem.Update order. ScreenSpaceOverlay uses a null camera.
+        internal bool CapturesScreenPosition(Vector2 screenPosition) =>
+            (actionHitRect != null && actionHitRect.gameObject.activeInHierarchy &&
+             RectTransformUtility.RectangleContainsScreenPoint(
+                 actionHitRect, screenPosition, null)) ||
+            (stickHitRect != null && stickHitRect.gameObject.activeInHierarchy &&
+             RectTransformUtility.RectangleContainsScreenPoint(
+                 stickHitRect, screenPosition, null));
 
         public static AarisOfflineDropHud Create(AarisOfflineDrop owner)
         {
@@ -671,6 +686,7 @@ namespace Aaris.MapReview
                 typeof(Button));
             buttonRoot.transform.SetParent(safe, false);
             RectTransform buttonRect = buttonRoot.GetComponent<RectTransform>();
+            actionHitRect = buttonRect;
             buttonRect.anchorMin = buttonRect.anchorMax = new Vector2(0.84f, 0.55f);
             buttonRect.sizeDelta = new Vector2(110f, 110f);
             var actionImage = buttonRoot.GetComponent<Image>();
@@ -694,6 +710,7 @@ namespace Aaris.MapReview
                 typeof(Image), typeof(AarisOfflineDropStick));
             baseStick.transform.SetParent(safe, false);
             var rect = baseStick.GetComponent<RectTransform>();
+            stickHitRect = rect;
             rect.anchorMin = rect.anchorMax = new Vector2(0.12f, 0.20f);
             rect.sizeDelta = new Vector2(142f, 142f);
             baseStick.GetComponent<Image>().sprite = AarisHudGlyphs.Ring;
