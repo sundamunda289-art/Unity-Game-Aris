@@ -256,6 +256,15 @@ namespace Aaris.MapReview
             pitch = Mathf.Clamp(pitch - delta.y * 0.15f * scale * sensitivity,
                 minLookPitch, maxLookPitch);
         }
+        // Battle HUD's Fire/Jump drag uses the SAME camera authority as the
+        // free-look touch finger. The HUD previously called this method but
+        // the motor never defined it, breaking Unity C# compilation.
+        // Ignore drags while another system owns the camera (flight/vehicle).
+        public void ForwardLookDelta(Vector2 pixels)
+        {
+            if (!isActiveAndEnabled || pixels.sqrMagnitude < 0.0001f) return;
+            Look(pixels);
+        }
         private void ReadInput()
         {
             Layout();
