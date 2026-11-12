@@ -80,9 +80,13 @@ namespace Aaris.MapReview
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AttachToExistingPlayer()
         {
+            EnsureForPlayer(FindFirstObjectByType<AarisThirdPersonPlayer>());
+        }
+
+        internal static void EnsureForPlayer(AarisThirdPersonPlayer player)
+        {
             // Preserve the checked-in scene and player prefab, including all original
             // camera references and controller tuning. No scene editor drag-and-drop.
-            var player = FindFirstObjectByType<AarisThirdPersonPlayer>();
             if (player != null && player.GetComponent<AarisCharacterVisual>() == null)
                 player.gameObject.AddComponent<AarisCharacterVisual>();
         }
