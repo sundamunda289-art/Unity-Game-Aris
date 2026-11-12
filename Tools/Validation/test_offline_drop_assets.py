@@ -214,6 +214,13 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("AARIS_CARGO_PLANE_MODEL_NOT_IMPORTED", source)
         self.assertIn("Quaternion.Euler(0f, 0f,", movement)
         self.assertIn("Time.unscaledDeltaTime", movement)
+        # After ejecting, the real aircraft and shared rotors continue moving
+        # for a bounded time instead of freezing until delayed destruction.
+        self.assertIn("AdvanceDepartingAircraft(dt);", movement)
+        self.assertIn("plane.transform.position += plane.transform.forward * planeSpeed * dt;", movement)
+        self.assertIn("Time.time - airborneSince >= 4.5f", movement)
+        self.assertIn("horizontalVelocity = plane.transform.forward *", movement)
+        self.assertNotIn("Destroy(plane, 4.5f);", movement)
         self.assertNotIn('"PropellerBladeA"', source)
         self.assertNotIn('"PropellerBladeB"', source)
 
