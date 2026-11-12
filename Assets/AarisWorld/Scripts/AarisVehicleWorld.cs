@@ -57,7 +57,7 @@ namespace Aaris.MapReview
         private const float LoadRadius = 105f;
         private const float UnloadRadius = 160f;
         private const float SeaLevel = -38.07552f;
-        private const int TargetVehicles = 26;
+        private const int TargetVehicles = 44;
         private const int MaximumNearbyVehicles = 10;
         private readonly List<AarisVehicleRecord> plans = new List<AarisVehicleRecord>(TargetVehicles);
         private readonly RaycastHit[] rayHits = new RaycastHit[24];
@@ -71,7 +71,7 @@ namespace Aaris.MapReview
         private int validModels;
         private Material paletteMaterial;
         // Instantiate/Destroy of a complete car can spike a 2 GB Android frame.
-        // Bound structural changes per 300 ms poll; retain all 26 authored plans.
+        // Bound structural changes per 300 ms poll; retain all 44 authored plans.
         private int spawnBudgetPerPoll = 2;
         private int unloadBudgetPerPoll = 4;
 
