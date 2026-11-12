@@ -67,6 +67,10 @@ namespace Aaris.MapReview
                 var doc = JsonUtility.FromJson<AarisWeaponCatalogDocument>(asset.text);
                 if (doc == null || doc.weapons == null || doc.weapons.Length == 0)
                     throw new FormatException("Empty weapon catalog.");
+                // A single failed Android FBX import must not disable all
+                // working guns and the entire offline loot world. Keep strict
+                // catalog validation, but select only locally usable models.
+                var available = new List<AarisWeaponSpec>(doc.weapons.Length);
                 for (int i = 0; i < doc.weapons.Length; i++)
                 {
                     if (doc.weapons[i] == null || !doc.weapons[i].Valid)
@@ -79,11 +83,18 @@ namespace Aaris.MapReview
                     {
                         prefab = Resources.Load<GameObject>(modelPath);
                         if (prefab == null)
-                            throw new FormatException("Missing local model: " + modelPath);
+                        {
+                            Debug.LogWarning("Aaris: unavailable local weapon model; skipping " +
+                                doc.weapons[i].id);
+                            continue;
+                        }
                         modelCache[modelPath] = prefab;
                     }
+                    available.Add(doc.weapons[i]);
                 }
-                specs = doc.weapons;
+                if (available.Count == 0)
+                    throw new FormatException("No usable local weapon models.");
+                specs = available.ToArray();
                 return true;
             }
             catch (Exception e)
