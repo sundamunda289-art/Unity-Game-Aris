@@ -489,6 +489,25 @@ namespace Aaris.MapReview
             return focus + direction * allowed;
         }
 
+        // Terrain.SampleHeight returns world-space Y even for negative-Y
+        // tiles. Never add terrain.transform.position.y a second time.
+        private Vector3 ClampCameraAboveTerrain(Vector3 point)
+        {
+            var tiles = flightTerrains;
+            if (tiles == null) return point;
+            foreach (var tile in tiles)
+            {
+                if (tile == null || tile.terrainData == null) continue;
+                Vector3 origin = tile.transform.position;
+                Vector3 size = tile.terrainData.size;
+                if (point.x < origin.x || point.x > origin.x + size.x ||
+                    point.z < origin.z || point.z > origin.z + size.z) continue;
+                point.y = Mathf.Max(point.y, tile.SampleHeight(point) + 0.8f);
+                break;
+            }
+            return point;
+        }
+
         private void LateUpdate()
         {
             if (view == null || phase == DropPhase.Landed) return;
@@ -510,10 +529,19 @@ namespace Aaris.MapReview
                 focus = transform.position + Vector3.up * 2.8f;
             }
             pos = CameraSafePosition(focus, pos);
-            view.transform.position = Vector3.Lerp(view.transform.position,
+            Vector3 next = Vector3.Lerp(view.transform.position,
                 pos, 1f - Mathf.Exp(-7f * Time.deltaTime));
+            // The camera can cross a wall during the interpolated step even
+            // when the final target is safe. Sweep that actual step too.
+            if ((next - pos).sqrMagnitude > 0.00000001f)
+                next = CameraSafePosition(focus, next);
+            // Near a mountain, a collision sweep alone may start below the
+            // native Terrain surface. Check only the active tile on descent.
+            if (phase != DropPhase.InPlane)
+                next = ClampCameraAboveTerrain(next);
+            view.transform.position = next;
             view.transform.rotation = Quaternion.Slerp(view.transform.rotation,
-                Quaternion.LookRotation(focus - view.transform.position, Vector3.up),
+                Quaternion.LookRotation(focus - next, Vector3.up),
                 1f - Mathf.Exp(-9f * Time.deltaTime));
         }
 
