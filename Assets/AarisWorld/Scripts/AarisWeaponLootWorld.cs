@@ -450,11 +450,28 @@ namespace Aaris.MapReview
             if (player == null) return false;
             Vector3 forward = player.forward;
             Vector3 right = player.right;
-            // Fixed four positions: no managed Vector3[] allocation per drop.
-            for (int attempt = 0; attempt < 4; attempt++)
+            // Four close cardinal positions, then four slightly farther
+            // diagonals when a tree, doorway or rocky bank blocks the first
+            // ring. All eight candidates stay inside pickup reach; no
+            // allocation, large-area search or per-frame terrain scanning.
+            for (int attempt = 0; attempt < 8; attempt++)
             {
-                Vector3 place = player.position + (attempt == 0 ? forward :
-                    attempt == 1 ? -forward : attempt == 2 ? right : -right) * .65f;
+                Vector3 direction;
+                float distance;
+                if (attempt < 4)
+                {
+                    direction = attempt == 0 ? forward :
+                        attempt == 1 ? -forward : attempt == 2 ? right : -right;
+                    distance = .65f;
+                }
+                else
+                {
+                    float f = (attempt & 1) == 0 ? 1f : -1f;
+                    float r = (attempt & 2) == 0 ? 1f : -1f;
+                    direction = (forward * f + right * r).normalized;
+                    distance = 1.12f;
+                }
+                Vector3 place = player.position + direction * distance;
                 if (place.x < -957f || place.x > 957f ||
                     place.z < -957f || place.z > 957f) continue;
                 Ray ray = new Ray(place + Vector3.up * 1.6f, Vector3.down);
@@ -748,7 +765,11 @@ namespace Aaris.MapReview
                 return;
             }
             if (player.TryGetComponent(out AarisOfflineDrop flight) && !flight.HasLanded) return;
-            if (!player.TryGetComponent(out CharacterController controller) || !controller.isGrounded) return;
+            // Unity's isGrounded reports the previous capsule Move and can
+            // briefly go false on a bridge seam or the first landing frame.
+            // The real floor ray, obstruction capsule and pickup line-of-sight
+            // checks in TryFindDropSpot provide the ground truth here.
+            if (!player.TryGetComponent(out CharacterController controller) || !controller.enabled) return;
 
             foreach (var pickup in active)
             {
