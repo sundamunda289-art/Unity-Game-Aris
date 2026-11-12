@@ -63,6 +63,16 @@ namespace Aaris.MapReview
         private float crouchBlend, proneBlend;
         private AnimationClip idleClip, walkClip, runClip;
         private float locomotionPhase, crouchPhase, crawlPhase;
+        // Avoid repeated managed-to-native Playables calls for settled poses.
+        // Each cached value mirrors the weight last sent to the native graph.
+        private const float WeightWriteEpsilon = 0.00025f;
+        private readonly float[] lastBaseWeights = new float[12];
+        private readonly float[] lastUpperWeights = new float[3];
+        private float lastLayerWeight;
+        // NaN forces the first gait time sample after graph initialization.
+        private float lastLocomotionPhase = float.NaN;
+        private float lastCrouchPhase = float.NaN;
+        private float lastCrawlPhase = float.NaN;
         private bool primaryLoaded;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -381,7 +391,9 @@ namespace Aaris.MapReview
             for (int i = 0; i < baseInputs.Length; i++)
             {
                 graph.Connect(baseInputs[i], 0, mixer, i);
-                mixer.SetInputWeight(i, i == 0 ? 1f : 0f);
+                float startingWeight = i == 0 ? 1f : 0f;
+                mixer.SetInputWeight(i, startingWeight);
+                lastBaseWeights[i] = startingWeight;
             }
             graph.Connect(readyHoldPlayable, 0, weaponUpperMixer, 0);
             graph.Connect(punchPlayable, 0, weaponUpperMixer, 1);
@@ -389,6 +401,8 @@ namespace Aaris.MapReview
             weaponUpperMixer.SetInputWeight(0, 1f);
             weaponUpperMixer.SetInputWeight(1, 0f);
             weaponUpperMixer.SetInputWeight(2, 0f);
+            lastUpperWeights[0] = 1f;
+            lastUpperWeights[1] = lastUpperWeights[2] = 0f;
 
             // Explicitly mask root/legs and ALL foot IK, preserving running
             // and jumping foot cycles beneath firing/punching upper body.
@@ -407,11 +421,33 @@ namespace Aaris.MapReview
             graph.Connect(weaponUpperMixer, 0, layered, 1);
             layered.SetInputWeight(0, 1f);
             layered.SetInputWeight(1, 0f);
+            lastLayerWeight = 0f;
+            lastLocomotionPhase = lastCrouchPhase = lastCrawlPhase = float.NaN;
             layered.SetLayerMaskFromAvatarMask(1, upperBodyMask);
             var output = AnimationPlayableOutput.Create(graph, "AarisHumanoidOutput", animator);
             output.SetSourcePlayable(layered);
             graphReady = true;
             graph.Play();
+        }
+
+        // Do not cross the Unity native boundary to set an unchanged mixer weight.
+        // Tiny residual blend tails snap to zero; the threshold is 0.025% and
+        // therefore does not alter visible gait, recoil, or stance transitions.
+        private static void WriteWeightIfChanged(AnimationMixerPlayable output,
+            float[] previous, int index, float requested)
+        {
+            float weight = requested <= WeightWriteEpsilon ? 0f : Mathf.Clamp01(requested);
+            if (Mathf.Abs(previous[index] - weight) <= WeightWriteEpsilon) return;
+            output.SetInputWeight(index, weight);
+            previous[index] = weight;
+        }
+
+        private void WriteLayerWeightIfChanged(float requested)
+        {
+            float weight = requested <= WeightWriteEpsilon ? 0f : Mathf.Clamp01(requested);
+            if (Mathf.Abs(lastLayerWeight - weight) <= WeightWriteEpsilon) return;
+            layered.SetInputWeight(1, weight);
+            lastLayerWeight = weight;
         }
 
         private static void LoopPlayable(AnimationClipPlayable playable, AnimationClip clip, double cycle)
@@ -551,24 +587,24 @@ namespace Aaris.MapReview
                 float layerWeight = Mathf.Clamp01(Mathf.Max(readyPoseBlend, attackUpper));
                 float attackRatio = layerWeight > 0.0001f
                     ? attackUpper / layerWeight : 0f;
-                mixer.SetInputWeight(0, baseWeight * grounded * (1f - runBlend));
-                mixer.SetInputWeight(1, baseWeight * grounded * runBlend * (1f - walkRunBlend));
-                mixer.SetInputWeight(2, baseWeight * grounded * runBlend * walkRunBlend * (1f - sprintBlend));
-                mixer.SetInputWeight(3, baseWeight * airborneBlend * jumping * (1f - pose));
-                mixer.SetInputWeight(4, baseWeight * airborneBlend * (1f - jumping) * (1f - pose));
-                mixer.SetInputWeight(5, baseWeight * crouchWeight * (1f - crouchMoving));
-                mixer.SetInputWeight(6, baseWeight * crouchWeight * crouchMoving);
-                mixer.SetInputWeight(7, startWeight);
-                mixer.SetInputWeight(8, landWeight);
-                mixer.SetInputWeight(9, baseWeight * grounded * runBlend * walkRunBlend * sprintBlend);
-                mixer.SetInputWeight(10, baseWeight * proneWeight * (1f - crawlMoving));
-                mixer.SetInputWeight(11, baseWeight * proneWeight * crawlMoving);
-                weaponUpperMixer.SetInputWeight(0, 1f - attackRatio);
-                weaponUpperMixer.SetInputWeight(1,
+                WriteWeightIfChanged(mixer, lastBaseWeights, 0, baseWeight * grounded * (1f - runBlend));
+                WriteWeightIfChanged(mixer, lastBaseWeights, 1, baseWeight * grounded * runBlend * (1f - walkRunBlend));
+                WriteWeightIfChanged(mixer, lastBaseWeights, 2, baseWeight * grounded * runBlend * walkRunBlend * (1f - sprintBlend));
+                WriteWeightIfChanged(mixer, lastBaseWeights, 3, baseWeight * airborneBlend * jumping * (1f - pose));
+                WriteWeightIfChanged(mixer, lastBaseWeights, 4, baseWeight * airborneBlend * (1f - jumping) * (1f - pose));
+                WriteWeightIfChanged(mixer, lastBaseWeights, 5, baseWeight * crouchWeight * (1f - crouchMoving));
+                WriteWeightIfChanged(mixer, lastBaseWeights, 6, baseWeight * crouchWeight * crouchMoving);
+                WriteWeightIfChanged(mixer, lastBaseWeights, 7, startWeight);
+                WriteWeightIfChanged(mixer, lastBaseWeights, 8, landWeight);
+                WriteWeightIfChanged(mixer, lastBaseWeights, 9, baseWeight * grounded * runBlend * walkRunBlend * sprintBlend);
+                WriteWeightIfChanged(mixer, lastBaseWeights, 10, baseWeight * proneWeight * (1f - crawlMoving));
+                WriteWeightIfChanged(mixer, lastBaseWeights, 11, baseWeight * proneWeight * crawlMoving);
+                WriteWeightIfChanged(weaponUpperMixer, lastUpperWeights, 0, 1f - attackRatio);
+                WriteWeightIfChanged(weaponUpperMixer, lastUpperWeights, 1,
                     layerWeight > 0.0001f ? punchUpper / layerWeight : 0f);
-                weaponUpperMixer.SetInputWeight(2,
+                WriteWeightIfChanged(weaponUpperMixer, lastUpperWeights, 2,
                     layerWeight > 0.0001f ? shootUpper / layerWeight : 0f);
-                layered.SetInputWeight(1, layerWeight);
+                WriteLayerWeightIfChanged(layerWeight);
 
                 if (playerMotor != null && takeoffAge >= 0f &&
                     playerMotor.LastJumpStartedTime != seenTakeoff)
@@ -602,12 +638,27 @@ namespace Aaris.MapReview
                     if (proneWeight > 0.001f)
                         crawlPhase = Mathf.Repeat(crawlPhase + distance / 0.90f, 1f);
                 }
+                // Breathing/idle must keep animating at all frame rates.
                 LoopPlayable(idlePlayable, idleClip, Time.timeAsDouble / Math.Max(0.02, idleClip.length));
-                LoopPlayable(walkPlayable, walkClip, locomotionPhase);
-                LoopPlayable(runPlayable, runClip, locomotionPhase);
-                LoopPlayable(sprintPlayable, sprintClip, locomotionPhase);
-                LoopPlayable(crouchWalkPlayable, crouchWalkClip, crouchPhase);
-                LoopPlayable(crawlPlayable, crawlClip, crawlPhase);
+                // Distance-driven clips are frozen while stationary: their
+                // phases do not advance, so SetTime would be identical.
+                if (lastLocomotionPhase != locomotionPhase)
+                {
+                    LoopPlayable(walkPlayable, walkClip, locomotionPhase);
+                    LoopPlayable(runPlayable, runClip, locomotionPhase);
+                    LoopPlayable(sprintPlayable, sprintClip, locomotionPhase);
+                    lastLocomotionPhase = locomotionPhase;
+                }
+                if (lastCrouchPhase != crouchPhase)
+                {
+                    LoopPlayable(crouchWalkPlayable, crouchWalkClip, crouchPhase);
+                    lastCrouchPhase = crouchPhase;
+                }
+                if (lastCrawlPhase != crawlPhase)
+                {
+                    LoopPlayable(crawlPlayable, crawlClip, crawlPhase);
+                    lastCrawlPhase = crawlPhase;
+                }
             }
 
             // In-place upper-arm punch pulse. Only the animation skeleton is
