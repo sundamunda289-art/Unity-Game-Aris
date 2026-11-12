@@ -47,7 +47,7 @@ set_push_auth() {
 fetch_main() {
   # Public fetch works even without push credentials. Never hydrate LFS here.
   git -c credential.helper= fetch --no-tags "$REMOTE" main
-  git update-ref refs/remotes/aaris-master/main FETCH_HEAD
+  git update-ref refs/remotes/aaris-master/main "$(git rev-parse FETCH_HEAD)"
   echo "AARIS_SYNC_CANONICAL_MAIN_FETCHED=$(git rev-parse --short FETCH_HEAD)"
 }
 
@@ -97,7 +97,7 @@ case "$mode" in
   publish)
     branch="$(current_branch)"
     machine="$(hostname)"
-    if [[ -n "$CODESPACE_NAME" ]]; then machine="$CODESPACE_NAME"; fi
+    if [[ -n "${CODESPACE_NAME:-}" ]]; then machine="$CODESPACE_NAME"; fi
     machine="$(printf '%s' "$machine" | sed 's/[^a-zA-Z0-9._-]/-/g')"
     branch_safe="$(printf '%s' "$branch" | sed 's/[^a-zA-Z0-9._-]/-/g')"
     [[ -n "$machine" && -n "$branch_safe" ]] || exit 29
