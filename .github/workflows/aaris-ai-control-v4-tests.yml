@@ -1,0 +1,57 @@
+name: Aaris AI Control V4 smoke tests
+
+on:
+  pull_request:
+    paths:
+      - 'Tools/Turbo/gui_v4.py'
+      - 'Tools/Turbo/unity_v4.py'
+      - 'Assets/AarisWorld/Editor/AarisV4EditorDriver.cs'
+      - '.github/workflows/aaris-ai-control-v4-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-and-x11:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install headless X11 test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb scrot xdotool python3-pil
+      - name: Validate Python syntax and command allowlists
+        run: |
+          /usr/bin/python3 -m py_compile Tools/Turbo/gui_v4.py Tools/Turbo/unity_v4.py
+          /usr/bin/python3 Tools/Turbo/gui_v4.py --selftest
+          /usr/bin/python3 Tools/Turbo/unity_v4.py --selftest
+      - name: Real X11 input + screenshot replay smoke test (not Unity)
+        run: |
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp >/tmp/aaris-xvfb.log 2>&1 &
+          sleep 2
+          export DISPLAY=:99
+          xdotool getdisplaygeometry
+          /usr/bin/python3 Tools/Turbo/gui_v4.py \
+            --id ci_v4_smoke --seconds 2 --fps 8 \
+            --sequence '[{"op":"mark","label":"before"},{"op":"key_down","key":"w"},{"op":"wait","seconds":0.4},{"op":"key_up","key":"w"},{"op":"mark","label":"after"}]'
+          /usr/bin/python3 - <<'PY'
+          import json,zipfile
+          from pathlib import Path
+          root=Path('/tmp/aaris-v4-evidence/ci_v4_smoke')
+          manifest=json.loads((root/'manifest.json').read_text())
+          assert manifest['actual_frames'] >= 4,manifest
+          assert manifest['frames'][0]['file'] == 'frame_0000.jpg'
+          assert (root/'contact_sheet.jpg').stat().st_size > 1000
+          with zipfile.ZipFile(root/'replay.zip') as z:
+              assert 'manifest.json' in z.namelist()
+              assert len([x for x in z.namelist() if x.startswith('frames/')]) == manifest['actual_frames']
+          assert manifest['timeline'][-1]['event'] == 'release_all'
+          print('AARIS_V4_X11_REPLAY_SMOKE_PASS')
+          PY
+      - name: Check Editor bridge action surface (static only)
+        run: |
+          grep -q 'EditorApplication.Step()' Assets/AarisWorld/Editor/AarisV4EditorDriver.cs
+          grep -q 'ReleaseInputs()' Assets/AarisWorld/Editor/AarisV4EditorDriver.cs
+          echo 'C# requires a real Unity Editor compile and Play Mode validation before merge.'
