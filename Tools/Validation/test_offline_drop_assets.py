@@ -89,6 +89,30 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertLess(start.index("vehicle = GetComponent<AarisVehicleSession>();"),
                         start.index("if (vehicle != null && vehicle.IsDriving)"))
 
+    def test_missing_android_touch_ended_event_does_not_lock_camera_or_joystick(self):
+        # Unity may omit Ended after a system gesture while another finger
+        # remains on screen. Prove both controllers reconcile ownership
+        # before processing the current touch snapshot.
+        drop = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
+        player = (SCRIPTS / "AarisThirdPersonPlayer.cs").read_text("utf-8")
+        aerial_look = drop.split("private void ReadLookInput()", 1)[1].split(
+            "private Vector2 MovementIntent()", 1)[0]
+        foot_input = player.split("private void ReadInput()", 1)[1].split(
+            "private void Update()", 1)[0]
+        self.assertIn("if (lookFinger >= 0)", aerial_look)
+        self.assertIn("if (!stillTouching) lookFinger = -1;", aerial_look)
+        self.assertLess(aerial_look.index("if (!stillTouching)"),
+                        aerial_look.index("ApplyLookDrag(t.deltaPosition);"))
+        self.assertIn("private void OnApplicationPause(bool paused)", drop)
+        self.assertIn("private void OnApplicationFocus(bool focused)", drop)
+        self.assertIn("if (!movePresent) { moveFinger = -1; moveInput = Vector2.zero; }",
+                      foot_input)
+        self.assertIn("if (!lookPresent) lookFinger = -1;", foot_input)
+        self.assertLess(foot_input.index("if (!lookPresent)"),
+                        foot_input.index("if (t.phase == TouchPhase.Began)"))
+        # Do not replace the existing touch HUD or introduce a second motor.
+        self.assertEqual(player.count("controller.Move("), 1)
+
     def test_mobile_jump_and_prone_movement_safety(self):
         motor = (SCRIPTS / "AarisThirdPersonPlayer.cs").read_text("utf-8")
         stance = (SCRIPTS / "AarisBattleActions.cs").read_text("utf-8")
