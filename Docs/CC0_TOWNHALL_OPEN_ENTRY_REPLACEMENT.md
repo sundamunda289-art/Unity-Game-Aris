@@ -10,7 +10,7 @@ The scene replaces **only the rendered/collision geometry of this one instance**
 - New scaled mesh dimensions: approx 27.862 m × 12.805 m × 21.359 m, within the prior ~37.24 m × 39.20 m × 24.62 m landmark footprint.
 - Uses a physically open entry and unglazed openings; no interactive/closed door or glass meshes are introduced.
 - Uses the prefab's existing shared combined geometry with a MeshCollider of the *same* mesh (enabled), so no legacy tower collision remains.
-- Removes eight obsolete TowerHall LOD GameObject/Transform/MeshFilter/Renderer YAML blocks and replaces the original three-level LODGroup with one correctly referenced renderer; no detached tower lods remain.
+- Preserves the scene's existing three authored LOD renderer slots and screen thresholds (required by map CI) while replacing **all three** TownHall LOD mesh/material references with the same low-poly, open-entry Kenney mesh and shared atlas. The former tower meshes never render at any LOD distance. A single common mesh keeps visual silhouettes consistent; additional decimated LODs can be authored later if mobile profiling warrants them.
 - The source asset's physics-test gate expects a traversable doorway/window aperture with solid walls and roof, and ≤5,000 triangles. **This scene change has undergone structural/static validation only; fresh Unity import/Play and Android FPS for this exact main commit still need verification.**
 
 ## Multi-agent and review safeguards
