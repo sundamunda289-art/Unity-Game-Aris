@@ -172,7 +172,9 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (phase == DropPhase.Landed || view == null) return;
-            float dt = Mathf.Clamp(Time.deltaTime, 0f, 0.11f);
+            // Keep real time during 10–15 FPS hitches; swept capsule substeps
+            // below keep collision checks bounded instead of slowing descent.
+            float dt = Mathf.Clamp(Time.deltaTime, 0f, 0.20f);
             if (dt <= 0f) return;
             ReadLookInput();
             // One bounded angle accumulator drives all four shared rotor meshes.
@@ -211,12 +213,30 @@ namespace Aaris.MapReview
                     if (sampleHeight && (!reliableHeight || height <= autoDeployHeight))
                         canopyRequested = true;
                     if (canopyRequested) OpenCanopy();
-                    if (phase == DropPhase.Freefall) UpdateFreefall(dt);
                 }
-                if (phase == DropPhase.Opening || phase == DropPhase.Gliding)
-                    UpdateGlide(dt);
+                // A slow frame must not move the capsule 10+ metres in one
+                // sweep and tunnel across narrow roofs or terrain boundaries.
+                if (phase == DropPhase.Freefall || phase == DropPhase.Opening ||
+                    phase == DropPhase.Gliding)
+                    SimulateAirborne(dt);
                 if (sampleHeight && reliableHeight && hud != null)
                     hud.SetTelemetry(height, Mathf.Abs(downwardSpeed) * 3.6f, phase);
+            }
+        }
+
+        // Limit each low-FPS descent sweep to 50 ms; normal 60 FPS
+        // gameplay still runs exactly one movement step per frame.
+        private void SimulateAirborne(float elapsed)
+        {
+            const float MaxSweepSeconds = 0.05f;
+            int steps = Mathf.Clamp(Mathf.CeilToInt(elapsed / MaxSweepSeconds), 1, 4);
+            float stepDt = elapsed / steps;
+            for (int i = 0; i < steps; i++)
+            {
+                if (phase == DropPhase.Freefall) UpdateFreefall(stepDt);
+                else if (phase == DropPhase.Opening || phase == DropPhase.Gliding)
+                    UpdateGlide(stepDt);
+                else break; // Touchdown during the current frame.
             }
         }
 
