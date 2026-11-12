@@ -366,6 +366,10 @@ namespace Aaris.MapReview
             // Freeze on the settled position: frame zero can still be standing.
             crouchPlayable.SetSpeed(0d);
             crouchPlayable.SetTime(crouchClip.length * 0.87d);
+            // Prone is also an enter-pose transition, not a looping idle.
+            // Holding its final authored frame prevents unwanted rocking
+            // and limb movement while the player stays prone.
+            pronePlayable.SetSpeed(0d);
             pronePlayable.SetTime((proneClip ?? crouchClip).length * 0.87d);
             // Airborne looping is especially distracting when the jump clip
             // contains landing frames. Hold distinct ascent/descent samples.

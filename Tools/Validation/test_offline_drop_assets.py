@@ -180,6 +180,9 @@ class OfflineCombatAssetChecks(unittest.TestCase):
     def test_animation_stance_weights_remain_exclusive_and_prone_moves(self):
         source = (SCRIPTS / "AarisCharacterVisual.cs").read_text("utf-8")
         self.assertIn("AnimationMixerPlayable.Create(graph, 12)", source)
+        self.assertIn("pronePlayable.SetSpeed(0d);", source)
+        self.assertLess(source.index("pronePlayable.SetSpeed(0d);"),
+                        source.index("pronePlayable.SetTime("))
         self.assertIn("float stanceTotal = crouchBlend + proneBlend;", source)
         self.assertIn("float stanceScale = stanceTotal > 1f ? pose / stanceTotal : 1f;", source)
         self.assertIn("float crouchWeight = authoredProne ? crouchBlend * stanceScale : pose;", source)
