@@ -1,0 +1,148 @@
+name: Aaris publish verified existing Codespace Android APK
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  publish-current-apk:
+    if: >-
+      github.event.issue.number == 77 &&
+      github.event.comment.user.login == 'sundamunda289-art' &&
+      github.event.comment.body == 'APK RELEASE CURRENT 20261112'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      issues: write
+    concurrency:
+      group: aaris-release-current-20261112
+      cancel-in-progress: false
+    env:
+      CODESPACE: aaris-ai-ubuntu-minimal-4qr6v94w9rwvhjgp6
+      EXPECTED_SHA256: 07dd49c30571d4fdd6203ce7a0fbb1b3339180135e77131ac0e4999b0d605464
+      EXPECTED_BYTES: "384766349"
+      SOURCE_COMMIT: 1a56c09fab08ae1f03751ca95eac4c01eeaa7f84
+      TAG: apk-codespace-20261112-1a56c09f
+    steps:
+      - name: Verify exact authorized Codespace from hosting account
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" || { echo CODESPACE_PAT_MISSING; exit 11; }
+          gh codespace list --limit 100 --json name,state,repository > "$RUNNER_TEMP/codespaces.json"
+          jq -e --arg name "$CODESPACE" '
+            [.[] | select(.name == $name and .state == "Available" and
+              ((if (.repository | type) == "string" then .repository
+                else (.repository.nameWithOwner // .repository.full_name // "") end)
+               | test("^[^/]+/Unity-Game-Aris$")))] | length == 1
+          ' "$RUNNER_TEMP/codespaces.json" >/dev/null || {
+            echo EXACT_OR_AUTHORIZED_CODESPACE_NOT_AVAILABLE; exit 12;
+          }
+          echo AARIS_EXISTING_CODESPACE_VERIFIED
+
+      - name: Verify source APK identity and checksum inside live Codespace
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -euo pipefail
+          timeout 240 gh codespace ssh -c "$CODESPACE" -- 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          B=/tmp/aaris-codespaces/android-apk
+          test -s "$B/native-package-verified.json"
+          grep -qxF AARIS_APK_SIGNATURE_PACKAGE_ABI_MANIFEST_CRC_SHA256_VERIFIED "$B/native-build-stage"
+          grep -qxF AARIS_APK_LOCAL_BUILD_READY_NEEDS_REAL_DEVICE_INSTALL_TEST "$B/native-build-stage"
+          cd "$B/Build"
+          test "$(stat -c %s AarisGame.apk)" = 384766349
+          printf '%s  AarisGame.apk\n' 07dd49c30571d4fdd6203ce7a0fbb1b3339180135e77131ac0e4999b0d605464 | sha256sum -c -
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/aaris-codespaces/android-apk/native-package-verified.json'))
+          assert d.get('status')=='verified-archive-and-v2-signature'
+          assert d.get('package')=='com.aaris.game'
+          assert d.get('bytes')==384766349
+          assert d.get('sha256')=='07dd49c30571d4fdd6203ce7a0fbb1b3339180135e77131ac0e4999b0d605464'
+          assert d.get('minSdk',999)<=33
+          print('REMOTE_APK_INSTALLABILITY_STATIC_CHECKS_PASSED')
+          PY
+          REMOTE
+          echo REMOTE_BUILD_AND_SHA256_VERIFIED
+
+      - name: Transfer prebuilt APK without rebuild
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          if ! timeout 2400 gh codespace cp -e -c "$CODESPACE" \
+            'remote:/tmp/aaris-codespaces/android-apk/Build/AarisGame.apk' dist/AarisGame.apk; then
+            rm -f dist/AarisGame.apk
+            timeout 2400 gh codespace ssh -c "$CODESPACE" -- \
+              'cat /tmp/aaris-codespaces/android-apk/Build/AarisGame.apk' > dist/AarisGame.apk
+          fi
+          test "$(stat -c %s dist/AarisGame.apk)" = "$EXPECTED_BYTES"
+          printf '%s  AarisGame.apk\n' "$EXPECTED_SHA256" > dist/AarisGame.sha256
+          (cd dist && sha256sum -c AarisGame.sha256)
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile("dist/AarisGame.apk") as z:
+              names=set(z.namelist())
+              assert "AndroidManifest.xml" in names
+              assert "classes.dex" in names
+              assert any(x.startswith("lib/arm64-v8a/") and x.endswith(".so") for x in names)
+              assert any(x.startswith("lib/armeabi-v7a/") and x.endswith(".so") for x in names)
+              assert z.testzip() is None
+          print("APK_TRANSFER_ZIP_ABI_AND_HASH_VERIFIED")
+          PY
+
+      - name: Publish verified APK to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo RELEASE_TAG_ALREADY_EXISTS_REVIEW_REQUIRED
+            exit 40
+          fi
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          Aaris Game Android test APK built 12 November 2026.
+          Actual Unity build source: $SOURCE_COMMIT on fix/character-motion-original-icewall-20261111 (NOT current canonical main).
+          GitHub release tag targets canonical main for download hosting only; no game branches are merged.
+          App package: com.aaris.game. File size: $EXPECTED_BYTES bytes.
+          SHA256: $EXPECTED_SHA256
+          Verified: Android v2 signature, ZIP/CRC, manifest, ARMv7 and ARM64 libraries, package ID, checksum.
+          This test APK has NOT been installed on a real device. A previous app with a different signing key may require a clean install; preserve your data first.
+          EOF
+          gh release create "$TAG" \
+            dist/AarisGame.apk dist/AarisGame.sha256 \
+            -R "$GITHUB_REPOSITORY" \
+            --target main \
+            --title "Aaris Android Game - Verified Codespace APK (12 Nov 2026)" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --prerelease
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[] | select(.name == "AarisGame.apk") | .size' \
+            | grep -qxF "$EXPECTED_BYTES"
+          echo "APK_RELEASE_DIRECT_URL=https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/AarisGame.apk"
+          echo APK_RELEASE_ASSET_SIZE_VERIFIED
+
+      - name: Post release result to owner issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_RESULT: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Aaris APK release outcome: $JOB_RESULT"
+            echo "Build source (not main): $SOURCE_COMMIT"
+            echo "SHA256: $EXPECTED_SHA256"
+            if [[ "$JOB_RESULT" == success ]]; then
+              echo "Direct APK: https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/AarisGame.apk"
+            fi
+            echo "Run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > "$RUNNER_TEMP/apk-release-result.txt"
+          gh issue comment 77 -R "$GITHUB_REPOSITORY" -F "$RUNNER_TEMP/apk-release-result.txt"
