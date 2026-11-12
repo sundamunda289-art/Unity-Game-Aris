@@ -59,6 +59,16 @@ def check() -> None:
     assert "Screen.safeArea" in hud and "CanvasScaler.ScaleMode.ScaleWithScreenSize" in hud
     assert "OnPointerDown" in button and "OnPointerUp" in button
     assert "SetFireHeld(false)" in hud and "CapturesScreenPosition" in hud
+    # The HUD forwards Fire-button drag to the player's ONLY look motor.
+    # Without this exact player method Unity fails compilation (CS1061),
+    # even when tree-sitter accepts every individual C# source file.
+    assert "player.ForwardLookDelta(pixels);" in hud
+    assert "owner.ForwardLookDelta(eventData.delta);" in button
+    assert "public void ForwardLookDelta(Vector2 pixels)" in motor
+    forwarded = motor.split("public void ForwardLookDelta(Vector2 pixels)", 1)[1]
+    forwarded = forwarded.split("private void ReadInput()", 1)[0]
+    assert "if (!isActiveAndEnabled" in forwarded
+    assert "Look(pixels);" in forwarded
     assert "standaloneInputModule" not in hud  # Do not rely on arbitrary user-provided code.
     # Disabling the HUD releases held fire/jump and clears the singleton.
     # Re-enabling the same Canvas must restore pointer capture and refresh
