@@ -80,6 +80,8 @@ def check() -> None:
     forwarded = motor.split("public void ForwardLookDelta(Vector2 pixels)", 1)[1]
     forwarded = forwarded.split("private void ReadInput()", 1)[0]
     assert "if (!isActiveAndEnabled" in forwarded
+    assert "if (lookFinger >= 0) return;" in forwarded
+    assert forwarded.index("if (lookFinger >= 0) return;") < forwarded.index("Look(pixels);")
     assert "Look(pixels);" in forwarded
     assert "standaloneInputModule" not in hud  # Do not rely on arbitrary user-provided code.
     # Disabling the HUD releases held fire/jump and clears the singleton.
