@@ -162,7 +162,7 @@ def run():
     assert "TryResolve" in world and "Physics.CheckCapsule" in world
     assert "if (roof.collider is TerrainCollider)" in world
     assert "float chance = indoor ? 0.72f :" in world
-    assert 'c.kind == "tree" ? 0.85f : 0.60f;' in world
+    assert 'c.kind == "tree" ? 0.92f : 0.78f;' in world
     assert "FindObjectsByType<Collider>" not in world
     assert "TreeInstance[] trees = data.treeInstances;" in world
     assert "while (accepted < 48 && attempts++ < 240)" in world
