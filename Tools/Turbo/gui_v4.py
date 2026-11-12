@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -30,7 +31,7 @@ ROOT = Path("/tmp/aaris-v4-evidence")
 SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,55}\Z")
 SAFE_KEY = re.compile(r"[A-Za-z0-9_+:-]{1,48}\Z")
 ALLOWED_OPS = {"key_down", "key_up", "key_tap", "mouse_down", "mouse_up",
-               "move", "click", "wait", "mark"}
+               "move", "move_smooth", "click", "wait", "mark"}
 LOCK_PATH = "/tmp/aaris-v4-input.lock"
 
 
@@ -67,13 +68,20 @@ def verify_sequence(steps, width, height):
             if type(step.get("button")) is not int or step["button"] not in (1, 2, 3):
                 raise ValueError("invalid button")
             clean["button"] = step["button"]
-        elif op in ("move", "click"):
+        elif op in ("move", "move_smooth", "click"):
             expected.update(("x", "y"))
             for name, bound in (("x", width), ("y", height)):
                 value = step.get(name)
                 if type(value) is not int or not 0 <= value < bound:
                     raise ValueError("coordinate outside real desktop")
                 clean[name] = value
+            if op == "move_smooth":
+                expected.add("seconds")
+                seconds = step.get("seconds")
+                if type(seconds) not in (int, float) or not 0.05 <= seconds <= 2:
+                    raise ValueError("invalid smooth-move duration")
+                total_delay += seconds
+                clean["seconds"] = float(seconds)
         elif op == "wait":
             expected.add("seconds")
             seconds = step.get("seconds")
@@ -179,6 +187,21 @@ def compose_sheet(folder, frames):
     return destination
 
 
+def smoothly_move(x, y, seconds):
+    raw = invoke("xdotool", "getmouselocation", "--shell").stdout.decode()
+    fields = dict(line.split("=", 1) for line in raw.splitlines() if "=" in line)
+    ox, oy = int(fields["X"]), int(fields["Y"])
+    segments = max(2, min(40, round(seconds * 30)))
+    start = time.monotonic()
+    for i in range(1, segments + 1):
+        fraction = i / segments
+        px = round(ox + (x - ox) * fraction)
+        py = round(oy + (y - oy) * fraction)
+        invoke("xdotool", "mousemove", "--sync", str(px), str(py))
+        remaining = start + seconds * fraction - time.monotonic()
+        if remaining > 0: time.sleep(remaining)
+
+
 def execute_steps(steps, trace, start):
     held_keys, held_buttons = set(), set()
     def log(event, **fields):
@@ -202,6 +225,8 @@ def execute_steps(steps, trace, start):
             elif op == "mouse_up":
                 invoke("xdotool", "mouseup", str(step["button"]))
                 held_buttons.discard(step["button"])
+            elif op == "move_smooth":
+                smoothly_move(step["x"], step["y"], step["seconds"])
             elif op in ("move", "click"):
                 invoke("xdotool", "mousemove", "--sync", str(step["x"]), str(step["y"]))
                 if op == "click":
@@ -232,6 +257,10 @@ def package(folder, frames, trace, errors, target_fps):
         "timeline": trace,
         "capture_errors": errors,
     }
+    span = manifest["duration_ms"]
+    manifest["measured_fps"] = round((len(frames) - 1) * 1000 / span, 2) if span > 0 else 0
+    manifest["fps_target_met"] = manifest["measured_fps"] >= target_fps * 0.90
+    manifest["missed_frames_estimate"] = max(0, round(span * target_fps / 1000) + 1 - len(frames))
     (folder / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     sheet = compose_sheet(folder, frames)
     archive = folder / "replay.zip"
@@ -243,7 +272,7 @@ def package(folder, frames, trace, errors, target_fps):
     return manifest
 
 
-def replay(steps, run_id, seconds, fps):
+def replay(steps, run_id, seconds, fps, inline_preview=False):
     if not SAFE_ID.fullmatch(run_id) or not 1 <= seconds <= 6 or not 1 <= fps <= 30:
         raise ValueError("invalid replay duration, rate, or id")
     width, height = screen_size()
@@ -279,6 +308,11 @@ def replay(steps, run_id, seconds, fps):
                      "action_error": action_error,
                      "result": "action_error" if action_error else ("capture_error" if rec.errors or not rec.frames else "captured")})
     print(json.dumps({k: v for k, v in manifest.items() if k not in ("frames", "timeline")}, ensure_ascii=False))
+    if inline_preview and (folder / "contact_sheet.jpg").exists():
+        jpeg = (folder / "contact_sheet.jpg").read_bytes()
+        if len(jpeg) <= 220_000:
+            print("AARIS_V4_PREVIEW_BASE64=" + base64.b64encode(jpeg).decode("ascii"))
+            print("AARIS_V4_PREVIEW_COMPLETE")
     return 0 if manifest["result"] == "captured" else 2
 
 
@@ -288,12 +322,14 @@ def selftest():
           {"op": "mouse_up", "button": 1}, {"op": "mark", "label": "fire"},
           {"op": "move", "x": 3, "y": 4}]
     assert len(verify_sequence(ok, 1280, 720)) == len(ok)
+    assert verify_sequence([{"op":"move_smooth","x":55,"y":66,"seconds":0.4}],1280,720)
     bad = [[{"op": "key_down", "key": "a;rm -rf"}],
            [{"op": "wait", "seconds": 25}],
            [{"op": "click", "x": 1280, "y": 2}],
            [{"op": "shell", "command": "whoami"}],
            [{"op": "key_up", "key": "a", "script": "hack"}],
-           [{"op": "wait", "seconds": 2.9}] * 4]
+           [{"op": "wait", "seconds": 2.9}] * 4,
+           [{"op": "move_smooth", "x": 20, "y": 30, "seconds": 19}]]
     for steps in bad:
         try: verify_sequence(steps, 1280, 720)
         except ValueError: continue
@@ -308,6 +344,7 @@ def main():
     p.add_argument("--id", default=None, help="unique run identifier")
     p.add_argument("--seconds", type=float, default=3)
     p.add_argument("--fps", type=int, default=15)
+    p.add_argument("--inline-preview", action="store_true")
     args = p.parse_args()
     if args.selftest:
         selftest()
@@ -316,10 +353,13 @@ def main():
         p.error("--sequence is required, or --selftest")
     steps = json.loads(args.sequence)
     run_id = args.id or time.strftime("v4_%Y%m%d_%H%M%S") + "_" + str(os.getpid())
-    return replay(steps, run_id, args.seconds, args.fps)
+    return replay(steps, run_id, args.seconds, args.fps, inline_preview=args.inline_preview)
 
 
 if __name__ == "__main__":
+    def _cancel(signum, frame):
+        raise RuntimeError("cancelled by signal; releasing held inputs")
+    signal.signal(signal.SIGTERM, _cancel)
     try: sys.exit(main())
     except (ValueError, RuntimeError, subprocess.SubprocessError, OSError, ImportError) as exc:
         print("AARIS_V4_ERROR:" + type(exc).__name__ + ":" + str(exc)[:160], file=sys.stderr)
