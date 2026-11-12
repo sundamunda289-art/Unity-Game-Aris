@@ -277,6 +277,11 @@ namespace Aaris.MapReview
         public void ForwardLookDelta(Vector2 pixels)
         {
             if (!isActiveAndEnabled || pixels.sqrMagnitude < 0.0001f) return;
+            // One camera owner at a time: with an independent right-thumb
+            // look active, Fire/Jump hold drags must not ALSO rotate the
+            // camera and double the swipe response in multi-touch play.
+            // Fire-button-only drag remains a valid way to aim.
+            if (lookFinger >= 0) return;
             Look(pixels);
         }
         private void ReadInput()
