@@ -195,6 +195,16 @@ def run():
     assert "MaximumActiveLoot = 40" in world
     assert "MaximumBuildAttemptsPerFrame = 2" in world
 
+    # The normal landing pickup remains physical; only after failed
+    # floor/visibility checks may the existing inventory grant one starter.
+    # Prevent a future refactor from silently stranding players unarmed.
+    assert "private void TryLastResortStarterEquip()" in starter
+    assert "Time.unscaledTime - starterUnarmedSince < 3f" in starter
+    assert "if (!TryFindDropSpot(out Vector3 point, requireReachable: true))" in starter
+    assert "TryLastResortStarterEquip();" in starter
+    assert "inventory.TryPickup(state, out AarisWeaponState previous)" in starter
+    assert "starterLootSettled = true;" in starter
+
     assert "UnityWebRequest" not in "\n".join([catalog_cs,gun_cs,inventory,world,hud])
     print("PASS: 5 locally committed, SHA-verified CC0 weapon FBXs, single-weapon swap/drop, magazine/recoil/scope, "
           "authored 2km loot candidates, streaming and combat source contracts")
