@@ -78,6 +78,20 @@ namespace Aaris.MapReview
             if (owner != null) owner.Up(kind);
         }
 
+        // Android can suspend or lose focus while a Fire/Jump finger is down.
+        // Unity is not guaranteed to dispatch PointerUp/Cancel on resume.
+        // Clear the exact owned pointers and release the action so the next
+        // physical touch can start a fresh hold instead of being ignored.
+        private void OnApplicationPause(bool paused)
+        {
+            if (paused) Release();
+        }
+
+        private void OnApplicationFocus(bool focused)
+        {
+            if (!focused) Release();
+        }
+
         private void OnDisable() => Release();
     }
 }
