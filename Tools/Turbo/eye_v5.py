@@ -185,7 +185,7 @@ def evidence(run_id, script, fps, seconds, timeout, inline_preview):
                             event["error"]="UnityRejectedCommand"
                     except (RuntimeError,TimeoutError,ValueError,OSError) as ex:
                         event["error"]=type(ex).__name__+": "+str(ex)[:180]
-                elif step["op"] in ("os_click","os_drag","os_key"):
+                elif step["op"] in ("os_click","os_drag","os_key","os_hold"):
                     try:
                         os_action(step)
                     except (OSError,subprocess.SubprocessError,RuntimeError) as ex:
