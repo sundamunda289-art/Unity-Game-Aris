@@ -163,6 +163,13 @@ def run():
     assert "candidate.collider.attachedRigidbody != null" in world
     assert "Mathf.Abs(candidate.point.y - expectedGround) > 0.38f" in world
     assert "TryResolve" in world and "Physics.CheckCapsule" in world
+    # Sealed-house fallback: bounded outdoor probes, not inaccessible floor loot.
+    assert 'bool indoor = c.kind == "indoor" && !forceOutdoor;' in world
+    assert 'bool relocateIndoor = candidate.kind == "indoor";' in world
+    assert "forceOutdoor: relocateIndoor" in world
+    assert "RaycastHit roof, 4.5f" in world
+    assert "alternative < 2 && alternateProbeBudget > 0" in world
+    assert "int alternateProbeBudget = 3;" in world
     assert "if (roof.collider is TerrainCollider)" in world
     assert "float chance = indoor ? 0.72f :" in world
     assert 'c.kind == "tree" ? 0.92f : 0.78f;' in world

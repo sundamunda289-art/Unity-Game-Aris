@@ -126,9 +126,16 @@ class LootGridRegression(unittest.TestCase):
         self.assertNotIn("terrain.transform.position.y + terrain.SampleHeight", SOURCE)
         self.assertIn("float expectedGround = indoor ? c.y :", SOURCE)
 
-    def test_outdoor_relocation_keeps_stream_and_physics_budgets(self):
+    def test_sealed_house_relocation_keeps_stream_and_physics_budgets(self):
         self.assertIn("private bool TryResolveNearCandidate(", SOURCE)
-        self.assertIn('if (candidate.kind == "indoor") return false;', SOURCE)
+        self.assertIn('bool relocateIndoor = candidate.kind == "indoor";', SOURCE)
+        self.assertIn('bool indoor = c.kind == "indoor" && !forceOutdoor;', SOURCE)
+        self.assertIn("forceOutdoor: relocateIndoor", SOURCE)
+        self.assertIn("5.5f : 9.0f", SOURCE)
+        self.assertIn("2.5f : 4.5f", SOURCE)
+        self.assertIn("if (forceOutdoor)", SOURCE)
+        self.assertIn("RaycastHit roof, 4.5f", SOURCE)
+        self.assertNotIn('if (candidate.kind == "indoor") return false;', SOURCE)
         self.assertIn("int alternateProbeBudget = 3;", SOURCE)
         self.assertIn("alternative < 2 && alternateProbeBudget > 0", SOURCE)
         self.assertIn("alternateProbeBudget--;", SOURCE)

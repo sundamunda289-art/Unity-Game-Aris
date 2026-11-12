@@ -286,13 +286,14 @@ namespace Aaris.MapReview
         }
 
         private bool TryResolve(AarisLootCandidate c, Terrain[] terrains,
-            out Vector3 spot, float offsetX = 0f, float offsetZ = 0f)
+            out Vector3 spot, float offsetX = 0f, float offsetZ = 0f,
+            bool forceOutdoor = false)
         {
             spot = default(Vector3);
             float x = c.x + offsetX, z = c.z + offsetZ;
             var terrain = TerrainAt(x, z, terrains);
             if (terrain == null) return false;
-            bool indoor = c.kind == "indoor";
+            bool indoor = c.kind == "indoor" && !forceOutdoor;
             // For outdoor positions use the native Terrain surface, NOT
             // the first arbitrary roof encountered from the sky.
             // Terrain.SampleHeight is already in world-space Y; do not add tile Y twice.
@@ -362,6 +363,17 @@ namespace Aaris.MapReview
                     return false;
             }
 
+            // A sealed replacement house can invalidate authored indoor loot.
+            // Exterior retries must reject terrain hidden below a solid roof.
+            if (forceOutdoor)
+            {
+                Vector3 above = floor.point + Vector3.up * 0.8f;
+                if (Physics.Raycast(above, Vector3.up, out RaycastHit roof, 4.5f,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) &&
+                    !(roof.collider is TerrainCollider))
+                    return false;
+            }
+
             Vector3 center = floor.point + Vector3.up * 0.43f;
             if (Physics.CheckCapsule(center + Vector3.down * .05f,
                 center + Vector3.up * .25f, .19f,
@@ -376,13 +388,13 @@ namespace Aaris.MapReview
         // outdoor slot. Retrying that identical blocked slot forever leaves
         // an area empty even though clear ground is a few metres away.
         // Test only two deterministic neighbours and share a strict physics
-        // query budget across the entire mobile streaming frame. Indoor loot
-        // NEVER moves to an unintended outdoor room.
+        // query budget across the entire mobile streaming frame. Invalid
+        // indoor floors may fall back to safe uncovered ground outside houses.
         private bool TryResolveNearCandidate(AarisLootCandidate candidate,
             int index, Terrain[] terrains, ref int alternateProbeBudget, out Vector3 spot)
         {
             if (TryResolve(candidate, terrains, out spot)) return true;
-            if (candidate.kind == "indoor") return false;
+            bool relocateIndoor = candidate.kind == "indoor";
 
             uint hash = matchSeed ^ (unchecked((uint)(index + 1)) * 2654435761u);
             float angle = (hash & 65535u) * (Mathf.PI * 2f / 65536f);
@@ -390,13 +402,16 @@ namespace Aaris.MapReview
             {
                 alternateProbeBudget--;
                 float heading = angle + (alternative == 0 ? 0f : Mathf.PI * 0.75f);
-                float distance = alternative == 0 ? 2.5f : 4.5f;
+                float distance = relocateIndoor
+                    ? (alternative == 0 ? 5.5f : 9.0f)
+                    : (alternative == 0 ? 2.5f : 4.5f);
                 float x = candidate.x + Mathf.Cos(heading) * distance;
                 float z = candidate.z + Mathf.Sin(heading) * distance;
                 if (x < -957f || x > 957f || z < -957f || z > 957f)
                     continue;
                 if (TryResolve(candidate, terrains, out spot,
-                    x - candidate.x, z - candidate.z))
+                    x - candidate.x, z - candidate.z,
+                    forceOutdoor: relocateIndoor))
                     return true;
             }
             return false;
