@@ -68,13 +68,13 @@ namespace Aaris.MapReview
             foreach (var collider in visible.GetComponentsInChildren<Collider>(true))
                 collider.enabled = false;
 
-            // An FBX can contain several meshes. The first renderer may be
-            // only a sight, magazine or tiny attachment, so size the whole
-            // authored gun once rather than scaling that one piece to 82 cm.
-            var renderers = visible.GetComponentsInChildren<Renderer>(true);
-            Bounds modelBounds = renderers[0].bounds;
-            for (int i = 1; i < renderers.Length; i++)
-                modelBounds.Encapsulate(renderers[i].bounds);
+            // Use the renderer array already cached above; requesting the
+            // entire FBX hierarchy a second time allocated an extra array
+            // on every streamed pickup, especially expensive during bursts
+            // on a 2 GB Android phone. Bounds still include every mesh.
+            Bounds modelBounds = modelRenderers[0].bounds;
+            for (int i = 1; i < modelRenderers.Length; i++)
+                modelBounds.Encapsulate(modelRenderers[i].bounds);
             float length = Mathf.Max(modelBounds.size.x,
                 modelBounds.size.y, modelBounds.size.z);
             if (length > 0.001f)
@@ -84,9 +84,9 @@ namespace Aaris.MapReview
             model.localRotation = Quaternion.Euler(0f, 0f, -75f);
             // FBX pivots need not sit inside the mesh. Recompute bounds after
             // rotation/scaling and keep the complete pickup above the floor.
-            modelBounds = renderers[0].bounds;
-            for (int i = 1; i < renderers.Length; i++)
-                modelBounds.Encapsulate(renderers[i].bounds);
+            modelBounds = modelRenderers[0].bounds;
+            for (int i = 1; i < modelRenderers.Length; i++)
+                modelBounds.Encapsulate(modelRenderers[i].bounds);
             Vector3 delta = new Vector3(
                 transform.position.x - modelBounds.center.x,
                 transform.position.y + 0.08f - modelBounds.min.y,
