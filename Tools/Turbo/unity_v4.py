@@ -16,9 +16,11 @@ import time
 import uuid
 
 ALLOWED = {"status", "camera", "focus", "play", "stop", "pause", "resume",
-           "step", "release", "action"}
+           "step", "release", "action", "uimap", "tap_ui", "hold_ui"}
 ACTIONS = {"Fire", "Jump", "Crouch", "Prone", "Sprint", "Pickup", "Scope",
            "Reload", "Drop"}
+UI_TARGETS = {"HUD Fire", "HUD Jump", "HUD Crouch", "HUD Prone", "HUD Sprint",
+              "ADS", "PICK", "DROP", "RELOAD"}
 RE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 FOLDER = Path("ci-live-control")
 
@@ -36,6 +38,15 @@ def validate(command):
         expected.add("target")
         if not isinstance(command.get("target"), str) or not 1 <= len(command["target"]) <= 180:
             raise ValueError("invalid focus target")
+    if op in ("tap_ui", "hold_ui"):
+        expected.add("target")
+        if command.get("target") not in UI_TARGETS:
+            raise ValueError("unknown UI target")
+        if op == "hold_ui":
+            expected.add("seconds")
+            number = command.get("seconds")
+            if type(number) not in (int, float) or not math.isfinite(number) or not .05 <= number <= 3:
+                raise ValueError("invalid UI hold duration")
     if op == "action":
         expected.add("target")
         if command.get("target") not in ACTIONS:
@@ -93,11 +104,15 @@ def selftest():
     assert validate({"id": "abc", "op": "camera",
                      "x": 450, "y": 20, "z": 800, "yaw": 10, "pitch": 15})
     assert validate({"id": "abc", "op": "action", "target": "Fire", "seconds": 1.5})
+    assert validate({"id": "abc", "op": "tap_ui", "target": "PICK"})
+    assert validate({"id": "abc", "op": "hold_ui", "target": "HUD Fire", "seconds": 1})
     for data in [
         {"id": "abc", "op": "eval", "target": "rm -rf"},
         {"id": "abc", "op": "camera", "x": 0},
         {"id": "abc", "op": "action", "target": "Reflection.Invoke"},
         {"id": "abc", "op": "action", "target": "Fire", "seconds": 60},
+        {"id": "abc", "op": "tap_ui", "target": "Settings"},
+        {"id": "abc", "op": "hold_ui", "target": "PICK", "seconds": 999},
         {"id": "abc", "op": "status", "script": "anything"},
     ]:
         try:
@@ -131,9 +146,9 @@ def main():
     if not 0 < args.timeout <= 120:
         p.error("--timeout must be 1..120 seconds")
     data = {"id": "v4_" + uuid.uuid4().hex[:24], "op": args.op}
-    if args.op in {"focus", "action"}:
+    if args.op in {"focus", "action", "tap_ui", "hold_ui"}:
         data["target"] = args.target
-    if args.op == "action" and args.target in {"Fire", "Jump"}:
+    if (args.op == "action" and args.target in {"Fire", "Jump"}) or args.op == "hold_ui":
         data["seconds"] = args.seconds
     if args.op == "camera":
         for name in ("x", "y", "z", "yaw", "pitch"):
