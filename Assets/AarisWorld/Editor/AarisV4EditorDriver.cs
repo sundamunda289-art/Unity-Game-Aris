@@ -249,15 +249,23 @@ namespace Aaris.MapReview.Editor
                 pointerId = -9001, position = point, button = PointerEventData.InputButton.Left,
                 pointerPress = ui, rawPointerPress = ui, eligibleForClick = true,
             };
+            if (req.op == "hold_ui") ValidateNumber(req.seconds, 0.05f, 3f);
             ExecuteEvents.Execute(ui, pointer, ExecuteEvents.pointerDownHandler);
             if (req.op == "tap_ui")
             {
-                ExecuteEvents.Execute(ui, pointer, ExecuteEvents.pointerUpHandler);
-                ExecuteEvents.Execute(ui, pointer, ExecuteEvents.pointerClickHandler);
+                try
+                {
+                    ExecuteEvents.Execute(ui, pointer, ExecuteEvents.pointerUpHandler);
+                    ExecuteEvents.Execute(ui, pointer, ExecuteEvents.pointerClickHandler);
+                }
+                finally
+                {
+                    // A faulting UI callback must not leave Fire/Jump held.
+                    ExecuteEvents.Execute(ui, pointer, ExecuteEvents.pointerUpHandler);
+                }
             }
             else
             {
-                ValidateNumber(req.seconds, 0.05f, 3f);
                 heldUiObject = ui;
                 heldUiPointer = pointer;
                 heldUiUntil = EditorApplication.timeSinceStartup + req.seconds;
@@ -279,8 +287,13 @@ namespace Aaris.MapReview.Editor
             if (req.op == "tap_ui" || req.op == "hold_ui") { TapNamedUi(req); return; }
             if (req.op == "play") { EditorApplication.isPlaying = true; return; }
             if (req.op == "stop") { ReleaseInputs(); EditorApplication.isPlaying = false; return; }
-            if (req.op == "pause") { EditorApplication.isPaused = true; return; }
-            if (req.op == "resume") { EditorApplication.isPaused = false; return; }
+            if (req.op == "pause" || req.op == "resume")
+            {
+                if (!EditorApplication.isPlaying)
+                    throw new InvalidOperationException("Pause/resume requires Play Mode");
+                EditorApplication.isPaused = req.op == "pause";
+                return;
+            }
             if (req.op == "step")
             {
                 if (!EditorApplication.isPlaying || !EditorApplication.isPaused)
@@ -316,11 +329,18 @@ namespace Aaris.MapReview.Editor
                     location = obj.transform.position;
                     var bounds = obj.GetComponentsInChildren<Renderer>(true);
                     float radius = 4f;
+                    Bounds combined = new Bounds(location, Vector3.zero);
+                    bool foundRenderer = false;
                     foreach (var renderer in bounds)
                     {
                         if (renderer == null) continue;
-                        location = renderer.bounds.center;
-                        radius = Mathf.Max(radius, renderer.bounds.extents.magnitude);
+                        if (!foundRenderer) { combined = renderer.bounds; foundRenderer = true; }
+                        else combined.Encapsulate(renderer.bounds);
+                    }
+                    if (foundRenderer)
+                    {
+                        location = combined.center;
+                        radius = Mathf.Max(4f, combined.extents.magnitude);
                     }
                     facing = Quaternion.Euler(18f, 35f, 0f);
                     distance = Mathf.Clamp(radius * 2.6f, 3f, 150f);
