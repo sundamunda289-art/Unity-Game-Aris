@@ -167,6 +167,27 @@ def test():
         follow.index("followCamera.transform.position = next;"))
     assert "cameraVelocity = Vector3.zero;" in follow
 
+    # Preserve a normal vehicle chase lens across an ADS-to-drive handoff,
+    # and never clear the scope on a rejected (unsafe/out-of-range) entry.
+    foot = source("AarisThirdPersonPlayer.cs")
+    entry = session.split("private bool TryEnter()", 1)[1].split(
+        "private void SetFootHudVisible(", 1)[0]
+    assert entry.index("if (!nearbyCar.TryTakeDriver(this)) return false;") < (
+        entry.index("footMotor.PrepareVehicleCameraHandoff();"))
+    assert entry.index("footMotor.PrepareVehicleCameraHandoff();") < (
+        entry.index("footMotor.enabled = false;"))
+    handoff = foot.split("public void PrepareVehicleCameraHandoff()", 1)[1].split(
+        "public void ResetCameraAfterVehicle()", 1)[0]
+    assert "weaponAimFov = -1f;" in handoff
+    assert "followCamera.fieldOfView = normalCameraFov;" in handoff
+    exit_motor = foot.split("public void ResetCameraAfterVehicle()", 1)[1].split(
+        "private void ResetPlayer()", 1)[0]
+    assert "PrepareVehicleCameraHandoff();" in exit_motor
+    inventory = source("AarisWeaponInventory.cs")
+    inventory_disable = inventory.split("private void OnDisable()", 1)[1]
+    assert "aiming = false;" in inventory_disable
+    assert "motor.SetWeaponAimFov(-1f);" in inventory_disable
+
     # Existing map and touchscreen interaction protections must remain.
     assert "Physics.OverlapBoxNonAlloc" in world
     assert "float ground = terrain.SampleHeight(" in world

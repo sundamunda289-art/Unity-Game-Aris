@@ -165,6 +165,10 @@ namespace Aaris.MapReview
             if (battleHud != null) battleHud.CancelVehicleInputs();
             SetFootHudVisible(false);
 
+            // The equipped weapon clears ADS intent when disabled, but the
+            // shared camera must also restore its normal rendered FOV now.
+            // Otherwise a scoped lens can remain active during the car chase.
+            footMotor.PrepareVehicleCameraHandoff();
             // Do not leave a walking physics motor enabled inside the car.
             footMotor.enabled = false;
             capsule.enabled = false;

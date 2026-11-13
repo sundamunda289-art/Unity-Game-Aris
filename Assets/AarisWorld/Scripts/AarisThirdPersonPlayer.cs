@@ -895,6 +895,19 @@ namespace Aaris.MapReview
             PlaceCamera(true);
         }
 
+        /// <summary>
+        /// Release the previous weapon scope before the vehicle camera takes
+        /// ownership. Also reuse on exit so there is no zoomed chase/orbit
+        /// frame even when the ADS target was already cleared by inventory.
+        /// </summary>
+        public void PrepareVehicleCameraHandoff()
+        {
+            weaponAimFov = -1f;
+            if (followCamera != null &&
+                !Mathf.Approximately(followCamera.fieldOfView, normalCameraFov))
+                followCamera.fieldOfView = normalCameraFov;
+        }
+
         /// <summary>Release the vehicle chase camera back to the walking motor.</summary>
         public void ResetCameraAfterVehicle()
         {
@@ -916,6 +929,7 @@ namespace Aaris.MapReview
             controller.stepOffset = battle != null
                 ? battle.GroundStepOffset : savedGroundStepOffset;
             cameraVelocity = Vector3.zero;
+            PrepareVehicleCameraHandoff();
             lastMouse = Input.mousePosition;
             PlaceCamera(true);
         }
