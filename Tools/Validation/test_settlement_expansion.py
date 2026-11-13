@@ -72,6 +72,26 @@ class ExpansionIntegrity(unittest.TestCase):
         self.assertGreaterEqual(len(set(s["district"] for s in p["sites"])), 10)
         self.assertEqual(len(set(s["name"] for s in p["sites"])), len(p["sites"]))
 
+    def test_modular_house_source_materials_are_isolated_per_house(self):
+        # A source prefab's roof/wall material must not become the fallback
+        # for a different house that lacks that material slot.
+        source = (ROOT / "Assets" / "AarisWorld" / "Scripts" /
+                  "AarisModularHouse.cs").read_text(encoding="utf-8")
+        create = source[source.index("public static GameObject Create("):]
+        match_start = create.index("            try\n")
+        restore_start = create.index("            finally\n", match_start)
+        scoped = create[match_start:restore_start]
+        restored = create[restore_start:]
+        for material in ("wall", "roof", "trim", "door"):
+            self.assertRegex(
+                create[:match_start], rf"\bdefault{material.title()}\s*=")
+            self.assertIn(f"{material} = default{material.title()};", restored)
+        self.assertIn('wall = Match(originalPrefab,', scoped)
+        self.assertIn('roof = Match(originalPrefab,', scoped)
+        self.assertIn('trim = Match(originalPrefab,', scoped)
+        self.assertIn('door = Match(originalPrefab,', scoped)
+        self.assertIn("return home;", scoped)
+
     def test_original_local_prefabs_resolve_by_guid(self):
         script_meta = (ROOT / "Assets" / "AarisWorld" / "Scripts" /
                        "AarisExpansionCatalog.cs.meta").read_text(encoding="utf-8")
