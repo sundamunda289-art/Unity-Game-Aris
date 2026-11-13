@@ -123,6 +123,35 @@ for fps in (10, 30, 60, 120):
     visibly_airborne = not grounded and (deliberate_jump or age_since_contact > 0.13)
     assert visibly_airborne, fps
 
+# Terrain seam grace must also apply to visual body balance. Previously the
+# feet kept cycling but the lateral lean and turn pitch dropped for one frame,
+# causing a body twitch on stair lips at low mobile refresh rates.
+assert visual.count('bool visuallyAirborne =') == 1
+assert visual.index('bool visuallyAirborne =') < visual.index('float bankTarget =')
+assert 'float bankTarget = !visuallyAirborne' in visual
+assert 'float standingShare = !visuallyAirborne' in visual
+assert 'float bankTarget = controller.isGrounded' not in visual
+assert 'float standingShare = controller.isGrounded' not in visual
+for fps in (10, 30, 60, 120):
+    dt = 1.0 / fps
+    def bank_after_steps(one_frame_seam):
+        bank = 0.0
+        last_contact_age = 0.0
+        for frame in range(12):
+            grounded = not one_frame_seam or frame != 6
+            last_contact_age = 0.0 if grounded else last_contact_age + dt
+            visually_airborne = not grounded and last_contact_age > 0.13
+            target = -2.0 if not visually_airborne else 0.0
+            bank += (target - bank) * (1.0 - math.exp(-dt / 0.2))
+        return bank
+    assert math.isclose(bank_after_steps(True), bank_after_steps(False),
+                        abs_tol=1e-12), fps
+    # Jump timestamp overrides contact grace instantly: keep a deliberate
+    # takeoff from retaining grounded stance/turn balance for 130 ms.
+    grounded, deliberate_jump = False, True
+    airborne = not grounded and (deliberate_jump or dt > 0.13)
+    assert airborne and (0.0 if airborne else -2.0) == 0.0, fps
+
 # Character's original embedded .fbm image is a tangent-space normal atlas,
 # not a skin albedo. Import its small derived normal atlas as a REAL Unity
 # normal texture, bind it to URP Lit and keep mip/streaming affordable on 2GB.
