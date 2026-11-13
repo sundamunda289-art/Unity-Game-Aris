@@ -87,6 +87,30 @@ for rise, angle, allowed in (
     # center is 0.31 m above feet; terrain must stay <= 0.21 m.
     got = rise <= (0.31 - 0.10) and math.cos(math.radians(angle)) >= math.cos(math.radians(45))
     assert got == allowed, (rise, angle, got)
+# A MeshCollider bridge/ramp can be walkable below the chest while its
+# uphill end clips the prone head. A centre-only raycast misses that case.
+mesh_clearance = action.split('private bool HasProneClearance(', 1)[1].split(
+    'private void Update()', 1)[0]
+assert 'bool walkableAlongBody = true;' in mesh_clearance
+assert 'float minMeshNormal = Mathf.Cos(capsule.slopeLimit * Mathf.Deg2Rad);' in mesh_clearance
+assert mesh_clearance.count('for (int end = 0; end < 2; end++)') == 2
+assert mesh_clearance.count('Vector3 sample = end == 0 ? head : legs;') == 2
+assert 'new Ray(sample + Vector3.up * 0.45f, Vector3.down)' in mesh_clearance
+assert 'floorHit.point.y > center.y - 0.11f' in mesh_clearance
+assert 'floorHit.normal.y < minMeshNormal' in mesh_clearance
+assert 'if (walkableAlongBody) continue;' in mesh_clearance
+assert 'new Ray(center + Vector3.up * 0.45f, Vector3.down)' not in mesh_clearance
+
+def mesh_support_clear(head_rise, leg_rise, slope_degrees):
+    return (head_rise <= 0.31 - 0.11 and leg_rise <= 0.31 - 0.11
+            and math.cos(math.radians(slope_degrees)) >= math.cos(math.radians(46)))
+
+for head, legs, slope, permitted in (
+    (0.0, 0.0, 0, True), (0.20, 0.10, 20, True),
+    (0.22, 0.0, 20, False), (0.0, 0.22, 20, False),
+    (0.10, 0.10, 55, False),
+):
+    assert mesh_support_clear(head, legs, slope) == permitted, (head, legs, slope)
 # Stance visual catch-up is quicker than the upward recovery, with a
 # frame-rate independent exponential; the physics capsule is untouched.
 assert 'crouching ? 0.11f : 0.15f' in visual

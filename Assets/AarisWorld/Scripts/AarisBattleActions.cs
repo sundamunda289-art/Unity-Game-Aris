@@ -284,11 +284,25 @@ namespace Aaris.MapReview
                     }
                     continue;
                 }
-                Ray floorProbe = new Ray(center + Vector3.up * 0.45f, Vector3.down);
-                if (obstacle.Raycast(floorProbe, out RaycastHit floorHit, 1.1f) &&
-                    floorHit.point.y <= center.y - 0.11f &&
-                    floorHit.normal.y >= Mathf.Cos(capsule.slopeLimit * Mathf.Deg2Rad))
-                    continue;
+                // An unobstructed centre point on a bridge or mesh ramp does
+                // not guarantee that its higher end clears a prone head/foot.
+                // Probe only a collider already overlapping the prone body,
+                // reusing collider-local raycasts without allocations.
+                bool walkableAlongBody = true;
+                float minMeshNormal = Mathf.Cos(capsule.slopeLimit * Mathf.Deg2Rad);
+                for (int end = 0; end < 2; end++)
+                {
+                    Vector3 sample = end == 0 ? head : legs;
+                    Ray floorProbe = new Ray(sample + Vector3.up * 0.45f, Vector3.down);
+                    if (!obstacle.Raycast(floorProbe, out RaycastHit floorHit, 1.1f) ||
+                        floorHit.point.y > center.y - 0.11f ||
+                        floorHit.normal.y < minMeshNormal)
+                    {
+                        walkableAlongBody = false;
+                        break;
+                    }
+                }
+                if (walkableAlongBody) continue;
                 return false;
             }
             return true;
