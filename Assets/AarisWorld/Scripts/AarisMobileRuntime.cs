@@ -44,6 +44,19 @@ namespace Aaris.MapReview
         private bool modifiedMipBudget;
         private float originalShadowDistance, appliedShadowDistance;
         private bool modifiedShadowDistance;
+        private int originalShadowCascades, appliedShadowCascades;
+        private bool modifiedShadowCascades;
+        // Android-only, reversible controls for 2 GB phones. These never alter
+        // serialized TerrainData, scenes, SpeedTree prefabs or material assets.
+        private Terrain[] mobileFoliageTiles;
+        private float[] originalDetailDistances, appliedDetailDistances;
+        private float[] originalBillboardDistances, appliedBillboardDistances;
+        private TerrainData[] mobileWindData;
+        private float[] originalGrassWindStrength;
+        private WindZone[] mobileWindZones;
+        private float[] originalWindMain, originalWindTurbulence;
+        private float[] originalWindPulseMagnitude, originalWindPulseFrequency;
+        private int suppressedWindZones, suppressedGrassTiles;
         private int slowIntervals, steadyIntervals, lastTargetFps;
         private float lastEffectiveTargetFps;
 #endif
@@ -130,11 +143,12 @@ namespace Aaris.MapReview
         private void ConfigureAndroidQuality()
         {
             if (!adaptiveAndroidResolution) return;
-            // The adaptation budget is specifically for 2–3 GB devices.
-            // On larger or unknown-RAM devices leave the native URP quality
-            // unchanged; a CPU-bound hitch must not blur their graphics.
+            // RAM is not a GPU score: inexpensive Mali-G52 phones can have
+            // 4 GB and still struggle with thousands of windy SpeedTrees.
+            // Enable the constrained-GPU path without blurring stronger GPUs.
             int memoryMB = SystemInfo.systemMemorySize;
-            if (memoryMB <= 0 || memoryMB > 3072) return;
+            bool constrainedGraphics = memoryMB <= 2304 || IsBudgetAndroidGpu();
+            if (memoryMB <= 0 || (memoryMB > 3072 && !constrainedGraphics)) return;
             androidPipeline = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
             if (androidPipeline == null) return;
             originalRenderScale = androidPipeline.renderScale;
@@ -148,7 +162,7 @@ namespace Aaris.MapReview
             // scale if the GPU cannot keep up.
             bool compactDisplay = Screen.width > 0 && Screen.height > 0 &&
                 (long)Screen.width * Screen.height <= 1280L * 720L;
-            float initialScale = memoryMB <= 2304
+            float initialScale = constrainedGraphics
                 ? (compactDisplay ? 0.92f : 0.85f)
                 : (compactDisplay ? 0.96f : 0.92f);
             androidPipeline.renderScale = Mathf.Min(originalRenderScale, initialScale);
@@ -171,13 +185,113 @@ namespace Aaris.MapReview
             // avoid drawing shadow casters for most of the distant map.
             // Keep the 4 native cascades / atlas and all source assets intact.
             originalShadowDistance = androidPipeline.shadowDistance;
-            float mobileShadowDistance = memoryMB <= 2304 ? 160f : 240f;
+            float mobileShadowDistance = constrainedGraphics ? 120f : 240f;
             appliedShadowDistance = Mathf.Min(originalShadowDistance, mobileShadowDistance);
             if (appliedShadowDistance < originalShadowDistance)
             {
                 androidPipeline.shadowDistance = appliedShadowDistance;
                 modifiedShadowDistance = true;
             }
+            if (constrainedGraphics)
+            {
+                // Four cascades render distant shadow casters repeatedly. Keep
+                // two near-camera cascades with real shadows for players,
+                // buildings and foliage, with no edits to the URP source asset.
+                originalShadowCascades = androidPipeline.shadowCascadeCount;
+                appliedShadowCascades = Mathf.Min(originalShadowCascades, 2);
+                if (appliedShadowCascades < originalShadowCascades)
+                {
+                    androidPipeline.shadowCascadeCount = appliedShadowCascades;
+                    modifiedShadowCascades = true;
+                }
+                ConfigureLowMemoryVegetation();
+            }
+        }
+
+        private static bool IsBudgetAndroidGpu()
+        {
+            // A narrow, auditable list: many 4 GB budget gaming phones still
+            // use these limited tile-based GPUs. Avoid RAM-only classification.
+            string gpu = SystemInfo.graphicsDeviceName ?? "";
+            return gpu.IndexOf("Mali-G52", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   gpu.IndexOf("Mali-G51", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   gpu.IndexOf("Mali-G31", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   gpu.IndexOf("PowerVR GE8320", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   gpu.IndexOf("Adreno 610", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        // One-time, Android-only vegetation work: static wind is much cheaper
+        // than animated leaf/grass vertex deformation on weak mobile GPUs.
+        // Preserve close cover, native tree count and full-resolution materials.
+        private void ConfigureLowMemoryVegetation()
+        {
+            mobileFoliageTiles = terrains != null && terrains.Length > 0
+                ? terrains : Terrain.activeTerrains;
+            int count = mobileFoliageTiles == null ? 0 : mobileFoliageTiles.Length;
+            originalDetailDistances = new float[count];
+            appliedDetailDistances = new float[count];
+            originalBillboardDistances = new float[count];
+            appliedBillboardDistances = new float[count];
+            mobileWindData = new TerrainData[count];
+            originalGrassWindStrength = new float[count];
+            for (int i = 0; i < count; i++)
+            {
+                Terrain tile = mobileFoliageTiles[i];
+                if (tile == null) continue;
+                originalDetailDistances[i] = tile.detailObjectDistance;
+                originalBillboardDistances[i] = tile.treeBillboardDistance;
+                // Keep all grass within 80 m, but avoid processing small
+                // vegetation on the outer 80-100 m ring of each camera view.
+                appliedDetailDistances[i] = Mathf.Min(originalDetailDistances[i], 80f);
+                appliedBillboardDistances[i] = Mathf.Min(originalBillboardDistances[i], 85f);
+                if (appliedDetailDistances[i] < originalDetailDistances[i])
+                    tile.detailObjectDistance = appliedDetailDistances[i];
+                if (appliedBillboardDistances[i] < originalBillboardDistances[i])
+                    tile.treeBillboardDistance = appliedBillboardDistances[i];
+                TerrainData data = tile.terrainData;
+                if (data == null) continue;
+                mobileWindData[i] = data;
+                originalGrassWindStrength[i] = data.wavingGrassStrength;
+                if (originalGrassWindStrength[i] > 0f)
+                {
+                    data.wavingGrassStrength = 0f;
+                    suppressedGrassTiles++;
+                }
+            }
+            // A WindZone inherits Component (not Behaviour), so wind is
+            // disabled via its force fields, never by toggling enabled.
+            // This leaves any other components on the same GameObject intact.
+            mobileWindZones = UnityEngine.Object.FindObjectsByType<WindZone>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            int zoneCount = mobileWindZones.Length;
+            originalWindMain = new float[zoneCount];
+            originalWindTurbulence = new float[zoneCount];
+            originalWindPulseMagnitude = new float[zoneCount];
+            originalWindPulseFrequency = new float[zoneCount];
+            for (int i = 0; i < zoneCount; i++)
+            {
+                WindZone zone = mobileWindZones[i];
+                if (zone == null) continue;
+                originalWindMain[i] = zone.windMain;
+                originalWindTurbulence[i] = zone.windTurbulence;
+                originalWindPulseMagnitude[i] = zone.windPulseMagnitude;
+                originalWindPulseFrequency[i] = zone.windPulseFrequency;
+                if (!Mathf.Approximately(zone.windMain, 0f) ||
+                    !Mathf.Approximately(zone.windTurbulence, 0f) ||
+                    !Mathf.Approximately(zone.windPulseMagnitude, 0f))
+                    suppressedWindZones++;
+                zone.windMain = 0f;
+                zone.windTurbulence = 0f;
+                zone.windPulseMagnitude = 0f;
+                zone.windPulseFrequency = 0f;
+            }
+            Debug.Log("AARIS_ANDROID_LOW_RAM_VEGETATION gpu=" +
+                      SystemInfo.graphicsDeviceName + " tiles=" + count +
+                      " grass_wind_disabled=" + suppressedGrassTiles +
+                      " wind_zones_disabled=" + suppressedWindZones +
+                      " details_max_m=80 tree_billboards_m=85" +
+                      " shadow_max_m=" + appliedShadowDistance +
+                      " cascades=" + appliedShadowCascades);
         }
 
         // Android rounds requested FPS down to a divisor of the display rate.
@@ -323,6 +437,43 @@ namespace Aaris.MapReview
             if (modifiedShadowDistance && androidPipeline != null &&
                 Mathf.Approximately(androidPipeline.shadowDistance, appliedShadowDistance))
                 androidPipeline.shadowDistance = originalShadowDistance;
+            if (modifiedShadowCascades && androidPipeline != null &&
+                androidPipeline.shadowCascadeCount == appliedShadowCascades)
+                androidPipeline.shadowCascadeCount = originalShadowCascades;
+            // Undo only properties that still equal our applied values. Other
+            // quality controllers and scene reloads retain ownership.
+            if (mobileWindZones != null)
+                for (int i = 0; i < mobileWindZones.Length; i++)
+                {
+                    WindZone zone = mobileWindZones[i];
+                    if (zone == null) continue;
+                    // Leave any subsequent quality controller's changes alone.
+                    if (Mathf.Approximately(zone.windMain, 0f) &&
+                        Mathf.Approximately(zone.windTurbulence, 0f) &&
+                        Mathf.Approximately(zone.windPulseMagnitude, 0f) &&
+                        Mathf.Approximately(zone.windPulseFrequency, 0f))
+                    {
+                        zone.windMain = originalWindMain[i];
+                        zone.windTurbulence = originalWindTurbulence[i];
+                        zone.windPulseMagnitude = originalWindPulseMagnitude[i];
+                        zone.windPulseFrequency = originalWindPulseFrequency[i];
+                    }
+                }
+            if (mobileFoliageTiles != null)
+                for (int i = 0; i < mobileFoliageTiles.Length; i++)
+                {
+                    Terrain tile = mobileFoliageTiles[i];
+                    if (tile == null) continue;
+                    if (appliedDetailDistances[i] < originalDetailDistances[i] &&
+                        Mathf.Approximately(tile.detailObjectDistance, appliedDetailDistances[i]))
+                        tile.detailObjectDistance = originalDetailDistances[i];
+                    if (appliedBillboardDistances[i] < originalBillboardDistances[i] &&
+                        Mathf.Approximately(tile.treeBillboardDistance, appliedBillboardDistances[i]))
+                        tile.treeBillboardDistance = originalBillboardDistances[i];
+                    if (mobileWindData[i] != null && originalGrassWindStrength[i] > 0f &&
+                        Mathf.Approximately(mobileWindData[i].wavingGrassStrength, 0f))
+                        mobileWindData[i].wavingGrassStrength = originalGrassWindStrength[i];
+                }
 #endif
         }
 
@@ -346,6 +497,8 @@ namespace Aaris.MapReview
             public int terrainTiles, visibleTerrainHeightmaps, paintedTerrainTiles;
             public int terrainAlphamaps, unsupportedTerrainMaterials;
             public bool terrainLitSupported;
+            public int lowMemoryWindZonesDisabled, lowMemoryGrassTilesDisabled;
+            public float lowMemoryShadowDistance;
         }
         private int warningCount;
         private void Record(string reason)
@@ -387,6 +540,9 @@ namespace Aaris.MapReview
                 catch (Exception e) { Debug.LogWarning("Android PSS unavailable: " + e.GetType().Name); }
             }
             s.androidPssKB = androidPssKB;
+            s.lowMemoryWindZonesDisabled = suppressedWindZones;
+            s.lowMemoryGrassTilesDisabled = suppressedGrassTiles;
+            s.lowMemoryShadowDistance = appliedShadowDistance;
             s.effectiveTargetFps = EffectiveAndroidTargetFps(s.targetFps);
             if (reason == "sample" && frameCount >= 30)
                 TuneAndroidResolution(s);
