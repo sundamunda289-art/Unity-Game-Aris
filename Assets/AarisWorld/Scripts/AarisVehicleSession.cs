@@ -36,8 +36,10 @@ namespace Aaris.MapReview
         private AarisVehicleMotor nearbyCar;
         private Vector3 cameraVelocity;
         public bool IsDriving => car != null;
-        public bool CanEnter => nearbyCar != null && !IsDriving &&
-            footMotor != null && footMotor.isActiveAndEnabled;
+        // Hide DRIVE for overturned, still-moving or unsupported vehicles.
+        // The final authority remains AarisVehicleMotor.TryTakeDriver.
+        public bool CanEnter => nearbyCar != null && nearbyCar.IsSafeToExit &&
+            !IsDriving && footMotor != null && footMotor.isActiveAndEnabled;
         public AarisVehicleMotor DrivenCar => car;
 
         public void Configure(AarisVehicleWorld vehicleWorld, AarisThirdPersonPlayer player)

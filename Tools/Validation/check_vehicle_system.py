@@ -207,6 +207,22 @@ def test():
     assert "linearVelocity =" not in motor and "MoveRotation(" not in motor
     assert "body.centerOfMass = new Vector3(0f, -.27f, 0f)" in motor
     assert "TryTakeDriver" in motor and "ReleaseDriver" in motor
+    # A car with no stable exit must never become the player's input owner:
+    # a flipped/airborne car previously allowed entry but blocked all exits.
+    board = motor.split("public bool TryTakeDriver(", 1)[1].split(
+        "public void SetInput(", 1)[0]
+    assert "!IsSafeToExit" in board, "Unsafe vehicle can still be boarded"
+    availability = session.split("public bool CanEnter", 1)[1].split(
+        "public AarisVehicleMotor DrivenCar", 1)[0]
+    assert "nearbyCar.IsSafeToExit" in availability, (
+        "DRIVE prompt advertises unboardable overturned/airborne car")
+    exit_gate = motor.split("public bool IsSafeToExit", 1)[1].split(
+        "private void OnCollisionEnter(", 1)[0]
+    for guard in ("TotalSpeedMetresPerSecond >= 1.1f",
+                  "body.angularVelocity.magnitude >= .5f",
+                  "Vector3.Dot(transform.up, Vector3.up) < .72f",
+                  "return grounded >= 2"):
+        assert guard in exit_gate, "Missing safe-boarding guard: " + guard
 
     # One owner, safe exit, collision-before-enable and no F resetting.
     assert "footMotor.enabled = false;" in session and "capsule.enabled = false;" in session

@@ -193,8 +193,11 @@ namespace Aaris.MapReview
 
         public bool TryTakeDriver(AarisVehicleSession session)
         {
+            // Never board a car the player could not safely exit.
+            // A slow overturned or airborne car could otherwise trap the
+            // walking motor with no legal exit position.
             if (session == null || IsOccupied || body == null ||
-                body.linearVelocity.magnitude > 2f) return false;
+                !IsSafeToExit) return false;
             driver = session;
             forward = steering = smoothSteer = 0f;
             return true;
