@@ -35,7 +35,8 @@ namespace Aaris.MapReview
         private CharacterController controller;
         private Terrain[] terrains;
         // Layer 8 is reserved for the saved review player in TagManager and its prefab.
-        private const int WorldMask = Physics.DefaultRaycastLayers & ~(1 << 8);
+        private const int PlayerVisualLayer = 1 << 8;
+        private const int WorldMask = Physics.DefaultRaycastLayers & ~PlayerVisualLayer;
         private Vector3 spawn, cameraVelocity;
         private Quaternion spawnRotation;
         private Quaternion leftArmRest, rightArmRest, leftLegRest, rightLegRest;
@@ -57,6 +58,9 @@ namespace Aaris.MapReview
         private float nextOptionalComponentRefresh;
         private Vector3 horizontalVelocity;
         private float normalCameraFov;
+        // Cache only the player-visual bit: other camera layers may change during ADS.
+        private int originalPlayerVisualMask;
+        private bool playerVisualsHiddenForCamera;
         private float weaponAimFov = -1f;
 
         /// <summary>Single camera authority: scopes cannot fight sprint FOV.</summary>
@@ -163,6 +167,7 @@ namespace Aaris.MapReview
             if (followCamera == null) followCamera = Camera.main;
             if (followCamera == null) { enabled = false; Debug.LogError("Saved player camera is missing."); return; }
             normalCameraFov = followCamera.fieldOfView;
+            originalPlayerVisualMask = followCamera.cullingMask & PlayerVisualLayer;
             smoothedEyeHeight = pivotHeight;
             previousSimulateMouse = Input.simulateMouseWithTouches;
             Input.simulateMouseWithTouches = false;
@@ -684,6 +689,36 @@ namespace Aaris.MapReview
                 ? Mathf.Min(length, Mathf.Max(0.12f, hit.distance - 0.08f)) : length;
             return pivot + delta / length * allowed;
         }
+        // Prone/crouched cameras can be forced inside the player's own mesh by
+        // nearby terrain or walls. Hide only the local player layer while the
+        // obstruction actually compresses the camera, without modifying the
+        // FBX, materials, world LODs or the normal third-person appearance.
+        private void UpdatePlayerNearClipVisibility(Vector3 pivot, Vector3 cameraPosition)
+        {
+            if (followCamera == null || originalPlayerVisualMask == 0) return;
+            // Hysteresis prevents rapid mesh flicker when brushing a wall.
+            float boundary = playerVisualsHiddenForCamera ? 1.25f : 0.85f;
+            bool hide = (cameraPosition - pivot).sqrMagnitude < boundary * boundary;
+            if (hide == playerVisualsHiddenForCamera) return;
+            int mask = followCamera.cullingMask;
+            followCamera.cullingMask = hide
+                ? mask & ~PlayerVisualLayer
+                : (mask & ~PlayerVisualLayer) | originalPlayerVisualMask;
+            playerVisualsHiddenForCamera = hide;
+        }
+
+        private void RestorePlayerCameraVisibility()
+        {
+            if (!playerVisualsHiddenForCamera || followCamera == null) return;
+            // The aerial and vehicle systems share this Camera. Never leave
+            // the player's visual layer hidden after walking control stops.
+            followCamera.cullingMask =
+                (followCamera.cullingMask & ~PlayerVisualLayer) | originalPlayerVisualMask;
+            playerVisualsHiddenForCamera = false;
+        }
+
+        private void OnDisable() { RestorePlayerCameraVisibility(); }
+
         private void PlaceCamera(bool instant)
         {
             if (followCamera == null) return;
@@ -710,6 +745,7 @@ namespace Aaris.MapReview
             // so a smoothing frame never clips through a nearby obstruction.
             if ((next - wanted).sqrMagnitude > 0.00000001f)
                 next = ObstructionSafe(pivot, next);
+            UpdatePlayerNearClipVisibility(pivot, next);
             followCamera.transform.SetPositionAndRotation(next, Quaternion.LookRotation(pivot + orbit * Vector3.forward * 0.5f - next));
         }
         private void LateUpdate() { PlaceCamera(false); }
