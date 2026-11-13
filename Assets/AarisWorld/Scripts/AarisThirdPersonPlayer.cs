@@ -474,6 +474,11 @@ namespace Aaris.MapReview
                 sprinting = false;
             Vector2 intent = moveInput;
             if (running && intent.sqrMagnitude < 0.04f) intent = Vector2.up;
+            // Sprint requires forward intent: strafe/backpedal must not run
+            // at full forward pace even when Shift is held on Android/desktop.
+            if (sprinting && (intent.y <= 0.25f ||
+                intent.y < Mathf.Abs(intent.x) * 0.5f))
+                sprinting = false;
 
             Vector3 wish = Quaternion.Euler(0f, yaw, 0f) *
                 new Vector3(intent.x, 0f, intent.y);
@@ -491,6 +496,10 @@ namespace Aaris.MapReview
             // ADS is deliberate combat movement, not a sprint. Crouch and
             // prone stay slower; no hidden second transform/movement motor.
             if (isAiming) speed = Mathf.Min(speed, adsMoveSpeed);
+            // Backpedalling is deliberately shorter/steadier than forward
+            // motion in every stance; retain analogue stick magnitude.
+            if (intent.y < 0f)
+                speed *= Mathf.Lerp(1f, 0.78f, Mathf.Clamp01(-intent.y));
 
             Vector3 desiredVelocity = wish * speed;
             float response = desiredVelocity.sqrMagnitude < 0.001f
