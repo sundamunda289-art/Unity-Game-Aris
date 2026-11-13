@@ -7,13 +7,36 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using Aaris.MapReview;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+[InitializeOnLoad]
 public static class AarisGpt6OpenEntrySceneBaker
 {
  const string SceneFile="Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity";
  const string Dir="/tmp/aaris-doorless-house-swap";
  const string Marker="__AarisNativeOpenEntryHome";
+ // Expiring private request file, not a network/Android runtime endpoint.
+ const string RequestFile="/tmp/aaris-doorless-house-swap/editor.request";
+ static double nextRequestPoll;
+ static AarisGpt6OpenEntrySceneBaker(){EditorApplication.update+=PollRequest;}
+ static void PollRequest()
+ {
+  if(EditorApplication.timeSinceStartup<nextRequestPoll)return;
+  nextRequestPoll=EditorApplication.timeSinceStartup+1d;
+  if(!File.Exists(RequestFile)||EditorApplication.isCompiling||EditorApplication.isUpdating||
+     EditorApplication.isPlayingOrWillChangePlaymode)return;
+  string value=File.ReadAllText(RequestFile).Trim();
+  File.Delete(RequestFile);
+  string[] fields=value.Split(' ');
+  long now=DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+  if(fields.Length!=2||!long.TryParse(fields[1],out long deadline)||
+     now>deadline||deadline>now+120)
+  {Debug.LogWarning("AARIS_OPEN_HOUSE_REQUEST_EXPIRED_OR_INVALID");return;}
+  if(fields[0]=="preview")Run(false);
+  else if(fields[0]=="apply")Run(true);
+  else Debug.LogWarning("AARIS_OPEN_HOUSE_REQUEST_INVALID_OPERATION");
+ }
  static readonly Regex NameRx=new Regex(@"^.+_(a_frame_cabin|bungalow_house|pitched_roof_cottage|detached_two_storey_house|garage_apartment|two_bedroom_garage_house|row_three_townhouses)_\d{2}$");
  static readonly Dictionary<string,string> Styles=new Dictionary<string,string>{
  {"a_frame_cabin","RidgeCabin"},{"bungalow_house","PlasterBungalow"},
@@ -27,6 +50,31 @@ public static class AarisGpt6OpenEntrySceneBaker
  public static void Preview(){Run(false);}
  [MenuItem("Aaris/Houses/Apply native open houses")]
  public static void Apply(){Run(true);}
+ static int WireStreamedColliders(AarisNearbyColliders streamer,List<Collider> added)
+ {
+  var serialized=new SerializedObject(streamer);
+  SerializedProperty obstacles=serialized.FindProperty("obstacles");
+  if(obstacles==null||!obstacles.isArray)throw new Exception("COLLIDER_REGISTRY_PROPERTY_MISSING");
+  var kept=new List<Collider>(obstacles.arraySize+added.Count);
+  var seen=new HashSet<Collider>();
+  for(int i=0;i<obstacles.arraySize;i++){
+   var c=obstacles.GetArrayElementAtIndex(i).objectReferenceValue as Collider;
+   if(c!=null&&seen.Add(c))kept.Add(c);
+  }
+  int before=kept.Count;
+  foreach(var c in added){
+   if(c==null)throw new Exception("NEW_COLLIDER_DESTROYED");
+   if(seen.Add(c))kept.Add(c);
+  }
+  if(kept.Count-before!=added.Count)
+   throw new Exception("COLLIDER_REGISTRATION_DUPLICATE_OR_MISSING");
+  obstacles.arraySize=kept.Count;
+  for(int i=0;i<kept.Count;i++)
+   obstacles.GetArrayElementAtIndex(i).objectReferenceValue=kept[i];
+  serialized.ApplyModifiedPropertiesWithoutUndo();
+  EditorUtility.SetDirty(streamer);
+  return kept.Count;
+ }
  static void Run(bool apply)
  {
   Directory.CreateDirectory(Dir);
@@ -67,11 +115,14 @@ public static class AarisGpt6OpenEntrySceneBaker
       throw new Exception("OLD_HOUSE_INVALID_OR_ALREADY_DONE "+g.name);
     log.Add("HOUSE="+g.name+" MODEL="+Styles[Style(g.name)]);
    }
+   var streamer=all.Select(x=>x.GetComponent<AarisNearbyColliders>()).FirstOrDefault(x=>x!=null);
+   if(streamer==null)throw new Exception("COLLIDER_STREAMING_NOT_FOUND");
    if(apply){
     string backup=Dir+"/native-scene-"+DateTime.UtcNow.ToString("yyyyMMdd-HHmmss")+
                 "-"+hash.Substring(0,12)+".unity";
     File.Copy(SceneFile,backup,false);log.Add("BACKUP="+backup);
     int colliders=0,lods=0;
+    var replacementColliders=new List<Collider>();
     foreach(var g in homes){
      var old=g.GetComponent<MeshRenderer>().bounds;
      var replacement=(GameObject)PrefabUtility.InstantiatePrefab(models[Styles[Style(g.name)]],scene);
@@ -87,6 +138,9 @@ public static class AarisGpt6OpenEntrySceneBaker
      replacement.transform.localScale=Vector3.one*k;
      b=replacement.GetComponent<MeshRenderer>().bounds;
      replacement.transform.position+=new Vector3(old.center.x-b.center.x,old.min.y-b.min.y,old.center.z-b.center.z);
+     Collider[] added=replacement.GetComponentsInChildren<Collider>(true);
+     if(added.Length<4)throw new Exception("REPLACEMENT_MISSING_COLLIDERS "+g.name);
+     replacementColliders.AddRange(added);
      foreach(Component c in g.GetComponents<Component>()){
       if(c is Collider){colliders++;UnityEngine.Object.DestroyImmediate(c);}
       else if(c is LODGroup||c is MeshRenderer||c is MeshFilter)UnityEngine.Object.DestroyImmediate(c);
@@ -97,6 +151,9 @@ public static class AarisGpt6OpenEntrySceneBaker
       if(lod!=null){UnityEngine.Object.DestroyImmediate(lod);lods++;}
      }
     }
+    int registered=WireStreamedColliders(streamer,replacementColliders);
+    log.Add("STREAMED_COLLIDERS_ADDED="+replacementColliders.Count);
+    log.Add("STREAMED_COLLIDERS_TOTAL="+registered);
     EditorSceneManager.MarkSceneDirty(scene);
     if(!EditorSceneManager.SaveScene(scene))throw new Exception("SCENE_SAVE_FAILED");
     log.Add("REMOVED_COLLIDERS="+colliders);

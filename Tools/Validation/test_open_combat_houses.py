@@ -115,6 +115,19 @@ class OpenCombatHouseContracts(unittest.TestCase):
                     rf"(?m)^  {key}: \{{fileID: \d+, guid: {guid.group(1)}, type: 3\}}$")
 
 
+    def test_native_house_swap_registers_new_physics_colliders(self):
+        src = (ROOT / "Assets/AarisWorld/Editor/AarisGpt6OpenEntrySceneBaker.cs").read_text(encoding="utf-8")
+        for marker in ("AarisNearbyColliders", "GetComponentsInChildren<Collider>(true)",
+                       "new SerializedObject(streamer)", 'FindProperty("obstacles")',
+                       "objectReferenceValue=kept[i]", "STREAMED_COLLIDERS_ADDED=",
+                       "EditorSceneManager.SaveScene(scene)", "editor.request",
+                       "DateTimeOffset.UtcNow.ToUnixTimeSeconds()"):
+            self.assertIn(marker, src)
+        self.assertLess(src.index("WireStreamedColliders(streamer,replacementColliders)"),
+                        src.index("EditorSceneManager.SaveScene(scene)"))
+        self.assertIn("REPLACEMENT_MISSING_COLLIDERS", src)
+        self.assertIn("COLLIDER_STREAMING_NOT_FOUND", src)
+
     def test_native_house_baker_preserves_unsaved_editor_scenes(self):
         src = (ROOT / "Assets/AarisWorld/Editor/AarisGpt6OpenEntrySceneBaker.cs").read_text(encoding="utf-8")
         self.assertIn("SceneManager.sceneCount", src)
