@@ -73,4 +73,16 @@ primary_mat = (ROOT / 'Assets/Resources/AarisCharacters/Primary/Materials/Player
 assert 'm_ValidKeywords:\n  - _NORMALMAP' in primary_mat
 assert '_BumpMap:\n        m_Texture: {fileID: 2800000, guid: 66e5bd5db61b49c9ac85aadd3d345ae1, type: 3}' in primary_mat
 
-print('PASS: grounded prone gating, strafe bank, backward gait, airborne inertia, poses and curved Gloo Wall')
+# Actual ground contact records downward impact before resetting gravity.
+# Visual-only landing compression increases smoothly and stays tightly bounded.
+assert 'public float LastLandingImpactSpeed => lastLandingImpactSpeed;' in motor
+assert 'lastLandingImpactSpeed = Mathf.Max(0f, -verticalVelocity);' in motor
+assert 'Mathf.Clamp01((landingImpact - 1f) / 9f)' in visual
+assert 'Mathf.Lerp(0.55f, 1.15f, impactBlend)' in visual
+strengths = [0.55 + 0.60 * max(0.0, min(1.0, (speed - 1.0) / 9.0))
+             for speed in (0.0, 3.0, 6.0, 10.0, 40.0)]
+assert strengths == sorted(strengths)
+assert abs(strengths[0] - 0.55) < 1e-7
+assert abs(strengths[-1] - 1.15) < 1e-7
+assert max(strengths) * 0.055 < 0.07
+print('PASS: grounded prone, jump impact, backward gait, airborne inertia, poses and curved Gloo Wall')

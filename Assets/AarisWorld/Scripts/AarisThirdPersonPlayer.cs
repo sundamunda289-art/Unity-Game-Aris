@@ -83,8 +83,10 @@ namespace Aaris.MapReview
         private bool jumpButtonHeld;
         private float lastJumpStarted = -10f;
         private float lastLanding = -10f;
+        private float lastLandingImpactSpeed;
         public bool IsInAir => controller != null && !controller.isGrounded;
         public float LastLandingTime => lastLanding;
+        public float LastLandingImpactSpeed => lastLandingImpactSpeed;
         public float LastJumpStartedTime => lastJumpStarted;
         public Camera AimCamera => followCamera;
 
@@ -609,7 +611,12 @@ namespace Aaris.MapReview
                 // Record touchdown only when Move really contacts ground.
                 // The downhill probe may have set wasGrounded=true *before*
                 // Move; using that prediction hid land poses and impact audio.
-                if (!previousMoveGrounded && !launchJump) lastLanding = now;
+                if (!previousMoveGrounded && !launchJump)
+                {
+                    lastLanding = now;
+                    // Real contact, not a downhill support prediction, drives the pose.
+                    lastLandingImpactSpeed = Mathf.Max(0f, -verticalVelocity);
+                }
                 lastGrounded = now;
                 if (verticalVelocity < 0f) verticalVelocity = -groundedDownVelocity;
                 if (!Mathf.Approximately(controller.stepOffset, groundedStep))

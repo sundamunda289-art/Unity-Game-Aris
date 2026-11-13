@@ -551,8 +551,13 @@ namespace Aaris.MapReview
             float landingAge = playerMotor != null
                 ? Time.unscaledTime - playerMotor.LastLandingTime
                 : 10f;
+            // Smaller steps compress less than a hard landing. Keep the visual
+            // offset under 7 cm, without extra physics queries or allocations.
+            float landingImpact = playerMotor != null ? playerMotor.LastLandingImpactSpeed : 0f;
+            float impactBlend = Mathf.Clamp01((landingImpact - 1f) / 9f);
             float landingDip = landingAge >= 0f && landingAge <= 0.2f
-                ? Mathf.Sin(Mathf.PI * landingAge / 0.2f) * landingCompressionMetres
+                ? Mathf.Sin(Mathf.PI * landingAge / 0.2f) * landingCompressionMetres *
+                    Mathf.Lerp(0.55f, 1.15f, impactBlend)
                 : 0f;
             Vector3 desiredPosition = restingLocalPosition +
                 new Vector3(0f, fallbackProne * 0.36f - landingDip, fallbackProne * 0.14f);
