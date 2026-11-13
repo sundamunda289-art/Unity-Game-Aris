@@ -351,7 +351,10 @@ namespace Aaris.MapReview
             // Any fallback stays near the original authored road elevation.
             // At an offset, prefer local terrain as the down-ray floor target,
             // without ever trusting a distant rooftop or tall slope.
-            if (Mathf.Abs(ground - authoredY) > 2.5f) return false;
+            // The terrain-altitude gate applies only to never-driven authored nodes.
+            // A parked car on a real bridge/raised road can be far above terrain;
+            // its saved position must instead pass the support-ray/corner checks below.
+            if (!record.previouslySpawned && Mathf.Abs(ground - authoredY) > 2.5f) return false;
             float expectedY = (offsetX != 0f || offsetZ != 0f) ? ground : authoredY;
             if (!HasSupport(new Vector3(x, 0f, z), expectedY, out float y))
                 return false;
