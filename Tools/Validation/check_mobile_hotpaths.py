@@ -186,31 +186,36 @@ def audit():
     assert "(compactDisplay ? 0.96f : 0.92f)" in quality
     assert "androidPipeline.renderScale = Mathf.Min(originalRenderScale, initialScale);" in quality
 
-    def startup_scale(ram, width, height, original):
-        if ram <= 0 or ram > 3072:
+    def startup_scale(ram, width, height, original, budget_gpu=False):
+        constrained = ram <= 2304 or budget_gpu
+        if ram <= 0 or (ram > 3072 and not constrained):
             return original
         compact = width > 0 and height > 0 and width * height <= 1280 * 720
         requested = (
-            (.92 if compact else .85) if ram <= 2304
+            (.92 if compact else .85) if constrained
             else (.96 if compact else .92)
         )
         return min(original, requested)
 
-    # Preserve crisp assets on small screens and GPU headroom on larger ones.
-    for ram, width, height, native, expected in (
-        (2048, 1280, 720, 1., .92),
-        (2048, 720, 1280, 1., .92),
-        (2048, 1600, 900, 1., .85),
-        (3072, 1280, 720, 1., .96),
-        (3072, 1920, 1080, 1., .92),
-        (2048, 1280, 720, .8, .8),
-        (3072, 1280, 720, .7, .7),
-        (2048, 0, 720, 1., .85),
-        (4096, 1280, 720, 1., 1.),
-        (0, 1280, 720, 1., 1.)
+    # Keep high-end 4 GB and unknown-RAM devices untouched, while entry-level
+    # 4 GB Mali-G52 (e.g. Helio G85) gets the same bounded GPU relief as 2 GB.
+    for ram, width, height, native, budget_gpu, expected in (
+        (2048, 1280, 720, 1., False, .92),
+        (2048, 720, 1280, 1., False, .92),
+        (2048, 1600, 900, 1., False, .85),
+        (3072, 1280, 720, 1., False, .96),
+        (3072, 1920, 1080, 1., False, .92),
+        (2048, 1280, 720, .8, False, .8),
+        (3072, 1280, 720, .7, False, .7),
+        (2048, 0, 720, 1., False, .85),
+        (4096, 1280, 720, 1., False, 1.),
+        (4096, 1280, 720, 1., True, .92),
+        (4096, 1600, 900, 1., True, .85),
+        (4096, 1280, 720, .8, True, .8),
+        (0, 1280, 720, 1., False, 1.)
     ):
-        assert startup_scale(ram, width, height, native) == expected, (
-            ram, width, height, native
+        assert startup_scale(ram, width, height, native, budget_gpu) == expected, (
+            ram, width, height, native, budget_gpu
         )
     assert startup_scale(2048, 1280, 720, 1.) ** 2 < 1.
     # 2 GB / 720p: initial render target has only ~17% more pixels than
@@ -220,18 +225,30 @@ def audit():
     # The existing two-slow-window governor still restores fill-rate relief.
     assert "slowIntervals >= 2" in quality
     assert "current - 0.05f" in quality
-    # The low-RAM adaptation must never be enabled on high-RAM or
-    # unknown-RAM Android devices. Merely returning from ConfigureAndroidQuality
-    # after storing androidPipeline would still enable TuneAndroidResolution.
+    # A RAM-only eligibility gate misses entry GPUs even with 4 GB. However
+    # unknown-RAM and stronger >3 GB devices must still skip adaptation.
     quality_setup = quality[quality.index("private void ConfigureAndroidQuality()"):
                             quality.index("private void TuneAndroidResolution(")]
-    assert "if (memoryMB <= 0 || memoryMB > 3072) return;" in quality_setup
-    assert quality_setup.index("if (memoryMB <= 0 || memoryMB > 3072) return;") < quality_setup.index("androidPipeline = GraphicsSettings.currentRenderPipeline")
+    gate = "if (memoryMB <= 0 || (memoryMB > 3072 && !constrainedGraphics)) return;"
+    assert gate in quality_setup
+    assert quality_setup.index(gate) < quality_setup.index(
+        "androidPipeline = GraphicsSettings.currentRenderPipeline")
     assert "if (androidPipeline == null || !adaptiveAndroidResolution) return;" in quality
+    assert "memoryMB <= 2304 || IsBudgetAndroidGpu()" in quality_setup
+    assert '"Mali-G52"' in quality_setup and '"Mali-G31"' in quality_setup
+    assert "IsBudgetAndroidGpu()" in quality_setup
     for ram_mb in (0, -1, 4096, 8192):
         assert not (0 < ram_mb <= 3072)
     for ram_mb in (1536, 2048, 2304, 3072):
         assert 0 < ram_mb <= 3072
+    for ram, budget_gpu, enabled in (
+        (0, False, False), (0, True, False),
+        (2048, False, True), (3072, False, True),
+        (4096, False, False), (4096, True, True),
+        (8192, False, False),
+    ):
+        constrained = ram <= 2304 or budget_gpu
+        assert (ram > 0 and (ram <= 3072 or constrained)) == enabled
     assert "lastTargetFps != targetFps" in quality
     assert "private float lastEffectiveTargetFps;" in quality
     assert "lastEffectiveTargetFps = EffectiveAndroidTargetFps(lastTargetFps);" in quality
@@ -309,13 +326,15 @@ def audit():
     assert "Mathf.Approximately(QualitySettings.streamingMipmapsMemoryBudget, appliedMipBudgetMB)" in teardown
     assert "QualitySettings.streamingMipmapsMemoryBudget = originalMipBudgetMB;" in teardown
 
-    # Rendering shadows for the whole authored 2 km landscape wastes costly
-    # mobile shadow-caster passes. Only 2-3 GB Android devices get the shorter
-    # URP shadow range; the native scene and 4-cascade atlas stay untouched.
+    # The authored 2 km landscape needs near-player shadows, not four
+    # cascades over a 1000m range. Constrained GPU devices also get two
+    # runtime-only cascades, restored on teardown.
     assert "private float originalShadowDistance, appliedShadowDistance;" in quality
     assert "private bool modifiedShadowDistance;" in quality
     assert "originalShadowDistance = androidPipeline.shadowDistance;" in quality_setup
-    assert "float mobileShadowDistance = memoryMB <= 2304 ? 160f : 240f;" in quality_setup
+    assert "float mobileShadowDistance = constrainedGraphics ? 120f : 240f;" in quality_setup
+    assert "appliedShadowCascades = Mathf.Min(originalShadowCascades, 2);" in quality_setup
+    assert "androidPipeline.shadowCascadeCount = appliedShadowCascades;" in quality_setup
     assert "appliedShadowDistance = Mathf.Min(originalShadowDistance, mobileShadowDistance);" in quality_setup
     assert "if (appliedShadowDistance < originalShadowDistance)" in quality_setup
     assert "androidPipeline.shadowDistance = appliedShadowDistance;" in quality_setup
@@ -324,18 +343,20 @@ def audit():
     assert "Mathf.Approximately(androidPipeline.shadowDistance, appliedShadowDistance)" in teardown
     assert "androidPipeline.shadowDistance = originalShadowDistance;" in teardown
 
-    def mobile_shadow_limit(ram_mb, authored_metres):
-        if ram_mb <= 0 or ram_mb > 3072:
+    def mobile_shadow_limit(ram_mb, authored_metres, budget_gpu=False):
+        constrained = ram_mb <= 2304 or budget_gpu
+        if ram_mb <= 0 or (ram_mb > 3072 and not constrained):
             return authored_metres
-        return min(authored_metres, 160 if ram_mb <= 2304 else 240)
+        return min(authored_metres, 120 if constrained else 240)
 
-    for ram, authored, expected in (
-        (1536, 1000, 160), (2048, 1000, 160), (2304, 1000, 160),
-        (2305, 1000, 240), (3072, 1000, 240),
-        (4096, 1000, 1000), (0, 1000, 1000),
-        (2048, 100, 100), (3072, 180, 180),
+    for ram, authored, budget_gpu, expected in (
+        (1536, 1000, False, 120), (2048, 1000, False, 120),
+        (2304, 1000, False, 120), (2305, 1000, False, 240),
+        (3072, 1000, False, 240), (4096, 1000, False, 1000),
+        (4096, 1000, True, 120), (0, 1000, False, 1000),
+        (2048, 100, False, 100), (3072, 180, False, 180),
     ):
-        assert mobile_shadow_limit(ram, authored) == expected, (ram, authored)
+        assert mobile_shadow_limit(ram, authored, budget_gpu) == expected, (ram, authored)
 
     # An authored shorter shadow range should never be lengthened, and a
     # scene reload must not permanently inherit this runtime-only override.
@@ -351,10 +372,17 @@ def audit():
             assert live_shadow == 1000
     # Another graphics controller's later choice belongs to that controller.
     incoming_external_choice = 96
-    old_owner_applied = 160
+    old_owner_applied = 120
     assert incoming_external_choice != old_owner_applied
     # Range reduction is geometric, not a guaranteed FPS percentage.
-    assert (160 / 1000) ** 2 < (240 / 1000) ** 2 < 0.06
+    assert (120 / 1000) ** 2 < (240 / 1000) ** 2 < 0.06
+    assert "zone.windMain = 0f;" in quality_setup
+    assert "data.wavingGrassStrength = 0f;" in quality_setup
+    assert "Mathf.Min(originalDetailDistances[i], 80f)" in quality_setup
+    assert "Mathf.Min(originalBillboardDistances[i], 85f)" in quality_setup
+    assert "zone.windMain = originalWindMain[i];" in teardown
+    assert "mobileWindData[i].wavingGrassStrength = originalGrassWindStrength[i];" in teardown
+    assert "androidPipeline.shadowCascadeCount = originalShadowCascades;" in teardown
 
     # Model repeated on-foot scene lifetimes, including external controllers
     # taking ownership of global quality settings before teardown.
