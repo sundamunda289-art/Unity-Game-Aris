@@ -374,12 +374,16 @@ namespace Aaris.MapReview
             // Stance FBX clips are transitions into a pose, not continuous gaits.
             // Freeze on the settled position: frame zero can still be standing.
             crouchPlayable.SetSpeed(0d);
-            crouchPlayable.SetTime(crouchClip.length * 0.87d);
-            // Prone is also an enter-pose transition, not a looping idle.
-            // Holding its final authored frame prevents unwanted rocking
-            // and limb movement while the player stays prone.
+            // KayKit source manifest marks frame 10 of the 24-frame Crouching
+            // action as the settled pose. Sampling 87% held a later motion
+            // frame instead, leaving an unnatural crouch at rest.
+            crouchPlayable.SetTime(crouchClip.length * (10d / 24d));
+            // The 24-frame KayKit Crawling source uses frame 0 as its prone
+            // hold. Do not freeze a mid-crawl pose as the player's prone idle.
+            // Only the missing-clip crouch fallback uses the crouch hold frame.
             pronePlayable.SetSpeed(0d);
-            pronePlayable.SetTime((proneClip ?? crouchClip).length * 0.87d);
+            pronePlayable.SetTime(proneClip != null
+                ? 0d : crouchClip.length * (10d / 24d));
             // Airborne looping is especially distracting when the jump clip
             // contains landing frames. Hold distinct ascent/descent samples.
             jumpPlayable.SetSpeed(0d);
