@@ -112,12 +112,27 @@ class LootGridRegression(unittest.TestCase):
             self.assertLessEqual(live, 40)
         self.assertEqual((live, accepted), (40, 40))
 
+    def test_full_mesh_pool_and_disabled_flight_do_not_starve_starter(self):
+        starter = SOURCE[SOURCE.index("private void EnsureStarterLoot("):
+                         SOURCE.index("private bool IsCurrentlyActive(")]
+        guard = starter.split("if (inventory.HasGun)", 1)[0]
+        self.assertNotIn("active.Count >= MaximumActiveLoot", guard)
+        self.assertIn("flight.isActiveAndEnabled && !flight.HasLanded", starter)
+        self.assertIn("if (active.Count >= MaximumActiveLoot)", starter)
+        self.assertLess(starter.index("if (active.Count >= MaximumActiveLoot)"),
+                        starter.index("TryFindDropSpot(out Vector3 point"))
+        full = starter[starter.index("if (active.Count >= MaximumActiveLoot)"):]
+        self.assertLess(full.index("TryLastResortStarterEquip();"),
+                        full.index("// One fallback per match"))
+        self.assertIn("Time.unscaledTime - starterUnarmedSince < 3f", starter)
+        self.assertIn("inventory.TryPickup(state, out AarisWeaponState previous)", starter)
+
     def test_starter_uses_verified_floor_not_stale_grounded_flag(self):
         # A newly restored CharacterController can report false for its
         # previous Move even though the drop phase has completed.
         starter = SOURCE[SOURCE.index("private void EnsureStarterLoot("):
                          SOURCE.index("private bool IsCurrentlyActive(")]
-        self.assertIn("if (player.TryGetComponent(out AarisOfflineDrop flight) && !flight.HasLanded) return;", starter)
+        self.assertIn("flight.isActiveAndEnabled && !flight.HasLanded) return;", starter)
         self.assertIn("CharacterController controller) || !controller.enabled", starter)
         self.assertNotIn("!controller.isGrounded", starter)
         self.assertIn("TryFindDropSpot(out Vector3 point, requireReachable: true)", starter)
