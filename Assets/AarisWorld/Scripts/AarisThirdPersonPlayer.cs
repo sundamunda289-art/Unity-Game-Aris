@@ -524,14 +524,21 @@ namespace Aaris.MapReview
                 (isAiming || battle.FireHeld);
             if (combatFacing)
             {
-                transform.rotation = Quaternion.Slerp(transform.rotation,
+                Quaternion nextFacing = Quaternion.Slerp(transform.rotation,
                     Quaternion.Euler(0f, yaw, 0f),
                     1f - Mathf.Exp(-weaponTurnResponse * dt));
+                // An aimed prone turn must not swing the head/legs through walls.
+                if (battle == null || battle.CanFaceProne(nextFacing * Vector3.forward))
+                    transform.rotation = nextFacing;
             }
             else if (horizontalVelocity.sqrMagnitude > 0.0025f)
-                transform.rotation = Quaternion.Slerp(transform.rotation,
+            {
+                Quaternion nextFacing = Quaternion.Slerp(transform.rotation,
                     Quaternion.LookRotation(horizontalVelocity),
                     1f - Mathf.Exp(-14f * dt));
+                if (battle == null || battle.CanFaceProne(nextFacing * Vector3.forward))
+                    transform.rotation = nextFacing;
+            }
 
             // Releasing Jump early shortens the arc; holding it gives the
             // designed full height without any second gravity controller.
