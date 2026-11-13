@@ -323,6 +323,15 @@ def audit():
     assert 'sample.cpuLimitedSamples >= sample.gpuLimitedSamples * 2' in governor
     assert "frameIndex = frameCount = 0;" in quality
     assert "slowIntervals = steadyIntervals = 0;" in quality
+    # A paused 2 GB phone may lose its GPU context or spend seconds resuming.
+    # Never let pre-pause CPU/GPU classifications govern the next scene scale.
+    resume = quality[quality.index("private void OnApplicationPause(bool paused)") :
+                     quality.index("private void OnApplicationQuit()")]
+    assert "timingFrameCounter = timingSamples = gpuLimitedSamples = cpuLimitedSamples = 0;" in resume
+    assert "gpuFrameTimeTotalMs = cpuMainTimeTotalMs = cpuRenderTimeTotalMs = 0d;" in resume
+    assert resume.index("frameIndex = frameCount = 0;") < resume.index(
+        "timingFrameCounter = timingSamples = gpuLimitedSamples = cpuLimitedSamples = 0;")
+    assert resume.index("timingFrameCounter = timingSamples = gpuLimitedSamples = cpuLimitedSamples = 0;") < resume.index("#endif")
 
     # Adaptive URP is temporary: its globally shared render scale and mipmap
     # residency must not become the starting quality after death/scene reload.
