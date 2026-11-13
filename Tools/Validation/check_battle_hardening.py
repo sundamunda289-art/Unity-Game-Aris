@@ -283,10 +283,10 @@ def audit() -> None:
     assert "CanAdvanceProne(candidate, horizontalVelocity)" in motor
 
     # Airborne stair climbing is disabled, and the old step offset is
-    # restored for the first grounded Move. This preserves automatic stair
-    # traversal while preventing jumps from auto-mantling wall ledges.
+    # restored on actual/predicted support or the first Below collision.
+    # Descending in freefall must not auto-mantle a wall ledge.
     assert "savedGroundStepOffset = controller.stepOffset;" in motor
-    assert "float requestedStep = !launchJump && (wasGrounded || verticalVelocity <= 0f)" in motor
+    assert "float requestedStep = !launchJump && wasGrounded" in motor
     assert "if (!Mathf.Approximately(controller.stepOffset, requestedStep))" in motor
     assert "if (!Mathf.Approximately(controller.stepOffset, groundedStep))" in motor
     assert "controller.stepOffset = groundedStep;" in motor

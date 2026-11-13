@@ -88,7 +88,7 @@ def assert_regression() -> None:
     assert "earlyJumpReleaseGravity" in MOTOR
     assert "minimumJumpAscentSeconds" in MOTOR
     assert "minimumAscentElapsed" in MOTOR
-    assert "float requestedStep = !launchJump && (wasGrounded || verticalVelocity <= 0f)" in MOTOR
+    assert "float requestedStep = !launchJump && wasGrounded" in MOTOR
     assert "if (!Mathf.Approximately(controller.stepOffset, requestedStep))" in MOTOR
     assert "if (!Mathf.Approximately(controller.stepOffset, groundedStep))" in MOTOR
     assert "controller.stepOffset = groundedStep;" in MOTOR

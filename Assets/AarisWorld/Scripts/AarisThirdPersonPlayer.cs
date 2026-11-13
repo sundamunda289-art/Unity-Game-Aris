@@ -457,7 +457,10 @@ namespace Aaris.MapReview
             // as soon as a grounded Move succeeds.
             float groundedStep = battle != null
                 ? battle.GroundStepOffset : savedGroundStepOffset;
-            float requestedStep = !launchJump && (wasGrounded || verticalVelocity <= 0f)
+            // Falling is not grounded: a downward velocity by itself must NOT
+            // enable stair climbing in mid-air. Predictive support is already
+            // included in wasGrounded; real contact restores stepOffset below.
+            float requestedStep = !launchJump && wasGrounded
                 ? groundedStep : 0f;
             // Stance and jump transitions still apply immediately; stable
             // frames avoid reconfiguring the native CharacterController.
@@ -514,6 +517,12 @@ namespace Aaris.MapReview
             Vector3 desiredVelocity = wish * speed;
             float response = desiredVelocity.sqrMagnitude < 0.001f
                 ? horizontalBraking : horizontalAcceleration;
+            // A grounded 180-degree direction change is a braking pivot,
+            // not a full-speed run through the opposite gait. Decelerate
+            // before accelerating back; preserve existing air steering.
+            if (wasGrounded && desiredVelocity.sqrMagnitude > 0.001f &&
+                Vector3.Dot(horizontalVelocity, desiredVelocity) < -0.05f)
+                response = Mathf.Max(response, horizontalBraking);
             if (!wasGrounded)
             {
                 // Ground braking is intentionally strong for precise mobile
