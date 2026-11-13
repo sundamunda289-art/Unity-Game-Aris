@@ -29,6 +29,23 @@ def test():
     assert "car == null || !car.IsSafeToExit" in session
     assert "car.SpeedMetresPerSecond > 1.1f" not in session
 
+    # The unsorted entry sight probe can saturate with owned vehicle/player
+    # hits. Do not deny a valid DRIVE tap or skip a hidden wall just because
+    # the 24-slot fast-path buffer is full.
+    entry = session.split("private bool TryEnter()", 1)[1].split(
+        "private void SetFootHudVisible(", 1)[0]
+    assert "if (hitCount >= entrySight.Length) return false;" not in entry
+    assert "if (hitCount >= entrySight.Length)" in entry
+    assert "Physics.RaycastAll(sight, distance," in entry
+    assert "sightHits = Physics.RaycastAll" in entry
+    assert "var hit = sightHits[i];" in entry
+    assert "hit.collider.transform.IsChildOf(transform)" in entry
+    assert "hit.collider.transform.IsChildOf(nearbyCar.transform)" in entry
+    assert "return false;" in entry.split("for (int i = 0; i < hitCount; i++)", 1)[1].split(
+        "if (!nearbyCar.TryTakeDriver(this))", 1)[0]
+    assert entry.index("Physics.RaycastNonAlloc(") < entry.index(
+        "if (hitCount >= entrySight.Length)") < entry.index("Physics.RaycastAll(")
+
     # NaN is not clamped by Mathf.Clamp; public touch/drive APIs must
     # sanitize every control axis BEFORE it can reach WheelCollider.
     for source_text, names in ((motor, ("forwardAxis", "steerAxis")),
