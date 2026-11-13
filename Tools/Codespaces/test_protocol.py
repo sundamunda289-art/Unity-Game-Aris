@@ -40,6 +40,13 @@ assert "'TARGET_UNAVAILABLE'" in response
 assert 'target_codespace' in response
 remote_source=(r/'Tools/Codespaces/remote.sh').read_text()
 assert 'EDITOR_EXITED_DURING_STARTUP' in remote_source
+# A persisted Library/Logs symlink must heal its vanished ephemeral
+# /tmp cache target. Otherwise Unity 6000 exits 139 on startup.
+assert 'cache_target="/tmp/aaris-unity-runtime/project-cache/$name"' in remote_source
+assert 'test "$(readlink "$target")" = "$cache_target"' in remote_source
+assert 'mkdir -p "$cache_target"' in remote_source
+assert 'CACHE_DANGLING_UNKNOWN_TARGET_' in remote_source
+assert remote_source.index('mkdir -p "$cache_target"') < remote_source.index('bash "$PROJECT/.devcontainer/start_screen.sh"')
 assert "sleep 12" in remote_source
 isolate=(r/'Tools/Codespaces/editor_isolation_probe.sh').read_text()
 assert 'EDITOR_ISOLATE_TEMP_ONLY' in isolate
