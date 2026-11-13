@@ -409,7 +409,11 @@ namespace Aaris.MapReview
             float now = Time.unscaledTime;
             // CharacterController.isGrounded reflects the PREVIOUS Move.
             // Single movement authority retains short coyote/buffer windows.
-            bool wasGrounded = controller.isGrounded;
+            // Keep the prior Move's real contact separate from the predictive
+            // downhill support probe. A near-ground probe can assist walking,
+            // but it must not suppress the first actual landing event.
+            bool previousMoveGrounded = controller.isGrounded;
+            bool wasGrounded = previousMoveGrounded;
             // Both downhill checks run before Move, so a missed support sweep
             // cannot acquire different geometry later in this same frame.
             // Reuse the negative result instead of repeating an expensive
@@ -592,7 +596,10 @@ namespace Aaris.MapReview
                 verticalVelocity = 0f;
             if ((flags & CollisionFlags.Below) != 0)
             {
-                if (!wasGrounded && !launchJump) lastLanding = now;
+                // Record touchdown only when Move really contacts ground.
+                // The downhill probe may have set wasGrounded=true *before*
+                // Move; using that prediction hid land poses and impact audio.
+                if (!previousMoveGrounded && !launchJump) lastLanding = now;
                 lastGrounded = now;
                 if (verticalVelocity < 0f) verticalVelocity = -groundedDownVelocity;
                 if (!Mathf.Approximately(controller.stepOffset, groundedStep))
