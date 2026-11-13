@@ -92,7 +92,14 @@ namespace Aaris.MapReview
         public bool HasPickupInRange { get; private set; }
 
         /// <summary>Explicit pickup replaces the single carried gun.</summary>
-        public void RequestPickup() => requestPickupUntil = Time.unscaledTime + 0.7f;
+        public void RequestPickup()
+        {
+            // A deliberate tap must not wait for the normal 330 ms refresh:
+            // on a low-FPS phone the next routine poll may arrive too late.
+            // Defer physics to the next Update, retaining all LOS/range checks.
+            requestPickupUntil = Time.unscaledTime + 1.5f;
+            nextRefresh = 0f;
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
