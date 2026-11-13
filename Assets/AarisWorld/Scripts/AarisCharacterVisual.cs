@@ -94,6 +94,10 @@ namespace Aaris.MapReview
         private void Awake()
         {
             controller = GetComponent<CharacterController>();
+            // Saved scenes can retain the old 6.5 m/s Inspector value even
+            // after the motor's pace was corrected. Keep lean and foot timing
+            // calibrated to the actual 4.8 m/s unarmed sprint ceiling.
+            fullRunSpeed = Mathf.Min(fullRunSpeed, 4.8f);
             lastReliableGroundContact = Time.unscaledTime;
         }
 
@@ -582,7 +586,11 @@ namespace Aaris.MapReview
                 float crouchMoving = Mathf.InverseLerp(0.06f, 0.85f, horizontal);
                 float crawlMoving = Mathf.InverseLerp(0.05f, 0.55f, horizontal);
                 float grounded = (1f - airborneBlend) * (1f - pose);
-                float jumping = velocity.y >= -0.6f ? 1f : 0f;
+                // The old binary velocity cut snapped between the frozen
+                // ascent and fall poses near the jump apex. Blend both poses
+                // continuously over the apex to preserve limbs and balance.
+                float risingPose = Mathf.SmoothStep(0f, 1f,
+                    Mathf.InverseLerp(-1.75f, 0.75f, velocity.y));
 
                 float takeoffAge = playerMotor != null
                     ? Time.unscaledTime - playerMotor.LastJumpStartedTime : 10f;
@@ -635,8 +643,8 @@ namespace Aaris.MapReview
                 WriteWeightIfChanged(mixer, lastBaseWeights, 0, baseWeight * grounded * (1f - runBlend));
                 WriteWeightIfChanged(mixer, lastBaseWeights, 1, baseWeight * grounded * runBlend * (1f - walkRunBlend));
                 WriteWeightIfChanged(mixer, lastBaseWeights, 2, baseWeight * grounded * runBlend * walkRunBlend * (1f - sprintBlend));
-                WriteWeightIfChanged(mixer, lastBaseWeights, 3, baseWeight * airborneBlend * jumping * (1f - pose));
-                WriteWeightIfChanged(mixer, lastBaseWeights, 4, baseWeight * airborneBlend * (1f - jumping) * (1f - pose));
+                WriteWeightIfChanged(mixer, lastBaseWeights, 3, baseWeight * airborneBlend * risingPose * (1f - pose));
+                WriteWeightIfChanged(mixer, lastBaseWeights, 4, baseWeight * airborneBlend * (1f - risingPose) * (1f - pose));
                 WriteWeightIfChanged(mixer, lastBaseWeights, 5, baseWeight * crouchWeight * (1f - crouchMoving));
                 WriteWeightIfChanged(mixer, lastBaseWeights, 6, baseWeight * crouchWeight * crouchMoving);
                 WriteWeightIfChanged(mixer, lastBaseWeights, 7, startWeight);
