@@ -40,6 +40,19 @@ def audit():
     assert "!isAiming && (battle == null || !battle.FireHeld || airborneIntent)" in motor
     assert "if (battle != null && !sprinting)" in motor
     assert "if (held && motor != null) motor.CancelAutoSprint();" not in actions
+    # All stance callers (HUD, keyboard, editor/direct gameplay API) must
+    # cancel latent auto-run ONLY after entering an accepted low stance.
+    # Otherwise the motor invents forward intent at zero joystick input.
+    assert "if (target != PlayerStance.Standing && motor != null)" in actions
+    assert "motor.CancelAutoSprint();" in actions
+    stance_accepted = actions.index("stance = target;")
+    cancellation = actions.index("motor.CancelAutoSprint();", stance_accepted)
+    assert stance_accepted < cancellation < actions.index("capsule.stepOffset = GroundStepOffset;", stance_accepted)
+    for target in ("Standing", "Crouching", "Prone"):
+        auto_sprint = True
+        if target != "Standing":
+            auto_sprint = False
+        assert auto_sprint == (target == "Standing")
     assert "bool newPress = held && !fireHeld;" in actions
     assert "if (IsArmed) ShootEquippedWeapon();" in actions
     # Hold Fire while jumping: keep momentum in the air. Landing changes back
