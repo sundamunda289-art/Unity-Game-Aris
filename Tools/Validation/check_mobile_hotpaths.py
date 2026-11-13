@@ -429,6 +429,29 @@ def audit():
     assert "nextCheck = Time.unscaledTime + 1f;" in nearby
     assert "if (forcePhysicsSync) Physics.SyncTransforms();" in nearby
 
+    # A large authored wall belongs to more than one spatial cell. Candidate
+    # loot/vehicle probes inspect it only once, without per-query heap objects.
+    assert "private int[] visited, wanted, probeVisited;" in nearby
+    assert "probeVisited = new int[obstacles.Length];" in nearby
+    assert "if (probeQuery == int.MaxValue)" in nearby
+    assert "Array.Clear(probeVisited, 0, probeVisited.Length);" in nearby
+    assert "int probeStamp = ++probeQuery;" in nearby
+    assert "if (probeVisited[i] == probeStamp) continue;" in nearby
+    assert "probeVisited[i] = probeStamp;" in nearby
+
+    def unique_probe_candidates(cell_contents):
+        seen, checked = set(), []
+        for cell in cell_contents:
+            for index in cell:
+                if index in seen:
+                    continue
+                seen.add(index)
+                checked.append(index)
+        return checked
+
+    assert unique_probe_candidates([[4, 9], [4, 7], [7, 9, 10]]) == [4, 9, 7, 10]
+    assert unique_probe_candidates([[], [2], [], [2]]) == [2]
+
     # Two-threshold streaming prevents collider enable/disable churn when
     # a player strafes over the 55 m boundary. The entry distance stays
     # unchanged; only an already enabled shape gets a 6 m release margin.
