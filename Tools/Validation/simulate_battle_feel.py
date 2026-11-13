@@ -51,12 +51,12 @@ def jump(fps: int, release_after_seconds: float | None) -> tuple[float, float]:
 
 
 def assert_regression() -> None:
-    assert setting("unarmedSprintSpeed") == 6.5
-    assert setting("armedSprintSpeed") == 5.7
-    assert setting("walkSpeed") == 4.2
-    assert setting("crouchMoveSpeed") == 2.4
-    assert setting("proneMoveSpeed") == 1.1
-    assert setting("combatMoveSpeed") == 2.0
+    assert setting("unarmedSprintSpeed") == 4.8
+    assert setting("armedSprintSpeed") == 4.4
+    assert setting("walkSpeed") == 3.4
+    assert setting("crouchMoveSpeed") == 2.0
+    assert setting("proneMoveSpeed") == 1.0
+    assert setting("combatMoveSpeed") == 1.8
     acc = setting("horizontalAcceleration")
     brake = setting("horizontalBraking")
 
@@ -66,8 +66,8 @@ def assert_regression() -> None:
         dt = 1.0 / fps
         s = 0.0
         for _ in range(math.ceil(0.55 * fps)):
-            s = approach(s, 6.5, acc, dt)
-        assert 6.49 <= s <= 6.51, (fps, "sprint acceleration", s)
+            s = approach(s, 4.8, acc, dt)
+        assert 4.79 <= s <= 4.81, (fps, "sprint acceleration", s)
         for _ in range(math.ceil(0.4 * fps)):
             s = approach(s, 0.0, brake, dt)
         assert 0.0 <= s <= 0.01, (fps, "braking", s)

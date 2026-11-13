@@ -54,9 +54,12 @@ def audit():
     assert "bool combatFacing = battle != null && battle.IsArmed &&" in motor
     assert "Quaternion.Euler(0f, yaw, 0f)" in motor
     assert "Mathf.Exp(-weaponTurnResponse * dt)" in motor
-    assert "adsMoveSpeed = 2.65f;" in motor
-    assert "unarmedSprintSpeed = 6.5f;" in motor
-    assert "armedSprintSpeed = 5.7f;" in motor
+    assert "adsMoveSpeed = 2.2f;" in motor
+    assert "unarmedSprintSpeed = 4.8f;" in motor
+    assert "armedSprintSpeed = 4.4f;" in motor
+    assert "EnforceNaturalLocomotionPace();" in motor
+    assert "Mathf.InverseLerp(4.0f, Mathf.Max(4.8f, fullRunSpeed), horizontal)" in visual
+    assert "sprinting && travelSpeed > 3.7f ? 3f : 0f" in motor
     assert motor.count("controller.Move(") == 1
 
     # Critical gun-size bug: avatar import may use 0.01 / 100 bone scale.
@@ -117,11 +120,11 @@ def audit():
             alpha = 1.0 - math.exp(-17.0 * dt)
             angle += (90.0 - angle) * alpha
         assert abs(angle - 90.0) < .09, (fps, angle)
-        normal = 4.2
-        ads = min(normal, 2.65)
-        crouch = min(2.4, 2.65)
-        prone = min(1.45, 2.65)
-        assert ads == 2.65 and crouch == 2.4 and prone == 1.45
+        normal = 3.4
+        ads = min(normal, 2.2)
+        crouch = min(2.0, 2.2)
+        prone = min(1.0, 2.2)
+        assert ads == 2.2 and crouch == 2.0 and prone == 1.0
     print("PASS: independent E/T/V inputs, camera-relative ADS strafing, single-player motor, "
           "world-size-stable hand socket, masked upper-body recoil and 10–120FPS yaw damping")
     print("NOT TESTED: Unity AvatarMask import/retarget and physical Android visual pose")
