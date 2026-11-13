@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Aaris.MapReview
@@ -33,6 +34,8 @@ namespace Aaris.MapReview
         // A second reusable buffer handles dense forests/settlements without
         // allocating a Collider[] on every prone movement frame.
         private readonly Collider[] crowdedHits = new Collider[128];
+        // Reuse one component list for damage-receiver lookup on rare melee attacks.
+        private readonly List<Component> punchComponents = new List<Component>(8);
         private PlayerStance stance;
         private bool fireHeld;
         private bool semiShotQueued;
@@ -296,6 +299,30 @@ namespace Aaris.MapReview
             else nextAttack = Time.time + 0.04f;
         }
 
+        // A nearby bush/rock/house collider is not a damage target. Select a
+        // receiver first, then let the raycast below reject real solid cover.
+        // Mirrors AarisEquippedGun.ApplyDamage's parent traversal without
+        // allocating GetComponents arrays for each melee candidate.
+        private IAarisDamageable FindPunchReceiver(Collider hit)
+        {
+            if (hit == null) return null;
+            for (Transform node = hit.transform; node != null; node = node.parent)
+            {
+                punchComponents.Clear();
+                node.GetComponents(punchComponents);
+                for (int i = 0; i < punchComponents.Count; i++)
+                {
+                    if (punchComponents[i] is IAarisDamageable damageable)
+                    {
+                        punchComponents.Clear();
+                        return damageable;
+                    }
+                }
+            }
+            punchComponents.Clear();
+            return null;
+        }
+
         private void Punch()
         {
             Vector3 origin = transform.position + Vector3.up *
@@ -333,9 +360,12 @@ namespace Aaris.MapReview
                 Vector3 candidateOffset = nearest - origin;
                 if (candidateOffset.sqrMagnitude > punchReach * punchReach ||
                     Vector3.Dot(transform.forward, candidateOffset) < 0.1f) continue;
-                if (candidateOffset.sqrMagnitude < distance)
+                // Non-damageable vegetation or cover must not absorb a punch.
+                // The separate raycast still prevents hitting through cover.
+                float candidateDistance = candidateOffset.sqrMagnitude;
+                if (candidateDistance < distance && FindPunchReceiver(collider) != null)
                 {
-                    distance = candidateOffset.sqrMagnitude;
+                    distance = candidateDistance;
                     best = i;
                 }
             }
@@ -348,7 +378,10 @@ namespace Aaris.MapReview
                 Physics.Raycast(origin, delta.normalized, out RaycastHit obstruction,
                     delta.magnitude, mask, QueryTriggerInteraction.Ignore) &&
                 obstruction.collider != victim &&
-                !obstruction.collider.transform.IsChildOf(victim.transform))
+                !obstruction.collider.transform.IsChildOf(victim.transform) &&
+                // A skinned enemy may have sibling limb colliders. A same-
+                // receiver collider is not a wall between fist and target.
+                FindPunchReceiver(obstruction.collider) != FindPunchReceiver(victim))
                 return;
             // An impact sound is not a swing sound: trigger it only if the
             // punch actually passed overlap, reach and wall-occlusion tests.
