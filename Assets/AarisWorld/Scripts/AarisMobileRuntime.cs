@@ -237,15 +237,19 @@ namespace Aaris.MapReview
             if (FrameTimingManager.GetLatestTimings(1u, mobileFrameTimings) == 0u)
                 return;
             FrameTiming timing = mobileFrameTimings[0];
-            if (timing.gpuFrameTime <= 0d ||
-                timing.cpuMainThreadFrameTime <= 0d ||
-                timing.cpuRenderThreadFrameTime <= 0d) return;
-            double cpuWork = Math.Max(timing.cpuMainThreadFrameTime,
-                timing.cpuRenderThreadFrameTime);
+            // Some Android graphics backends report no separate render-thread
+            // timer (0 ms on single-threaded rendering). Rejecting the whole
+            // sample hides valid GPU + main-thread timings and can make the
+            // governor downscale a CPU-bound scene unnecessarily.
+            double cpuMain = Math.Max(0d, timing.cpuMainThreadFrameTime);
+            double cpuRender = Math.Max(0d, timing.cpuRenderThreadFrameTime);
+            if (timing.gpuFrameTime <= 0d || (cpuMain <= 0d && cpuRender <= 0d))
+                return;
+            double cpuWork = Math.Max(cpuMain, cpuRender);
             timingSamples++;
             gpuFrameTimeTotalMs += timing.gpuFrameTime;
-            cpuMainTimeTotalMs += timing.cpuMainThreadFrameTime;
-            cpuRenderTimeTotalMs += timing.cpuRenderThreadFrameTime;
+            cpuMainTimeTotalMs += cpuMain;
+            cpuRenderTimeTotalMs += cpuRender;
             if (timing.gpuFrameTime >= cpuWork * 1.1d)
                 gpuLimitedSamples++;
             else if (cpuWork >= timing.gpuFrameTime * 1.2d)

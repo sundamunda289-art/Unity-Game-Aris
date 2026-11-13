@@ -27,6 +27,9 @@ namespace Aaris.MapReview
         // movements at the activation boundary do not churn physics broadphase.
         // Never use this margin to enable a previously unloaded collider early.
         private const float ColliderReleaseMargin = 6f;
+        // A 55m activation radius is much wider than the player's 3m refresh
+        // step. Avoid rescanning ~1.5k static author colliders every 2m.
+        private const float RefreshTravelSquared = 9f;
 
         private void Awake()
         {
@@ -78,9 +81,11 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (target == null) return;
-            // Refresh after two metres of movement; while stationary, reduce the
-            // full spatial-grid poll from 4 Hz to 1 Hz on low-end phones.
-            if ((target.position - lastPosition).sqrMagnitude >= 4 || Time.unscaledTime >= nextCheck) RefreshNow(false);
+            // Refresh after three metres of movement (and at least every second).
+            // Geometry stays active 55m away; 3m travel cannot leave a
+            // player without nearby solid walls. Teleports call RefreshNow().
+            if ((target.position - lastPosition).sqrMagnitude >= RefreshTravelSquared ||
+                Time.unscaledTime >= nextCheck) RefreshNow(false);
         }
         // Explicit teleport and startup calls still synchronize immediately.
         // Periodic polls avoid a global physics sync if no collider changed.
