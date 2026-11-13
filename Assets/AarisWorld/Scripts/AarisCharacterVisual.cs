@@ -529,6 +529,17 @@ namespace Aaris.MapReview
             bool authoredProne = proneClip != null && crawlClip != null;
             float fallbackProne = authoredProne ? 0f : proneBlend;
             Vector3 velocity = controller.velocity;
+            // Share the existing 130 ms terrain-contact grace between foot
+            // timing and balance. A one-frame stair seam is not a jump and
+            // must not abruptly drop strafe/turn lean. A real takeoff bypasses
+            // the grace immediately through the motor's takeoff timestamp.
+            bool groundedNow = controller.isGrounded;
+            float now = Time.unscaledTime;
+            if (groundedNow) lastReliableGroundContact = now;
+            float jumpAge = playerMotor != null ? now - playerMotor.LastJumpStartedTime : 10f;
+            bool deliberateJump = jumpAge >= 0f && jumpAge < 0.65f;
+            bool visuallyAirborne = !groundedNow &&
+                (deliberateJump || now - lastReliableGroundContact > 0.13f);
             float planar = new Vector2(velocity.x, velocity.z).magnitude;
             float leaning = Mathf.InverseLerp(3.4f, fullRunSpeed, planar) *
                 sprintForwardLeanDegrees * (primaryLoaded ? 0.8f : 1f) * (1f - proneBlend);
@@ -537,7 +548,7 @@ namespace Aaris.MapReview
             // their authoritative yaw and position. Fade it out while prone
             // or airborne so the body never rolls through nearby cover.
             float strafeSpeed = Vector3.Dot(velocity, transform.right);
-            float bankTarget = controller.isGrounded
+            float bankTarget = !visuallyAirborne
                 ? -Mathf.Clamp(strafeSpeed / Mathf.Max(1f, fullRunSpeed), -1f, 1f) *
                     strafeBankDegrees * (1f - proneBlend)
                 : 0f;
@@ -576,7 +587,7 @@ namespace Aaris.MapReview
             lastMotorPosition = motorPosition;
             // Suppress standing balance corrections while crouched, prone or
             // airborne: these poses already have authored limb/body alignment.
-            float standingShare = controller.isGrounded
+            float standingShare = !visuallyAirborne
                 ? 1f - Mathf.Clamp01(crouchBlend + proneBlend) : 0f;
             float accelerationPitchTarget =
                 Mathf.Clamp(forwardAcceleration / 13f, -1f, 1f) *
@@ -623,16 +634,8 @@ namespace Aaris.MapReview
             if (visualRoot.localPosition != desiredPosition)
                 visualRoot.localPosition = desiredPosition;
 
-            // Ground probes can flicker briefly on stair lips and uneven terrain.
-            // A real jump uses the motor's takeoff timestamp and bypasses the grace period.
-            // Keep this presentation-only: never alter the CharacterController or velocity.
-            bool groundedNow = controller.isGrounded;
-            float now = Time.unscaledTime;
-            if (groundedNow) lastReliableGroundContact = now;
-            float jumpAge = playerMotor != null ? now - playerMotor.LastJumpStartedTime : 10f;
-            bool deliberateJump = jumpAge >= 0f && jumpAge < 0.65f;
-            bool visuallyAirborne = !groundedNow &&
-                (deliberateJump || now - lastReliableGroundContact > 0.13f);
+            // The same support decision now drives gait phase, airborne pose,
+            // acceleration pitch and lateral bank without extra physics probes.
 
             if (graphReady)
             {
