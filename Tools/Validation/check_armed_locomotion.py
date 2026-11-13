@@ -6,6 +6,7 @@ a Unity Editor compilation and actual animation/hand screenshots are separate.
 """
 from pathlib import Path
 import math
+import json
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "Assets/AarisWorld/Scripts"
@@ -100,6 +101,14 @@ def audit():
     assert "part == AvatarMaskBodyPart.RightArm" in visual
     assert "layered.SetLayerMaskFromAvatarMask(1, upperBodyMask);" in visual
     assert "float baseWeight = 1f - primary;" in visual
+    assert "crouchPlayable.SetTime(crouchClip.length * (10d / 24d));" in visual
+    assert "pronePlayable.SetTime(proneClip != null" in visual
+    source_clips = json.loads((ROOT / "Assets/Resources/AarisCharacters/Primary/Animations"
+                               / "kaykit-clip-sources.json").read_text(encoding="utf-8"))["clips"]
+    assert source_clips["crouch"]["frames"] == [0, 24]
+    assert source_clips["crouch"]["source_hold_frame"] == 10
+    assert source_clips["prone"]["frames"] == [0, 24]
+    assert source_clips["prone"]["source_hold_frame"] == 0
     assert "float carryTarget = !carrying ? 0f : aim ? 0.63f :" in visual
     assert "readyHoldPlayable.SetSpeed(0d);" in visual
     assert "WriteLayerWeightIfChanged(layerWeight);" in visual
