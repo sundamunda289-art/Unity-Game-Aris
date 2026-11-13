@@ -19,6 +19,10 @@ assert 'ghcr.io/devcontainers/features/sshd:1' in d['features']
 # VehiclesModule; leaving it out makes the entire vehicle assembly fail to compile.
 manifest=json.loads((r/'Packages/manifest.json').read_text())['dependencies']
 assert manifest.get('com.unity.modules.vehicles')=='1.0.0'
+# Android Unity compile regression: AarisMobileRuntime's WindZone lives in
+# the optional built-in WindModule, not in UnityEngine.CoreModule.
+assert manifest.get('com.unity.modules.wind')=='1.0.0'
+assert 'WindZone[] mobileWindZones;' in (r/'Assets/AarisWorld/Scripts/AarisMobileRuntime.cs').read_text()
 vehicle=(r/'Assets/AarisWorld/Scripts/AarisVehicleMotor.cs').read_text()
 assert 'WheelCollider' in vehicle and 'WheelFrictionCurve' in vehicle
 combat=(r/'Assets/AarisWorld/Scripts/AarisBattleActions.cs').read_text()
