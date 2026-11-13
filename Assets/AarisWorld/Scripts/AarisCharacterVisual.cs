@@ -180,10 +180,19 @@ namespace Aaris.MapReview
             // hierarchy are left untouched.
             placeholderRenderers = GetComponentsInChildren<MeshRenderer>(true);
             for (int i = 0; i < placeholderRenderers.Length; i++)
-                if (placeholderRenderers[i] != null &&
+                if (IsLegacyPlaceholderRenderer(placeholderRenderers[i]) &&
                     !placeholderRenderers[i].transform.IsChildOf(visual.transform))
                     placeholderRenderers[i].enabled = false;
             Debug.Log("Aaris: locally rigged Humanoid locomotion ready.");
+        }
+
+        // Only the saved primitive player pieces are placeholders. A weapon
+        // equipped before this Start() can already be a child of the player;
+        // hiding all child MeshRenderers makes that real weapon invisible.
+        private static bool IsLegacyPlaceholderRenderer(MeshRenderer renderer)
+        {
+            return renderer != null &&
+                renderer.gameObject.name.StartsWith("AarisPlayer_", StringComparison.Ordinal);
         }
 
         private bool FitVisualToController()
@@ -701,7 +710,7 @@ namespace Aaris.MapReview
             if (runtimeSkin != null) Destroy(runtimeSkin);
             if (placeholderRenderers != null)
                 foreach (var renderer in placeholderRenderers)
-                    if (renderer != null) renderer.enabled = true;
+                    if (IsLegacyPlaceholderRenderer(renderer)) renderer.enabled = true;
         }
     }
 }
