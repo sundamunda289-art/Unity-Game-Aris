@@ -143,11 +143,12 @@ namespace Aaris.MapReview
         private void ConfigureAndroidQuality()
         {
             if (!adaptiveAndroidResolution) return;
-            // The adaptation budget is specifically for 2–3 GB devices.
-            // On larger or unknown-RAM devices leave the native URP quality
-            // unchanged; a CPU-bound hitch must not blur their graphics.
+            // RAM is not a GPU score: inexpensive Mali-G52 phones can have
+            // 4 GB and still struggle with thousands of windy SpeedTrees.
+            // Enable the constrained-GPU path without blurring stronger GPUs.
             int memoryMB = SystemInfo.systemMemorySize;
-            if (memoryMB <= 0 || memoryMB > 3072) return;
+            bool constrainedGraphics = memoryMB <= 2304 || IsBudgetAndroidGpu();
+            if (memoryMB <= 0 || (memoryMB > 3072 && !constrainedGraphics)) return;
             androidPipeline = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
             if (androidPipeline == null) return;
             originalRenderScale = androidPipeline.renderScale;
@@ -161,7 +162,7 @@ namespace Aaris.MapReview
             // scale if the GPU cannot keep up.
             bool compactDisplay = Screen.width > 0 && Screen.height > 0 &&
                 (long)Screen.width * Screen.height <= 1280L * 720L;
-            float initialScale = memoryMB <= 2304
+            float initialScale = constrainedGraphics
                 ? (compactDisplay ? 0.92f : 0.85f)
                 : (compactDisplay ? 0.96f : 0.92f);
             androidPipeline.renderScale = Mathf.Min(originalRenderScale, initialScale);
@@ -184,14 +185,14 @@ namespace Aaris.MapReview
             // avoid drawing shadow casters for most of the distant map.
             // Keep the 4 native cascades / atlas and all source assets intact.
             originalShadowDistance = androidPipeline.shadowDistance;
-            float mobileShadowDistance = memoryMB <= 2304 ? 120f : 240f;
+            float mobileShadowDistance = constrainedGraphics ? 120f : 240f;
             appliedShadowDistance = Mathf.Min(originalShadowDistance, mobileShadowDistance);
             if (appliedShadowDistance < originalShadowDistance)
             {
                 androidPipeline.shadowDistance = appliedShadowDistance;
                 modifiedShadowDistance = true;
             }
-            if (memoryMB <= 2304)
+            if (constrainedGraphics)
             {
                 // Four cascades render distant shadow casters repeatedly. Keep
                 // two near-camera cascades with real shadows for players,
@@ -205,6 +206,18 @@ namespace Aaris.MapReview
                 }
                 ConfigureLowMemoryVegetation();
             }
+        }
+
+        private static bool IsBudgetAndroidGpu()
+        {
+            // A narrow, auditable list: many 4 GB budget gaming phones still
+            // use these limited tile-based GPUs. Avoid RAM-only classification.
+            string gpu = SystemInfo.graphicsDeviceName ?? "";
+            return gpu.IndexOf("Mali-G52", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   gpu.IndexOf("Mali-G51", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   gpu.IndexOf("Mali-G31", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   gpu.IndexOf("PowerVR GE8320", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   gpu.IndexOf("Adreno 610", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         // One-time, Android-only vegetation work: static wind is much cheaper
@@ -272,7 +285,8 @@ namespace Aaris.MapReview
                 zone.windPulseMagnitude = 0f;
                 zone.windPulseFrequency = 0f;
             }
-            Debug.Log("AARIS_ANDROID_LOW_RAM_VEGETATION tiles=" + count +
+            Debug.Log("AARIS_ANDROID_LOW_RAM_VEGETATION gpu=" +
+                      SystemInfo.graphicsDeviceName + " tiles=" + count +
                       " grass_wind_disabled=" + suppressedGrassTiles +
                       " wind_zones_disabled=" + suppressedWindZones +
                       " details_max_m=80 tree_billboards_m=85" +
