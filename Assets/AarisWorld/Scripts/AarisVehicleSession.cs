@@ -288,9 +288,15 @@ namespace Aaris.MapReview
             Vector3 start = aim + Vector3.up * .85f;
             Vector3 requested = vehicle.position - vehicle.forward * 6.7f +
                 Vector3.up * 3.1f;
-            Vector3 ray = requested - start;
+            // Smooth the intended orbit first, then collision-test the camera's
+            // actual rendered position. Clamping the goal before SmoothDamp
+            // allowed interpolation to cross walls on sharp vehicle turns.
+            // Keep exactly one bounded physics sweep per frame on low-RAM phones.
+            Vector3 next = Vector3.SmoothDamp(
+                followCamera.transform.position, requested, ref cameraVelocity,
+                .12f, Mathf.Infinity, Mathf.Min(.05f, Time.deltaTime));
+            Vector3 ray = next - start;
             float length = ray.magnitude;
-            Vector3 goal = requested;
             if (length > .001f)
             {
                 Vector3 direction = ray / length;
@@ -317,11 +323,14 @@ namespace Aaris.MapReview
                     nearest = Mathf.Min(nearest, hit.distance);
                 }
                 if (nearest < length)
-                    goal = start + direction * Mathf.Max(.35f, nearest - .24f);
+                {
+                    next = start + direction * Mathf.Max(.35f, nearest - .24f);
+                    // Stop smoothing velocity from repeatedly pushing through
+                    // the same obstacle after this collision correction.
+                    cameraVelocity = Vector3.zero;
+                }
             }
-            followCamera.transform.position = Vector3.SmoothDamp(
-                followCamera.transform.position, goal, ref cameraVelocity,
-                .12f, Mathf.Infinity, Mathf.Min(.05f, Time.deltaTime));
+            followCamera.transform.position = next;
             Vector3 look = aim - followCamera.transform.position;
             if (look.sqrMagnitude > .001f)
                 followCamera.transform.rotation = Quaternion.LookRotation(look);
