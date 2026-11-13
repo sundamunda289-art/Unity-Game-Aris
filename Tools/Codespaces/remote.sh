@@ -522,7 +522,19 @@ PY
     mkdir -p /tmp/aaris-unity-runtime/project-cache
     for name in Library Temp Logs obj; do
       target="$PROJECT/$name"
-      if test -L "$target"; then continue; fi
+      if test -L "$target"; then
+        # The Codespace's /tmp cache is ephemeral. A persisted symlink
+        # can outlive its target after restart; Unity then fails to create
+        # Library/Logs and can segfault before compilation.
+        cache_target="/tmp/aaris-unity-runtime/project-cache/$name"
+        if test "$(readlink "$target")" = "$cache_target"; then
+          mkdir -p "$cache_target"
+        elif ! test -d "$target"; then
+          echo "CACHE_DANGLING_UNKNOWN_TARGET_$name"
+          exit 13
+        fi
+        continue
+      fi
       if test -d "$target"; then
         if test -n "$(ls -A "$target" 2>/dev/null)"; then
           echo "CACHE_DIRECTORY_NONEMPTY_$name"
