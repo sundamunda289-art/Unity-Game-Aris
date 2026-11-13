@@ -129,6 +129,11 @@ namespace Aaris.MapReview
         public bool TrySetStance(PlayerStance target)
         {
             if (target == stance) return true;
+            // Going fully prone during a jump/fall instantaneously shrinks the
+            // capsule and lets the visual head/feet pass through geometry.
+            // Crouch remains permitted in the air; prone needs real ground
+            // contact from the motor's most recent CharacterController.Move.
+            if (target == PlayerStance.Prone && !capsule.isGrounded) return false;
             float height = target == PlayerStance.Standing ? standingHeight :
                 target == PlayerStance.Crouching ? crouchHeight : proneHeight;
             // CharacterController cannot be shorter than its diameter.
