@@ -107,6 +107,18 @@ def test():
     assert "nearest = Mathf.Min(nearest, hit.distance)" in session
     assert "if (count >= cameraObstacles.Length)" in session
     assert "Physics.SphereCast(" not in session
+    # The actual rendered smoothed camera, not only the ideal follow goal,
+    # must be swept before assignment. One cast preserves mobile budget.
+    follow = session.split("private void FollowCarCamera()", 1)[1].split(
+        "private void OnDisable()", 1)[0]
+    assert "Vector3 ray = next - start;" in follow
+    assert "Vector3 goal = requested;" not in follow
+    assert follow.count("Physics.SphereCastNonAlloc(") == 1
+    assert follow.index("Vector3 next = Vector3.SmoothDamp(") < (
+        follow.index("Physics.SphereCastNonAlloc("))
+    assert follow.index("Physics.SphereCastNonAlloc(") < (
+        follow.index("followCamera.transform.position = next;"))
+    assert "cameraVelocity = Vector3.zero;" in follow
 
     # Existing map and touchscreen interaction protections must remain.
     assert "Physics.OverlapBoxNonAlloc" in world
