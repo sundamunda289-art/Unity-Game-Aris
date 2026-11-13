@@ -40,17 +40,49 @@ def check(require_native=False):
     for limb in ['leftArm','rightArm','leftLeg','rightLeg']:assert byid[logic[limb]['fileID']][0]==4
     assert all(d['m_StaticEditorFlags']==0 for c,i,n,d in objects if n=='GameObject' and d['m_Name'].startswith('AarisPlayer'))
     transforms={i:d for c,i,n,d in objects if n=='Transform'}
+    instances={i:d for c,i,n,d in objects if n=='PrefabInstance'}
+    def parent_of(i,t):
+        if 'm_Father' in t:return t['m_Father']['fileID']
+        # Unity saves a nested prefab's root as a stripped Transform. Its
+        # actual parent lives on the matching PrefabInstance modification.
+        ref=t['m_PrefabInstance']['fileID']
+        assert ref in instances,(i,'Dangling stripped prefab transform')
+        inst=instances[ref]
+        assert t['m_CorrespondingSourceObject']['guid']==inst['m_SourcePrefab']['guid']
+        parent=inst['m_Modification']['m_TransformParent']['fileID']
+        assert parent in transforms,(i,'Missing nested prefab parent',parent)
+        return parent
     for i,t in transforms.items():
-        for child in t['m_Children']:assert transforms[child['fileID']]['m_Father']['fileID']==i,'Transform parent/child mismatch'
+        for child in t.get('m_Children',[]):
+            cid=child['fileID']
+            assert cid in transforms,(i,'Unknown child Transform',cid)
+            assert parent_of(cid,transforms[cid])==i,'Transform parent/child mismatch'
     scene_roots=next(d['m_Roots'] for c,i,n,d in objects if n=='SceneRoots')
-    assert {r['fileID'] for r in scene_roots}=={i for i,t in transforms.items() if t['m_Father']['fileID']==0}
+    assert {r['fileID'] for r in scene_roots}=={i for i,t in transforms.items() if parent_of(i,t)==0}
     assert sum(c==218 for c,i,n,d in objects)==4
     assert sum(c==1 and bool(re.fullmatch('VehicleSpawnPoint_[0-9]+',d['m_Name'])) for c,i,n,d in objects)==45
     layout=json.loads((ROOT/'Docs/MAP_LAYOUT.json').read_text())
     building_names={b['name'] for b in layout['buildings']}
     names={i:d['m_Name'] for c,i,n,d in objects if n=='GameObject'}
     lods=[d for c,i,n,d in objects if n=='LODGroup' and names[d['m_GameObject']['fileID']] in building_names]
-    assert len(lods)==59 and all(len(d['m_LODs'])==3 for d in lods)
+    replacements=[p for p in instances.values() if any(
+        a.get('propertyPath')=='m_Name' and a.get('value')=='__AarisNativeOpenEntryHome'
+        for a in p['m_Modification']['m_Modifications'])]
+    # Original 59 building LOD groups are split between untouched landmarks
+    # and the explicit CC0 prefab instances in the native scene.
+    assert len(replacements) in (0,47), 'Partially replaced native houses'
+    assert len(lods)+len(replacements)==59, 'Missing native building or prefab LOD'
+    assert all(len(d['m_LODs'])==3 for d in lods)
+    if replacements:
+        prefab_guids=set()
+        for name in ['RidgeCabin','PlasterBungalow','RidgeCottage','ConcreteHome',
+                     'CoastalHome','MasonryHome','TerraceHome']:
+            folder=ROOT/'Assets/AarisWorld/Models/RuinedHouses'/name
+            prefab_guids.add(yaml.safe_load((folder/(name+'.prefab.meta')).read_text())['guid'])
+            data=documents(folder/(name+'.prefab'))
+            lod_groups=[d for c,i,n,d in data if n=='LODGroup']
+            assert len(lod_groups)==1 and len(lod_groups[0]['m_LODs'])==3
+        assert {p['m_SourcePrefab']['guid'] for p in replacements}==prefab_guids
     assert all([l['screenRelativeHeight'] for l in d['m_LODs']]==[.22,.07,.0025] for d in lods)
     sky=next(d for c,i,n,d in documents(ROOT/'Assets/TerrainDemoScene_URP/Prefabs/Skybox/Materials/Sky.mat') if n=='Material')
     assert sky['m_Shader']['fileID']==106 and sky['m_ShaderKeywords']=='_SUNDISK_HIGH_QUALITY'
