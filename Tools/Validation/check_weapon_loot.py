@@ -195,18 +195,26 @@ def run():
     # This is the expected planned-loot coverage BEFORE physical floor
     # validation, not a claim about rendered Android pickup visibility.
     open_slots = [c for c in loot["candidates"] if c["kind"] == "open"]
-    assert len(open_slots) >= 300
-    old_expected = improved_expected = 0.0
+    # Legacy slots have 16-bit IDs; new deterministic satellites start at
+    # 100000. Compare the old selection-probability improvement on the
+    # same baseline, then independently verify the extra authored coverage.
+    legacy_slots = [c for c in open_slots if c["slot"] < 65536]
+    assert len(legacy_slots) >= 300 and len(open_slots) > len(legacy_slots) + 500
+    old_expected = improved_expected = dense_expected = 0.0
     count_samples = 0
     for x in range(-925, 926, 50):
         for z in range(-925, 926, 50):
             n = sum((c["x"] - x) ** 2 + (c["z"] - z) ** 2 <= 42 ** 2
-                    for c in open_slots)
+                    for c in legacy_slots)
+            dense_n = sum((c["x"] - x) ** 2 + (c["z"] - z) ** 2 <= 42 ** 2
+                          for c in open_slots)
             old_expected += 1.0 - 0.68 ** n
             improved_expected += 1.0 - 0.40 ** n
+            dense_expected += 1.0 - 0.40 ** dense_n
             count_samples += 1
     assert count_samples > 1400
     assert improved_expected > 1.7 * old_expected
+    assert dense_expected > 1.2 * improved_expected
     assert "MaximumActiveLoot = 40" in world
     assert "MaximumBuildAttemptsPerFrame = 2" in world
 
