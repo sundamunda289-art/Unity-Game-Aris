@@ -13,7 +13,7 @@ namespace Aaris.MapReview
         [SerializeField, Min(0f)] private float unarmedSprintSpeed = 6.5f;
         [SerializeField, Min(0f)] private float armedSprintSpeed = 5.7f;
         [SerializeField, Min(0f)] private float crouchMoveSpeed = 2.4f;
-        [SerializeField, Min(0f)] private float proneMoveSpeed = 1.45f;
+        [SerializeField, Min(0f)] private float proneMoveSpeed = 1.1f;
         [SerializeField, Min(0f)] private float combatMoveSpeed = 2.0f;
         [SerializeField, Min(0f)] private float adsMoveSpeed = 2.65f;
         [SerializeField, Min(1f)] private float weaponTurnResponse = 17f;
