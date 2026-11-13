@@ -505,13 +505,18 @@ namespace Aaris.MapReview
 
             float dt = Mathf.Min(Time.deltaTime, 0.15f);
             float alpha = 1f - Mathf.Exp(-dt / Mathf.Max(0.04f, blendResponseSeconds));
-            float stanceAlpha = 1f - Mathf.Exp(-dt / 0.16f);
             bool crouching = actions != null &&
                 actions.Stance == AarisBattleActions.PlayerStance.Crouching;
             bool prone = actions != null &&
                 actions.Stance == AarisBattleActions.PlayerStance.Prone;
-            crouchBlend = Mathf.Lerp(crouchBlend, crouching ? 1f : 0f, stanceAlpha);
-            proneBlend = Mathf.Lerp(proneBlend, prone ? 1f : 0f, stanceAlpha);
+            // The collision capsule responds immediately to a stance tap.
+            // Entering a lower pose should catch up promptly, while standing
+            // back up eases slightly longer so shoulders do not snap upward.
+            // Exponential time constants preserve feel from 10 to 120 FPS.
+            float crouchAlpha = 1f - Mathf.Exp(-dt / (crouching ? 0.11f : 0.15f));
+            float proneAlpha = 1f - Mathf.Exp(-dt / (prone ? 0.11f : 0.15f));
+            crouchBlend = Mathf.Lerp(crouchBlend, crouching ? 1f : 0f, crouchAlpha);
+            proneBlend = Mathf.Lerp(proneBlend, prone ? 1f : 0f, proneAlpha);
 
             bool authoredProne = proneClip != null && crawlClip != null;
             float fallbackProne = authoredProne ? 0f : proneBlend;
@@ -720,6 +725,19 @@ namespace Aaris.MapReview
                     if (proneWeight > 0.001f)
                         crawlPhase = Mathf.Repeat(crawlPhase +
                             phaseDirection * distance / 0.90f, 1f);
+                }
+                // After a complete stop, resume the next step at a consistent
+                // gait-contact sample instead of an arbitrary mid-stride pose.
+                // Only re-phase an effectively invisible gait while grounded:
+                // resetting an active clip would jerk the visible feet.
+                if (controller.isGrounded && horizontal < 0.045f)
+                {
+                    if (pose < 0.01f && runBlend < 0.01f)
+                        locomotionPhase = 0f;
+                    if (crouchWeight > 0.99f && crouchMoving < 0.01f)
+                        crouchPhase = 0f;
+                    if (proneWeight > 0.99f && crawlMoving < 0.01f)
+                        crawlPhase = 0f;
                 }
                 // Breathing/idle must keep animating at all frame rates.
                 LoopPlayable(idlePlayable, idleClip, Time.timeAsDouble / Math.Max(0.02, idleClip.length));

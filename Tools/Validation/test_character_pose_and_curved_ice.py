@@ -73,6 +73,33 @@ for rise, angle, allowed in (
     # center is 0.31 m above feet; terrain must stay <= 0.21 m.
     got = rise <= (0.31 - 0.10) and math.cos(math.radians(angle)) >= math.cos(math.radians(45))
     assert got == allowed, (rise, angle, got)
+# Stance visual catch-up is quicker than the upward recovery, with a
+# frame-rate independent exponential; the physics capsule is untouched.
+assert 'crouching ? 0.11f : 0.15f' in visual
+assert 'prone ? 0.11f : 0.15f' in visual
+assert 'if (controller.isGrounded && horizontal < 0.045f)' in visual
+assert 'if (pose < 0.01f && runBlend < 0.01f)' in visual
+assert 'if (crouchWeight > 0.99f && crouchMoving < 0.01f)' in visual
+assert 'if (proneWeight > 0.99f && crawlMoving < 0.01f)' in visual
+assert 'locomotionPhase = 0f;' in visual
+assert 'crouchPhase = 0f;' in visual
+assert 'crawlPhase = 0f;' in visual
+for fps in (10, 30, 60, 120):
+    dt = 1.0 / fps
+    pose_value = 0.0
+    for _ in range(round(0.3 * fps)):
+        pose_value += (1.0 - pose_value) * (1.0 - math.exp(-dt / 0.11))
+    expected = 1.0 - math.exp(-0.3 / 0.11)
+    assert abs(pose_value - expected) < 1e-12, (fps, pose_value)
+    assert pose_value > 1.0 - math.exp(-0.3 / 0.16)
+# Idle-only rephase cannot touch an actively visible gait.
+for grounded, horizontal, pose, blend in (
+    (True, 0.0, 0.0, 0.005), (True, 0.5, 0.0, 0.0),
+    (False, 0.0, 0.0, 0.0), (True, 0.0, 0.4, 0.0)
+):
+    reset = grounded and horizontal < 0.045 and pose < 0.01 and blend < 0.01
+    assert reset == (grounded and horizontal == 0.0 and pose == 0.0 and blend == 0.005)
+
 # Character's original embedded .fbm image is a tangent-space normal atlas,
 # not a skin albedo. Import its small derived normal atlas as a REAL Unity
 # normal texture, bind it to URP Lit and keep mip/streaming affordable on 2GB.
