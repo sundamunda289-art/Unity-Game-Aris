@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Aaris.MapReview
@@ -9,6 +10,15 @@ namespace Aaris.MapReview
     [DisallowMultipleComponent]
     public sealed class AarisWeaponPickup : MonoBehaviour
     {
+        // One bounded registration per successfully initialized pickup. The HUD can
+        // discover nearby visible guns without any scene-wide Find call in Update.
+        private static readonly HashSet<AarisWeaponPickup> activePickups =
+            new HashSet<AarisWeaponPickup>();
+        internal static IEnumerable<AarisWeaponPickup> ActivePickups => activePickups;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ClearPickupRegistry() => activePickups.Clear();
+
         private AarisWeaponState state;
         private int candidateIndex;
         private Transform model;
@@ -128,6 +138,7 @@ namespace Aaris.MapReview
             }
             // Share the main camera reference; never search the scene every frame.
             beaconObserver = Camera.main;
+            activePickups.Add(this);
             return true;
         }
 
@@ -170,8 +181,16 @@ namespace Aaris.MapReview
             }
         }
 
+        private void OnEnable()
+        {
+            // A streamed pickup may be temporarily disabled and reenabled.
+            if (state != null && model != null && !consumed)
+                activePickups.Add(this);
+        }
+
         private void OnDisable()
         {
+            activePickups.Remove(this);
             // Beacon material is shared and owned by the global cache.
         }
     }
