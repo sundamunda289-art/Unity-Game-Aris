@@ -55,6 +55,7 @@ namespace Aaris.MapReview
         private bool hasDropPhase, wasDriving;
         private float previousY, previousJump = -10f, previousLand = -10f;
         private float stepDistance, lastSkidAt = -10f, lastCrashAt = -10f;
+        private AarisBattleActions.PlayerStance lastFootstepStance = AarisBattleActions.PlayerStance.Standing;
         private int nextLocalVoice, nextWorldVoice = LocalVoiceCount;
         private Vector3 previousPosition;
         private float nextOptionalComponentRefresh;
@@ -454,6 +455,24 @@ namespace Aaris.MapReview
             }
         }
 
+        // One sound per alternate foot contact, not one sound per arbitrary
+        // elapsed second. Mirror AarisCharacterVisual's distance-driven clip
+        // cycles: each forward/crouch/crawl cycle contains two ground contacts.
+        // In particular, 5.4 m/s is unreachable with the current 4.8/4.4
+        // sprint caps and previously played walking footsteps while sprinting.
+        private static float FootfallSpacing(float metresPerSecond, bool armed,
+            AarisBattleActions.PlayerStance stance)
+        {
+            if (stance == AarisBattleActions.PlayerStance.Prone) return 0.45f;
+            if (stance == AarisBattleActions.PlayerStance.Crouching) return 0.70f;
+            float runBlend = Mathf.InverseLerp(3.3f, 4.4f, metresPerSecond);
+            float sprintBlend = Mathf.InverseLerp(4.0f,
+                armed ? 4.4f : 4.8f, metresPerSecond);
+            float cycleDistance = Mathf.Lerp(1.25f,
+                Mathf.Lerp(2.55f, 3.65f, sprintBlend), runBlend);
+            return cycleDistance * 0.5f;
+        }
+
         private void TickFootsteps(Vector3 pos)
         {
             if (capsule == null || !capsule.enabled) return;
@@ -470,6 +489,14 @@ namespace Aaris.MapReview
                 OneShot("land_thud", pos, 0.72f);
             }
             if (!capsule.isGrounded) { stepDistance = 0f; return; }
+            var stance = combat != null ? combat.Stance : AarisBattleActions.PlayerStance.Standing;
+            // The crouch and crawl clips keep independent gait clocks. Avoid
+            // carrying a half-finished standing step into a new stance.
+            if (stance != lastFootstepStance)
+            {
+                stepDistance = 0f;
+                lastFootstepStance = stance;
+            }
             Vector3 delta = pos - previousPosition;
             delta.y = 0f;
             float moved = delta.magnitude;
@@ -477,9 +504,7 @@ namespace Aaris.MapReview
             if (moved < 0.008f) return;
             float speed = moved / Mathf.Max(Time.deltaTime, 0.001f);
             if (speed < 0.4f) return;
-            float stride = combat != null && combat.Stance == AarisBattleActions.PlayerStance.Prone
-                ? 0.65f : combat != null && combat.Stance == AarisBattleActions.PlayerStance.Crouching
-                ? 0.92f : speed > 5.4f ? 1.65f : 1.25f;
+            float stride = FootfallSpacing(speed, combat != null && combat.IsArmed, stance);
             stepDistance += moved;
             if (stepDistance < stride) return;
             stepDistance %= stride;
@@ -502,7 +527,9 @@ namespace Aaris.MapReview
                     label.IndexOf("bridge", StringComparison.OrdinalIgnoreCase) >= 0)
                     surface = "step_road";
             }
-            OneShot(surface, pos, speed > 5.4f ? 0.61f : 0.48f,
+            float volume = stance == AarisBattleActions.PlayerStance.Prone
+                ? 0.30f : speed >= 4.0f ? 0.61f : 0.48f;
+            OneShot(surface, pos, volume,
                 UnityEngine.Random.Range(0.92f, 1.08f));
         }
 
