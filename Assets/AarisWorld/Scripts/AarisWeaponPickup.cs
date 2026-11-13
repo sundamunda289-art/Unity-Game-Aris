@@ -141,8 +141,9 @@ namespace Aaris.MapReview
             if (beacon != null && Time.unscaledTime >= nextBeaconVisibilityCheck)
             {
                 nextBeaconVisibilityCheck = Time.unscaledTime + 0.45f;
-                if (beaconObserver == null) beaconObserver = Camera.main;
-                if (beaconObserver != null)
+                if (beaconObserver == null || !beaconObserver.isActiveAndEnabled)
+                    beaconObserver = Camera.main;
+                if (beaconObserver != null && beaconObserver.isActiveAndEnabled)
                 {
                     float rangeSq = (beaconObserver.transform.position -
                         transform.position).sqrMagnitude;
