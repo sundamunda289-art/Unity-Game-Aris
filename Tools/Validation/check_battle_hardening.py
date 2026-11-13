@@ -55,6 +55,15 @@ def audit() -> None:
     # Helmets share the bounded authored medical loot budget, mitigate only
     # available durability and are never incorrectly counted as medkits.
     assert "public bool TryEquipHelmet()" in health
+    # Fatal HP notifications must expose IsDead=true to subscribers,
+    # before the one-shot death event reaches the match state machine.
+    damage = health.split("public void ApplyDamage(", 1)[1].split(
+        "public void RestoreHealth(", 1
+    )[0]
+    assert "if (current <= 0f) dead = true;" in damage
+    assert damage.index("if (current <= 0f) dead = true;") < damage.index(
+        "HealthChanged?.Invoke(this);"
+    ) < damage.index("Died?.Invoke(this);")
     assert "Mathf.Min(helmetDurability, amount * helmetProtection)" in health
     assert "medicalHealth.TryEquipHelmet()" in tactical
     assert "if (!site.isHelmet) medkits++;" in tactical

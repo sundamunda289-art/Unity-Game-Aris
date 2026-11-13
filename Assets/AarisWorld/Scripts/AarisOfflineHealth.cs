@@ -41,9 +41,11 @@ namespace Aaris.MapReview
             float absorbed = Mathf.Min(helmetDurability, amount * helmetProtection);
             helmetDurability = Mathf.Max(0f, helmetDurability - absorbed);
             current = Mathf.Max(0f, current - (amount - absorbed));
+            // Publish fatality before notifying HUD/AI health observers:
+            // a zero-HP notification must already report IsDead = true.
+            if (current <= 0f) dead = true;
             HealthChanged?.Invoke(this);
-            if (current > 0f) return;
-            dead = true;
+            if (!dead) return;
             Died?.Invoke(this);
             Debug.Log("Aaris offline combat: combatant defeated, awaiting match state transition.");
         }
