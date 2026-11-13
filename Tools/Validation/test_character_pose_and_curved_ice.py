@@ -77,7 +77,9 @@ for rise, angle, allowed in (
 # frame-rate independent exponential; the physics capsule is untouched.
 assert 'crouching ? 0.11f : 0.15f' in visual
 assert 'prone ? 0.11f : 0.15f' in visual
-assert 'if (controller.isGrounded && horizontal < 0.045f)' in visual
+assert 'if (!visuallyAirborne)' in visual
+assert 'if (!visuallyAirborne && horizontal < 0.045f)' in visual
+assert 'if (controller.isGrounded && horizontal < 0.045f)' not in visual
 assert 'if (pose < 0.01f && runBlend < 0.01f)' in visual
 assert 'if (crouchWeight > 0.99f && crouchMoving < 0.01f)' in visual
 assert 'if (proneWeight > 0.99f && crawlMoving < 0.01f)' in visual
@@ -92,13 +94,34 @@ for fps in (10, 30, 60, 120):
     expected = 1.0 - math.exp(-0.3 / 0.11)
     assert abs(pose_value - expected) < 1e-12, (fps, pose_value)
     assert pose_value > 1.0 - math.exp(-0.3 / 0.16)
-# Idle-only rephase cannot touch an actively visible gait.
-for grounded, horizontal, pose, blend in (
-    (True, 0.0, 0.0, 0.005), (True, 0.5, 0.0, 0.0),
-    (False, 0.0, 0.0, 0.0), (True, 0.0, 0.4, 0.0)
+# Idle-only rephase cannot touch an actively visible or airborne gait.
+for airborne, horizontal, pose, blend in (
+    (False, 0.0, 0.0, 0.005), (False, 0.5, 0.0, 0.0),
+    (True, 0.0, 0.0, 0.0), (False, 0.0, 0.4, 0.0)
 ):
-    reset = grounded and horizontal < 0.045 and pose < 0.01 and blend < 0.01
-    assert reset == (grounded and horizontal == 0.0 and pose == 0.0 and blend == 0.005)
+    reset = not airborne and horizontal < 0.045 and pose < 0.01 and blend < 0.01
+    assert reset == (not airborne and horizontal == 0.0 and pose == 0.0 and blend == 0.005)
+
+# A one-frame ground-contact seam must NOT interrupt distance-driven gait.
+# Real takeoff and sustained falls still stop the planted-foot cycle.
+for fps in (10, 30, 60, 120):
+    dt = 1.0 / fps
+    def stride_phase(one_frame_seam):
+        phase = 0.0
+        contact_age = 0.0
+        for frame in range(12):
+            grounded = not one_frame_seam or frame != 6
+            contact_age = 0.0 if grounded else contact_age + dt
+            visibly_airborne = not grounded and contact_age > 0.13
+            if not visibly_airborne:
+                phase += 3.4 * dt / 2.55
+        return phase
+    assert math.isclose(stride_phase(True), stride_phase(False),
+                        abs_tol=1e-12), fps
+    # A deliberate jump overrides the support grace even in the first frame.
+    grounded, deliberate_jump, age_since_contact = False, True, dt
+    visibly_airborne = not grounded and (deliberate_jump or age_since_contact > 0.13)
+    assert visibly_airborne, fps
 
 # Character's original embedded .fbm image is a tangent-space normal atlas,
 # not a skin albedo. Import its small derived normal atlas as a REAL Unity
