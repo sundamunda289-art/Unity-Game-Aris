@@ -59,6 +59,13 @@ def audit():
     assert "unarmedSprintSpeed = 4.8f;" in motor
     assert "armedSprintSpeed = 4.4f;" in motor
     assert "EnforceNaturalLocomotionPace();" in motor
+    # A forward-only sprint prevents high-speed sideways/backwards sliding.
+    assert 'if (sprinting && (intent.y <= 0.25f ||' in motor
+    assert 'intent.y < Mathf.Abs(intent.x) * 0.5f))' in motor
+    assert 'speed *= Mathf.Lerp(1f, 0.78f, Mathf.Clamp01(-intent.y));' in motor
+    for x,y,sprint_expected in ((0,1,True),(0.7,0.7,True),(1,0,False),(0,-1,False)):
+        assert (y > 0.25 and y >= abs(x)*0.5) == sprint_expected
+
     # Armed sprint tops out at 4.4 m/s: use reachable, gradual run/arm blends.
     assert "Mathf.InverseLerp(3.3f, 4.4f, horizontal)" in visual
     assert "bool carrying = actions != null && actions.IsArmed;" in visual
