@@ -73,6 +73,11 @@ namespace Aaris.MapReview
         private readonly Dictionary<long, List<int>> candidateCells =
             new Dictionary<long, List<int>>();
         private readonly List<int> nearbyCandidateIndices = new List<int>(32);
+        // Match candidates and their grid are immutable after Initialize.
+        // Do not rebuild/sort this list during every one of the stream frames
+        // while the player stays inside the same 64m cell search rectangle.
+        private bool nearbyCandidateCellsCached;
+        private int cachedFirstCellX, cachedLastCellX, cachedFirstCellZ, cachedLastCellZ;
         private AarisLootCandidate[] candidates;
         private AarisWeaponSpec[] choices;
         private bool[] consumed;
@@ -199,6 +204,9 @@ namespace Aaris.MapReview
 
         private void IndexPlannedCandidates()
         {
+            // A fresh match changes the candidate list even at the same cell.
+            nearbyCandidateCellsCached = false;
+            nearbyCandidateIndices.Clear();
             candidateCells.Clear();
             for (int i = 0; i < candidates.Length; i++)
             {
@@ -216,19 +224,26 @@ namespace Aaris.MapReview
 
         private void CollectNearbyCandidateIndices(Vector3 center)
         {
-            nearbyCandidateIndices.Clear();
             // Expanded cell range includes points in all adjacent cells near
-            // boundaries; final precise 42m circle check remains unchanged.
+            // boundaries. The precise 50m circle is STILL checked separately
+            // for each candidate at its current player distance.
             int firstX = CandidateCell(center.x - ActivationMetres);
             int lastX = CandidateCell(center.x + ActivationMetres);
             int firstZ = CandidateCell(center.z - ActivationMetres);
             int lastZ = CandidateCell(center.z + ActivationMetres);
+            if (nearbyCandidateCellsCached &&
+                firstX == cachedFirstCellX && lastX == cachedLastCellX &&
+                firstZ == cachedFirstCellZ && lastZ == cachedLastCellZ)
+                return;
+            nearbyCandidateCellsCached = true;
+            cachedFirstCellX = firstX; cachedLastCellX = lastX;
+            cachedFirstCellZ = firstZ; cachedLastCellZ = lastZ;
+            nearbyCandidateIndices.Clear();
             for (int x = firstX; x <= lastX; x++)
                 for (int z = firstZ; z <= lastZ; z++)
                     if (candidateCells.TryGetValue(CandidateCellKey(x, z), out List<int> cell))
                         nearbyCandidateIndices.AddRange(cell);
-            // Preserve spawn priority (original candidate index order)
-            // while distributing construction across frames.
+            // Preserve the original candidate spawn priority exactly.
             nearbyCandidateIndices.Sort();
         }
 
