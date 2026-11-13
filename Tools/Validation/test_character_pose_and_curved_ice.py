@@ -5,11 +5,27 @@ ROOT = Path(__file__).resolve().parents[2]
 visual = (ROOT / 'Assets/AarisWorld/Scripts/AarisCharacterVisual.cs').read_text()
 motor = (ROOT / 'Assets/AarisWorld/Scripts/AarisThirdPersonPlayer.cs').read_text()
 gloo = (ROOT / 'Assets/AarisWorld/Scripts/AarisOfflineGlooWall.cs').read_text()
-assert 'crouchPlayable.SetTime(crouchClip.length * 0.87d)' in visual
-assert 'pronePlayable.SetTime((proneClip ?? crouchClip).length * 0.87d)' in visual
+assert 'crouchPlayable.SetTime(crouchClip.length * (10d / 24d));' in visual
+assert 'pronePlayable.SetTime(proneClip != null' in visual
+assert '? 0d : crouchClip.length * (10d / 24d)' in visual
 assert 'jumpPlayable.SetTime(jump.length * 0.39d)' in visual
 assert 'fallPlayable.SetTime(fall.length * 0.72d)' in visual
 assert 'jumpStartPlayable.SetSpeed(Mathf.Clamp' in visual
+assert 'float phaseDirection = forwardSpeed < -0.20f' in visual
+assert 'phaseDirection * distance / standStride' in visual
+assert 'phaseDirection * distance / 1.40f' in visual
+assert 'phaseDirection * distance / 0.90f' in visual
+assert 'smoothedStrafeBank = Mathf.Lerp(smoothedStrafeBank, bankTarget, alpha)' in visual
+assert 'float airResponseScale = desiredVelocity.sqrMagnitude < 0.001f' in motor
+assert 'Mathf.Min(airborneSteering, 0.18f)' in motor
+assert 'Mathf.Min(airborneSteering, 0.45f)' in motor
+# Rate-independent release brake: at 4.8m/s, 0.3 seconds in the air
+# should retain at least ~3.7 m/s instead of decelerating to zero.
+for fps in (10, 30, 60, 120):
+    v = 4.8
+    for _ in range(round(0.3 * fps)):
+        v = max(0.0, v - 19.0 * 0.18 / fps)
+    assert 3.70 < v < 3.90, (fps, v)
 assert 'if (launchJump && battle != null && !battle.TryStand())' in motor
 assert 'GlooWall-ArcticBlue' in gloo and 'GlooWall-FrostHighlight' in gloo
 assert 'renderer.SetPropertyBlock(block, slot)' in gloo
@@ -37,6 +53,8 @@ for name in ('GlooWall-ArcticBlue','GlooWall-FrostHighlight'):
     txt = mat.read_text()
     assert '_BaseColor' in txt and '_Smoothness' in txt
 # A vertical CharacterController cannot block the horizontal body during prone turns.
-assert 'public bool CanFaceProne(Vector3 forward)' in (ROOT / 'Assets/AarisWorld/Scripts/AarisBattleActions.cs').read_text()
+action = (ROOT / 'Assets/AarisWorld/Scripts/AarisBattleActions.cs').read_text()
+assert 'public bool CanFaceProne(Vector3 forward)' in action
+assert 'if (target == PlayerStance.Prone && !capsule.isGrounded) return false;' in action
 assert motor.count('battle.CanFaceProne(nextFacing * Vector3.forward)') == 2
-print('PASS: crouch, prone, jump and sprint pose contracts; 432-vertex curved two-material Gloo Wall')
+print('PASS: grounded prone gating, strafe bank, backward gait, airborne inertia, poses and curved Gloo Wall')

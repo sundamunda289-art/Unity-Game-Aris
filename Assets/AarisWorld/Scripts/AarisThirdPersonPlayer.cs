@@ -508,7 +508,17 @@ namespace Aaris.MapReview
             Vector3 desiredVelocity = wish * speed;
             float response = desiredVelocity.sqrMagnitude < 0.001f
                 ? horizontalBraking : horizontalAcceleration;
-            if (!wasGrounded) response *= airborneSteering;
+            if (!wasGrounded)
+            {
+                // Ground braking is intentionally strong for precise mobile
+                // controls, but applying it in mid-air erases a sprint-jump's
+                // momentum as soon as the joystick is released. Air steering
+                // remains responsive without allowing a mid-air instant stop.
+                float airResponseScale = desiredVelocity.sqrMagnitude < 0.001f
+                    ? Mathf.Min(airborneSteering, 0.18f)
+                    : Mathf.Min(airborneSteering, 0.45f);
+                response *= airResponseScale;
+            }
             horizontalVelocity = Vector3.MoveTowards(horizontalVelocity,
                 desiredVelocity, response * dt);
             // On a stance change, do not let sprint inertia carry a prone or
