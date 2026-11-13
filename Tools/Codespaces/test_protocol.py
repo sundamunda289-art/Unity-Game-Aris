@@ -27,7 +27,9 @@ combat=(r/'Assets/AarisWorld/Scripts/AarisBattleActions.cs').read_text()
 assert combat.count('Vector3 candidateOffset = nearest - origin;') == 1
 assert 'Vector3 delta = nearest - origin;' not in combat
 assert 'Vector3 delta = point - origin;' in combat
-assert 'distance = candidateOffset.sqrMagnitude;' in combat
+assert 'float candidateDistance = candidateOffset.sqrMagnitude;' in combat
+assert 'distance = candidateDistance;' in combat
+assert 'FindPunchReceiver(collider) != null' in combat
 assert 'Physics.Raycast(origin, delta.normalized' in combat
 assert manifest.get('com.unity.modules.physics')=='1.0.0'
 wf=(r/'.github/workflows/aaris-codespaces-control.yml').read_text()
