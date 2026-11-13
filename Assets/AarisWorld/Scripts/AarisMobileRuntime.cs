@@ -54,7 +54,8 @@ namespace Aaris.MapReview
         private TerrainData[] mobileWindData;
         private float[] originalGrassWindStrength;
         private WindZone[] mobileWindZones;
-        private bool[] originalWindZoneEnabled;
+        private float[] originalWindMain, originalWindTurbulence;
+        private float[] originalWindPulseMagnitude, originalWindPulseFrequency;
         private int suppressedWindZones, suppressedGrassTiles;
         private int slowIntervals, steadyIntervals, lastTargetFps;
         private float lastEffectiveTargetFps;
@@ -244,20 +245,32 @@ namespace Aaris.MapReview
                     suppressedGrassTiles++;
                 }
             }
-            // SpeedTree wind is a visual effect, not the lightweight wind
-            // sound clip. Disable WindZones on low-RAM Android only; no mesh
-            // deletion, terrain flattening or foliage density reduction.
+            // A WindZone inherits Component (not Behaviour), so wind is
+            // disabled via its force fields, never by toggling enabled.
+            // This leaves any other components on the same GameObject intact.
             mobileWindZones = UnityEngine.Object.FindObjectsByType<WindZone>(
                 FindObjectsInactive.Include, FindObjectsSortMode.None);
-            originalWindZoneEnabled = new bool[mobileWindZones.Length];
-            for (int i = 0; i < mobileWindZones.Length; i++)
+            int zoneCount = mobileWindZones.Length;
+            originalWindMain = new float[zoneCount];
+            originalWindTurbulence = new float[zoneCount];
+            originalWindPulseMagnitude = new float[zoneCount];
+            originalWindPulseFrequency = new float[zoneCount];
+            for (int i = 0; i < zoneCount; i++)
             {
                 WindZone zone = mobileWindZones[i];
                 if (zone == null) continue;
-                originalWindZoneEnabled[i] = zone.enabled;
-                if (!zone.enabled) continue;
-                zone.enabled = false;
-                suppressedWindZones++;
+                originalWindMain[i] = zone.windMain;
+                originalWindTurbulence[i] = zone.windTurbulence;
+                originalWindPulseMagnitude[i] = zone.windPulseMagnitude;
+                originalWindPulseFrequency[i] = zone.windPulseFrequency;
+                if (!Mathf.Approximately(zone.windMain, 0f) ||
+                    !Mathf.Approximately(zone.windTurbulence, 0f) ||
+                    !Mathf.Approximately(zone.windPulseMagnitude, 0f))
+                    suppressedWindZones++;
+                zone.windMain = 0f;
+                zone.windTurbulence = 0f;
+                zone.windPulseMagnitude = 0f;
+                zone.windPulseFrequency = 0f;
             }
             Debug.Log("AARIS_ANDROID_LOW_RAM_VEGETATION tiles=" + count +
                       " grass_wind_disabled=" + suppressedGrassTiles +
@@ -417,9 +430,21 @@ namespace Aaris.MapReview
             // quality controllers and scene reloads retain ownership.
             if (mobileWindZones != null)
                 for (int i = 0; i < mobileWindZones.Length; i++)
-                    if (mobileWindZones[i] != null && originalWindZoneEnabled[i] &&
-                        !mobileWindZones[i].enabled)
-                        mobileWindZones[i].enabled = true;
+                {
+                    WindZone zone = mobileWindZones[i];
+                    if (zone == null) continue;
+                    // Leave any subsequent quality controller's changes alone.
+                    if (Mathf.Approximately(zone.windMain, 0f) &&
+                        Mathf.Approximately(zone.windTurbulence, 0f) &&
+                        Mathf.Approximately(zone.windPulseMagnitude, 0f) &&
+                        Mathf.Approximately(zone.windPulseFrequency, 0f))
+                    {
+                        zone.windMain = originalWindMain[i];
+                        zone.windTurbulence = originalWindTurbulence[i];
+                        zone.windPulseMagnitude = originalWindPulseMagnitude[i];
+                        zone.windPulseFrequency = originalWindPulseFrequency[i];
+                    }
+                }
             if (mobileFoliageTiles != null)
                 for (int i = 0; i < mobileFoliageTiles.Length; i++)
                 {
