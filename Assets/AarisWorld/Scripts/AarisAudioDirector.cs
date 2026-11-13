@@ -465,7 +465,9 @@ namespace Aaris.MapReview
         {
             if (stance == AarisBattleActions.PlayerStance.Prone) return 0.45f;
             if (stance == AarisBattleActions.PlayerStance.Crouching) return 0.70f;
-            float runBlend = Mathf.InverseLerp(3.3f, 4.4f, metresPerSecond);
+            // Keep contact spacing exactly synchronized with the character's
+            // earlier walk-to-jog crossfade, even on low-FPS Android devices.
+            float runBlend = Mathf.InverseLerp(2.0f, 3.4f, metresPerSecond);
             float sprintBlend = Mathf.InverseLerp(4.0f,
                 armed ? 4.4f : 4.8f, metresPerSecond);
             float cycleDistance = Mathf.Lerp(1.25f,
