@@ -317,3 +317,15 @@ for fps in (10, 15, 20, 30, 60, 120):
     assert jog_cycle(4.4, True) > jog_cycle(3.4, True)
 
 print('PASS: grounded prone, jump impact, dynamic balance, jog-footfall sync, backward gait, airborne inertia, poses and curved Gloo Wall')
+
+# Camera eye transition must use the same bounded elapsed time as the
+# sole movement motor. The former 50 ms cap made 10/20 FPS crouch and prone
+# camera changes lag substantially behind their collision capsule and pose.
+assert 'Mathf.Infinity, Mathf.Clamp(Time.deltaTime, 0f, 0.15f));' in motor
+assert 'Mathf.Infinity, Mathf.Min(Time.deltaTime, 0.05f));' not in motor
+for fps in (10, 20, 30, 60, 120):
+    frames = round(0.3 * fps)
+    integrated = sum(min(1.0 / fps, 0.15) for _ in range(frames))
+    assert abs(integrated - 0.3) < 1e-9, (fps, integrated)
+# Retaining the old cap would have integrated only 0.15 seconds at 10 FPS.
+assert sum(min(0.1, 0.05) for _ in range(3)) == 0.15
