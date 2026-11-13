@@ -114,13 +114,24 @@ namespace Aaris.MapReview
             float distance = delta.magnitude;
             if (distance > .01f)
             {
+                Ray sight = new Ray(eye, delta / distance);
                 int hitCount = Physics.RaycastNonAlloc(
-                    new Ray(eye, delta / distance), entrySight, distance,
+                    sight, entrySight, distance,
                     Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                if (hitCount >= entrySight.Length) return false;
+                RaycastHit[] sightHits = entrySight;
+                if (hitCount >= entrySight.Length)
+                {
+                    // Unsorted NonAlloc results can fill with player/car
+                    // colliders before including a distant wall. Retry the
+                    // COMPLETE query only on an explicit saturated DRIVE tap,
+                    // retaining the same obstruction/ownership safety checks.
+                    sightHits = Physics.RaycastAll(sight, distance,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                    hitCount = sightHits.Length;
+                }
                 for (int i = 0; i < hitCount; i++)
                 {
-                    var hit = entrySight[i];
+                    var hit = sightHits[i];
                     if (hit.collider == null ||
                         hit.collider.transform.IsChildOf(transform) ||
                         hit.collider.transform.IsChildOf(nearbyCar.transform)) continue;
