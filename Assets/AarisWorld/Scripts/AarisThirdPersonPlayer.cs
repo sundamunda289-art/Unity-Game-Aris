@@ -415,6 +415,10 @@ namespace Aaris.MapReview
             // downhill support probe. A near-ground probe can assist walking,
             // but it must not suppress the first actual landing event.
             bool previousMoveGrounded = controller.isGrounded;
+            // A downhill support prediction can reduce the motor's falling speed
+            // before Move reports actual contact. Keep the pre-probe descent
+            // speed for the one-shot visual/audio landing impact only.
+            float preSupportFallSpeed = Mathf.Max(0f, -verticalVelocity);
             bool wasGrounded = previousMoveGrounded;
             // Both downhill checks run before Move, so a missed support sweep
             // cannot acquire different geometry later in this same frame.
@@ -615,7 +619,8 @@ namespace Aaris.MapReview
                 {
                     lastLanding = now;
                     // Real contact, not a downhill support prediction, drives the pose.
-                    lastLandingImpactSpeed = Mathf.Max(0f, -verticalVelocity);
+                    lastLandingImpactSpeed = Mathf.Max(preSupportFallSpeed,
+                        Mathf.Max(0f, -verticalVelocity));
                 }
                 lastGrounded = now;
                 if (verticalVelocity < 0f) verticalVelocity = -groundedDownVelocity;
@@ -837,6 +842,7 @@ namespace Aaris.MapReview
             verticalVelocity = -groundedDownVelocity;
             lastGrounded = Time.unscaledTime;
             lastLanding = Time.unscaledTime;
+            lastLandingImpactSpeed = 0f;
             lastJumpStarted = jumpUntil = -10f;
             travelSpeed = gait = 0f;
             legacyIdlePoseApplied = false;
@@ -864,6 +870,7 @@ namespace Aaris.MapReview
             verticalVelocity = -groundedDownVelocity;
             lastGrounded = Time.unscaledTime;
             lastLanding = Time.unscaledTime;
+            lastLandingImpactSpeed = 0f;
             lastJumpStarted = jumpUntil = -10f;
             travelSpeed = gait = 0f;
             legacyIdlePoseApplied = false;
@@ -889,6 +896,7 @@ namespace Aaris.MapReview
             lastGrounded = -10f; gait = travelSpeed = 0f;
             legacyIdlePoseApplied = false;
             lastJumpStarted = lastLanding = -10f;
+            lastLandingImpactSpeed = 0f;
             if (followCamera != null) followCamera.fieldOfView = normalCameraFov;
             weaponAimFov = -1f;
             cameraVelocity = Vector3.zero;
