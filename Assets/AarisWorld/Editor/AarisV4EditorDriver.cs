@@ -38,6 +38,10 @@ namespace Aaris.MapReview.Editor
             public string renderProbe;
             public bool playing, paused, compiling, updating, weaponEquipped, fireHeld, aiming, pickupAvailable;
             public int frame, magazine, reserve, consoleErrors;
+            // Counts represent instantiated, non-consumed objects in the current Play session.
+            public int loadedWeaponPickups, loadedVehicles, occupiedVehicles;
+            public bool driving;
+            public float nearestPickupMetres = -1f, nearestVehicleMetres = -1f;
             public float fpsEstimate;
             public UiTarget[] ui;
         }
@@ -169,6 +173,31 @@ namespace Aaris.MapReview.Editor
                 if (player != null)
                 {
                     response.playerPosition = player.transform.position.ToString("F2");
+                    // Observe real GameObjects, not planned spawn counts from map JSON.
+                    // Do this only when a private control request arrives, never per frame.
+                    var seat = player.GetComponent<AarisVehicleSession>();
+                    response.driving = seat != null && seat.IsDriving;
+                    float nearestPickupSq = float.PositiveInfinity;
+                    foreach (var pickup in UnityEngine.Object.FindObjectsByType<AarisWeaponPickup>(FindObjectsSortMode.None))
+                    {
+                        if (pickup == null || !pickup.gameObject.activeInHierarchy || pickup.IsConsumed) continue;
+                        response.loadedWeaponPickups++;
+                        nearestPickupSq = Mathf.Min(nearestPickupSq,
+                            (pickup.transform.position - player.transform.position).sqrMagnitude);
+                    }
+                    if (!float.IsPositiveInfinity(nearestPickupSq))
+                        response.nearestPickupMetres = Mathf.Sqrt(nearestPickupSq);
+                    float nearestVehicleSq = float.PositiveInfinity;
+                    foreach (var vehicle in UnityEngine.Object.FindObjectsByType<AarisVehicleMotor>(FindObjectsSortMode.None))
+                    {
+                        if (vehicle == null || !vehicle.gameObject.activeInHierarchy) continue;
+                        response.loadedVehicles++;
+                        if (vehicle.IsOccupied) response.occupiedVehicles++;
+                        nearestVehicleSq = Mathf.Min(nearestVehicleSq,
+                            (vehicle.transform.position - player.transform.position).sqrMagnitude);
+                    }
+                    if (!float.IsPositiveInfinity(nearestVehicleSq))
+                        response.nearestVehicleMetres = Mathf.Sqrt(nearestVehicleSq);
                     var actions = player.GetComponent<AarisBattleActions>();
                     var inventory = player.GetComponent<AarisWeaponInventory>();
                     if (actions != null)
