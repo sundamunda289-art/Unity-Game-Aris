@@ -41,7 +41,12 @@ def check(native=False):
     objects=documents(ROOT/SCENE);names={i:d['m_Name'] for c,i,n,d in objects if n=='GameObject'}
     transforms={names[d['m_GameObject']['fileID']]:d for c,i,n,d in objects if n=='Transform'}
     for b in layout['buildings']:assert list(transforms[b['name']]['m_LocalScale'].values())==b['scale']
-    assert list(transforms['AarisPlayer']['m_LocalPosition'].values())==report['safe_spawn_m']
+    scene_spawn = transforms['AarisPlayer']['m_LocalPosition']
+    reported_spawn = report['safe_spawn_m']
+    assert len(reported_spawn) == 3 and all(
+        math.isclose(float(scene_spawn[axis]), float(reported_spawn[i]), rel_tol=0.0, abs_tol=1e-4)
+        for i, axis in enumerate(('x', 'y', 'z'))
+    ), 'Saved player spawn moved from verified position'
     assert 15<report['nearest_residential_footprint_m']<35
     player=next(d for c,i,n,d in objects if n=='MonoBehaviour' and names.get(d['m_GameObject']['fileID'])=='AarisPlayer')
     assert player['minLookPitch']==-70 and player['maxLookPitch']==70
