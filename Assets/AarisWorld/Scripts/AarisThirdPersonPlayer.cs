@@ -381,8 +381,10 @@ namespace Aaris.MapReview
                 lastMouse = mouse;
             }
             if (Input.GetKeyDown(KeyCode.Space)) RequestJump();
-            if (Input.GetKeyDown(KeyCode.C)) { if (battle != null) battle.ToggleCrouch(); CancelAutoSprint(); }
-            if (Input.GetKeyDown(KeyCode.Z)) { if (battle != null) battle.ToggleProne(); CancelAutoSprint(); }
+            // TrySetStance alone cancels auto-run after a successful low-stance change.
+            // Rejected transitions (e.g. prone while airborne) preserve sprint intent.
+            if (Input.GetKeyDown(KeyCode.C) && battle != null) battle.ToggleCrouch();
+            if (Input.GetKeyDown(KeyCode.Z) && battle != null) battle.ToggleProne();
             // E belongs to weapon pickup. Auto-sprint uses T, avoiding a
             // simultaneous sprint toggle when exchanging guns.
             if (Input.GetKeyDown(KeyCode.T)) ToggleAutoSprint();
