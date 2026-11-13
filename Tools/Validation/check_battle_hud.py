@@ -150,14 +150,14 @@ def check() -> None:
     assert "if (running && intent.sqrMagnitude < 0.04f) intent = Vector2.up;" in motor
 
     # Assert each actual field, not an unrelated occurrence of its literal.
-    # The intended prone crawl is 1.1 m/s, matching the gameplay design.
+    # Natural pacing keeps the authored 2 km map feeling larger.
     expected_speeds = {
-        "unarmedSprintSpeed": "6.5",
-        "armedSprintSpeed": "5.7",
-        "walkSpeed": "4.2",
-        "crouchMoveSpeed": "2.4",
-        "proneMoveSpeed": "1.1",
-        "combatMoveSpeed": "2.0",
+        "unarmedSprintSpeed": "4.8",
+        "armedSprintSpeed": "4.4",
+        "walkSpeed": "3.4",
+        "crouchMoveSpeed": "2.0",
+        "proneMoveSpeed": "1.0",
+        "combatMoveSpeed": "1.8",
     }
     for field, value in expected_speeds.items():
         assert re.search(rf"\b{field}\s*=\s*{value}f\b", motor), (

@@ -22,7 +22,7 @@ namespace Aaris.MapReview
 
         [SerializeField, Range(-180f, 180f)] private float modelYawOffset;
         [SerializeField, Range(0.1f, 0.8f)] private float blendResponseSeconds = 0.2f;
-        [SerializeField] private float fullRunSpeed = 6.5f;
+        [SerializeField] private float fullRunSpeed = 4.8f;
         [SerializeField, Range(0f, 8f)] private float sprintForwardLeanDegrees = 4f;
         [SerializeField, Range(0f, 0.12f)] private float landingCompressionMetres = 0.055f;
 
@@ -507,7 +507,7 @@ namespace Aaris.MapReview
             float fallbackProne = authoredProne ? 0f : proneBlend;
             Vector3 velocity = controller.velocity;
             float planar = new Vector2(velocity.x, velocity.z).magnitude;
-            float leaning = Mathf.InverseLerp(4.2f, fullRunSpeed, planar) *
+            float leaning = Mathf.InverseLerp(3.4f, fullRunSpeed, planar) *
                 sprintForwardLeanDegrees * (primaryLoaded ? 0.8f : 1f) * (1f - proneBlend);
             Quaternion desiredRotation = restingLocalRotation *
                 Quaternion.Euler(Mathf.Lerp(leaning, 80f, fallbackProne), 0f, 0f);
@@ -554,7 +554,7 @@ namespace Aaris.MapReview
                 float horizontal = planar;
                 float movementTarget = Mathf.InverseLerp(0.08f, 1.2f, horizontal);
                 float runTarget = Mathf.InverseLerp(3.3f, 4.9f, horizontal);
-                float sprintTarget = Mathf.InverseLerp(5.15f, Mathf.Max(5.3f, fullRunSpeed), horizontal);
+                float sprintTarget = Mathf.InverseLerp(4.0f, Mathf.Max(4.8f, fullRunSpeed), horizontal);
                 float airTarget = visuallyAirborne ? 1f : 0f;
                 runBlend = Mathf.Lerp(runBlend, movementTarget, alpha);
                 walkRunBlend = Mathf.Lerp(walkRunBlend, runTarget, alpha);
