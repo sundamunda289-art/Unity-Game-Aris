@@ -152,4 +152,34 @@ assert strengths == sorted(strengths)
 assert abs(strengths[0] - 0.55) < 1e-7
 assert abs(strengths[-1] - 1.15) < 1e-7
 assert max(strengths) * 0.055 < 0.07
-print('PASS: grounded prone, jump impact, backward gait, airborne inertia, poses and curved Gloo Wall')
+# Turn/brake balance changes the visual hierarchy only, not locomotion physics.
+# It must use actual capsule velocity and signed shortest-angle yaw changes.
+assert 'private bool motionHistoryReady;' in visual
+assert 'if (motionHistoryReady && dt > 0.0001f)' in visual
+assert '(planarVelocity - lastPlanarVelocity) / dt' in visual
+assert 'Mathf.DeltaAngle(lastFacingYaw, currentYaw) / dt' in visual
+assert '1f - Mathf.Clamp01(crouchBlend + proneBlend) : 0f' in visual
+assert 'Mathf.InverseLerp(0.8f, 3.4f, planar) * standingShare' in visual
+assert 'leaning + smoothedAccelerationPitch' in visual
+assert 'smoothedStrafeBank + smoothedTurnBank' in visual
+assert 'controller.Move(' not in visual
+for fps in (10, 30, 60, 120):
+    # First frame has no velocity/yaw history, then the transient pitch
+    # converges to the same bounded angle regardless of rendering FPS.
+    dt = 1.0 / fps
+    pitch = bank = 0.0
+    for _ in range(fps):
+        pitch += (2.2 - pitch) * (1.0 - math.exp(-dt / 0.10))
+        bank += (-2.5 - bank) * (1.0 - math.exp(-dt / 0.13))
+    assert abs(pitch - 2.2 * (1.0 - math.exp(-10.0))) < 1e-10
+    assert abs(bank + 2.5 * (1.0 - math.exp(-1.0 / 0.13))) < 1e-10
+    assert -2.5 <= bank < 0 < pitch <= 2.2
+# Braking reverses pitch, while crouch / prone / airborne fade the target.
+for acceleration, share in ((13.0, 1.0), (-13.0, 1.0),
+                            (13.0, 0.0), (13.0, 0.35)):
+    pitch_target = max(-1.0, min(1.0, acceleration / 13.0)) * 2.2 * share
+    assert abs(pitch_target) <= 2.2
+    if share == 0.0:
+        assert pitch_target == 0.0
+
+print('PASS: grounded prone, jump impact, dynamic balance, backward gait, airborne inertia, poses and curved Gloo Wall')

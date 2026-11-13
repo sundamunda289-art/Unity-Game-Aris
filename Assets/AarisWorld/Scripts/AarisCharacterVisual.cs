@@ -65,6 +65,13 @@ namespace Aaris.MapReview
         private Quaternion restingLocalRotation;
         private float crouchBlend, proneBlend;
         private float smoothedStrafeBank;
+        // Small, presentation-only anticipation for starts, stops and direction pivots.
+        // No physics probes, animation allocations or root-motion ownership changes.
+        private float smoothedAccelerationPitch;
+        private float smoothedTurnBank;
+        private Vector3 lastPlanarVelocity;
+        private float lastFacingYaw;
+        private bool motionHistoryReady;
         private AnimationClip idleClip, walkClip, runClip;
         private float locomotionPhase, crouchPhase, crawlPhase;
         // Avoid repeated managed-to-native Playables calls for settled poses.
@@ -534,9 +541,41 @@ namespace Aaris.MapReview
                     strafeBankDegrees * (1f - proneBlend)
                 : 0f;
             smoothedStrafeBank = Mathf.Lerp(smoothedStrafeBank, bankTarget, alpha);
+
+            // A speed-only lean cannot convey the weight transfer at takeoff,
+            // braking or while changing direction. Sample real capsule motion,
+            // never joystick intention: rejected wall movement cannot fake a lean.
+            // Initialise the history first so scene spawn/teleport has no yaw spike.
+            Vector3 planarVelocity = new Vector3(velocity.x, 0f, velocity.z);
+            float currentYaw = transform.eulerAngles.y;
+            float forwardAcceleration = 0f;
+            float yawRate = 0f;
+            if (motionHistoryReady && dt > 0.0001f)
+            {
+                forwardAcceleration = Vector3.Dot(
+                    (planarVelocity - lastPlanarVelocity) / dt, transform.forward);
+                yawRate = Mathf.DeltaAngle(lastFacingYaw, currentYaw) / dt;
+            }
+            motionHistoryReady = true;
+            lastPlanarVelocity = planarVelocity;
+            lastFacingYaw = currentYaw;
+            // Suppress standing balance corrections while crouched, prone or
+            // airborne: these poses already have authored limb/body alignment.
+            float standingShare = controller.isGrounded
+                ? 1f - Mathf.Clamp01(crouchBlend + proneBlend) : 0f;
+            float accelerationPitchTarget =
+                Mathf.Clamp(forwardAcceleration / 13f, -1f, 1f) *
+                2.2f * standingShare;
+            float turnBankTarget =
+                -Mathf.Clamp(yawRate / 240f, -1f, 1f) * 2.5f *
+                Mathf.InverseLerp(0.8f, 3.4f, planar) * standingShare;
+            smoothedAccelerationPitch = Mathf.Lerp(smoothedAccelerationPitch,
+                accelerationPitchTarget, 1f - Mathf.Exp(-dt / 0.10f));
+            smoothedTurnBank = Mathf.Lerp(smoothedTurnBank,
+                turnBankTarget, 1f - Mathf.Exp(-dt / 0.13f));
             Quaternion desiredRotation = restingLocalRotation *
-                Quaternion.Euler(Mathf.Lerp(leaning, 80f, fallbackProne), 0f,
-                    smoothedStrafeBank);
+                Quaternion.Euler(Mathf.Lerp(leaning + smoothedAccelerationPitch,
+                    80f, fallbackProne), 0f, smoothedStrafeBank + smoothedTurnBank);
             // Visual-only skydiving pose; never tilt the physical CharacterController.
             // Choose the final rotation before touching the hierarchy: the
             // aerial override previously caused two native Transform writes.
