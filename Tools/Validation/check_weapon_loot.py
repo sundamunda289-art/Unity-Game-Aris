@@ -196,17 +196,35 @@ def run():
     # validation, not a claim about rendered Android pickup visibility.
     open_slots = [c for c in loot["candidates"] if c["kind"] == "open"]
     assert len(open_slots) >= 300
-    old_expected = improved_expected = 0.0
+    # Compare the current denser layout against the *actual* legacy 100m
+    # distribution at 32% open-world selection probability. Saturation makes
+    # a same-location 32% vs 60% comparison invalid when cells contain several
+    # candidate locations. Neither expected value asserts physical pickup.
+    occupied = [building["aabb_xz_m"] for building in source["buildings"]]
+    legacy_open = []
+    for xi in range(-9, 10):
+        for zi in range(-9, 10):
+            h = (((xi + 19) * 73856093) ^ ((zi + 23) * 19349663)) & 0xffffffff
+            gx = xi * 100 + ((h % 71) - 35)
+            gz = zi * 100 + (((h >> 8) % 71) - 35)
+            if any(a[0] - 8 <= gx <= a[2] + 8 and
+                   a[1] - 8 <= gz <= a[3] + 8 for a in occupied):
+                continue
+            legacy_open.append((gx, gz))
+    assert len(legacy_open) == 358
+    legacy_expected = new_expected = 0.0
     count_samples = 0
     for x in range(-925, 926, 50):
         for z in range(-925, 926, 50):
-            n = sum((c["x"] - x) ** 2 + (c["z"] - z) ** 2 <= 42 ** 2
-                    for c in open_slots)
-            old_expected += 1.0 - 0.68 ** n
-            improved_expected += 1.0 - 0.40 ** n
+            old_n = sum((gx - x) ** 2 + (gz - z) ** 2 <= 42 ** 2
+                        for gx, gz in legacy_open)
+            new_n = sum((c["x"] - x) ** 2 + (c["z"] - z) ** 2 <= 42 ** 2
+                        for c in open_slots)
+            legacy_expected += 1.0 - 0.68 ** old_n
+            new_expected += 1.0 - 0.22 ** new_n
             count_samples += 1
     assert count_samples > 1400
-    assert improved_expected > 1.7 * old_expected
+    assert new_expected > 1.7 * legacy_expected
     assert "MaximumActiveLoot = 40" in world
     assert "MaximumBuildAttemptsPerFrame = 2" in world
 
