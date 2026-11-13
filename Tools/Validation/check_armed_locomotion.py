@@ -58,6 +58,10 @@ def audit():
     assert "unarmedSprintSpeed = 4.8f;" in motor
     assert "armedSprintSpeed = 4.4f;" in motor
     assert "EnforceNaturalLocomotionPace();" in motor
+    # Armed sprint tops out at 4.4 m/s: use reachable, gradual run/arm blends.
+    assert "Mathf.InverseLerp(3.3f, 4.4f, horizontal)" in visual
+    assert "Mathf.Lerp(0.36f, 0.15f, releaseArms)" in visual
+    assert "horizontal > 5.0f ? 0.15f : 0.36f" not in visual
     assert "Mathf.InverseLerp(4.0f, Mathf.Max(4.8f, fullRunSpeed), horizontal)" in visual
     assert "sprinting && travelSpeed > 3.7f ? 3f : 0f" in motor
     assert motor.count("controller.Move(") == 1
