@@ -555,27 +555,27 @@ namespace Aaris.MapReview
                     horizontalVelocity = ProneWallSlide(horizontalVelocity, dt);
             }
 
-            // Camera-relative strafe during ADS and firing. Without this,
-            // a standing player could shoot sideways while the gun and torso
-            // still faced their LAST walking direction.
+            // Resolve the intended facing now, but do not apply it until
+            // CharacterController.Move has settled the actual position.
+            // When prone, checking a turn at the OLD position before moving
+            // can let the horizontal head/feet footprint enter a wall corner.
             bool combatFacing = battle != null && battle.IsArmed &&
                 (isAiming || battle.FireHeld);
+            Quaternion nextFacing = transform.rotation;
+            bool turnAfterMove = false;
             if (combatFacing)
             {
-                Quaternion nextFacing = Quaternion.Slerp(transform.rotation,
+                nextFacing = Quaternion.Slerp(transform.rotation,
                     Quaternion.Euler(0f, yaw, 0f),
                     1f - Mathf.Exp(-weaponTurnResponse * dt));
-                // An aimed prone turn must not swing the head/legs through walls.
-                if (battle == null || battle.CanFaceProne(nextFacing * Vector3.forward))
-                    transform.rotation = nextFacing;
+                turnAfterMove = true;
             }
             else if (horizontalVelocity.sqrMagnitude > 0.0025f)
             {
-                Quaternion nextFacing = Quaternion.Slerp(transform.rotation,
+                nextFacing = Quaternion.Slerp(transform.rotation,
                     Quaternion.LookRotation(horizontalVelocity),
                     1f - Mathf.Exp(-14f * dt));
-                if (battle == null || battle.CanFaceProne(nextFacing * Vector3.forward))
-                    transform.rotation = nextFacing;
+                turnAfterMove = true;
             }
 
             // Releasing Jump early shortens the arc; holding it gives the
@@ -636,6 +636,12 @@ namespace Aaris.MapReview
                 if (!Mathf.Approximately(controller.stepOffset, groundedStep))
                     controller.stepOffset = groundedStep;
             }
+            // Test prone clearance at the position the capsule actually reached
+            // after sliding, collisions and landing—not the prior frame's origin.
+            // Standing and crouched turns do not incur any extra physics query.
+            if (turnAfterMove &&
+                (battle == null || battle.CanFaceProne(nextFacing * Vector3.forward)))
+                transform.rotation = nextFacing;
             Vector3 velocity = controller.velocity;
             travelSpeed = new Vector2(velocity.x, velocity.z).magnitude;
             AnimateWalk(dt);
