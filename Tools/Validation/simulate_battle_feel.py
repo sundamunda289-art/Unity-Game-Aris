@@ -132,6 +132,13 @@ def assert_regression() -> None:
     assert "collider.transform.IsChildOf(owner)" in GUN
     assert "Physics.DefaultRaycastLayers" in GUN
     assert "Vector3 muzzle" in GUN and "muzzleHit" in GUN
+    # A muzzle obstruction becomes the authoritative impact. Previously the
+    # pellet vanished when the camera reticle and physical barrel disagreed.
+    segment = GUN[GUN.index("bool muzzleHitFound = FirstExternalHit("):
+                  GUN.index("if (targetFound)", GUN.index("bool muzzleHitFound = FirstExternalHit("))]
+    assert "target = muzzleHit;" in segment
+    assert "targetFound = true;" in segment
+    assert "continue;" not in segment
 
     # Pure visuals must never move gameplay capsule.
     assert "landingCompressionMetres" in VISUAL
