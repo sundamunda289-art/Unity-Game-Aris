@@ -94,6 +94,10 @@ namespace Aaris.MapReview
         private void Awake()
         {
             controller = GetComponent<CharacterController>();
+            // Saved scenes can retain the old 6.5 m/s Inspector value even
+            // after the motor's pace was corrected. Keep lean and foot timing
+            // calibrated to the actual 4.8 m/s unarmed sprint ceiling.
+            fullRunSpeed = Mathf.Min(fullRunSpeed, 4.8f);
             lastReliableGroundContact = Time.unscaledTime;
         }
 
@@ -374,12 +378,16 @@ namespace Aaris.MapReview
             // Stance FBX clips are transitions into a pose, not continuous gaits.
             // Freeze on the settled position: frame zero can still be standing.
             crouchPlayable.SetSpeed(0d);
-            crouchPlayable.SetTime(crouchClip.length * 0.87d);
-            // Prone is also an enter-pose transition, not a looping idle.
-            // Holding its final authored frame prevents unwanted rocking
-            // and limb movement while the player stays prone.
+            // KayKit source manifest marks frame 10 of the 24-frame Crouching
+            // action as the settled pose. Sampling 87% held a later motion
+            // frame instead, leaving an unnatural crouch at rest.
+            crouchPlayable.SetTime(crouchClip.length * (10d / 24d));
+            // The 24-frame KayKit Crawling source uses frame 0 as its prone
+            // hold. Do not freeze a mid-crawl pose as the player's prone idle.
+            // Only the missing-clip crouch fallback uses the crouch hold frame.
             pronePlayable.SetSpeed(0d);
-            pronePlayable.SetTime((proneClip ?? crouchClip).length * 0.87d);
+            pronePlayable.SetTime(proneClip != null
+                ? 0d : crouchClip.length * (10d / 24d));
             // Airborne looping is especially distracting when the jump clip
             // contains landing frames. Hold distinct ascent/descent samples.
             jumpPlayable.SetSpeed(0d);
@@ -552,9 +560,15 @@ namespace Aaris.MapReview
             if (graphReady)
             {
                 float horizontal = planar;
+                bool carrying = actions != null && actions.IsArmed;
                 float movementTarget = Mathf.InverseLerp(0.08f, 1.2f, horizontal);
-                float runTarget = Mathf.InverseLerp(3.3f, 4.9f, horizontal);
-                float sprintTarget = Mathf.InverseLerp(4.0f, Mathf.Max(4.8f, fullRunSpeed), horizontal);
+                // Both arms and legs must reach their complete authored gait
+                // at the actual motor cap: 4.4 m/s armed, 4.8 m/s unarmed.
+                // Previous 4.8 m/s sprint threshold was unreachable with a gun
+                // and blended running feet against two different source cycles.
+                float runTarget = Mathf.InverseLerp(3.3f, 4.4f, horizontal);
+                float sprintTarget = Mathf.InverseLerp(4.0f,
+                    carrying ? 4.4f : 4.8f, horizontal);
                 float airTarget = visuallyAirborne ? 1f : 0f;
                 runBlend = Mathf.Lerp(runBlend, movementTarget, alpha);
                 walkRunBlend = Mathf.Lerp(walkRunBlend, runTarget, alpha);
@@ -572,7 +586,11 @@ namespace Aaris.MapReview
                 float crouchMoving = Mathf.InverseLerp(0.06f, 0.85f, horizontal);
                 float crawlMoving = Mathf.InverseLerp(0.05f, 0.55f, horizontal);
                 float grounded = (1f - airborneBlend) * (1f - pose);
-                float jumping = velocity.y >= -0.6f ? 1f : 0f;
+                // The old binary velocity cut snapped between the frozen
+                // ascent and fall poses near the jump apex. Blend both poses
+                // continuously over the apex to preserve limbs and balance.
+                float risingPose = Mathf.SmoothStep(0f, 1f,
+                    Mathf.InverseLerp(-1.75f, 0.75f, velocity.y));
 
                 float takeoffAge = playerMotor != null
                     ? Time.unscaledTime - playerMotor.LastJumpStartedTime : 10f;
@@ -609,10 +627,14 @@ namespace Aaris.MapReview
                 float punchUpper = punchWeight * (1f - primary);
                 float shootUpper = shootWeight * (1f - primary);
                 float attackUpper = Mathf.Max(punchUpper, shootUpper);
-                bool carrying = actions != null && actions.IsArmed;
                 bool aim = weaponInventory != null && weaponInventory.Aiming;
+                // The old >5 m/s sprint check was unreachable after the natural
+                // pace cap (4.4 m/s with a gun), locking the torso in a
+                // rigid weapon-ready pose throughout the running cycle.
+                float releaseArms = Mathf.SmoothStep(0f, 1f,
+                    Mathf.InverseLerp(3.2f, 4.4f, horizontal));
                 float carryTarget = !carrying ? 0f : aim ? 0.63f :
-                    horizontal > 5.0f ? 0.15f : 0.36f;
+                    Mathf.Lerp(0.36f, 0.15f, releaseArms);
                 if (prone) carryTarget *= 0.6f;
                 readyPoseBlend = Mathf.Lerp(readyPoseBlend, carryTarget, alpha);
                 float layerWeight = Mathf.Clamp01(Mathf.Max(readyPoseBlend, attackUpper));
@@ -621,8 +643,8 @@ namespace Aaris.MapReview
                 WriteWeightIfChanged(mixer, lastBaseWeights, 0, baseWeight * grounded * (1f - runBlend));
                 WriteWeightIfChanged(mixer, lastBaseWeights, 1, baseWeight * grounded * runBlend * (1f - walkRunBlend));
                 WriteWeightIfChanged(mixer, lastBaseWeights, 2, baseWeight * grounded * runBlend * walkRunBlend * (1f - sprintBlend));
-                WriteWeightIfChanged(mixer, lastBaseWeights, 3, baseWeight * airborneBlend * jumping * (1f - pose));
-                WriteWeightIfChanged(mixer, lastBaseWeights, 4, baseWeight * airborneBlend * (1f - jumping) * (1f - pose));
+                WriteWeightIfChanged(mixer, lastBaseWeights, 3, baseWeight * airborneBlend * risingPose * (1f - pose));
+                WriteWeightIfChanged(mixer, lastBaseWeights, 4, baseWeight * airborneBlend * (1f - risingPose) * (1f - pose));
                 WriteWeightIfChanged(mixer, lastBaseWeights, 5, baseWeight * crouchWeight * (1f - crouchMoving));
                 WriteWeightIfChanged(mixer, lastBaseWeights, 6, baseWeight * crouchWeight * crouchMoving);
                 WriteWeightIfChanged(mixer, lastBaseWeights, 7, startWeight);

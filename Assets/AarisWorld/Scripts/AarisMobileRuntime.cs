@@ -477,6 +477,12 @@ namespace Aaris.MapReview
                 sampleAt = Time.unscaledTime + ReportInterval;
 #if UNITY_ANDROID && !UNITY_EDITOR
                 slowIntervals = steadyIntervals = 0;
+                // Android background time and stale GPU/CPU classifications do
+                // not belong to the next post-resume render-quality window.
+                // Otherwise the governor can incorrectly reduce scene clarity
+                // even though only the resumed frame was slow.
+                timingFrameCounter = timingSamples = gpuLimitedSamples = cpuLimitedSamples = 0;
+                gpuFrameTimeTotalMs = cpuMainTimeTotalMs = cpuRenderTimeTotalMs = 0d;
 #endif
             }
         }
