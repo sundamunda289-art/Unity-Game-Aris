@@ -130,13 +130,13 @@ def check() -> None:
     assert "if (running && intent.sqrMagnitude < 0.04f) intent = Vector2.up;" in motor
 
     # Assert each actual field, not an unrelated occurrence of its literal.
-    # The current prone speed is 1.45 m/s; 1.1f belongs to another setting.
+    # The intended prone crawl is 1.1 m/s, matching the gameplay design.
     expected_speeds = {
         "unarmedSprintSpeed": "6.5",
         "armedSprintSpeed": "5.7",
         "walkSpeed": "4.2",
         "crouchMoveSpeed": "2.4",
-        "proneMoveSpeed": "1.45",
+        "proneMoveSpeed": "1.1",
         "combatMoveSpeed": "2.0",
     }
     for field, value in expected_speeds.items():
