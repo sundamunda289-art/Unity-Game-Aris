@@ -4,6 +4,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 visual = (ROOT / 'Assets/AarisWorld/Scripts/AarisCharacterVisual.cs').read_text()
 motor = (ROOT / 'Assets/AarisWorld/Scripts/AarisThirdPersonPlayer.cs').read_text()
+# A valid imported Humanoid drives the visible arms and legs. Do not also
+# animate the hidden primitive fallback every mobile frame, but re-arm it
+# when the imported rig is unavailable (no working avatar/playable graph).
+assert 'characterVisual = GetComponent<AarisCharacterVisual>();' in motor
+assert 'if (characterVisual != null && characterVisual.HasWorkingHumanoid)' in motor
+assert 'legacyIdlePoseApplied = false; // Re-arm fallback if the rig unloads.' in motor
+assert motor.index('private void AnimateWalk(float dt)') < motor.index(
+    'if (characterVisual != null && characterVisual.HasWorkingHumanoid)') < motor.index(
+    'float secondsSincePunch = battle != null')
 gloo = (ROOT / 'Assets/AarisWorld/Scripts/AarisOfflineGlooWall.cs').read_text()
 assert 'crouchPlayable.SetTime(crouchClip.length * (10d / 24d));' in visual
 assert 'pronePlayable.SetTime(proneClip != null' in visual

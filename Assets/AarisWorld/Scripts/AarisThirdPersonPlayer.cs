@@ -55,6 +55,7 @@ namespace Aaris.MapReview
         private Texture2D disc;
         private AarisBattleActions battle;
         private AarisWeaponInventory weaponInventory;
+        private AarisCharacterVisual characterVisual;
         private float nextOptionalComponentRefresh;
         private Vector3 horizontalVelocity;
         private float normalCameraFov;
@@ -223,6 +224,7 @@ namespace Aaris.MapReview
             AarisWeaponLootWorld.EnsureForPlayer(this);
             AarisVehicleWorld.EnsureForPlayer(this);
             AarisCharacterVisual.EnsureForPlayer(this);
+            characterVisual = GetComponent<AarisCharacterVisual>();
             AarisOfflineDrop.EnsureForPlayer(this);
             AarisOfflineTacticalHUD.EnsureForPlayer(this);
         }
@@ -672,6 +674,14 @@ namespace Aaris.MapReview
 
         private void AnimateWalk(float dt)
         {
+            // The imported Humanoid already owns visible limb animation. Avoid
+            // rotating four hidden placeholder limbs every frame on 2 GB phones.
+            // Keep the native fallback fully animated if the rig import fails.
+            if (characterVisual != null && characterVisual.HasWorkingHumanoid)
+            {
+                legacyIdlePoseApplied = false; // Re-arm fallback if the rig unloads.
+                return;
+            }
             // A fully stationary fallback rig needs ONE final rest-pose write,
             // not four Transform writes every frame for minutes at 60 FPS.
             // Keep walking, airborne limbs and the full punch envelope live.
