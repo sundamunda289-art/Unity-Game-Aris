@@ -60,5 +60,38 @@ assert impact_speed(0.0, -2.0) == 2.0
 assert impact_speed(-1.5, -8.0) == 8.0
 assert impact_speed(0.0, 0.0) == 0.0
 
+# Stair stepping may resume on actual or predicted ground support, but
+# NOT merely because the player reached the descending half of a jump.
+step_region = motor.split("float requestedStep = ", 1)[1].split(";", 1)[0]
+assert step_region.startswith("!launchJump && wasGrounded")
+assert "verticalVelocity" not in step_region
+assert "if ((flags & CollisionFlags.Below) != 0)" in motor
+assert "controller.stepOffset = groundedStep;" in motor
+for taking_off in (False, True):
+    for supported in (False, True):
+        for falling in (False, True):
+            enable_step = supported and not taking_off
+            assert enable_step == (supported and not taking_off)
+            if falling and not supported:
+                assert not enable_step, "Midair descent must not use stair stepOffset"
+
+# A grounded direction reversal should first brake, while a jump must retain
+# the original, reduced air steering. Check the new source guard and the
+# deterministic 1D equivalent of Vector3.MoveTowards at low mobile FPS.
+assert "if (wasGrounded && desiredVelocity.sqrMagnitude > 0.001f &&" in motor
+assert "Vector3.Dot(horizontalVelocity, desiredVelocity) < -0.05f" in motor
+assert "response = Mathf.Max(response, horizontalBraking);" in motor
+assert motor.index("response = Mathf.Max(response, horizontalBraking);") < motor.index("if (!wasGrounded)")
+
+def approach(current: float, goal: float, rate: float, dt: float) -> float:
+    delta = goal - current
+    return current + max(-rate * dt, min(rate * dt, delta))
+
+for fps in (10, 15, 30, 60, 120):
+    dt = 1.0 / fps
+    braked = approach(4.8, -3.4, 19.0, dt)
+    unbraked = approach(4.8, -3.4, 13.0, dt)
+    assert -3.4 <= braked < unbraked < 4.8
+
 print("PASS: jump touchdown, predictive downhill and real impact retention")
 print("NOT TESTED: Unity collision sweeps, actual animation poses, device audio")
