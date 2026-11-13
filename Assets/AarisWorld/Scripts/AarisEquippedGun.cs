@@ -205,7 +205,13 @@ namespace Aaris.MapReview
                         owner.transform, out RaycastHit muzzleHit);
                     if (muzzleHitFound &&
                         (!targetFound || !SameTarget(target.collider, muzzleHit.collider)))
-                        continue;
+                    {
+                        // The physical muzzle path has final collision authority.
+                        // Cover or an off-reticle obstacle must register an
+                        // impact instead of silently discarding this pellet.
+                        target = muzzleHit;
+                        targetFound = true;
+                    }
                 }
                 if (targetFound)
                 {
