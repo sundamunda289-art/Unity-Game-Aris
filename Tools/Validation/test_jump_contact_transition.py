@@ -16,7 +16,11 @@ assert "bool wasGrounded = previousMoveGrounded;" in motor
 assert "wasGrounded = HasWalkableGroundWithinStep();" in motor
 assert "if (!previousMoveGrounded && !launchJump)" in motor
 assert "lastLanding = now;" in motor
-assert "lastLandingImpactSpeed = Mathf.Max(0f, -verticalVelocity);" in motor
+assert "float preSupportFallSpeed = Mathf.Max(0f, -verticalVelocity);" in motor
+assert "lastLandingImpactSpeed = Mathf.Max(preSupportFallSpeed," in motor
+# Sample actual falling velocity BEFORE a speculative ground probe suppresses it.
+assert motor.index("float preSupportFallSpeed =") < motor.index("wasGrounded = HasWalkableGroundWithinStep();")
+assert motor.count("lastLandingImpactSpeed = 0f;") == 3
 assert "if (!wasGrounded && !launchJump) lastLanding = now;" not in motor
 assert "if ((flags & CollisionFlags.Below) != 0)" in motor
 assert "if (player.LastLandingTime > previousLand &&" in audio
@@ -44,5 +48,17 @@ assert landed(False, True, True, False), "Downhill probe must not swallow landin
 assert not landed(False, True, False, False), "No impact before a real contact"
 assert not landed(True, True, True, False), "Standing must not replay impact"
 assert not landed(False, False, True, True), "Jump initiation must not fake landing"
-print("PASS: jump touchdown, predictive downhill and no duplicate landing event")
+# A predictive support sweep can clamp velocity to a small grounded value,
+# but a real landing still retains the stronger prior downward impact.
+def impact_speed(pre_probe_velocity: float, post_probe_velocity: float) -> float:
+    return max(0.0, -pre_probe_velocity, -post_probe_velocity)
+
+
+for falling in (2.0, 5.0, 9.5, 25.0):
+    assert impact_speed(-falling, -2.0) == falling
+assert impact_speed(0.0, -2.0) == 2.0
+assert impact_speed(-1.5, -8.0) == 8.0
+assert impact_speed(0.0, 0.0) == 0.0
+
+print("PASS: jump touchdown, predictive downhill and real impact retention")
 print("NOT TESTED: Unity collision sweeps, actual animation poses, device audio")
