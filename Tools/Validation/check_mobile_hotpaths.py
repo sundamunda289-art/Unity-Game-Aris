@@ -306,7 +306,15 @@ def audit():
     assert "p75FrameMs = frameCount > 0 ? sortedTimes[Mathf.CeilToInt(frameCount * .75f) - 1]" in quality
     assert "current - 0.05f" in quality and "current + 0.025f" in quality
     assert "Mathf.Clamp(minimumAndroidRenderScale, 0.65f, 1f)" in quality
-    assert 'reason == "sample" && frameCount >= 30' in quality
+    # Every sample resets timing classification, but only a sufficiently full
+    # FPS ring buffer is allowed to adjust the URP scale.
+    assert 'if (reason == "sample")' in quality
+    assert 'if (frameCount >= 30) TuneAndroidResolution(s);' in quality
+    # A CPU-limited interval must not downscale the scene merely because
+    # total wall-clock frames are late.
+    assert 'FrameTimingManager.GetLatestTimings(1u, mobileFrameTimings)' in quality
+    assert 'if (measuredCpuBound)' in governor
+    assert 'sample.cpuLimitedSamples >= sample.gpuLimitedSamples * 2' in governor
     assert "frameIndex = frameCount = 0;" in quality
     assert "slowIntervals = steadyIntervals = 0;" in quality
 
