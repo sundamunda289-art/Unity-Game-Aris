@@ -232,8 +232,11 @@ namespace Aaris.MapReview
             var button = grenadeButton.AddComponent<Button>();
             button.targetGraphic = grenadeButton.GetComponent<Image>();
             button.onClick.AddListener(ThrowFrag);
-            medicalText = CreateAction("Medkit", new Vector2(1f, 0.45f),
-                new Vector2(-255f, 0f), new Color(0.8f, 0.96f, 0.78f),
+            // Canvas sortingOrder 200 would otherwise intercept HUD Fire (180).
+            // Separate Medkit horizontally from Fire/Gloo across all phone
+            // aspect ratios, including compact and letterboxed Game Views.
+            medicalText = CreateAction("Medkit", new Vector2(1f, 0.85f),
+                new Vector2(-445f, 0f), new Color(0.8f, 0.96f, 0.78f),
                 out GameObject medButton);
             var healButton = medButton.AddComponent<Button>();
             healButton.targetGraphic = medButton.GetComponent<Image>();
