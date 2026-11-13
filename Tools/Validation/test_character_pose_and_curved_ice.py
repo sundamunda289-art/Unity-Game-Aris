@@ -57,4 +57,20 @@ action = (ROOT / 'Assets/AarisWorld/Scripts/AarisBattleActions.cs').read_text()
 assert 'public bool CanFaceProne(Vector3 forward)' in action
 assert 'if (target == PlayerStance.Prone && !capsule.isGrounded) return false;' in action
 assert motor.count('battle.CanFaceProne(nextFacing * Vector3.forward)') == 2
+# Character's original embedded .fbm image is a tangent-space normal atlas,
+# not a skin albedo. Import its small derived normal atlas as a REAL Unity
+# normal texture, bind it to URP Lit and keep mip/streaming affordable on 2GB.
+normal_png = ROOT / 'Assets/Resources/AarisCharacters/Primary/Player_Normal_512.png'
+normal_meta = (ROOT / 'Assets/Resources/AarisCharacters/Primary/Player_Normal_512.png.meta').read_text()
+normal_bytes = normal_png.read_bytes()
+assert normal_bytes[:8] == b'\x89PNG\r\n\x1a\n'
+assert int.from_bytes(normal_bytes[16:20], 'big') == 512
+assert int.from_bytes(normal_bytes[20:24], 'big') == 512
+assert 'guid: 66e5bd5db61b49c9ac85aadd3d345ae1' in normal_meta
+assert 'textureType: 1' in normal_meta and 'sRGBTexture: 0' in normal_meta
+assert 'enableMipMap: 1' in normal_meta and 'streamingMipmaps: 1' in normal_meta
+primary_mat = (ROOT / 'Assets/Resources/AarisCharacters/Primary/Materials/Player-MI_Superhero_Male.mat').read_text()
+assert 'm_ValidKeywords:\n  - _NORMALMAP' in primary_mat
+assert '_BumpMap:\n        m_Texture: {fileID: 2800000, guid: 66e5bd5db61b49c9ac85aadd3d345ae1, type: 3}' in primary_mat
+
 print('PASS: grounded prone gating, strafe bank, backward gait, airborne inertia, poses and curved Gloo Wall')
