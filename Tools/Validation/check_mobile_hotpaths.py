@@ -632,8 +632,10 @@ def audit():
     # gunfire, nor should a local footstep cut a world explosion.
     one_shot = audio[audio.index("private void OneShot("):
                      audio.index("private void Schedule(")]
-    policy = audio[audio.index("private static bool IsLowPriorityCue("):
-                   audio.index("private void OneShot(")]
+    low_policy = audio[audio.index("private static bool IsLowPriorityCue("):
+                       audio.index("private static bool IsLocalCue(")]
+    local_policy = audio[audio.index("private static bool IsLocalCue("):
+                         audio.index("private void OneShot(")]
     assert "private const int VoiceCount = 12;" in audio
     assert "private const int LocalVoiceCount = 4;" in audio
     assert "voices[i].spatialBlend = local ? 0f : 1f;" in audio
@@ -657,10 +659,10 @@ def audit():
                 "sniper_shot", "shotgun_shot", "bolt_reload", "shell_drop",
                 "step_dirt", "step_road", "step_water", "jump_start",
                 "land_thud", "parachute_open", "grenade_pin", "grenade_throw"):
-        assert f'key == "{key}"' in policy
+        assert f'key == "{key}"' in local_policy
     for key in ("bullet_impact", "grenade_boom", "grenade_bounce", "car_crash"):
-        assert f'key == "{key}"' not in policy
-    assert "new " not in policy
+        assert f'key == "{key}"' not in local_policy
+    assert "new " not in local_policy
 
     def select_idle_voice(busy, cursor, start, count):
         selected = cursor
@@ -680,7 +682,7 @@ def audit():
         one_shot.index("if (local)\n                nextLocalVoice")
     )
     for key in low_priority:
-        assert f'key == "{key}"' in policy
+        assert f'key == "{key}"' in low_policy
     for mask in range(1 << 12):
         busy = [(mask & (1 << i)) != 0 for i in range(12)]
         for start, count in ((0, 4), (4, 8)):
