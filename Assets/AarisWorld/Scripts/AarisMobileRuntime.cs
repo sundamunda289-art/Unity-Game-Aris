@@ -44,6 +44,18 @@ namespace Aaris.MapReview
         private bool modifiedMipBudget;
         private float originalShadowDistance, appliedShadowDistance;
         private bool modifiedShadowDistance;
+        private int originalShadowCascades, appliedShadowCascades;
+        private bool modifiedShadowCascades;
+        // Android-only, reversible controls for 2 GB phones. These never alter
+        // serialized TerrainData, scenes, SpeedTree prefabs or material assets.
+        private Terrain[] mobileFoliageTiles;
+        private float[] originalDetailDistances, appliedDetailDistances;
+        private float[] originalBillboardDistances, appliedBillboardDistances;
+        private TerrainData[] mobileWindData;
+        private float[] originalGrassWindStrength;
+        private WindZone[] mobileWindZones;
+        private bool[] originalWindZoneEnabled;
+        private int suppressedWindZones, suppressedGrassTiles;
         private int slowIntervals, steadyIntervals, lastTargetFps;
         private float lastEffectiveTargetFps;
 #endif
@@ -171,13 +183,88 @@ namespace Aaris.MapReview
             // avoid drawing shadow casters for most of the distant map.
             // Keep the 4 native cascades / atlas and all source assets intact.
             originalShadowDistance = androidPipeline.shadowDistance;
-            float mobileShadowDistance = memoryMB <= 2304 ? 160f : 240f;
+            float mobileShadowDistance = memoryMB <= 2304 ? 120f : 240f;
             appliedShadowDistance = Mathf.Min(originalShadowDistance, mobileShadowDistance);
             if (appliedShadowDistance < originalShadowDistance)
             {
                 androidPipeline.shadowDistance = appliedShadowDistance;
                 modifiedShadowDistance = true;
             }
+            if (memoryMB <= 2304)
+            {
+                // Four cascades render distant shadow casters repeatedly. Keep
+                // two near-camera cascades with real shadows for players,
+                // buildings and foliage, with no edits to the URP source asset.
+                originalShadowCascades = androidPipeline.shadowCascadeCount;
+                appliedShadowCascades = Mathf.Min(originalShadowCascades, 2);
+                if (appliedShadowCascades < originalShadowCascades)
+                {
+                    androidPipeline.shadowCascadeCount = appliedShadowCascades;
+                    modifiedShadowCascades = true;
+                }
+                ConfigureLowMemoryVegetation();
+            }
+        }
+
+        // One-time, Android-only vegetation work: static wind is much cheaper
+        // than animated leaf/grass vertex deformation on weak mobile GPUs.
+        // Preserve close cover, native tree count and full-resolution materials.
+        private void ConfigureLowMemoryVegetation()
+        {
+            mobileFoliageTiles = terrains != null && terrains.Length > 0
+                ? terrains : Terrain.activeTerrains;
+            int count = mobileFoliageTiles == null ? 0 : mobileFoliageTiles.Length;
+            originalDetailDistances = new float[count];
+            appliedDetailDistances = new float[count];
+            originalBillboardDistances = new float[count];
+            appliedBillboardDistances = new float[count];
+            mobileWindData = new TerrainData[count];
+            originalGrassWindStrength = new float[count];
+            for (int i = 0; i < count; i++)
+            {
+                Terrain tile = mobileFoliageTiles[i];
+                if (tile == null) continue;
+                originalDetailDistances[i] = tile.detailObjectDistance;
+                originalBillboardDistances[i] = tile.treeBillboardDistance;
+                // Keep all grass within 80 m, but avoid processing small
+                // vegetation on the outer 80-100 m ring of each camera view.
+                appliedDetailDistances[i] = Mathf.Min(originalDetailDistances[i], 80f);
+                appliedBillboardDistances[i] = Mathf.Min(originalBillboardDistances[i], 85f);
+                if (appliedDetailDistances[i] < originalDetailDistances[i])
+                    tile.detailObjectDistance = appliedDetailDistances[i];
+                if (appliedBillboardDistances[i] < originalBillboardDistances[i])
+                    tile.treeBillboardDistance = appliedBillboardDistances[i];
+                TerrainData data = tile.terrainData;
+                if (data == null) continue;
+                mobileWindData[i] = data;
+                originalGrassWindStrength[i] = data.wavingGrassStrength;
+                if (originalGrassWindStrength[i] > 0f)
+                {
+                    data.wavingGrassStrength = 0f;
+                    suppressedGrassTiles++;
+                }
+            }
+            // SpeedTree wind is a visual effect, not the lightweight wind
+            // sound clip. Disable WindZones on low-RAM Android only; no mesh
+            // deletion, terrain flattening or foliage density reduction.
+            mobileWindZones = UnityEngine.Object.FindObjectsByType<WindZone>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            originalWindZoneEnabled = new bool[mobileWindZones.Length];
+            for (int i = 0; i < mobileWindZones.Length; i++)
+            {
+                WindZone zone = mobileWindZones[i];
+                if (zone == null) continue;
+                originalWindZoneEnabled[i] = zone.enabled;
+                if (!zone.enabled) continue;
+                zone.enabled = false;
+                suppressedWindZones++;
+            }
+            Debug.Log("AARIS_ANDROID_LOW_RAM_VEGETATION tiles=" + count +
+                      " grass_wind_disabled=" + suppressedGrassTiles +
+                      " wind_zones_disabled=" + suppressedWindZones +
+                      " details_max_m=80 tree_billboards_m=85" +
+                      " shadow_max_m=" + appliedShadowDistance +
+                      " cascades=" + appliedShadowCascades);
         }
 
         // Android rounds requested FPS down to a divisor of the display rate.
@@ -323,6 +410,31 @@ namespace Aaris.MapReview
             if (modifiedShadowDistance && androidPipeline != null &&
                 Mathf.Approximately(androidPipeline.shadowDistance, appliedShadowDistance))
                 androidPipeline.shadowDistance = originalShadowDistance;
+            if (modifiedShadowCascades && androidPipeline != null &&
+                androidPipeline.shadowCascadeCount == appliedShadowCascades)
+                androidPipeline.shadowCascadeCount = originalShadowCascades;
+            // Undo only properties that still equal our applied values. Other
+            // quality controllers and scene reloads retain ownership.
+            if (mobileWindZones != null)
+                for (int i = 0; i < mobileWindZones.Length; i++)
+                    if (mobileWindZones[i] != null && originalWindZoneEnabled[i] &&
+                        !mobileWindZones[i].enabled)
+                        mobileWindZones[i].enabled = true;
+            if (mobileFoliageTiles != null)
+                for (int i = 0; i < mobileFoliageTiles.Length; i++)
+                {
+                    Terrain tile = mobileFoliageTiles[i];
+                    if (tile == null) continue;
+                    if (appliedDetailDistances[i] < originalDetailDistances[i] &&
+                        Mathf.Approximately(tile.detailObjectDistance, appliedDetailDistances[i]))
+                        tile.detailObjectDistance = originalDetailDistances[i];
+                    if (appliedBillboardDistances[i] < originalBillboardDistances[i] &&
+                        Mathf.Approximately(tile.treeBillboardDistance, appliedBillboardDistances[i]))
+                        tile.treeBillboardDistance = originalBillboardDistances[i];
+                    if (mobileWindData[i] != null && originalGrassWindStrength[i] > 0f &&
+                        Mathf.Approximately(mobileWindData[i].wavingGrassStrength, 0f))
+                        mobileWindData[i].wavingGrassStrength = originalGrassWindStrength[i];
+                }
 #endif
         }
 
@@ -346,6 +458,8 @@ namespace Aaris.MapReview
             public int terrainTiles, visibleTerrainHeightmaps, paintedTerrainTiles;
             public int terrainAlphamaps, unsupportedTerrainMaterials;
             public bool terrainLitSupported;
+            public int lowMemoryWindZonesDisabled, lowMemoryGrassTilesDisabled;
+            public float lowMemoryShadowDistance;
         }
         private int warningCount;
         private void Record(string reason)
@@ -387,6 +501,9 @@ namespace Aaris.MapReview
                 catch (Exception e) { Debug.LogWarning("Android PSS unavailable: " + e.GetType().Name); }
             }
             s.androidPssKB = androidPssKB;
+            s.lowMemoryWindZonesDisabled = suppressedWindZones;
+            s.lowMemoryGrassTilesDisabled = suppressedGrassTiles;
+            s.lowMemoryShadowDistance = appliedShadowDistance;
             s.effectiveTargetFps = EffectiveAndroidTargetFps(s.targetFps);
             if (reason == "sample" && frameCount >= 30)
                 TuneAndroidResolution(s);
