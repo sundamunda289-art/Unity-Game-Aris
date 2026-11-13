@@ -93,5 +93,28 @@ for fps in (10, 15, 30, 60, 120):
     unbraked = approach(4.8, -3.4, 13.0, dt)
     assert -3.4 <= braked < unbraked < 4.8
 
+# Real capsule acceleration and shortest-angle yaw should inform *visual* lean
+# without affecting the authoritative movement controller or prone collision.
+import math
+assert "private bool motionHistoryReady;" in visual
+assert "if (motionHistoryReady && dt > 0.0001f)" in visual
+assert "(planarVelocity - lastPlanarVelocity) / dt" in visual
+assert "Mathf.DeltaAngle(lastFacingYaw, currentYaw) / dt" in visual
+assert "1f - Mathf.Clamp01(crouchBlend + proneBlend) : 0f" in visual
+assert "smoothedStrafeBank + smoothedTurnBank" in visual
+assert "leaning + smoothedAccelerationPitch" in visual
+for start, end, expected in ((359, 1, 2), (1, 359, -2), (40, 70, 30)):
+    signed = (end - start + 180) % 360 - 180
+    assert signed == expected
+for fps in (10, 30, 60, 120):
+    dt = 1.0 / fps
+    pitch, bank = 0.0, 0.0
+    for _ in range(fps):
+        pitch += (2.2 - pitch) * (1.0 - math.exp(-dt / 0.10))
+        bank += (-2.5 - bank) * (1.0 - math.exp(-dt / 0.13))
+    assert abs(pitch - 2.2 * (1.0 - math.exp(-10))) < 1e-10
+    assert abs(bank + 2.5 * (1.0 - math.exp(-1.0 / 0.13))) < 1e-10
+    assert 0 < pitch <= 2.2 and -2.5 <= bank < 0
+
 print("PASS: jump touchdown, predictive downhill and real impact retention")
 print("NOT TESTED: Unity collision sweeps, actual animation poses, device audio")
