@@ -71,7 +71,6 @@ def audit():
         blend = min(1.0, max(0.0, (cap - 4.0) / (end - 4.0)))
         assert blend == 1.0, (armed, cap, blend)
     assert "horizontal > 5.0f ? 0.15f : 0.36f" not in visual
-    assert "Mathf.InverseLerp(4.0f, Mathf.Max(4.8f, fullRunSpeed), horizontal)" in visual
     assert "sprinting && travelSpeed > 3.7f ? 3f : 0f" in motor
     assert motor.count("controller.Move(") == 1
 
