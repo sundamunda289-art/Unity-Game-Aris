@@ -35,6 +35,7 @@ namespace Aaris.MapReview.Editor
         private sealed class Response
         {
             public string id, op, result, detail, scene, playerPosition, weapon, stance;
+            public string renderProbe;
             public bool playing, paused, compiling, updating, weaponEquipped, fireHeld, aiming, pickupAvailable;
             public int frame, magazine, reserve, consoleErrors;
             public float fpsEstimate;
@@ -192,6 +193,18 @@ namespace Aaris.MapReview.Editor
             }
             if (req != null && req.op == "uimap")
                 response.ui = BuildUiMap();
+            if (req != null && req.op == "diag_render") {
+                var rp = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline;
+                var rt = UnityEngine.Rendering.RenderPipelineManager.currentPipeline;
+                var lit = Shader.Find("Universal Render Pipeline/Lit");
+                var terrain = Shader.Find("Universal Render Pipeline/Terrain/Lit");
+                var mat = AssetDatabase.LoadAssetAtPath<Material>("Assets/AarisWorld/Models/bungalow_house/Material_03.mat");
+                response.renderProbe = "api=" + SystemInfo.graphicsDeviceType + ";device=" + SystemInfo.graphicsDeviceName +
+                    ";rp=" + (rp != null ? rp.name : "NULL") + ";runtime=" + (rt != null ? rt.GetType().Name : "NULL") +
+                    ";lit=" + (lit != null ? lit.isSupported.ToString() + "/" + lit.passCount : "NULL") +
+                    ";terrain=" + (terrain != null ? terrain.isSupported.ToString() : "NULL") +
+                    ";sampleMat=" + (mat != null && mat.shader != null ? mat.shader.name + "/" + mat.shader.isSupported : "NULL");
+            }
             return response;
         }
 
@@ -309,7 +322,7 @@ namespace Aaris.MapReview.Editor
 
         private static void Execute(Request req)
         {
-            if (req.op == "status" || req.op == "uimap") return;
+            if (req.op == "status" || req.op == "uimap" || req.op == "diag_render") return;
             if (req.op == "tap_ui" || req.op == "hold_ui") { TapNamedUi(req); return; }
             if (req.op == "play") { EditorApplication.isPlaying = true; return; }
             if (req.op == "stop") { ReleaseInputs(); EditorApplication.isPlaying = false; return; }
