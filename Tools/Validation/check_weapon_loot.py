@@ -101,7 +101,7 @@ def run():
     # The imported FBX child applies no duplicate hand-grip rotation.
     assert "mesh.localRotation = Quaternion.identity;" in inventory
     assert "Quaternion grip = Quaternion.Euler(equipped.Spec.handRotation);" in inventory
-    assert "hand.TransformPoint(equipped.Spec.handOffset)" in inventory
+    assert "hand.position + hand.rotation * equipped.Spec.handOffset" in inventory
     assert "hand.rotation * grip" in inventory
     assert "weaponRoot.SetParent(transform, false);" in inventory
     # Multi-mesh FBX pickups must size from all renderers and rest fully
