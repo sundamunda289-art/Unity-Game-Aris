@@ -91,6 +91,19 @@ def audit():
     assert "if (upperBodyMask != null) Destroy(upperBodyMask);" in visual
     assert "animator.applyRootMotion = false" in visual
     assert "controller.Move(" not in visual
+
+    # Imported weapon meshes can exist under the player BEFORE the visual
+    # Start() hides legacy primitives. Only old prefab body parts may be hidden
+    # or re-enabled; never sweep the equipped gun / other runtime children.
+    assert "private static bool IsLegacyPlaceholderRenderer(MeshRenderer renderer)" in visual
+    assert 'renderer.gameObject.name.StartsWith("AarisPlayer_", StringComparison.Ordinal)' in visual
+    assert "if (IsLegacyPlaceholderRenderer(placeholderRenderers[i])" in visual
+    assert "if (IsLegacyPlaceholderRenderer(renderer)) renderer.enabled = true;" in visual
+    prefab = (ROOT / "Assets/AarisWorld/Player/AarisPlayer.prefab").read_text(encoding="utf-8")
+    assert "m_Name: AarisPlayer_Torso" in prefab
+    assert "m_Name: AarisPlayer_LeftHand" in prefab
+    assert "m_Name: AarisPlayer_RightHand" in prefab
+
     assert "bool IsArmed" in actions
     assert "ApplyWeaponRecoil" in gun
     assert "AarisWeaponState" in gun  # one carried gun, preserved drop state
