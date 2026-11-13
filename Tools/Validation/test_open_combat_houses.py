@@ -74,7 +74,7 @@ class OpenCombatHouseContracts(unittest.TestCase):
         self.assertIn("if (includePanels)", modular.split(
             "private static bool Prepare(", 1)[1].split(
             "private static Material Match(", 1)[0])
-        self.assertIn("if (includePanels)\n                door = Match", modular)
+        self.assertRegex(modular, r"if \(includePanels\)\s+door = Match")
 
     def test_openings_retain_walls_and_fit_player(self):
         src = MODULAR.read_text(encoding="utf-8")
