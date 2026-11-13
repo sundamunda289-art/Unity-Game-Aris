@@ -570,13 +570,6 @@ namespace Aaris.MapReview
                     1f - Mathf.Exp(-weaponTurnResponse * dt));
                 turnAfterMove = true;
             }
-            else if (horizontalVelocity.sqrMagnitude > 0.0025f)
-            {
-                nextFacing = Quaternion.Slerp(transform.rotation,
-                    Quaternion.LookRotation(horizontalVelocity),
-                    1f - Mathf.Exp(-14f * dt));
-                turnAfterMove = true;
-            }
 
             // Releasing Jump early shortens the arc; holding it gives the
             // designed full height without any second gravity controller.
@@ -636,13 +629,28 @@ namespace Aaris.MapReview
                 if (!Mathf.Approximately(controller.stepOffset, groundedStep))
                     controller.stepOffset = groundedStep;
             }
+            // Use resolved movement rather than input intent for body facing.
+            // A capsule sliding sideways along a wall must face that actual
+            // travel direction, and a blocked player must not pivot into cover.
+            // Keep camera-facing aim/fire as its separate, authoritative path.
+            Vector3 velocity = controller.velocity;
+            if (!combatFacing)
+            {
+                Vector3 resolvedPlanarVelocity = new Vector3(velocity.x, 0f, velocity.z);
+                if (resolvedPlanarVelocity.sqrMagnitude > 0.0025f)
+                {
+                    nextFacing = Quaternion.Slerp(transform.rotation,
+                        Quaternion.LookRotation(resolvedPlanarVelocity),
+                        1f - Mathf.Exp(-14f * dt));
+                    turnAfterMove = true;
+                }
+            }
             // Test prone clearance at the position the capsule actually reached
             // after sliding, collisions and landing—not the prior frame's origin.
             // Standing and crouched turns do not incur any extra physics query.
             if (turnAfterMove &&
                 (battle == null || battle.CanFaceProne(nextFacing * Vector3.forward)))
                 transform.rotation = nextFacing;
-            Vector3 velocity = controller.velocity;
             travelSpeed = new Vector2(velocity.x, velocity.z).magnitude;
             AnimateWalk(dt);
 
