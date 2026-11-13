@@ -158,8 +158,7 @@ namespace Aaris.MapReview
             // Damage candidates may be filtered by damageMask, but solid world cover
             // must still occlude the blast even when it is not damageable.
             Ray ray = new Ray(origin, delta / length);
-            int hits = Physics.RaycastNonAlloc(ray, rays, length,
-                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            int hits = Physics.RaycastNonAlloc(ray, rays, length, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
             RaycastHit[] candidates = rays;
             // Do not treat a full (unsorted) buffer as proof of cover. Retrieve
             // every hit before applying the same solid-cover exclusion rules.
