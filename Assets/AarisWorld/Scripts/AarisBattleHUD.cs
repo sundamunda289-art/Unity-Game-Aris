@@ -195,8 +195,9 @@ namespace Aaris.MapReview
             {
                 case Action.Fire: actions.SetFireHeld(true); break;
                 case Action.Jump: player.SetJumpHeld(true); break;
-                case Action.Crouch: actions.ToggleCrouch(); player.CancelAutoSprint(); break;
-                case Action.Prone: actions.ToggleProne(); player.CancelAutoSprint(); break;
+                // Stance authority cancels auto-run only on an accepted low pose.
+                case Action.Crouch: actions.ToggleCrouch(); break;
+                case Action.Prone: actions.ToggleProne(); break;
                 case Action.Sprint: player.ToggleAutoSprint(); break;
             }
         }
