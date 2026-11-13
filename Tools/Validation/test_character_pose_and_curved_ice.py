@@ -142,7 +142,8 @@ assert '_BumpMap:\n        m_Texture: {fileID: 2800000, guid: 66e5bd5db61b49c9ac
 # Actual ground contact records downward impact before resetting gravity.
 # Visual-only landing compression increases smoothly and stays tightly bounded.
 assert 'public float LastLandingImpactSpeed => lastLandingImpactSpeed;' in motor
-assert 'lastLandingImpactSpeed = Mathf.Max(0f, -verticalVelocity);' in motor
+assert 'preSupportFallSpeed = Mathf.Max(0f, -verticalVelocity);' in motor
+assert 'lastLandingImpactSpeed = Mathf.Max(preSupportFallSpeed,' in motor
 assert 'Mathf.Clamp01((landingImpact - 1f) / 9f)' in visual
 assert 'Mathf.Lerp(0.55f, 1.15f, impactBlend)' in visual
 strengths = [0.55 + 0.60 * max(0.0, min(1.0, (speed - 1.0) / 9.0))
