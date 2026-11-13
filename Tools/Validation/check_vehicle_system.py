@@ -146,6 +146,10 @@ def test():
                   "nearbyColliders.HasPotentialInactiveObstacle(",
                   "Physics.OverlapBoxNonAlloc("):
         assert guard in physical, "Vehicle fallback bypassed safety: " + guard
+    # Parked cars on elevated bridge decks must be restored by ray support,
+    # while unvisited authored road markers still require nearby terrain.
+    assert "if (!record.previouslySpawned && Mathf.Abs(ground - authoredY) > 2.5f) return false;" in physical, (
+        "Previously driven bridge car would vanish after streaming out")
     assert "if (obstacle == null || obstacle is TerrainCollider) continue;" in physical, (
         "Vehicle fallback must ignore null/terrain hits without ignoring solid obstacles")
     assert "record.visible.CanPark" in world and "record.visible.IsOccupied" in world
