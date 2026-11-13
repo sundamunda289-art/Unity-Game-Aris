@@ -104,6 +104,26 @@ def check() -> None:
     assert "ReleaseAllPointers();" in on_disable
     assert "if (instance == this) instance = null;" in on_disable
     assert hud.count("Add(Action.") == 5
+    # Tactical Canvas sorts above the core Fire Canvas. Its Medkit Image
+    # must not raycast across Fire or Gloo, even in compressed aspect ratios.
+    tactical = text("AarisOfflineTacticalHUD.cs")
+    fire = re.search(
+        r'Add\(Action\.Fire, new Vector2\(1f, ([0-9.]+)f\), new Vector2\((-?[0-9.]+)f, 0f\), ([0-9.]+)f\)',
+        hud)
+    medkit = re.search(
+        r'medicalText = CreateAction\("Medkit", new Vector2\(1f, ([0-9.]+)f\),\s*new Vector2\((-?[0-9.]+)f, 0f\)',
+        tactical)
+    gloo = re.search(
+        r'wallLabel = CreateAction\("Gloo Wall", new Vector2\(1f, ([0-9.]+)f\),\s*new Vector2\((-?[0-9.]+)f, 0f\)',
+        tactical)
+    assert fire and medkit and gloo
+    assert 0.05 < float(medkit.group(1)) < 0.94
+    assert abs(float(fire.group(2)) - float(medkit.group(2))) >= (
+        float(fire.group(3)) + 78.0) / 2
+    assert abs(float(gloo.group(2)) - float(medkit.group(2))) >= 78.0
+    assert "canvas.sortingOrder = 200;" in tactical
+    assert "canvas.sortingOrder = 180;" in hud
+
 
     # The optional ADS/PICK/DROP/RELOAD canvas has its own touch-capture
     # singleton. A disable/re-enable cycle must restore it too, otherwise
