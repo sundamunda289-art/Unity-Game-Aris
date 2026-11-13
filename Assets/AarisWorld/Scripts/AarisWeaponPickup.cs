@@ -181,6 +181,13 @@ namespace Aaris.MapReview
             }
         }
 
+        private void OnEnable()
+        {
+            // A streamed pickup may be temporarily disabled and reenabled.
+            if (state != null && model != null && !consumed)
+                activePickups.Add(this);
+        }
+
         private void OnDisable()
         {
             activePickups.Remove(this);
