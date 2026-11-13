@@ -72,6 +72,19 @@ def audit():
         blend = min(1.0, max(0.0, (cap - 4.0) / (end - 4.0)))
         assert blend == 1.0, (armed, cap, blend)
     assert "horizontal > 5.0f ? 0.15f : 0.36f" not in visual
+    # Legacy Inspector values must not stretch the lean curve beyond
+    # the real motor cap, and the jump apex should be a continuous blend.
+    assert "fullRunSpeed = Mathf.Min(fullRunSpeed, 4.8f);" in visual
+    assert "float risingPose = Mathf.SmoothStep(0f, 1f," in visual
+    assert "Mathf.InverseLerp(-1.75f, 0.75f, velocity.y)" in visual
+    assert "float jumping = velocity.y >= -0.6f ? 1f : 0f;" not in visual
+    for speed in (-3.0, -1.75, -1.0, -0.5, 0.0, 0.75, 2.0):
+        t = max(0.0, min(1.0, (speed + 1.75) / 2.50))
+        rising = t * t * (3.0 - 2.0 * t)
+        assert 0.0 <= rising <= 1.0
+        assert math.isclose(rising + (1.0 - rising), 1.0)
+    assert "baseWeight * airborneBlend * risingPose * (1f - pose)" in visual
+    assert "baseWeight * airborneBlend * (1f - risingPose) * (1f - pose)" in visual
     assert "sprinting && travelSpeed > 3.7f ? 3f : 0f" in motor
     assert motor.count("controller.Move(") == 1
 
