@@ -213,7 +213,15 @@ class OfflineCombatAssetChecks(unittest.TestCase):
             self.assertNotIn("if (count == nearHits.Length) return false;", segment)
             self.assertIn("obstacle.transform.IsChildOf(transform)" if segment == prone
                           else "hit.transform.IsChildOf(transform)", segment)
-        self.assertIn("if (obstacle is TerrainCollider) continue;", prone)
+        # A flat walkable terrain remains support, but the current prone
+        # clearance guard rejects an uphill bank intersecting head or legs.
+        # Older tests requiring unconditional TerrainCollider skipping would
+        # silently reintroduce the clipping regression.
+        self.assertIn("if (obstacle is TerrainCollider terrain)", prone)
+        self.assertIn("if (!terrain.Raycast(", prone)
+        self.assertIn("sampleHit.point.y > center.y - 0.10f", prone)
+        self.assertIn("sampleHit.normal.y < minWalkableNormal", prone)
+        self.assertNotIn("if (obstacle is TerrainCollider) continue;", prone)
         self.assertIn("floorHit.normal.y", prone)
 
     def test_mobile_jump_and_prone_movement_safety(self):

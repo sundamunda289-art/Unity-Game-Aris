@@ -56,7 +56,21 @@ for name in ('GlooWall-ArcticBlue','GlooWall-FrostHighlight'):
 action = (ROOT / 'Assets/AarisWorld/Scripts/AarisBattleActions.cs').read_text()
 assert 'public bool CanFaceProne(Vector3 forward)' in action
 assert 'if (target == PlayerStance.Prone && !capsule.isGrounded) return false;' in action
-assert motor.count('battle.CanFaceProne(nextFacing * Vector3.forward)') == 2
+# Turning before Move checks prone clearance at the old position.
+# A wall-corner turn that is valid there can clip the horizontal head
+# after the CharacterController moves to its resolved destination.
+assert motor.count('battle.CanFaceProne(nextFacing * Vector3.forward)') == 1
+assert 'bool turnAfterMove = false;' in motor
+assert 'if (turnAfterMove &&' in motor
+assert motor.index('CollisionFlags flags = controller.Move(') < motor.index('if (turnAfterMove &&')
+assert motor.index('if (turnAfterMove &&') < motor.index('Vector3 velocity = controller.velocity;')
+assert 'transform.rotation = nextFacing;' in motor
+# One-dimensional footprint cross-section: the old-position yaw test passes,
+# but the same yaw at the later position intrudes into a real wall.
+wall_start, prone_head_reach = 0.85, 0.55
+origin, resolved_position = 0.0, 0.45
+assert origin + prone_head_reach < wall_start
+assert resolved_position + prone_head_reach > wall_start
 # Prone head/feet must not tunnel into an uphill TerrainCollider. The
 # underlying terrain still supports the body if BOTH end samples have a
 # walkable normal and leave at least 10 cm below the chest center.
