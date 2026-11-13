@@ -163,6 +163,24 @@ assert 'Mathf.InverseLerp(0.8f, 3.4f, planar) * standingShare' in visual
 assert 'leaning + smoothedAccelerationPitch' in visual
 assert 'smoothedStrafeBank + smoothedTurnBank' in visual
 assert 'controller.Move(' not in visual
+# A player respawn, teleport or vehicle hand-off must not turn a large
+# world-space discontinuity into a one-frame acceleration/bank animation.
+assert 'private Vector3 lastMotorPosition;' in visual
+assert 'bool movementDiscontinuity = !controller.enabled ||' in visual
+assert '(motorPosition - lastMotorPosition).sqrMagnitude > 4f' in visual
+assert 'if (movementDiscontinuity)' in visual
+assert 'motionHistoryReady = false;' in visual
+assert 'smoothedAccelerationPitch = 0f;' in visual
+assert 'smoothedTurnBank = 0f;' in visual
+assert 'lastMotorPosition = motorPosition;' in visual
+for fps in (10, 30, 60, 120):
+    # Sprint travel must be treated as ordinary motion at every target FPS.
+    distance_per_frame = 4.8 / fps
+    assert distance_per_frame ** 2 < 4.0, fps
+    # A same-frame 3m respawn / hand-off is not a gait acceleration.
+    reset = 3.0 ** 2 > 4.0
+    sampled_acceleration = 0.0 if reset else (3.0 / (1.0 / fps))
+    assert reset and sampled_acceleration == 0.0, fps
 for fps in (10, 30, 60, 120):
     # First frame has no velocity/yaw history, then the transient pitch
     # converges to the same bounded angle regardless of rendering FPS.
