@@ -62,9 +62,23 @@ assert 'if (target == PlayerStance.Prone && !capsule.isGrounded) return false;' 
 assert motor.count('battle.CanFaceProne(nextFacing * Vector3.forward)') == 1
 assert 'bool turnAfterMove = false;' in motor
 assert 'if (turnAfterMove &&' in motor
-assert motor.index('CollisionFlags flags = controller.Move(') < motor.index('if (turnAfterMove &&')
-assert motor.index('if (turnAfterMove &&') < motor.index('Vector3 velocity = controller.velocity;')
+assert motor.index('CollisionFlags flags = controller.Move(') < motor.index('Vector3 velocity = controller.velocity;')
+assert motor.index('Vector3 velocity = controller.velocity;') < motor.index('if (turnAfterMove &&')
+assert 'Quaternion.LookRotation(horizontalVelocity)' not in motor
+assert 'Quaternion.LookRotation(resolvedPlanarVelocity)' in motor
+assert 'new Vector3(velocity.x, 0f, velocity.z)' in motor
+assert 'if (!combatFacing)' in motor
 assert 'transform.rotation = nextFacing;' in motor
+# A wall may resolve a forward input into sideways travel; the actor must
+# face the resolved tangent rather than keep running visually into the wall.
+import math
+def facing_yaw(x, z):
+    return math.degrees(math.atan2(x, z))
+assert facing_yaw(0.0, 4.8) == 0.0
+assert facing_yaw(2.0, 0.0) == 90.0
+# Fully blocked movement remains below the turn threshold (0.05 m/s).
+assert 0.0 ** 2 + 0.0 ** 2 <= 0.0025
+assert 0.3 ** 2 + 0.0 ** 2 > 0.0025
 # One-dimensional footprint cross-section: the old-position yaw test passes,
 # but the same yaw at the later position intrudes into a real wall.
 wall_start, prone_head_reach = 0.85, 0.55
