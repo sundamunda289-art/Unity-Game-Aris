@@ -46,6 +46,36 @@ def test():
     assert entry.index("Physics.RaycastNonAlloc(") < entry.index(
         "if (hitCount >= entrySight.Length)") < entry.index("Physics.RaycastAll(")
 
+    # The 32-slot exit ray/capsule buffers are intentionally allocation-free
+    # in normal use. On saturation an EXIT press must query ALL candidates:
+    # returning early can trap the player, while ignoring overflow may land
+    # the player inside dense house/car cover.
+    exit_path = session.split("private bool TryFindExit(", 1)[1].split(
+        "private bool TryExit()", 1)[0]
+    assert "RaycastHit[] groundHits = exitGround;" in exit_path
+    assert "if (hits >= exitGround.Length)" in exit_path
+    assert "groundHits = Physics.RaycastAll(floorRay, 5f," in exit_path
+    assert "hits = groundHits.Length;" in exit_path
+    assert "var hit = groundHits[i];" in exit_path
+    assert "Collider[] occupiedColliders = exitOverlap;" in exit_path
+    assert "if (overlaps >= exitOverlap.Length)" in exit_path
+    assert "occupiedColliders = Physics.OverlapCapsule(bottom, top, r," in exit_path
+    assert "overlaps = occupiedColliders.Length;" in exit_path
+    assert "var obstacle = occupiedColliders[i];" in exit_path
+    assert "if (hits >= exitGround.Length) continue;" not in exit_path
+    assert "if (overlaps >= exitOverlap.Length) continue;" not in exit_path
+    assert exit_path.index("Physics.RaycastNonAlloc(") < exit_path.index("Physics.RaycastAll(")
+    assert exit_path.index("Physics.OverlapCapsuleNonAlloc(") < exit_path.index("Physics.OverlapCapsule(")
+    # Complete ray hit order may vary; choose the nearest VALID floor.
+    candidates = [(2.1, False), (1.3, True), (0.2, False), (1.8, True)]
+    for ordered in (candidates, list(reversed(candidates)),
+                    candidates[1:] + candidates[:1]):
+        closest = min((distance for distance, valid in ordered if valid), default=float('inf'))
+        assert closest == 1.3
+    # Complete capsule overlaps must still reject any real solid obstacle.
+    for crowded in ((False,) * 40, (False,) * 32 + (True,) + (False,) * 9):
+        assert (not any(crowded)) == (not any(reversed(crowded)))
+
     # NaN is not clamped by Mathf.Clamp; public touch/drive APIs must
     # sanitize every control axis BEFORE it can reach WheelCollider.
     for source_text, names in ((motor, ("forwardAxis", "steerAxis")),
