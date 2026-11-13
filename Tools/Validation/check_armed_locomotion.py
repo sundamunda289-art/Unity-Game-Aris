@@ -65,7 +65,7 @@ def audit():
     assert "[DefaultExecutionOrder(200)]" in visual
     assert "if (weaponRoot.parent != transform)" in inventory
     assert "weaponRoot.SetParent(transform, false);" in inventory
-    assert "hand.TransformPoint(equipped.Spec.handOffset)" in inventory
+    assert "hand.position + hand.rotation * equipped.Spec.handOffset" in inventory
     assert "hand.rotation * grip" in inventory
     assert "if (equipped != null) AttachModelToHand();" in inventory
     assert "weaponRoot.SetParent(socket, false)" not in inventory
