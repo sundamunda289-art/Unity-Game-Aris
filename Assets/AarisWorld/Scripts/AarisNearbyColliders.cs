@@ -19,8 +19,8 @@ namespace Aaris.MapReview
         private bool restoredOnDisable;
         private readonly Dictionary<long, List<int>> cells = new Dictionary<long, List<int>>();
         private List<int> active, nextActive;
-        private int[] visited, wanted;
-        private int query;
+        private int[] visited, wanted, probeVisited;
+        private int query, probeQuery;
         private Vector3 lastPosition;
         private float nextCheck;
         // Keep an already-live collider for a few extra metres so tiny player
@@ -34,6 +34,7 @@ namespace Aaris.MapReview
             worldBounds = new Bounds[obstacles.Length];
             streamed = new bool[obstacles.Length];
             visited = new int[obstacles.Length]; wanted = new int[obstacles.Length];
+            probeVisited = new int[obstacles.Length];
             active = new List<int>(obstacles.Length); nextActive = new List<int>(obstacles.Length);
             cellSize = Mathf.Max(32, cellSize);
             for (int i = 0; i < obstacles.Length; i++)
@@ -147,12 +148,22 @@ namespace Aaris.MapReview
                 Mathf.Abs(right.y) + Mathf.Abs(up.y) + Mathf.Abs(forward.y),
                 Mathf.Abs(right.z) + Mathf.Abs(up.z) + Mathf.Abs(forward.z));
             Bounds probe = new Bounds(center, 2f * extents);
+            // The same large wall can occupy several spatial cells. Check it only
+            // once per placement probe, without allocating a HashSet in combat.
+            if (probeQuery == int.MaxValue)
+            {
+                Array.Clear(probeVisited, 0, probeVisited.Length);
+                probeQuery = 0;
+            }
+            int probeStamp = ++probeQuery;
             for (int xCell = Cell(probe.min.x); xCell <= Cell(probe.max.x); xCell++)
                 for (int zCell = Cell(probe.min.z); zCell <= Cell(probe.max.z); zCell++)
                 {
                     if (!cells.TryGetValue(Key(xCell, zCell), out List<int> entries)) continue;
                     foreach (int i in entries)
                     {
+                        if (probeVisited[i] == probeStamp) continue;
+                        probeVisited[i] = probeStamp;
                         Collider c = obstacles[i];
                         if (streamed[i] && c != null && !c.enabled &&
                             worldBounds[i].Intersects(probe))
