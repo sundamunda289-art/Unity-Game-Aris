@@ -3,6 +3,20 @@
 # Starts no new Codespace, downloads nothing, never exposes credentials.
 set -euo pipefail
 umask 077
+# A minimal Codespace can restart with /tmp wiped while project Library,
+# Logs and obj still point there. Recreate only those exact, existing cache
+# symlinks before the Unity Editor starts; never replace a real directory or
+# follow a symlink redirected outside our known ephemeral cache root.
+project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+cache_root="/tmp/aaris-unity-runtime/project-cache"
+for cache_name in Library Logs obj; do
+  cache_link="$project_root/$cache_name"
+  if [[ -L "$cache_link" ]] &&
+     [[ "$(readlink -- "$cache_link")" == "$cache_root/$cache_name" ]]; then
+    mkdir -p -- "$cache_root/$cache_name"
+  fi
+done
+
 CONFIG="$HOME/.config/aaris-turbo"
 BIN="$HOME/.local/share/aaris-turbo/agent.py"
 TOKEN="$CONFIG/token"
