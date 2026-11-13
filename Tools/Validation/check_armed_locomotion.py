@@ -19,6 +19,7 @@ def audit():
     visual = file("AarisCharacterVisual.cs")
     gun = file("AarisEquippedGun.cs")
     actions = file("AarisBattleActions.cs")
+    hud = file("AarisBattleHUD.cs")
 
     # Previously E caused BOTH a pickup and an auto-sprint. Right-mouse
     # camera look also toggled ADS. Keep each desktop intent independent.
@@ -48,6 +49,14 @@ def audit():
     stance_accepted = actions.index("stance = target;")
     cancellation = actions.index("motor.CancelAutoSprint();", stance_accepted)
     assert stance_accepted < cancellation < actions.index("capsule.stepOffset = GroundStepOffset;", stance_accepted)
+    # Rejecting crouch/prone (low overhead, mid-air, blocked floor) must not
+    # cancel auto-run in the keyboard or HUD before TrySetStance accepts it.
+    assert "if (Input.GetKeyDown(KeyCode.C) && battle != null) battle.ToggleCrouch();" in motor
+    assert "if (Input.GetKeyDown(KeyCode.Z) && battle != null) battle.ToggleProne();" in motor
+    assert "case Action.Crouch: actions.ToggleCrouch(); break;" in hud
+    assert "case Action.Prone: actions.ToggleProne(); break;" in hud
+    assert "actions.ToggleCrouch(); player.CancelAutoSprint();" not in hud
+    assert "actions.ToggleProne(); player.CancelAutoSprint();" not in hud
     for target in ("Standing", "Crouching", "Prone"):
         auto_sprint = True
         if target != "Standing":
