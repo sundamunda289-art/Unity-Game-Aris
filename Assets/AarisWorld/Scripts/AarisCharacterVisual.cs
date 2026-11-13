@@ -552,10 +552,15 @@ namespace Aaris.MapReview
             if (graphReady)
             {
                 float horizontal = planar;
+                bool carrying = actions != null && actions.IsArmed;
                 float movementTarget = Mathf.InverseLerp(0.08f, 1.2f, horizontal);
-                // Reach the complete run cycle at the armed sprint cap (4.4 m/s).
+                // Both arms and legs must reach their complete authored gait
+                // at the actual motor cap: 4.4 m/s armed, 4.8 m/s unarmed.
+                // Previous 4.8 m/s sprint threshold was unreachable with a gun
+                // and blended running feet against two different source cycles.
                 float runTarget = Mathf.InverseLerp(3.3f, 4.4f, horizontal);
-                float sprintTarget = Mathf.InverseLerp(4.0f, Mathf.Max(4.8f, fullRunSpeed), horizontal);
+                float sprintTarget = Mathf.InverseLerp(4.0f,
+                    carrying ? 4.4f : 4.8f, horizontal);
                 float airTarget = visuallyAirborne ? 1f : 0f;
                 runBlend = Mathf.Lerp(runBlend, movementTarget, alpha);
                 walkRunBlend = Mathf.Lerp(walkRunBlend, runTarget, alpha);
@@ -610,7 +615,6 @@ namespace Aaris.MapReview
                 float punchUpper = punchWeight * (1f - primary);
                 float shootUpper = shootWeight * (1f - primary);
                 float attackUpper = Mathf.Max(punchUpper, shootUpper);
-                bool carrying = actions != null && actions.IsArmed;
                 bool aim = weaponInventory != null && weaponInventory.Aiming;
                 // The old >5 m/s sprint check was unreachable after the natural
                 // pace cap (4.4 m/s with a gun), locking the torso in a
