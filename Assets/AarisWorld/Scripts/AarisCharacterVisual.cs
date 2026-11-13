@@ -571,6 +571,10 @@ namespace Aaris.MapReview
                 motionHistoryReady = false;
                 smoothedAccelerationPitch = 0f;
                 smoothedTurnBank = 0f;
+                // A respawn or vehicle hand-off must also drop the previous
+                // lateral strafe lean. Otherwise the new stationary pose can
+                // remain banked for several frames despite zero local motion.
+                smoothedStrafeBank = 0f;
             }
             float currentYaw = transform.eulerAngles.y;
             float forwardAcceleration = 0f;
