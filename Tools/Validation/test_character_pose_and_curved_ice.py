@@ -14,6 +14,14 @@ assert 'if (launchJump && battle != null && !battle.TryStand())' in motor
 assert 'GlooWall-ArcticBlue' in gloo and 'GlooWall-FrostHighlight' in gloo
 assert 'renderer.SetPropertyBlock(block, slot)' in gloo
 assert 'slots[i] = material;' in gloo and 'if (ghost)' in gloo
+# Dense collider cases must inspect complete hit sets, not silently fail.
+assert 'private readonly RaycastHit[] crowdedRayHits = new RaycastHit[128];' in gloo
+assert gloo.count('CompleteRayHits(') == 4
+assert 'selectedHits = Physics.RaycastAll(origin, direction, distance,' in gloo
+assert 'if (count >= forwardHits.Length) return 0f;' not in gloo
+assert 'if (count >= groundHits.Length) return false;' not in gloo
+assert 'nearby = Physics.OverlapBox(center, halfSize, proposedRotation,' in gloo
+assert 'if (count >= overlaps.Length) return false;' not in gloo
 models = ROOT / 'Assets/Resources/AarisCombat'
 geometry = (models / 'GlooWall.obj').read_text()
 verts = [tuple(map(float, line.split()[1:4])) for line in geometry.splitlines() if line.startswith('v ')]
