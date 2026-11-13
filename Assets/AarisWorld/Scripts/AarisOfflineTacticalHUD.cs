@@ -513,19 +513,19 @@ namespace Aaris.MapReview
                 }
                 var helmetRoot = new GameObject("Aaris Streamed Helmet");
                 helmetRoot.transform.position = spot;
-                Material shell = MedicalPaint(ref helmetShellPaint,
+                Material helmetShell = MedicalPaint(ref helmetShellPaint,
                     new Color(0.18f, 0.23f, 0.20f), "Aaris Helmet Shell");
                 Material trim = MedicalPaint(ref helmetTrimPaint,
                     new Color(0.10f, 0.12f, 0.12f), "Aaris Helmet Trim");
                 HelmetPart(helmetRoot.transform, "Helmet shell",
                     new Vector3(0f, 0.24f, 0f),
-                    new Vector3(0.58f, 0.37f, 0.54f), shell, PrimitiveType.Sphere);
+                    new Vector3(0.58f, 0.37f, 0.54f), helmetShell, PrimitiveType.Sphere);
                 HelmetPart(helmetRoot.transform, "Protective lower rim",
                     new Vector3(0f, 0.11f, 0f),
                     new Vector3(0.59f, 0.10f, 0.55f), trim, PrimitiveType.Cube);
                 HelmetPart(helmetRoot.transform, "Front visor lip",
                     new Vector3(0f, 0.15f, -0.30f),
-                    new Vector3(0.40f, 0.06f, 0.16f), shell, PrimitiveType.Cube);
+                    new Vector3(0.40f, 0.06f, 0.16f), helmetShell, PrimitiveType.Cube);
                 site.visual = helmetRoot;
                 return true;
             }
