@@ -313,6 +313,12 @@ def audit():
     # A CPU-limited interval must not downscale the scene merely because
     # total wall-clock frames are late.
     assert 'FrameTimingManager.GetLatestTimings(1u, mobileFrameTimings)' in quality
+    # A zero (unsupported) render-thread timer must NOT discard valid GPU
+    # and CPU main-thread data; without classification the governor may blur
+    # a CPU-bound phone unnecessarily.
+    assert "double cpuRender = Math.Max(0d, timing.cpuRenderThreadFrameTime);" in quality
+    assert "timing.gpuFrameTime <= 0d || (cpuMain <= 0d && cpuRender <= 0d)" in quality
+    assert "timing.cpuRenderThreadFrameTime <= 0d) return" not in quality
     assert 'if (measuredCpuBound)' in governor
     assert 'sample.cpuLimitedSamples >= sample.gpuLimitedSamples * 2' in governor
     assert "frameIndex = frameCount = 0;" in quality
@@ -461,7 +467,13 @@ def audit():
     assert "if (obstacles == null || streamed == null) return;" in on_disable
     assert "if (streamed[i] && obstacles[i] != null)" in on_disable
     assert "foreach (Collider c in obstacles)" not in on_disable
-    assert "if ((target.position - lastPosition).sqrMagnitude >= 4 || Time.unscaledTime >= nextCheck)" in nearby
+    # 3m spatial rescans are 1/3 less frequent than 2m rescans at the same
+    # player speed; 55m collision activation remains well beyond this step.
+    assert "private const float RefreshTravelSquared = 9f;" in nearby
+    assert "(target.position - lastPosition).sqrMagnitude >= RefreshTravelSquared" in nearby
+    assert "Time.unscaledTime >= nextCheck) RefreshNow(false);" in nearby
+    assert "private const float ColliderReleaseMargin = 6f;" in nearby
+    assert 3.0 < 55.0 and 3.0 < 6.0
     assert "nextCheck = Time.unscaledTime + 1f;" in nearby
     assert "if (forcePhysicsSync) Physics.SyncTransforms();" in nearby
 
