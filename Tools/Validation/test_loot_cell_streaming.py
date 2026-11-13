@@ -34,6 +34,66 @@ class LootGridRegression(unittest.TestCase):
         ):
             self.assertIn(clause, SOURCE)
 
+    def test_immutable_cell_index_cache_rebuilds_only_at_bounds_change(self):
+        # Cache never touches final 50m distance filtering, priority order,
+        # candidate selection, live mesh cap, or pickup collision checks.
+        for clause in (
+            "private bool nearbyCandidateCellsCached;",
+            "nearbyCandidateCellsCached = false;",
+            "nearbyCandidateIndices.Clear();",
+            "firstX == cachedFirstCellX && lastX == cachedLastCellX",
+            "firstZ == cachedFirstCellZ && lastZ == cachedLastCellZ",
+            "cachedFirstCellX = firstX; cachedLastCellX = lastX;",
+            "cachedFirstCellZ = firstZ; cachedLastCellZ = lastZ;",
+        ):
+            self.assertIn(clause, SOURCE)
+        stream = SOURCE[SOURCE.index("private void CollectNearbyCandidateIndices("):
+                        SOURCE.index("private void AppendNativeTreeCover(")]
+        self.assertLess(stream.index("return;"), stream.index("nearbyCandidateIndices.Clear();"))
+        self.assertIn("nearbyCandidateIndices.Sort();", stream)
+
+        rng = random.Random(0xAA15)
+        points = [(rng.uniform(-1000, 1000), rng.uniform(-1000, 1000))
+                  for _ in range(900)]
+        cells = {}
+        for i, point in enumerate(points):
+            cells.setdefault(key(*point), []).append(i)
+
+        cache_bounds = None
+        cache_indices = ()
+        reused = rebuilt = 0
+        for initial in [(0., 0.), (63.9, 63.9), (-64., -64.),
+                        (950., -950.), (-999., 999.)]:
+            # Slow walking, fast sprint, negative cell edges and teleport
+            # are checked against the original uncached implementation.
+            route = [initial] + [(initial[0] + rng.uniform(-7, 7),
+                                  initial[1] + rng.uniform(-7, 7))
+                                 for _ in range(70)]
+            for px, pz in route:
+                bounds = (math.floor((px-RADIUS)/CELL_METRES),
+                          math.floor((px+RADIUS)/CELL_METRES),
+                          math.floor((pz-RADIUS)/CELL_METRES),
+                          math.floor((pz+RADIUS)/CELL_METRES))
+                original = []
+                for cx in range(bounds[0], bounds[1]+1):
+                    for cz in range(bounds[2], bounds[3]+1):
+                        original.extend(cells.get((cx, cz), ()))
+                original.sort()
+
+                if bounds != cache_bounds:
+                    cache_indices = original
+                    cache_bounds = bounds
+                    rebuilt += 1
+                else:
+                    reused += 1
+                self.assertEqual(original, cache_indices)
+                visible_orig = [i for i in original
+                                if (points[i][0]-px)**2 + (points[i][1]-pz)**2 < RADIUS**2]
+                visible_cached = [i for i in cache_indices
+                                  if (points[i][0]-px)**2 + (points[i][1]-pz)**2 < RADIUS**2]
+                self.assertEqual(visible_orig, visible_cached)
+        self.assertGreater(reused, rebuilt)
+
     def test_dense_settlement_physics_overflow_is_allocation_bounded(self):
         # Saturated small hit buffers cannot be used to approve a floor
         # or a pickup through a wall. Retry in reusable 128-slot storage.
