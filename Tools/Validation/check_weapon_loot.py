@@ -148,6 +148,18 @@ def run():
     assert "starterLootId = 0;" in starter
     assert 'Add("PICK"' in hud and 'Add("DROP"' in hud
     assert 'Add("SWAP"' not in hud
+    # Players must be able to discover an already-streamed gun without
+    # camera-wide scans, extra 3D markers or touch-blocking HUD graphics.
+    assert "internal static IEnumerable<AarisWeaponPickup> ActivePickups" in pickup_cs
+    assert "activePickups.Add(this);" in pickup_cs
+    assert "activePickups.Remove(this);" in pickup_cs
+    assert "RuntimeInitializeLoadType.SubsystemRegistration" in pickup_cs
+    assert "if (state != null && model != null && !consumed)" in pickup_cs
+    assert "foreach (var pickup in AarisWeaponPickup.ActivePickups)" in hud
+    assert "nextNearbyGunHintAt = Time.unscaledTime + 1.25f;" in hud
+    assert "nearbyGunHint.raycastTarget = false;" in hud
+    assert "float closestSquare = 48f * 48f;" in hud
+    assert "FindObjectsByType<AarisWeaponPickup>" not in hud
     assert "private bool CanReachPickup(AarisWeaponPickup pickup)" in world
     assert "Physics.RaycastNonAlloc(sightLine, pickupObstructions, distance" in world
     # Keep correct occlusion on 24-hit overflow, without allocating on
