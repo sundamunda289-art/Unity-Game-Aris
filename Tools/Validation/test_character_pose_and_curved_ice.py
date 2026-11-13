@@ -57,6 +57,22 @@ action = (ROOT / 'Assets/AarisWorld/Scripts/AarisBattleActions.cs').read_text()
 assert 'public bool CanFaceProne(Vector3 forward)' in action
 assert 'if (target == PlayerStance.Prone && !capsule.isGrounded) return false;' in action
 assert motor.count('battle.CanFaceProne(nextFacing * Vector3.forward)') == 2
+# Prone head/feet must not tunnel into an uphill TerrainCollider. The
+# underlying terrain still supports the body if BOTH end samples have a
+# walkable normal and leave at least 10 cm below the chest center.
+assert 'if (obstacle is TerrainCollider terrain)' in action
+assert 'new Ray(sample + Vector3.up * 1.2f, Vector3.down)' in action
+assert 'sampleHit.point.y > center.y - 0.10f' in action
+assert 'sampleHit.normal.y < minWalkableNormal' in action
+assert 'if (obstacle is TerrainCollider) continue;' not in action
+import math
+for rise, angle, allowed in (
+    (0.00, 0, True), (0.20, 20, True),
+    (0.22, 20, False), (0.00, 55, False)
+):
+    # center is 0.31 m above feet; terrain must stay <= 0.21 m.
+    got = rise <= (0.31 - 0.10) and math.cos(math.radians(angle)) >= math.cos(math.radians(45))
+    assert got == allowed, (rise, angle, got)
 # Character's original embedded .fbm image is a tangent-space normal atlas,
 # not a skin albedo. Import its small derived normal atlas as a REAL Unity
 # normal texture, bind it to URP Lit and keep mip/streaming affordable on 2GB.

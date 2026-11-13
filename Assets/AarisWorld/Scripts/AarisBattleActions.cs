@@ -256,7 +256,28 @@ namespace Aaris.MapReview
                 // MeshCollider floor as a wall when crossing a bridge.
                 // Only ignore real support below the chest; an upright wall,
                 // overhead slab or steeper face still blocks crawling.
-                if (obstacle is TerrainCollider) continue;
+                if (obstacle is TerrainCollider terrain)
+                {
+                    // Terrain is normally support, but an uphill bank can
+                    // intersect the prone head or feet. Never ignore such a
+                    // contact unconditionally: both ends must have low,
+                    // walkable support before permitting the pose or crawl.
+                    // Two collider-local raycasts only when terrain already
+                    // overlaps the prone footprint (no per-frame allocations).
+                    float minWalkableNormal =
+                        Mathf.Cos(capsule.slopeLimit * Mathf.Deg2Rad);
+                    for (int end = 0; end < 2; end++)
+                    {
+                        Vector3 sample = end == 0 ? head : legs;
+                        if (!terrain.Raycast(
+                                new Ray(sample + Vector3.up * 1.2f, Vector3.down),
+                                out RaycastHit sampleHit, 2.5f) ||
+                            sampleHit.point.y > center.y - 0.10f ||
+                            sampleHit.normal.y < minWalkableNormal)
+                            return false;
+                    }
+                    continue;
+                }
                 Ray floorProbe = new Ray(center + Vector3.up * 0.45f, Vector3.down);
                 if (obstacle.Raycast(floorProbe, out RaycastHit floorHit, 1.1f) &&
                     floorHit.point.y <= center.y - 0.11f &&
