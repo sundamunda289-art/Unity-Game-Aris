@@ -222,17 +222,22 @@ echo APK_BUILD_SOURCE_PINNED
 ROOT=/tmp/aaris-native-android-build-worktrees
 PROJECT="$ROOT/$SHA"
 mkdir -p "$ROOT"
+# Build from a standalone, temporary clean clone. Never register a new Git
+# worktree, and never checkout/reset/stash/clean the active GUI repository.
+# The shared Git object store avoids duplicating multi-GB history in /tmp.
 if test ! -d "$PROJECT"; then
-  # Repair only a stale, missing, *exact* temporary worktree registration.
-  if git -C "$SOURCE" worktree list --porcelain | grep -Fx "worktree $PROJECT" >/dev/null; then
-    git -C "$SOURCE" worktree remove --force "$PROJECT" >/dev/null 2>&1 || {
-      echo APK_STALE_TEMP_WORKTREE_REGISTRATION_FAILED; exit 22; }
-  fi
-  GIT_LFS_SKIP_SMUDGE=1 git -C "$SOURCE" -c filter.lfs.process= \
+  test ! -e "$PROJECT" || { echo APK_TEMP_PROJECT_PATH_UNSAFE; exit 22; }
+  GIT_LFS_SKIP_SMUDGE=1 git -c filter.lfs.process= \
     -c filter.lfs.smudge=cat -c filter.lfs.required=false \
-    worktree add --detach "$PROJECT" "$SHA" >/dev/null 2>&1 || {
-    echo APK_ISOLATED_WORKTREE_FAILED; exit 23; }
+    clone --quiet --shared --no-checkout "$SOURCE" "$PROJECT" >/dev/null 2>&1 || {
+      echo APK_ISOLATED_CLONE_FAILED; exit 23; }
+  GIT_LFS_SKIP_SMUDGE=1 git -C "$PROJECT" -c filter.lfs.process= \
+    -c filter.lfs.smudge=cat -c filter.lfs.required=false \
+    checkout --quiet --detach "$SHA" >/dev/null 2>&1 || {
+      echo APK_ISOLATED_CHECKOUT_FAILED; exit 23; }
 fi
+test -d "$PROJECT/.git" && test ! -L "$PROJECT" || {
+  echo APK_ISOLATED_PROJECT_NOT_A_CLONE; exit 24; }
 test "$(git -C "$PROJECT" rev-parse HEAD)" = "$SHA" || {
   echo APK_WORKTREE_SHA_MISMATCH; exit 24; }
 cd "$PROJECT"
