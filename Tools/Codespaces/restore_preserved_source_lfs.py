@@ -104,9 +104,9 @@ def audit_pointers(project: Path) -> dict[str, tuple[str, int]]:
     paths = git(project, "lfs", "ls-files", "--name-only").decode().splitlines()
     # The completed PR #302 adds sprint/prone/crawl FBXs as three new LFS objects.
     # Fail closed on any incomplete or unrelated snapshot.
-    if len(paths) not in (793, 796) or len(set(paths)) != len(paths):
-        raise RecoveryError("EXPECTED_793_OR_796_LFS_POINTERS_NOT_FOUND")
-    if len(paths) == 796:
+    if len(paths) not in (793, 796, 822) or len(set(paths)) != len(paths):
+        raise RecoveryError("EXPECTED_793_796_OR_822_LFS_POINTERS_NOT_FOUND")
+    if len(paths) >= 796:
         motions = "Assets/Resources/AarisCharacters/Primary/Animations/"
         for clip in ("sprint", "prone", "crawl"):
             if motions + clip + ".fbx" not in paths:

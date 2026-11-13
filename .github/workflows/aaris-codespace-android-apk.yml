@@ -157,7 +157,7 @@ jobs:
           }
           grep -qxF 'APK_UPLOAD_READY' apk-evidence/build-status.txt
           grep -qxF 'APK_INSTALLABILITY_SIGNATURE_MANIFEST_API33_VERIFIED' apk-evidence/build-status.txt
-          grep -qxF 'APK_AUTHENTIC_796_LFS_VERIFIED' apk-evidence/build-status.txt || grep -qxF 'APK_REMOTE_796_LFS_SHA256_VERIFIED' apk-evidence/build-status.txt
+          grep -qxF 'APK_AUTHENTIC_822_LFS_VERIFIED' apk-evidence/build-status.txt || grep -qxF 'APK_REMOTE_822_LFS_SHA256_VERIFIED' apk-evidence/build-status.txt
           grep -qxF "apk_commit=$AARIS_EXPECTED_BUILD_SHA" apk-evidence/build-status.txt
           grep -E '^APK_[A-Z0-9_]+$|^apk_bytes=[0-9]+$|^apk_commit=[0-9a-f]{40}$' apk-evidence/build-status.txt > apk-evidence/build-status-safe.txt
           cat apk-evidence/build-status-safe.txt

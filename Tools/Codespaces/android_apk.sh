@@ -249,16 +249,16 @@ test -d "$PROJECT/.git" && test ! -L "$PROJECT" || {
 test "$(git -C "$PROJECT" rev-parse HEAD)" = "$SHA" || {
   echo APK_WORKTREE_SHA_MISMATCH; exit 24; }
 cd "$PROJECT"
-# Preserve exact 793 original LFS objects, with authentic SHA verification.
+# Preserve all 822 current-main Git LFS objects, with authentic SHA verification.
 if python3 Tools/Codespaces/restore_preserved_source_lfs.py "$PROJECT" \
     >"$BASE/private-lfs.log" 2>&1; then
-  # Check the exact newer 796-asset full snapshot, including three new motions.
-  grep -qxF "AARIS_PRESERVED_LFS_SNAPSHOT_VERIFIED=796" "$BASE/private-lfs.log" || {
-    echo APK_EXPECTED_796_LFS_ASSETS_NOT_VERIFIED; exit 25;
+  # Check the exact current 822-asset full snapshot, including new motions.
+  grep -qxF "AARIS_PRESERVED_LFS_SNAPSHOT_VERIFIED=822" "$BASE/private-lfs.log" || {
+    echo APK_EXPECTED_822_LFS_ASSETS_NOT_VERIFIED; exit 25;
   }
-  echo APK_AUTHENTIC_796_LFS_VERIFIED
+  echo APK_AUTHENTIC_822_LFS_VERIFIED
 elif git lfs pull >"$BASE/private-lfs.log" 2>&1; then
-  test "$(git lfs ls-files --name-only | wc -l)" -eq 796 || {
+  test "$(git lfs ls-files --name-only | wc -l)" -eq 822 || {
     echo APK_REMOTE_LFS_COUNT_INVALID; exit 25;
   }
   # An isolated worktree created with LFS smudge disabled can retain some
@@ -275,7 +275,7 @@ import sys
 sys.path.insert(0, "Tools/Codespaces")
 from restore_preserved_source_lfs import audit_pointers, candidate_matches, original_cache_roots, object_path
 ptrs = audit_pointers(Path.cwd())
-assert len(ptrs) == 796, "APK_REMOTE_LFS_EXPECTED_COUNT_MISMATCH"
+assert len(ptrs) == 822, "APK_REMOTE_LFS_EXPECTED_COUNT_MISMATCH"
 invalid=[]
 categories=Counter()
 for relative, (oid, size) in ptrs.items():
@@ -328,7 +328,7 @@ if invalid:
 assert all(candidate_matches(Path(path),oid,size)
            for path,(oid,size) in ptrs.items()),"APK_LFS_INTEGRITY_INCOMPLETE"
 PYLFS
-  echo APK_REMOTE_796_LFS_SHA256_VERIFIED
+  echo APK_REMOTE_822_LFS_SHA256_VERIFIED
 else
   echo APK_LFS_HYDRATION_FAILED; exit 25
 fi
