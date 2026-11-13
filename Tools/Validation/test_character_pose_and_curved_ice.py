@@ -328,4 +328,4 @@ for fps in (10, 20, 30, 60, 120):
     integrated = sum(min(1.0 / fps, 0.15) for _ in range(frames))
     assert abs(integrated - 0.3) < 1e-9, (fps, integrated)
 # Retaining the old cap would have integrated only 0.15 seconds at 10 FPS.
-assert sum(min(0.1, 0.05) for _ in range(3)) == 0.15
+assert abs(sum(min(0.1, 0.05) for _ in range(3)) - 0.15) < 1e-9
