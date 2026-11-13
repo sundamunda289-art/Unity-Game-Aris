@@ -44,8 +44,13 @@ namespace Aaris.MapReview
             visual.name = "LocalGrenadeModel";
             visual.transform.SetParent(grenade.transform, false);
             if (imported == null) visual.transform.localScale = Vector3.one * 0.25f;
+            // Destroy is deferred until end-of-frame. Immediately disable imported
+            // visual colliders so only the physics sphere can bounce on the first step.
             foreach (var collider in visual.GetComponentsInChildren<Collider>(true))
+            {
+                collider.enabled = false;
                 Destroy(collider);
+            }
             if (grenadeMaterial == null)
             {
                 Shader shader = Shader.Find("Universal Render Pipeline/Lit");
@@ -104,19 +109,23 @@ namespace Aaris.MapReview
             detonated = true;
             armed = false;
             AarisAudioDirector.GrenadeExplosion(transform.position);
-            int count = Physics.OverlapSphereNonAlloc(transform.position, blastRadius,
+            Vector3 blast = transform.position;
+            int count = Physics.OverlapSphereNonAlloc(blast, blastRadius,
                 overlaps, damageMask, QueryTriggerInteraction.Ignore);
+            Collider[] candidates = overlaps;
+            // A dense cluster of house, foliage or player colliders can fill the
+            // unsorted NonAlloc array. Never drop the entire explosion or damage an
+            // arbitrary subset: allocate a full query only on this rare overflow.
             if (count >= overlaps.Length)
             {
-                Debug.LogWarning("Aaris frag: target buffer saturated; explosion damage safely cancelled.");
-                Destroy(gameObject);
-                return;
+                candidates = Physics.OverlapSphere(blast, blastRadius,
+                    damageMask, QueryTriggerInteraction.Ignore);
+                count = candidates.Length;
             }
             damaged.Clear();
-            Vector3 blast = transform.position;
             for (int i = 0; i < count; i++)
             {
-                var collider = overlaps[i];
+                var collider = candidates[i];
                 if (collider == null || collider.transform.IsChildOf(transform)) continue;
                 IAarisDamageable target = FindDamageable(collider);
                 if (target == null || damaged.Contains(target)) continue;
@@ -148,17 +157,26 @@ namespace Aaris.MapReview
             float length = delta.magnitude;
             // Damage candidates may be filtered by damageMask, but solid world cover
             // must still occlude the blast even when it is not damageable.
-            int hits = Physics.RaycastNonAlloc(new Ray(origin, delta / length), rays,
-                length, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            if (hits >= rays.Length) return false;
+            Ray ray = new Ray(origin, delta / length);
+            int hits = Physics.RaycastNonAlloc(ray, rays, length, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            RaycastHit[] candidates = rays;
+            // Do not treat a full (unsorted) buffer as proof of cover. Retrieve
+            // every hit before applying the same solid-cover exclusion rules.
+            if (hits >= rays.Length)
+            {
+                candidates = Physics.RaycastAll(ray, length,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                hits = candidates.Length;
+            }
             for (int i = 0; i < hits; i++)
             {
-                Collider c = rays[i].collider;
+                RaycastHit hit = candidates[i];
+                Collider c = hit.collider;
                 if (c == null || c.transform.IsChildOf(transform) ||
                     c.transform.IsChildOf(target) || target.IsChildOf(c.transform))
                     continue;
                 // Any solid obstruction before the victim blocks this explosion ray.
-                if (rays[i].distance < length - 0.02f) return false;
+                if (hit.distance < length - 0.02f) return false;
             }
             return true;
         }
