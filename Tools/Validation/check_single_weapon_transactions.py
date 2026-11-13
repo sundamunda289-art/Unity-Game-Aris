@@ -117,10 +117,17 @@ def audit():
     assert len(ids) == 5
     points = json.loads((ROOT / "Assets/Resources/AarisWeapons/loot_candidates.json").read_text())
     c = points["candidates"]
-    assert len(c) == 514
+    # The first 514 original candidate indices must never be renumbered.
+    # New outdoor satellites are appended after the legacy source slots.
+    assert len(c) > 514
+    legacy = c[:514]
     indoor = [x for x in c if x["kind"] == "indoor"]
     open_ground = [x for x in c if x["kind"] == "open"]
-    assert len(indoor) == 156 and len(open_ground) == 358
+    assert len([x for x in legacy if x["kind"] == "indoor"]) == 156
+    assert len([x for x in legacy if x["kind"] == "open"]) == 358
+    assert len(indoor) == 156 and len(open_ground) >= 1000
+    assert all(x["kind"] == "open" and x["origin"] == "grid" and
+               x["slot"] >= 100000 for x in c[514:])
     assert all(-1000 < x["x"] < 1000 and -1000 < x["z"] < 1000 for x in c)
 
     # Reference model of one-gun ownership and ground drops. A unique weapon
