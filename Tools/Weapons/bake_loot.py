@@ -28,11 +28,12 @@ def build(layout):
                               "y": round(building["ground_y_m"], 3),
                               "z": round(mid_z + pz * extent_z, 3),
                               "origin": building["name"], "slot": i})
-    for xi in range(-9, 10):
-        for zi in range(-9, 10):
+    # Increase offline candidate coverage without increasing live models or physics budgets.
+    for xi in range(-18, 19):
+        for zi in range(-18, 19):
             h = (((xi + 19) * 73856093) ^ ((zi + 23) * 19349663)) & 0xffffffff
-            x = xi * 100 + ((h % 71) - 35)
-            z = zi * 100 + (((h >> 8) % 71) - 35)
+            x = xi * 50 + ((h % 31) - 15)
+            z = zi * 50 + (((h >> 8) % 31) - 15)
             if any(a[0] - 8 <= x <= a[2] + 8 and a[1] - 8 <= z <= a[3] + 8 for a in occupied):
                 continue
             positions.append({"kind": "open", "x": x, "y": 0, "z": z, "origin": "grid", "slot": h & 65535})

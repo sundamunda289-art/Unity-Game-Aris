@@ -61,7 +61,7 @@ The player's third-person motor remains sole camera/FOV and collision owner.
    candidates. Actual item locations are offset 2–9m from sampled
    trunks; floor/overlap and terrain/water checks happen near player.
    Other trees receive no gun.
-3. **Open world:** 358 spatially distributed, jittered 100m grid
+3. **Open world:** 1346 spatially distributed, jittered 50m grid
    candidates outside the authored building AABBs. Each match samples
    at 32%, all across the 2km map. Ground, water and wall clearance
    remain mandatory; no guaranteed gun in every cell.
@@ -113,10 +113,16 @@ python Tools/Validation/check_weapon_loot.py
 python Tools/Validation/check_single_weapon_transactions.py
 ```
 
-The 514 baked indoor/grid candidates are reproducible from the
+The 1502 baked indoor/grid candidates are reproducible from the
 existing `Docs/MAP_LAYOUT.json`; the optional bounded tree sampling
 runs at the start of the match, not at build time.
 
 Original five-gun feature merged as PR #94; the one-gun pickup/drop upgrade
 is reviewed in PR #95. Neither modifies the native scene, Terrain, houses
 or original Git LFS map assets.
+
+**50m outdoor grid note (2026-11-13):** The denser authored locations expand
+candidate coverage but do not increase the 40-weapon live mesh limit or
+per-frame spawn/probe budgets. A planned candidate is not a confirmed spawn:
+Unity still requires a clear and reachable physical surface. Android FPS and
+in-Editor real pickup/vehicle checks are required before declaring this fixed.
