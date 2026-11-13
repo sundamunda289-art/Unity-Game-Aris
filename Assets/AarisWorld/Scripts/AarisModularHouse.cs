@@ -195,32 +195,46 @@ namespace Aaris.MapReview
                 float.IsNaN(depth) || float.IsInfinity(depth) ||
                 float.IsNaN(height) || float.IsInfinity(height) ||
                 width<8f || depth<9f || height<5f || !Prepare(includePanels)) return null;
-            wall = Match(originalPrefab, "sandstone|plaster|brick|stone|concrete", wall);
-            roof = Match(originalPrefab, "slate|roof|tile|thatch", roof);
-            if (includePanels)
-                door = Match(originalPrefab, "wood|timber|oak", door);
-            trim = Match(originalPrefab, "metal|iron|steel", trim);
-            GameObject home=new GameObject(includePanels
-                ? "Aaris Modular Door Window House" : "Aaris Open Combat House");
-            home.transform.SetParent(parent,false);
-            home.transform.SetPositionAndRotation(position,rotation);
-            Transform t=home.transform;
-            float h=height-.48f;
-            Box(t,"FloorWithRealCollider",new Vector3(0f,-.075f,0f),
-                new Vector3(width-.18f,.15f,depth-.18f),roof);
-            Box(t,"FlatRoofWithRealCollider",new Vector3(0f,h+.24f,0f),
-                new Vector3(width+.4f,.48f,depth+.4f),roof);
-            Box(t,"WestSolidWall",new Vector3(-width*.5f,h*.5f,0f),
-                new Vector3(WallThickness,h,depth),wall);
-            Box(t,"EastSolidWall",new Vector3(width*.5f,h*.5f,0f),
-                new Vector3(WallThickness,h,depth),wall);
-            Front(t,width,depth,h,player,includePanels);
-            Back(t,width,depth,h,includePanels);
-            Box(t,"EntranceStep",new Vector3(0f,-.02f,-depth*.5f-.32f),
-                new Vector3(2.35f,.12f,.64f),roof);
-            Box(t,"RainAwning",new Vector3(0f,DoorHeight+.32f,-depth*.5f-.50f),
-                new Vector3(2.7f,.14f,1.13f),roof);
-            return home;
+            // Material matching belongs to this house only. An imported material
+            // must never become the shared fallback for later unrelated houses.
+            Material defaultWall = wall, defaultRoof = roof;
+            Material defaultTrim = trim, defaultDoor = door;
+            try
+            {
+                wall = Match(originalPrefab, "sandstone|plaster|brick|stone|concrete", wall);
+                roof = Match(originalPrefab, "slate|roof|tile|thatch", roof);
+                if (includePanels)
+                    door = Match(originalPrefab, "wood|timber|oak", door);
+                trim = Match(originalPrefab, "metal|iron|steel", trim);
+                GameObject home=new GameObject(includePanels
+                    ? "Aaris Modular Door Window House" : "Aaris Open Combat House");
+                home.transform.SetParent(parent,false);
+                home.transform.SetPositionAndRotation(position,rotation);
+                Transform t=home.transform;
+                float h=height-.48f;
+                Box(t,"FloorWithRealCollider",new Vector3(0f,-.075f,0f),
+                    new Vector3(width-.18f,.15f,depth-.18f),roof);
+                Box(t,"FlatRoofWithRealCollider",new Vector3(0f,h+.24f,0f),
+                    new Vector3(width+.4f,.48f,depth+.4f),roof);
+                Box(t,"WestSolidWall",new Vector3(-width*.5f,h*.5f,0f),
+                    new Vector3(WallThickness,h,depth),wall);
+                Box(t,"EastSolidWall",new Vector3(width*.5f,h*.5f,0f),
+                    new Vector3(WallThickness,h,depth),wall);
+                Front(t,width,depth,h,player,includePanels);
+                Back(t,width,depth,h,includePanels);
+                Box(t,"EntranceStep",new Vector3(0f,-.02f,-depth*.5f-.32f),
+                    new Vector3(2.35f,.12f,.64f),roof);
+                Box(t,"RainAwning",new Vector3(0f,DoorHeight+.32f,-depth*.5f-.50f),
+                    new Vector3(2.7f,.14f,1.13f),roof);
+                return home;
+            }
+            finally
+            {
+                wall = defaultWall;
+                roof = defaultRoof;
+                trim = defaultTrim;
+                door = defaultDoor;
+            }
         }
     }
 }
