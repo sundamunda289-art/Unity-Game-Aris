@@ -267,10 +267,15 @@ def audit() -> None:
     assert "cachedActions.CameraEyeHeight - 0.15f" in gun
     assert "SameTarget" in gun and "FirstExternalHit" in gun
 
-    # Lying flat on stairs and bridge meshes must not be blocked because a
-    # supporting floor shares an overlap region with the horizontal body.
+    # A walkable bridge/mesh floor may overlap the prone footprint, but
+    # only treat it as support when BOTH head and feet have safe clearance.
+    # An uphill ramp can be clear at the chest yet clip a prone head.
     assert "obstacle.Raycast(floorProbe" in state
-    assert "floorHit.normal.y >= Mathf.Cos(capsule.slopeLimit" in state
+    assert "float minMeshNormal = Mathf.Cos(capsule.slopeLimit * Mathf.Deg2Rad);" in state
+    assert "bool walkableAlongBody = true;" in state
+    assert "floorHit.point.y > center.y - 0.11f" in state
+    assert "floorHit.normal.y < minMeshNormal" in state
+    assert "if (walkableAlongBody) continue;" in state
 
     # The saved physical controller (not a visual pose) is responsible for
     # climbing steps or traversing slopes. Larger ledges need manual jump;
