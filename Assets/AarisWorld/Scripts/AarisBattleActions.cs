@@ -192,6 +192,15 @@ namespace Aaris.MapReview
             return true;
         }
 
+        // The upright controller capsule does not cover a prone character's
+        // horizontal head/feet footprint while rotating beside cover.
+        // Perform this check only for actual prone-facing changes.
+        public bool CanFaceProne(Vector3 forward)
+        {
+            return stance != PlayerStance.Prone ||
+                HasProneClearance(transform.position, forward);
+        }
+
         public bool CanAdvanceProne(Vector3 worldPosition, Vector3 travelDirection)
         {
             if (stance != PlayerStance.Prone) return true;

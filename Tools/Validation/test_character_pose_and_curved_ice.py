@@ -36,4 +36,7 @@ for name in ('GlooWall-ArcticBlue','GlooWall-FrostHighlight'):
     assert mat.is_file() and mat.with_suffix('.mat.meta').is_file()
     txt = mat.read_text()
     assert '_BaseColor' in txt and '_Smoothness' in txt
+# A vertical CharacterController cannot block the horizontal body during prone turns.
+assert 'public bool CanFaceProne(Vector3 forward)' in (ROOT / 'Assets/AarisWorld/Scripts/AarisBattleActions.cs').read_text()
+assert motor.count('battle.CanFaceProne(nextFacing * Vector3.forward)') == 2
 print('PASS: crouch, prone, jump and sprint pose contracts; 432-vertex curved two-material Gloo Wall')
