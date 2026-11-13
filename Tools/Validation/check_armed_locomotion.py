@@ -60,7 +60,16 @@ def audit():
     assert "EnforceNaturalLocomotionPace();" in motor
     # Armed sprint tops out at 4.4 m/s: use reachable, gradual run/arm blends.
     assert "Mathf.InverseLerp(3.3f, 4.4f, horizontal)" in visual
+    assert "bool carrying = actions != null && actions.IsArmed;" in visual
+    assert "carrying ? 4.4f : 4.8f, horizontal" in visual
+    assert "Mathf.Max(4.8f, fullRunSpeed), horizontal" not in visual
     assert "Mathf.Lerp(0.36f, 0.15f, releaseArms)" in visual
+    # At both real-world motor caps the sprint blend must be fully reached,
+    # otherwise gun carriers mix two incompatible foot-contact cycles forever.
+    for armed, cap in ((True, 4.4), (False, 4.8)):
+        end = 4.4 if armed else 4.8
+        blend = min(1.0, max(0.0, (cap - 4.0) / (end - 4.0)))
+        assert blend == 1.0, (armed, cap, blend)
     assert "horizontal > 5.0f ? 0.15f : 0.36f" not in visual
     assert "Mathf.InverseLerp(4.0f, Mathf.Max(4.8f, fullRunSpeed), horizontal)" in visual
     assert "sprinting && travelSpeed > 3.7f ? 3f : 0f" in motor
