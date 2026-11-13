@@ -117,10 +117,13 @@ def audit():
     assert len(ids) == 5
     points = json.loads((ROOT / "Assets/Resources/AarisWeapons/loot_candidates.json").read_text())
     c = points["candidates"]
-    assert len(c) == 514
+    assert len(c) == 1502
     indoor = [x for x in c if x["kind"] == "indoor"]
     open_ground = [x for x in c if x["kind"] == "open"]
-    assert len(indoor) == 156 and len(open_ground) == 358
+    assert len(indoor) == 156 and len(open_ground) == 1346
+    # Regression: candidate density must cover a real sparse landing sector.
+    assert sum((c["x"] + 144.89)**2 + (c["z"] + 475.29)**2 < 50**2
+               for c in open_ground) >= 4
     assert all(-1000 < x["x"] < 1000 and -1000 < x["z"] < 1000 for x in c)
 
     # Reference model of one-gun ownership and ground drops. A unique weapon
@@ -162,7 +165,7 @@ def audit():
         assert len(set(inventory_tokens)) == 75
         assert carried is None or isinstance(carried, Weapon)
         assert all(w.magazine >= 0 and w.reserve >= 0 for w in ground)
-    print("PASS: 10,000 randomized pick/swap/drop/reload ownership cases, 514 audited candidate locations, "
+    print("PASS: 10,000 randomized pick/swap/drop/reload ownership cases, 1502 audited candidate locations, "
           "one-gun HUD, wall-safe pickup, saved gun ammo and floor/roof checks")
     print("NOTE: no Unity Editor Play-mode/physics run was performed.")
 
