@@ -76,6 +76,14 @@ def check(native=False):
     assert 'texture.Apply(false, true)' not in source
     assert 'releaseTerrainPaintCpuCopies = false' in source
     assert 'AuditNativeTerrain();' in source
+    # GPU timings, when supported, must guard against blurring a CPU-bound game.
+    assert 'FrameTimingManager.IsFeatureEnabled()' in source
+    assert 'FrameTimingManager.GetLatestTimings(1u, mobileFrameTimings)' in source
+    assert 'timing.gpuFrameTime >= cpuWork * 1.1d' in source
+    assert 'sample.cpuLimitedSamples >= sample.gpuLimitedSamples * 2' in source
+    assert 'if (measuredCpuBound)' in source
+    assert 's.meanGpuFrameMs' in source and 's.meanCpuMainMs' in source
+    assert 'SampleMobileFrameTiming();' in source
     assert 'AARIS_TERRAIN_RENDER_AUDIT' in source
     assert 'terrainLitAvailable = lit != null && lit.isSupported;' in source
     assert 'tile.enabled && tile.drawHeightmap' in source

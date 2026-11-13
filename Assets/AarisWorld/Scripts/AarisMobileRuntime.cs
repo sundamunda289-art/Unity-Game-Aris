@@ -63,6 +63,11 @@ namespace Aaris.MapReview
         private int suppressedWindZones, suppressedGrassTiles;
         private int slowIntervals, steadyIntervals, lastTargetFps;
         private float lastEffectiveTargetFps;
+        // A CPU-bound stutter must not be "fixed" by blurring the GPU output.
+        // This scratch array is reused; sampling runs at most once per 15 frames.
+        private readonly FrameTiming[] mobileFrameTimings = new FrameTiming[1];
+        private int timingFrameCounter, timingSamples, gpuLimitedSamples, cpuLimitedSamples;
+        private double gpuFrameTimeTotalMs, cpuMainTimeTotalMs, cpuRenderTimeTotalMs;
 #endif
         public static string LatestReport { get; private set; } = "Starting map...";
 
@@ -220,6 +225,33 @@ namespace Aaris.MapReview
             }
         }
 
+        // Unity 6's frame timing API is only active on supported devices/builds.
+        // Never infer GPU load from Time.unscaledDeltaTime: that also includes
+        // scripting, asset loading, physics, device pacing and OS scheduling.
+        private void SampleMobileFrameTiming()
+        {
+            if (++timingFrameCounter < 15) return;
+            timingFrameCounter = 0;
+            if (!FrameTimingManager.IsFeatureEnabled()) return;
+            FrameTimingManager.CaptureFrameTimings();
+            if (FrameTimingManager.GetLatestTimings(1u, mobileFrameTimings) == 0u)
+                return;
+            FrameTiming timing = mobileFrameTimings[0];
+            if (timing.gpuFrameTime <= 0d ||
+                timing.cpuMainThreadFrameTime <= 0d ||
+                timing.cpuRenderThreadFrameTime <= 0d) return;
+            double cpuWork = Math.Max(timing.cpuMainThreadFrameTime,
+                timing.cpuRenderThreadFrameTime);
+            timingSamples++;
+            gpuFrameTimeTotalMs += timing.gpuFrameTime;
+            cpuMainTimeTotalMs += timing.cpuMainThreadFrameTime;
+            cpuRenderTimeTotalMs += timing.cpuRenderThreadFrameTime;
+            if (timing.gpuFrameTime >= cpuWork * 1.1d)
+                gpuLimitedSamples++;
+            else if (cpuWork >= timing.gpuFrameTime * 1.2d)
+                cpuLimitedSamples++;
+        }
+
         private static bool IsBudgetAndroidGpu()
         {
             // A narrow, auditable list: many 4 GB budget gaming phones still
@@ -366,6 +398,18 @@ namespace Aaris.MapReview
                 Mathf.Clamp(minimumAndroidRenderScale, 0.65f, 1f));
             if (slowIntervals >= 2)
             {
+                // If actual Unity timings prove CPU work dominates, reducing
+                // URP resolution cannot repair it and only damages clarity.
+                // Unsupported GPU timers retain the old, conservative governor.
+                bool measuredCpuBound = sample.gpuTimingSamples >= 4 &&
+                    sample.cpuLimitedSamples >= 3 &&
+                    sample.cpuLimitedSamples >= sample.gpuLimitedSamples * 2;
+                if (measuredCpuBound)
+                {
+                    slowIntervals = 0;
+                    sample.renderScale = androidPipeline.renderScale;
+                    return;
+                }
                 float reduced = Mathf.Max(floor, current - 0.05f);
                 if (reduced < current - 0.001f)
                 {
@@ -390,6 +434,9 @@ namespace Aaris.MapReview
 
         private void Update()
         {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            SampleMobileFrameTiming();
+#endif
             float dt = Time.unscaledDeltaTime;
             if (dt > 0)
             {
@@ -507,6 +554,8 @@ namespace Aaris.MapReview
             public string reason, utc, version, device, gpu, api, lastError;
             public int systemRamMB, targetFps, warningCount, framesOver50Ms;
             public float effectiveTargetFps;
+            public int gpuTimingSamples, gpuLimitedSamples, cpuLimitedSamples;
+            public float meanGpuFrameMs, meanCpuMainMs, meanCpuRenderMs;
             public float seconds, averageFps, p75FrameMs, p95FrameMs, p99FrameMs, renderScale = 1f;
             public long unityAllocatedBytes, unityReservedBytes, managedBytes, androidPssKB;
             public ulong textureBytes, desiredTextureBytes;
@@ -561,8 +610,21 @@ namespace Aaris.MapReview
             s.lowMemoryGrassTilesDisabled = suppressedGrassTiles;
             s.lowMemoryShadowDistance = appliedShadowDistance;
             s.effectiveTargetFps = EffectiveAndroidTargetFps(s.targetFps);
-            if (reason == "sample" && frameCount >= 30)
-                TuneAndroidResolution(s);
+            s.gpuTimingSamples = timingSamples;
+            s.gpuLimitedSamples = gpuLimitedSamples;
+            s.cpuLimitedSamples = cpuLimitedSamples;
+            if (timingSamples > 0)
+            {
+                s.meanGpuFrameMs = (float)(gpuFrameTimeTotalMs / timingSamples);
+                s.meanCpuMainMs = (float)(cpuMainTimeTotalMs / timingSamples);
+                s.meanCpuRenderMs = (float)(cpuRenderTimeTotalMs / timingSamples);
+            }
+            if (reason == "sample")
+            {
+                if (frameCount >= 30) TuneAndroidResolution(s);
+                timingSamples = gpuLimitedSamples = cpuLimitedSamples = 0;
+                gpuFrameTimeTotalMs = cpuMainTimeTotalMs = cpuRenderTimeTotalMs = 0d;
+            }
             if (GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset pipeline)
                 s.renderScale = pipeline.renderScale;
 #endif
