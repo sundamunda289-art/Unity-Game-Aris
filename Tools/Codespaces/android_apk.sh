@@ -202,9 +202,13 @@ REF_NAME=main
 if test "$MODE" = build_hud; then
   REF_NAME=fix/android-ugui-shader-parachute-20261110
 fi
-git -C "$SOURCE" fetch --quiet origin "+refs/heads/$REF_NAME:refs/remotes/origin/$REF_NAME" || {
-  echo APK_REVIEWED_REF_FETCH_FAILED; exit 20; }
-SOURCE_HEAD="$(git -C "$SOURCE" rev-parse --verify "refs/remotes/origin/$REF_NAME^{commit}")"
+# The active Codespace may use a different owner's fork as "origin".
+# Never build that fork by accident: fetch the canonical game repository explicitly.
+CANONICAL_REPO=https://github.com/sundamunda289-art/Unity-Game-Aris.git
+SOURCE_REF="refs/aaris-apk-reviewed/$REF_NAME"
+git -C "$SOURCE" fetch --quiet --no-tags "$CANONICAL_REPO" "+refs/heads/$REF_NAME:$SOURCE_REF" || {
+  echo APK_CANONICAL_GAME_REF_FETCH_FAILED; exit 20; }
+SOURCE_HEAD="$(git -C "$SOURCE" rev-parse --verify "$SOURCE_REF^{commit}")"
 [[ "$SOURCE_HEAD" =~ ^[0-9a-f]{40}$ ]] || { echo APK_MAIN_SHA_INVALID; exit 21; }
 SHA="$SOURCE_HEAD"
 # Build the exact reviewed source commit, even when monitoring/workflow fixes
@@ -231,6 +235,10 @@ if test ! -d "$PROJECT"; then
     -c filter.lfs.smudge=cat -c filter.lfs.required=false \
     clone --quiet --shared --no-checkout "$SOURCE" "$PROJECT" >/dev/null 2>&1 || {
       echo APK_ISOLATED_CLONE_FAILED; exit 23; }
+  # Temporary clone needs the canonical LFS endpoint too, not the local
+  # source clone's possibly unrelated default origin / fork.
+  git -C "$PROJECT" remote set-url origin "$CANONICAL_REPO" || {
+    echo APK_CANONICAL_LFS_ORIGIN_FAILED; exit 23; }
   GIT_LFS_SKIP_SMUDGE=1 git -C "$PROJECT" -c filter.lfs.process= \
     -c filter.lfs.smudge=cat -c filter.lfs.required=false \
     checkout --quiet --detach "$SHA" >/dev/null 2>&1 || {
