@@ -14,6 +14,7 @@ namespace Aaris.MapReview
     public sealed class AarisAudioDirector : MonoBehaviour
     {
         private const int VoiceCount = 12;
+        private const int LocalVoiceCount = 4;
         // Fixed-size timed cue queue: zero allocations when automatic guns fire.
         private struct TimedCue
         {
@@ -54,7 +55,7 @@ namespace Aaris.MapReview
         private bool hasDropPhase, wasDriving;
         private float previousY, previousJump = -10f, previousLand = -10f;
         private float stepDistance, lastSkidAt = -10f, lastCrashAt = -10f;
-        private int nextVoice;
+        private int nextLocalVoice, nextWorldVoice = LocalVoiceCount;
         private Vector3 previousPosition;
         private float nextOptionalComponentRefresh;
 
@@ -99,7 +100,12 @@ namespace Aaris.MapReview
             metalImpactFoley = Resources.Load<AudioClip>("SFX/CC0/impactMetal_light_000");
             audioRoot = new GameObject("Aaris Audio Voices (12 pooled)");
             for (int i = 0; i < voices.Length; i++)
-                voices[i] = MakeSource(audioRoot.transform, "Aaris SFX Voice " + i);
+            {
+                bool local = i < LocalVoiceCount;
+                voices[i] = MakeSource(audioRoot.transform,
+                    (local ? "Local SFX Voice " : "World SFX Voice ") + i);
+                voices[i].spatialBlend = local ? 0f : 1f;
+            }
             planeLoop = MakeSource(audioRoot.transform, "Plane Engine Loop");
             windLoop = MakeSource(audioRoot.transform, "Drop Wind Loop");
             engineLoop = MakeSource(audioRoot.transform, "Vehicle Engine Loop");
@@ -136,6 +142,18 @@ namespace Aaris.MapReview
             key == "step_road" || key == "step_water" ||
             key == "grenade_bounce";
 
+        // Own weapon, movement and equipment feedback should not fade with
+        // the shoulder camera offset. World impacts and explosions stay 3D.
+        private static bool IsLocalCue(string key) =>
+            key == "smg_shot" || key == "ar_shot" || key == "battle_rifle_shot" ||
+            key == "sniper_shot" || key == "shotgun_shot" ||
+            key == "bolt_reload" || key == "shell_drop" || key == "punch_hit" ||
+            key == "step_dirt" || key == "step_road" || key == "step_water" ||
+            key == "jump_start" || key == "land_thud" || key == "jump_whoosh" ||
+            key == "parachute_open" || key == "parachute_land" ||
+            key == "grenade_pin" || key == "grenade_throw" ||
+            key == "car_start" || key == "gloo_deploy";
+
         private void OneShot(string name, Vector3 point, float volume = 1f, float pitch = 1f)
         {
             AudioClip clip = GetClip(name);
@@ -143,13 +161,17 @@ namespace Aaris.MapReview
             // Reuse an idle pooled voice before cutting off an ongoing sound.
             // A shotgun/impact cue must not be stolen by round-robin wrapping
             // while another of the 12 existing channels has already finished.
-            int selected = nextVoice;
+            bool local = IsLocalCue(name);
+            int start = local ? 0 : LocalVoiceCount;
+            int count = local ? LocalVoiceCount : VoiceCount - LocalVoiceCount;
+            int cursor = local ? nextLocalVoice : nextWorldVoice;
+            int selected = cursor;
             bool idleVoice = !voices[selected].isPlaying;
             if (!idleVoice)
             {
-                for (int offset = 1; offset < voices.Length; offset++)
+                for (int offset = 1; offset < count; offset++)
                 {
-                    int candidate = (nextVoice + offset) % voices.Length;
+                    int candidate = start + (cursor - start + offset) % count;
                     if (voices[candidate].isPlaying) continue;
                     selected = candidate;
                     idleVoice = true;
@@ -161,7 +183,10 @@ namespace Aaris.MapReview
             // all-busy round-robin preemption behaviour.
             if (!idleVoice && IsLowPriorityCue(name)) return;
             AudioSource voice = voices[selected];
-            nextVoice = (selected + 1) % voices.Length;
+            if (local)
+                nextLocalVoice = start + (selected - start + 1) % count;
+            else
+                nextWorldVoice = start + (selected - start + 1) % count;
             // When all voices are busy, preserve the old round-robin fallback.
             if (voice.isPlaying) voice.Stop();
             voice.transform.position = point;
