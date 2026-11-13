@@ -168,7 +168,9 @@ namespace Aaris.MapReview
             Quaternion grip = Quaternion.Euler(equipped.Spec.handRotation);
             if (hand != null)
                 weaponRoot.SetPositionAndRotation(
-                    hand.TransformPoint(equipped.Spec.handOffset),
+                    // Treat authored grip offsets as metres, not scaled FBX bone units.
+                    // Some imported humanoids have 0.01x or 100x bone scale.
+                    hand.position + hand.rotation * equipped.Spec.handOffset,
                     hand.rotation * grip);
             else
                 weaponRoot.SetPositionAndRotation(
