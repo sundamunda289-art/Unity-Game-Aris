@@ -129,7 +129,8 @@ def run():
     assert "rec.visible = null;" in world and "record.state" in world
     # Deliberate exchange, never auto-pick a recently dropped gun.
     assert "(!inventory.HasGun && allowInitialAutoPickup &&" in world
-    assert "requestPickupUntil = Time.unscaledTime + 0.7f;" in world
+    assert "requestPickupUntil = Time.unscaledTime + 1.5f;" in world
+    assert "nextRefresh = 0f;" in world
     assert "allowInitialAutoPickup = false;" in world
     assert "IsBlockedDrop(pickup)" in world
     # A nearby gun must actually complete the pickup transaction before the
