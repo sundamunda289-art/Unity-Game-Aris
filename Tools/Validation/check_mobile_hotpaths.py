@@ -627,69 +627,84 @@ def audit():
                 tint_initialized = True
         assert updates == 3, (fps, updates)
 
-    # In a busy match, pooled SFX must use a finished channel before
-    # interrupting a still-playing gunshot, grenade or impact. The search is
-    # bounded to the 12 existing voices and allocates no new AudioSources.
+    # Four listener-relative voices and eight spatial voices share the
+    # ORIGINAL total of 12. A world impact must not evict local automatic
+    # gunfire, nor should a local footstep cut a world explosion.
     one_shot = audio[audio.index("private void OneShot("):
                      audio.index("private void Schedule(")]
-    assert "int selected = nextVoice;" in one_shot
+    policy = audio[audio.index("private static bool IsLowPriorityCue("):
+                   audio.index("private void OneShot(")]
+    assert "private const int VoiceCount = 12;" in audio
+    assert "private const int LocalVoiceCount = 4;" in audio
+    assert "voices[i].spatialBlend = local ? 0f : 1f;" in audio
+    assert "bool local = IsLocalCue(name);" in one_shot
+    assert "int start = local ? 0 : LocalVoiceCount;" in one_shot
+    assert "int count = local ? LocalVoiceCount : VoiceCount - LocalVoiceCount;" in one_shot
+    assert "int cursor = local ? nextLocalVoice : nextWorldVoice;" in one_shot
+    assert "int selected = cursor;" in one_shot
     assert "bool idleVoice = !voices[selected].isPlaying;" in one_shot
-    assert "idleVoice = true;" in one_shot
-    assert "if (!idleVoice && IsLowPriorityCue(name)) return;" in one_shot
-    assert "for (int offset = 1; offset < voices.Length; offset++)" in one_shot
+    assert "for (int offset = 1; offset < count; offset++)" in one_shot
+    assert "int candidate = start + (cursor - start + offset) % count;" in one_shot
     assert "if (voices[candidate].isPlaying) continue;" in one_shot
     assert "selected = candidate;" in one_shot
-    assert "nextVoice = (selected + 1) % voices.Length;" in one_shot
+    assert "idleVoice = true;" in one_shot
+    assert "if (!idleVoice && IsLowPriorityCue(name)) return;" in one_shot
+    assert "nextLocalVoice = start + (selected - start + 1) % count;" in one_shot
+    assert "nextWorldVoice = start + (selected - start + 1) % count;" in one_shot
     assert "if (voice.isPlaying) voice.Stop();" in one_shot
     assert "new AudioSource" not in one_shot and "new GameObject" not in one_shot
+    for key in ("smg_shot", "ar_shot", "battle_rifle_shot",
+                "sniper_shot", "shotgun_shot", "bolt_reload", "shell_drop",
+                "step_dirt", "step_road", "step_water", "jump_start",
+                "land_thud", "parachute_open", "grenade_pin", "grenade_throw"):
+        assert f'key == "{key}"' in policy
+    for key in ("bullet_impact", "grenade_boom", "grenade_bounce", "car_crash"):
+        assert f'key == "{key}"' not in policy
+    assert "new " not in policy
 
-    def select_idle_voice(busy, cursor):
+    def select_idle_voice(busy, cursor, start, count):
         selected = cursor
         if busy[selected]:
-            for offset in range(1, len(busy)):
-                candidate = (cursor + offset) % len(busy)
+            for offset in range(1, count):
+                candidate = start + (cursor - start + offset) % count
                 if not busy[candidate]:
                     selected = candidate
                     break
-        return selected, (selected + 1) % len(busy)
+        return selected, start + (selected - start + 1) % count
 
-    # Exercise all 4096 channel occupancy patterns and cursor positions;
-    # never cut a playing voice if a finished channel exists.
-    for mask in range(1 << 12):
-        busy = [(mask & (1 << i)) != 0 for i in range(12)]
-        for cursor in (0, 3, 7, 11):
-            chosen, next_cursor = select_idle_voice(busy, cursor)
-            assert 0 <= chosen < 12 and 0 <= next_cursor < 12
-            assert next_cursor == (chosen + 1) % 12
-            if not all(busy):
-                assert not busy[chosen], (mask, cursor, chosen)
-            else:
-                assert chosen == cursor  # Existing all-busy fallback.
-
-    # Audio pressure policy: only low-value foley may be skipped; important
-    # gunfire/explosions preserve the previous all-busy round-robin fallback.
-    # The early return must happen BEFORE changing the voice/cursor.
-    assert one_shot.index("if (!idleVoice && IsLowPriorityCue(name)) return;") < (
-        one_shot.index("nextVoice = (selected + 1) % voices.Length;")
-    )
+    # All 4096 activity masks: idle-first behavior within each disjoint
+    # bank, correct wrap, full-pool preemption only for important cues.
     low_priority = ("shell_drop", "step_dirt", "step_road",
                     "step_water", "grenade_bounce")
-    policy = audio[audio.index("private static bool IsLowPriorityCue("):
-                   audio.index("private void OneShot(")]
+    assert one_shot.index("if (!idleVoice && IsLowPriorityCue(name)) return;") < (
+        one_shot.index("if (local)\n                nextLocalVoice")
+    )
     for key in low_priority:
         assert f'key == "{key}"' in policy
-    assert "new " not in policy
     for mask in range(1 << 12):
         busy = [(mask & (1 << i)) != 0 for i in range(12)]
-        for cursor in (0, 7):
-            chosen, new_cursor = select_idle_voice(busy, cursor)
-            for sound in (*low_priority, "smg_shot", "grenade_boom"):
-                accepted = not (all(busy) and sound in low_priority)
-                if accepted:
-                    assert new_cursor == (chosen + 1) % 12
+        for start, count in ((0, 4), (4, 8)):
+            pool_busy = all(busy[start:start+count])
+            for cursor in range(start, start + count):
+                selected, next_cursor = select_idle_voice(busy, cursor, start, count)
+                assert start <= selected < start + count
+                assert start <= next_cursor < start + count
+                assert next_cursor == start + (selected - start + 1) % count
+                if not pool_busy:
+                    assert not busy[selected], (mask, start, cursor, selected)
                 else:
-                    assert all(busy) and chosen == cursor
-    # Tests model routing only; native AudioSource scheduling is not simulated.
+                    assert selected == cursor
+            for sound in ("shell_drop", "grenade_bounce", "smg_shot", "grenade_boom"):
+                is_local = sound in ("shell_drop", "smg_shot")
+                if is_local != (start == 0):
+                    continue
+                accepted = not (pool_busy and sound in low_priority)
+                selected, after = select_idle_voice(busy, start, start, count)
+                if accepted:
+                    assert after == start + (selected - start + 1) % count
+                else:
+                    assert pool_busy and selected == start
+    # Source and routing test, not a Unity AudioListener playback test.
 
     # Delayed SFX should do zero slot scans until the earliest cue is due.
     # Overwriting a saturated queue must also discard the old deadline.
