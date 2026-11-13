@@ -220,16 +220,25 @@ namespace Aaris.MapReview
                     side == 1 ? -t.right * 3.2f :
                     side == 2 ? -t.forward * 3.5f : t.forward * 3.5f);
                 if (Mathf.Abs(option.x) > 973f || Mathf.Abs(option.z) > 973f) continue;
-                int hits = Physics.RaycastNonAlloc(
-                    new Ray(option + Vector3.up * 2.5f, Vector3.down), exitGround, 5f,
+                Ray floorRay = new Ray(option + Vector3.up * 2.5f, Vector3.down);
+                int hits = Physics.RaycastNonAlloc(floorRay, exitGround, 5f,
                     Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                if (hits >= exitGround.Length) continue;
+                RaycastHit[] groundHits = exitGround;
+                if (hits >= exitGround.Length)
+                {
+                    // A full NonAlloc buffer is unsorted and may omit the only
+                    // valid street surface. Complete this rare EXIT-tap query
+                    // before applying the original slope/height safety rules.
+                    groundHits = Physics.RaycastAll(floorRay, 5f,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                    hits = groundHits.Length;
+                }
                 float best = float.PositiveInfinity;
                 Vector3 support = Vector3.zero;
                 Collider floor = null;
                 for (int i = 0; i < hits; i++)
                 {
-                    var hit = exitGround[i];
+                    var hit = groundHits[i];
                     if (hit.collider == null || hit.collider.transform.IsChildOf(t) ||
                         hit.collider.transform.IsChildOf(transform) ||
                         hit.normal.y < .707f || hit.point.y < seaLevel + .35f ||
@@ -247,11 +256,20 @@ namespace Aaris.MapReview
                 Vector3 top = support + Vector3.up * (capsule.height - r + .1f);
                 int overlaps = Physics.OverlapCapsuleNonAlloc(bottom, top, r,
                     exitOverlap, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                if (overlaps >= exitOverlap.Length) continue;
+                Collider[] occupiedColliders = exitOverlap;
+                if (overlaps >= exitOverlap.Length)
+                {
+                    // Never accept a partial collider set as free space. The
+                    // complete allocation is only on an explicit exit attempt,
+                    // never in Update/LateUpdate or the driving physics loop.
+                    occupiedColliders = Physics.OverlapCapsule(bottom, top, r,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                    overlaps = occupiedColliders.Length;
+                }
                 bool safe = true;
                 for (int i = 0; i < overlaps; i++)
                 {
-                    var obstacle = exitOverlap[i];
+                    var obstacle = occupiedColliders[i];
                     if (obstacle == null || obstacle == floor ||
                         obstacle.transform.IsChildOf(transform)) continue;
                     safe = false;
