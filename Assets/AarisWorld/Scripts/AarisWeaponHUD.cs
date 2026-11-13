@@ -17,6 +17,9 @@ namespace Aaris.MapReview
         private readonly List<Button> buttons = new List<Button>(4);
         private readonly List<Text> captions = new List<Text>(4);
         private AarisWeaponInventory inventory;
+        private Text nearbyGunHint;
+        private Transform nearbyGunOwner;
+        private float nextNearbyGunHintAt;
         private Canvas canvas;
         private RectTransform safeRoot;
         private Vector2 previousScreen;
@@ -44,6 +47,7 @@ namespace Aaris.MapReview
         {
             instance = this;
             inventory = inv;
+            nearbyGunOwner = inv.transform;
             if (FindFirstObjectByType<EventSystem>() == null)
             {
                 var system = new GameObject("Aaris Input EventSystem");
@@ -69,6 +73,7 @@ namespace Aaris.MapReview
             Add("PICK", new Vector2(-225f, -57f), () => inventory.RequestPickup());
             Add("DROP", new Vector2(-141f, -57f), () => inventory.DropCurrent());
             Add("RELOAD", new Vector2(-57f, -57f), () => inventory.Reload());
+            AddNearbyGunHint();
             AarisHudGlyphs.ApplyCanvasShader(go.transform);
             UpdateArea(true);
         }
@@ -106,6 +111,62 @@ namespace Aaris.MapReview
             captions.Add(text);
         }
 
+        private void AddNearbyGunHint()
+        {
+            // Text-only, raycast-free location feedback: no extra 3D mesh,
+            // camera scan, lighting pass or mobile control obstruction.
+            var hint = new GameObject("Nearby gun direction hint",
+                typeof(RectTransform), typeof(Text));
+            hint.transform.SetParent(safeRoot, false);
+            var rect = hint.GetComponent<RectTransform>();
+            rect.anchorMin = rect.anchorMax = new Vector2(.5f, 1f);
+            rect.pivot = new Vector2(.5f, 1f);
+            rect.anchoredPosition = new Vector2(0f, -18f);
+            rect.sizeDelta = new Vector2(320f, 30f);
+            nearbyGunHint = hint.GetComponent<Text>();
+            nearbyGunHint.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            nearbyGunHint.alignment = TextAnchor.MiddleCenter;
+            nearbyGunHint.fontSize = 15;
+            nearbyGunHint.color = new Color(.9f, .95f, 1f, .9f);
+            nearbyGunHint.raycastTarget = false;
+            nearbyGunHint.enabled = false;
+        }
+
+        private void RefreshNearbyGunHint()
+        {
+            if (nearbyGunHint == null || nearbyGunOwner == null)
+                return;
+            AarisWeaponPickup closest = null;
+            float closestSquare = 48f * 48f;
+            Vector3 playerPosition = nearbyGunOwner.position;
+            // Only the <=40 live, already-streamed pickups are checked.
+            // No physics query, FindObjectsByType call or world activation.
+            foreach (var pickup in AarisWeaponPickup.ActivePickups)
+            {
+                if (pickup == null || pickup.IsConsumed || pickup.Spec == null ||
+                    !pickup.gameObject.activeInHierarchy) continue;
+                Vector3 direction = pickup.transform.position - playerPosition;
+                if (Mathf.Abs(direction.y) > 4f) continue;
+                float distanceSquare = direction.sqrMagnitude;
+                if (distanceSquare >= closestSquare) continue;
+                closest = pickup;
+                closestSquare = distanceSquare;
+            }
+            if (closest == null)
+            {
+                nearbyGunHint.enabled = false;
+                return;
+            }
+            Vector3 toGun = closest.transform.position - playerPosition;
+            float side = Vector3.Dot(nearbyGunOwner.right, toGun.normalized);
+            string directionLabel = side > .30f ? "RIGHT" :
+                side < -.30f ? "LEFT" : "AHEAD";
+            // Proximity only; a solid wall can still obstruct pickup.
+            nearbyGunHint.text = "GUN NEARBY  " + closest.Spec.displayName +
+                "  " + Mathf.RoundToInt(Mathf.Sqrt(closestSquare)) + "m  " + directionLabel;
+            nearbyGunHint.enabled = true;
+        }
+
         private void UpdateArea(bool force)
         {
             Rect safe = Screen.safeArea;
@@ -124,6 +185,18 @@ namespace Aaris.MapReview
             if (canvas == null || !canvas.isActiveAndEnabled) return;
             UpdateArea(false);
             bool armed = inventory != null && inventory.HasGun;
+            // The gun hint is refreshed at most once per 1.25s, never by a
+            // scene-wide search or during each mobile HUD frame.
+            if (armed)
+            {
+                if (nearbyGunHint != null) nearbyGunHint.enabled = false;
+                nextNearbyGunHintAt = 0f;
+            }
+            else if (Time.unscaledTime >= nextNearbyGunHintAt)
+            {
+                nextNearbyGunHintAt = Time.unscaledTime + 1.25f;
+                RefreshNearbyGunHint();
+            }
             bool canPick = inventory != null && inventory.PickupAvailable;
             for (int i = 0; i < buttons.Count; i++)
             {
