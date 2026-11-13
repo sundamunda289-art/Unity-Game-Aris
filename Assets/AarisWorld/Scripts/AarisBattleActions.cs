@@ -147,6 +147,12 @@ namespace Aaris.MapReview
             capsule.height = height;
             capsule.center = new Vector3(standingCenter.x, floorRelative + height * 0.5f, standingCenter.z);
             stance = target;
+            // A stance can also be selected by editor automation or other gameplay
+            // scripts, not only the HUD. Stop latent auto-run AFTER a successful
+            // low stance switch, or zero-stick input would keep crawling forward.
+            // A rejected change must leave the player's sprint intent untouched.
+            if (target != PlayerStance.Standing && motor != null)
+                motor.CancelAutoSprint();
             capsule.stepOffset = GroundStepOffset;
             return true;
         }
