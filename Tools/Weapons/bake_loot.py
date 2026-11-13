@@ -36,6 +36,23 @@ def build(layout):
             if any(a[0] - 8 <= x <= a[2] + 8 and a[1] - 8 <= z <= a[3] + 8 for a in occupied):
                 continue
             positions.append({"kind": "open", "x": x, "y": 0, "z": z, "origin": "grid", "slot": h & 65535})
+    # Preserve all existing map loot indices. Satellites fill gaps between
+    # 100 m outdoor cells, without increasing runtime mesh/physics budgets.
+    # Ground height, collision, roofs and water are validated at stream time.
+    original_outdoor = tuple(p for p in positions if p["kind"] == "open")
+    for index, center in enumerate(original_outdoor):
+        for side, (dx, dz) in enumerate(((24, 24), (-24, -24))):
+            x, z = center["x"] + dx, center["z"] + dz
+            if not (-957 <= x <= 957 and -957 <= z <= 957):
+                continue
+            if any(a[0] - 8 <= x <= a[2] + 8 and a[1] - 8 <= z <= a[3] + 8 for a in occupied):
+                continue
+            # Avoid piles of pickups from neighboring jittered cells.
+            if any((p["x"] - x) ** 2 + (p["z"] - z) ** 2 < 14 ** 2
+                   for p in positions if p["kind"] == "open"):
+                continue
+            positions.append({"kind": "open", "x": x, "y": 0, "z": z,
+                              "origin": "grid", "slot": 100000 + index * 2 + side})
     return {"schema": 1, "sizeMetres": 2000, "candidates": positions}
 
 if __name__ == "__main__":
