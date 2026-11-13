@@ -885,14 +885,14 @@ namespace Aaris.MapReview
 
         private void EnsureStarterLoot(Vector3 playerPosition)
         {
-            if (starterLootSettled || !allowInitialAutoPickup || active.Count >= MaximumActiveLoot)
+            if (starterLootSettled || !allowInitialAutoPickup)
                 return;
             if (inventory.HasGun)
             {
                 starterLootSettled = true;
                 return;
             }
-            if (player.TryGetComponent(out AarisOfflineDrop flight) && !flight.HasLanded) return;
+            if (player.TryGetComponent(out AarisOfflineDrop flight) && flight.isActiveAndEnabled && !flight.HasLanded) return;
             // Unity's isGrounded reports the previous capsule Move and can
             // briefly go false on a bridge seam or the first landing frame.
             // The real floor ray, obstruction capsule and pickup line-of-sight
@@ -917,6 +917,15 @@ namespace Aaris.MapReview
                     starterLootSettled = true;
                     return;
                 }
+            }
+
+            // A saturated 40-model pool must not prevent the emergency
+            // inventory fallback after a real on-foot landing. Never spawn
+            // a 41st mesh; retry the existing validated inventory route.
+            if (active.Count >= MaximumActiveLoot)
+            {
+                TryLastResortStarterEquip();
+                return;
             }
 
             // One fallback per match. Use the existing safe floor and pickup path.
