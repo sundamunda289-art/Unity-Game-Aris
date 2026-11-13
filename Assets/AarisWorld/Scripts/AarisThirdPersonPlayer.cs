@@ -828,7 +828,10 @@ namespace Aaris.MapReview
             {
                 smoothedEyeHeight = Mathf.SmoothDamp(smoothedEyeHeight,
                     targetEyeHeight, ref eyeHeightVelocity, stanceCameraBlendSeconds,
-                    Mathf.Infinity, Mathf.Min(Time.deltaTime, 0.05f));
+                    // Match the motor's bounded real frame time. Capping at 50 ms
+                    // made stance camera transitions take twice as long at 10 FPS,
+                    // leaving the view above the crouched/prone player's head.
+                    Mathf.Infinity, Mathf.Clamp(Time.deltaTime, 0f, 0.15f));
             }
             Vector3 pivot = transform.position + Vector3.up * smoothedEyeHeight;
             Quaternion orbit = Quaternion.Euler(pitch, yaw, 0f);
