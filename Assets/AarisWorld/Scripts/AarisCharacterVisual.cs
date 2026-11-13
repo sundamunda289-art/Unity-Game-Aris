@@ -553,7 +553,8 @@ namespace Aaris.MapReview
             {
                 float horizontal = planar;
                 float movementTarget = Mathf.InverseLerp(0.08f, 1.2f, horizontal);
-                float runTarget = Mathf.InverseLerp(3.3f, 4.9f, horizontal);
+                // Reach the complete run cycle at the armed sprint cap (4.4 m/s).
+                float runTarget = Mathf.InverseLerp(3.3f, 4.4f, horizontal);
                 float sprintTarget = Mathf.InverseLerp(4.0f, Mathf.Max(4.8f, fullRunSpeed), horizontal);
                 float airTarget = visuallyAirborne ? 1f : 0f;
                 runBlend = Mathf.Lerp(runBlend, movementTarget, alpha);
@@ -611,8 +612,13 @@ namespace Aaris.MapReview
                 float attackUpper = Mathf.Max(punchUpper, shootUpper);
                 bool carrying = actions != null && actions.IsArmed;
                 bool aim = weaponInventory != null && weaponInventory.Aiming;
+                // The old >5 m/s sprint check was unreachable after the natural
+                // pace cap (4.4 m/s with a gun), locking the torso in a
+                // rigid weapon-ready pose throughout the running cycle.
+                float releaseArms = Mathf.SmoothStep(0f, 1f,
+                    Mathf.InverseLerp(3.2f, 4.4f, horizontal));
                 float carryTarget = !carrying ? 0f : aim ? 0.63f :
-                    horizontal > 5.0f ? 0.15f : 0.36f;
+                    Mathf.Lerp(0.36f, 0.15f, releaseArms);
                 if (prone) carryTarget *= 0.6f;
                 readyPoseBlend = Mathf.Lerp(readyPoseBlend, carryTarget, alpha);
                 float layerWeight = Mathf.Clamp01(Mathf.Max(readyPoseBlend, attackUpper));
