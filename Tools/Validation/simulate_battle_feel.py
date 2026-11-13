@@ -55,7 +55,7 @@ def assert_regression() -> None:
     assert setting("armedSprintSpeed") == 5.7
     assert setting("walkSpeed") == 4.2
     assert setting("crouchMoveSpeed") == 2.4
-    assert setting("proneMoveSpeed") == 1.45
+    assert setting("proneMoveSpeed") == 1.1
     assert setting("combatMoveSpeed") == 2.0
     acc = setting("horizontalAcceleration")
     brake = setting("horizontalBraking")
