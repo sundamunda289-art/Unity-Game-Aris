@@ -14,7 +14,9 @@ audio = (ROOT / "Assets/AarisWorld/Scripts/AarisAudioDirector.cs").read_text("ut
 assert "bool previousMoveGrounded = controller.isGrounded;" in motor
 assert "bool wasGrounded = previousMoveGrounded;" in motor
 assert "wasGrounded = HasWalkableGroundWithinStep();" in motor
-assert "if (!previousMoveGrounded && !launchJump) lastLanding = now;" in motor
+assert "if (!previousMoveGrounded && !launchJump)" in motor
+assert "lastLanding = now;" in motor
+assert "lastLandingImpactSpeed = Mathf.Max(0f, -verticalVelocity);" in motor
 assert "if (!wasGrounded && !launchJump) lastLanding = now;" not in motor
 assert "if ((flags & CollisionFlags.Below) != 0)" in motor
 assert "if (player.LastLandingTime > previousLand &&" in audio
