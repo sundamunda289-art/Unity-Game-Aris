@@ -21,6 +21,8 @@ namespace Aaris.MapReview
 
         private readonly RaycastHit[] forwardHits = new RaycastHit[32];
         private readonly RaycastHit[] groundHits = new RaycastHit[32];
+        // One shared dense buffer for sequential preview casts; avoid hot-path GC.
+        private readonly RaycastHit[] crowdedRayHits = new RaycastHit[128];
         private readonly Collider[] overlaps = new Collider[48];
         private AarisThirdPersonPlayer motor;
         private CharacterController playerCapsule;
@@ -123,6 +125,24 @@ namespace Aaris.MapReview
             AarisAudioDirector.GlooDeployed(point);
         }
 
+        // NonAlloc buffer saturation loses unordered hits; retry before
+        // resorting to an exceptional fully allocated query (>128 hits).
+        private int CompleteRayHits(Vector3 origin, Vector3 direction, float distance,
+            RaycastHit[] firstHits, out RaycastHit[] selectedHits)
+        {
+            int count = Physics.RaycastNonAlloc(origin, direction, firstHits,
+                distance, groundAndCoverMask, QueryTriggerInteraction.Ignore);
+            selectedHits = firstHits;
+            if (count < firstHits.Length) return count;
+            count = Physics.RaycastNonAlloc(origin, direction, crowdedRayHits,
+                distance, groundAndCoverMask, QueryTriggerInteraction.Ignore);
+            selectedHits = crowdedRayHits;
+            if (count < crowdedRayHits.Length) return count;
+            selectedHits = Physics.RaycastAll(origin, direction, distance,
+                groundAndCoverMask, QueryTriggerInteraction.Ignore);
+            return selectedHits.Length;
+        }
+
         private void UpdatePlacement()
         {
             placementValid = false;
@@ -142,13 +162,12 @@ namespace Aaris.MapReview
             // The old fixed-distance approximation made the wall appear
             // disconnected from where the player actually pointed.
             float nearestGround = float.PositiveInfinity;
-            int cameraHits = Physics.RaycastNonAlloc(
-                motor.AimCamera.transform.position, look, forwardHits,
-                maximumDistance + 8f, groundAndCoverMask, QueryTriggerInteraction.Ignore);
-            if (cameraHits < forwardHits.Length)
-                for (int i = 0; i < cameraHits; i++)
+            RaycastHit[] cameraHitResults;
+            int cameraHits = CompleteRayHits(motor.AimCamera.transform.position,
+                look, maximumDistance + 8f, forwardHits, out cameraHitResults);
+            for (int i = 0; i < cameraHits; i++)
                 {
-                    RaycastHit hit = forwardHits[i];
+                    RaycastHit hit = cameraHitResults[i];
                     if (hit.collider == null ||
                         hit.collider.transform.IsChildOf(transform) ||
                         hit.collider.GetComponentInParent<AarisGlooWallHealth>() != null ||
@@ -206,13 +225,13 @@ namespace Aaris.MapReview
 
         private float FindOpenDistance(Vector3 player, Vector3 ahead, float desired)
         {
-            int count = Physics.RaycastNonAlloc(player + Vector3.up * 1.1f, ahead, forwardHits,
-                desired, groundAndCoverMask, QueryTriggerInteraction.Ignore);
-            if (count >= forwardHits.Length) return 0f;
+            RaycastHit[] blockerHits;
+            int count = CompleteRayHits(player + Vector3.up * 1.1f, ahead,
+                desired, forwardHits, out blockerHits);
             float nearest = desired;
             for (int i = 0; i < count; i++)
             {
-                RaycastHit hit = forwardHits[i];
+                RaycastHit hit = blockerHits[i];
                 if (hit.collider == null || hit.collider.transform.IsChildOf(transform) ||
                     hit.collider is TerrainCollider || hit.normal.y >= MinimumSupportNormal) continue;
                 nearest = Mathf.Min(nearest, hit.distance - 0.65f);
@@ -223,13 +242,13 @@ namespace Aaris.MapReview
         private bool TryFindSupport(Vector3 point, float playerY, out float height)
         {
             point.y = playerY + SupportProbeHeight;
-            int count = Physics.RaycastNonAlloc(point, Vector3.down, groundHits,
-                2f * SupportProbeHeight, groundAndCoverMask, QueryTriggerInteraction.Ignore);
+            RaycastHit[] supportHits;
+            int count = CompleteRayHits(point, Vector3.down,
+                2f * SupportProbeHeight, groundHits, out supportHits);
             height = float.NegativeInfinity;
-            if (count >= groundHits.Length) return false;
             for (int i = 0; i < count; i++)
             {
-                RaycastHit hit = groundHits[i];
+                RaycastHit hit = supportHits[i];
                 if (hit.collider == null || hit.collider.transform.IsChildOf(transform) ||
                     hit.normal.y < MinimumSupportNormal || hit.collider.attachedRigidbody != null ||
                     hit.collider.GetComponentInParent<AarisGlooWallHealth>() != null ||
@@ -266,10 +285,17 @@ namespace Aaris.MapReview
             halfSize.y = (queryTop - queryBottom) * 0.5f;
             int count = Physics.OverlapBoxNonAlloc(center, halfSize, overlaps, proposedRotation,
                 groundAndCoverMask, QueryTriggerInteraction.Ignore);
-            if (count >= overlaps.Length) return false;
+            Collider[] nearby = overlaps;
+            if (count >= overlaps.Length)
+            {
+                // A full overlap buffer cannot distinguish terrain from walls.
+                nearby = Physics.OverlapBox(center, halfSize, proposedRotation,
+                    groundAndCoverMask, QueryTriggerInteraction.Ignore);
+                count = nearby.Length;
+            }
             for (int i = 0; i < count; i++)
             {
-                Collider other = overlaps[i];
+                Collider other = nearby[i];
                 if (other != null && !other.transform.IsChildOf(transform) &&
                     !(other is TerrainCollider)) return false;
             }
