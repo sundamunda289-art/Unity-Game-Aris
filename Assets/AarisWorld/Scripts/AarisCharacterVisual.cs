@@ -72,6 +72,7 @@ namespace Aaris.MapReview
         private Vector3 lastPlanarVelocity;
         private float lastFacingYaw;
         private bool motionHistoryReady;
+        private Vector3 lastMotorPosition;
         private AnimationClip idleClip, walkClip, runClip;
         private float locomotionPhase, crouchPhase, crawlPhase;
         // Avoid repeated managed-to-native Playables calls for settled poses.
@@ -547,6 +548,19 @@ namespace Aaris.MapReview
             // never joystick intention: rejected wall movement cannot fake a lean.
             // Initialise the history first so scene spawn/teleport has no yaw spike.
             Vector3 planarVelocity = new Vector3(velocity.x, 0f, velocity.z);
+            // Teleport, respawn and vehicle hand-off are NOT acceleration or a
+            // human-scale pivot. Reset the sampled gait balance before drawing;
+            // a normal 4.8 m/s frame (even at 10 FPS) is far below two metres.
+            Vector3 motorPosition = transform.position;
+            bool movementDiscontinuity = !controller.enabled ||
+                (motionHistoryReady &&
+                 (motorPosition - lastMotorPosition).sqrMagnitude > 4f);
+            if (movementDiscontinuity)
+            {
+                motionHistoryReady = false;
+                smoothedAccelerationPitch = 0f;
+                smoothedTurnBank = 0f;
+            }
             float currentYaw = transform.eulerAngles.y;
             float forwardAcceleration = 0f;
             float yawRate = 0f;
@@ -559,6 +573,7 @@ namespace Aaris.MapReview
             motionHistoryReady = true;
             lastPlanarVelocity = planarVelocity;
             lastFacingYaw = currentYaw;
+            lastMotorPosition = motorPosition;
             // Suppress standing balance corrections while crouched, prone or
             // airborne: these poses already have authored limb/body alignment.
             float standingShare = controller.isGrounded
