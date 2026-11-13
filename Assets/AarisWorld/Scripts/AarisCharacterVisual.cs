@@ -646,7 +646,10 @@ namespace Aaris.MapReview
                 // at the actual motor cap: 4.4 m/s armed, 4.8 m/s unarmed.
                 // Previous 4.8 m/s sprint threshold was unreachable with a gun
                 // and blended running feet against two different source cycles.
-                float runTarget = Mathf.InverseLerp(3.3f, 4.4f, horizontal);
+                // Walking at jogging speed made the walk FBX cycle nearly five
+                // footfalls per second at 3.4 m/s. Blend into the real run
+                // clip earlier so cadence and stride length stay human-scale.
+                float runTarget = Mathf.InverseLerp(2.0f, 3.4f, horizontal);
                 float sprintTarget = Mathf.InverseLerp(4.0f,
                     carrying ? 4.4f : 4.8f, horizontal);
                 float airTarget = visuallyAirborne ? 1f : 0f;

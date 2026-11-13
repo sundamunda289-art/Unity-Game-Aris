@@ -79,8 +79,9 @@ def audit():
     for x,y,sprint_expected in ((0,1,True),(0.7,0.7,True),(1,0,False),(0,-1,False)):
         assert (y > 0.25 and y >= abs(x)*0.5) == sprint_expected
 
-    # Armed sprint tops out at 4.4 m/s: use reachable, gradual run/arm blends.
-    assert "Mathf.InverseLerp(3.3f, 4.4f, horizontal)" in visual
+    # Jogging already uses the full run cycle by 3.4 m/s; armed sprint
+    # still reaches its separate full-speed clip at the 4.4 m/s motor cap.
+    assert "Mathf.InverseLerp(2.0f, 3.4f, horizontal)" in visual
     assert "bool carrying = actions != null && actions.IsArmed;" in visual
     assert "carrying ? 4.4f : 4.8f, horizontal" in visual
     assert "Mathf.Max(4.8f, fullRunSpeed), horizontal" not in visual

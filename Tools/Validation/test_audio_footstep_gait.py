@@ -17,7 +17,7 @@ visual = (ROOT / "Assets/AarisWorld/Scripts/AarisCharacterVisual.cs").read_text(
 # alternating contacts (half the cycle), including crouch/prone movement.
 for part in (
     "private static float FootfallSpacing(float metresPerSecond, bool armed,",
-    "Mathf.InverseLerp(3.3f, 4.4f, metresPerSecond)",
+    "Mathf.InverseLerp(2.0f, 3.4f, metresPerSecond)",
     "armed ? 4.4f : 4.8f, metresPerSecond",
     "Mathf.Lerp(2.55f, 3.65f, sprintBlend)",
     "return cycleDistance * 0.5f;",
@@ -50,7 +50,7 @@ def footfall(speed: float, armed: bool, stance: str) -> float:
         return 0.45
     if stance == "crouch":
         return 0.70
-    run = inv(3.3, 4.4, speed)
+    run = inv(2.0, 3.4, speed)
     sprint = inv(4.0, 4.4 if armed else 4.8, speed)
     return 0.5 * lerp(1.25, lerp(2.55, 3.65, sprint), run)
 
@@ -84,6 +84,7 @@ for speed, armed, stance in (
             speed, armed, stance, fps, contacts, expected
         )
 
+assert math.isclose(footfall(3.4, False, "stand"), 1.275)
 assert math.isclose(footfall(4.4, True, "stand"), 1.825)
 assert math.isclose(footfall(4.8, False, "stand"), 1.825)
 print("PASS: sound contacts match two-foot gait cycle distance at 10–120 FPS")
