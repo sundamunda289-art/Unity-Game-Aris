@@ -52,6 +52,7 @@ jobs:
           set -euo pipefail
           python Tools/Validation/check_battle_hud.py
           python Tools/Validation/check_mobile_hotpaths.py
+          python Tools/Validation/test_audio_footstep_gait.py
           python Tools/Validation/check_battle_hardening.py
           python Tools/Validation/test_open_combat_houses.py
       - name: Parse every saved AarisWorld C# gameplay script
