@@ -24,6 +24,7 @@ namespace Aaris.MapReview
         [SerializeField, Range(0.1f, 0.8f)] private float blendResponseSeconds = 0.2f;
         [SerializeField] private float fullRunSpeed = 4.8f;
         [SerializeField, Range(0f, 8f)] private float sprintForwardLeanDegrees = 4f;
+        [SerializeField, Range(0f, 6f)] private float strafeBankDegrees = 3f;
         [SerializeField, Range(0f, 0.12f)] private float landingCompressionMetres = 0.055f;
 
         private CharacterController controller;
@@ -63,6 +64,7 @@ namespace Aaris.MapReview
         private Vector3 restingLocalPosition;
         private Quaternion restingLocalRotation;
         private float crouchBlend, proneBlend;
+        private float smoothedStrafeBank;
         private AnimationClip idleClip, walkClip, runClip;
         private float locomotionPhase, crouchPhase, crawlPhase;
         // Avoid repeated managed-to-native Playables calls for settled poses.
@@ -517,8 +519,19 @@ namespace Aaris.MapReview
             float planar = new Vector2(velocity.x, velocity.z).magnitude;
             float leaning = Mathf.InverseLerp(3.4f, fullRunSpeed, planar) *
                 sprintForwardLeanDegrees * (primaryLoaded ? 0.8f : 1f) * (1f - proneBlend);
+            // The upper body shifts its centre of mass into lateral strafes.
+            // This is visual-only; weapon aim and the physical capsule keep
+            // their authoritative yaw and position. Fade it out while prone
+            // or airborne so the body never rolls through nearby cover.
+            float strafeSpeed = Vector3.Dot(velocity, transform.right);
+            float bankTarget = controller.isGrounded
+                ? -Mathf.Clamp(strafeSpeed / Mathf.Max(1f, fullRunSpeed), -1f, 1f) *
+                    strafeBankDegrees * (1f - proneBlend)
+                : 0f;
+            smoothedStrafeBank = Mathf.Lerp(smoothedStrafeBank, bankTarget, alpha);
             Quaternion desiredRotation = restingLocalRotation *
-                Quaternion.Euler(Mathf.Lerp(leaning, 80f, fallbackProne), 0f, 0f);
+                Quaternion.Euler(Mathf.Lerp(leaning, 80f, fallbackProne), 0f,
+                    smoothedStrafeBank);
             // Visual-only skydiving pose; never tilt the physical CharacterController.
             // Choose the final rotation before touching the hierarchy: the
             // aerial override previously caused two native Transform writes.
@@ -684,12 +697,24 @@ namespace Aaris.MapReview
                     float standStride = Mathf.Lerp(1.25f,
                         Mathf.Lerp(2.55f, 3.65f, sprintBlend), walkRunBlend);
                     float distance = horizontal * dt;
+                    // Camera-facing combat allows real backpedalling. A forward
+                    // walk clip played in forward time while travelling backwards
+                    // makes the feet visibly skate. Reverse the continuous phase,
+                    // never jump the sample time, so contact remains continuous
+                    // through a direction change, including crouch and crawl.
+                    float forwardSpeed = Vector3.Dot(velocity, transform.forward);
+                    float phaseDirection = forwardSpeed < -0.20f &&
+                        Mathf.Abs(forwardSpeed) > Mathf.Abs(strafeSpeed) * 0.6f
+                        ? -1f : 1f;
                     if (pose < 0.999f)
-                        locomotionPhase = Mathf.Repeat(locomotionPhase + distance / standStride, 1f);
+                        locomotionPhase = Mathf.Repeat(locomotionPhase +
+                            phaseDirection * distance / standStride, 1f);
                     if (crouchWeight > 0.001f)
-                        crouchPhase = Mathf.Repeat(crouchPhase + distance / 1.40f, 1f);
+                        crouchPhase = Mathf.Repeat(crouchPhase +
+                            phaseDirection * distance / 1.40f, 1f);
                     if (proneWeight > 0.001f)
-                        crawlPhase = Mathf.Repeat(crawlPhase + distance / 0.90f, 1f);
+                        crawlPhase = Mathf.Repeat(crawlPhase +
+                            phaseDirection * distance / 0.90f, 1f);
                 }
                 // Breathing/idle must keep animating at all frame rates.
                 LoopPlayable(idlePlayable, idleClip, Time.timeAsDouble / Math.Max(0.02, idleClip.length));
