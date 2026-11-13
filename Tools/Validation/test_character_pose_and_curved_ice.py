@@ -201,6 +201,10 @@ assert 'if (movementDiscontinuity)' in visual
 assert 'motionHistoryReady = false;' in visual
 assert 'smoothedAccelerationPitch = 0f;' in visual
 assert 'smoothedTurnBank = 0f;' in visual
+# A large transform discontinuity must clear lateral lean too; resetting
+# acceleration and turn bank alone leaves a visibly crooked stationary avatar.
+reset_block = visual.split('if (movementDiscontinuity)', 1)[1].split('}', 1)[0]
+assert 'smoothedStrafeBank = 0f;' in reset_block
 assert 'lastMotorPosition = motorPosition;' in visual
 for fps in (10, 30, 60, 120):
     # Sprint travel must be treated as ordinary motion at every target FPS.
