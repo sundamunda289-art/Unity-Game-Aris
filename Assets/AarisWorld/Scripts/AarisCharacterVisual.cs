@@ -702,7 +702,11 @@ namespace Aaris.MapReview
 
                 // Keep standing gait contacts in phase across walk, run and sprint.
                 // Stance gaits use their own stride distances at the same motor speed.
-                if (controller.isGrounded)
+                // The airborne presentation already tolerates 130ms of transient
+                // ground loss at terrain seams and stair lips. Use that SAME
+                // decision for foot timing: a one-frame isGrounded drop must
+                // not freeze a moving foot, but a real jump must stop the gait.
+                if (!visuallyAirborne)
                 {
                     float standStride = Mathf.Lerp(1.25f,
                         Mathf.Lerp(2.55f, 3.65f, sprintBlend), walkRunBlend);
@@ -730,7 +734,7 @@ namespace Aaris.MapReview
                 // gait-contact sample instead of an arbitrary mid-stride pose.
                 // Only re-phase an effectively invisible gait while grounded:
                 // resetting an active clip would jerk the visible feet.
-                if (controller.isGrounded && horizontal < 0.045f)
+                if (!visuallyAirborne && horizontal < 0.045f)
                 {
                     if (pose < 0.01f && runBlend < 0.01f)
                         locomotionPhase = 0f;
