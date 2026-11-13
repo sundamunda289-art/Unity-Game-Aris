@@ -44,6 +44,10 @@ namespace Aaris.MapReview
         private bool modifiedMipBudget;
         private float originalShadowDistance, appliedShadowDistance;
         private bool modifiedShadowDistance;
+        // Info log stack traces cost managed/native stack walking when gameplay
+        // emits frequent telemetry. Retain messages and all warning/error traces.
+        private StackTraceLogType previousInfoLogStackTrace;
+        private bool infoLogStackTraceOverridden;
         private int originalShadowCascades, appliedShadowCascades;
         private bool modifiedShadowCascades;
         // Android-only, reversible controls for 2 GB phones. These never alter
@@ -65,6 +69,14 @@ namespace Aaris.MapReview
         private void Awake()
         {
             Application.targetFrameRate = targetFrameRate;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            previousInfoLogStackTrace = Application.GetStackTraceLogType(LogType.Log);
+            if (previousInfoLogStackTrace != StackTraceLogType.None)
+            {
+                Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
+                infoLogStackTraceOverridden = true;
+            }
+#endif
             sampleAt = Time.unscaledTime + ReportInterval;
             Application.lowMemory += OnLowMemory;
             Application.logMessageReceived += OnLog;
@@ -423,6 +435,11 @@ namespace Aaris.MapReview
             Application.lowMemory -= OnLowMemory;
             Application.logMessageReceived -= OnLog;
 #if UNITY_ANDROID && !UNITY_EDITOR
+            // Undo only our own change. Other subsystems might deliberately
+            // customize the log stack trace policy while this scene is alive.
+            if (infoLogStackTraceOverridden &&
+                Application.GetStackTraceLogType(LogType.Log) == StackTraceLogType.None)
+                Application.SetStackTraceLogType(LogType.Log, previousInfoLogStackTrace);
             // URP pipeline assets and QualitySettings survive scene reloads.
             // Restore only values still owned by this instance; avoid undoing
             // a deliberate change made by another quality controller.
