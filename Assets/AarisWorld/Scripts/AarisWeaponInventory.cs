@@ -80,6 +80,21 @@ namespace Aaris.MapReview
                 incoming.Spec.handScale;
             mesh.localPosition = Vector3.zero;
             mesh.localRotation = Quaternion.identity;
+            // FBX model pivots are not guaranteed to be at the weapon body.
+            // The floor pickup already compensates for this, but the equipped
+            // gun previously placed the raw FBX origin at the hand bone,
+            // leaving some meshes visibly floating or intersecting the arm.
+            // Recenter the POST-SCALE full rendered mesh once on pickup.
+            // Keep the gun's stock close to the right grip and its centre
+            // slightly forward; the hand/socket still follows the real
+            // animated Humanoid each frame without parenting to bone scale.
+            combinedBounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+                combinedBounds.Encapsulate(renderers[i].bounds);
+            Vector3 modelCenterInGripSpace =
+                root.transform.InverseTransformPoint(combinedBounds.center);
+            mesh.localPosition = new Vector3(0f, -0.025f, 0.19f) -
+                modelCenterInGripSpace;
 
             var next = root.AddComponent<AarisEquippedGun>();
             next.Configure(incoming);
