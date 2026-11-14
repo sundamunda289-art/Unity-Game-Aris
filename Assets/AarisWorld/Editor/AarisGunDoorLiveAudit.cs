@@ -100,7 +100,7 @@ namespace Aaris.MapReview.Editor
                     Vector3 size = terrain.terrainData.size;
                     if (point.x < p.x || point.x > p.x + size.x ||
                         point.z < p.z || point.z > p.z + size.z) continue;
-                    if (terrain.SampleHeight(new Vector3(point.x, 0f, point.z)) >
+                    if ((terrain.transform.position.y + terrain.SampleHeight(new Vector3(point.x, 0f, point.z))) >
                         -37.0f) return point;
                 }
             }
@@ -129,7 +129,7 @@ namespace Aaris.MapReview.Editor
                 var d = tile.terrainData.size;
                 if (point.x < p.x || point.x > p.x + d.x ||
                     point.z < p.z || point.z > p.z + d.z) continue;
-                float y = tile.SampleHeight(new Vector3(point.x, 0f, point.z));
+                float y = tile.transform.position.y + tile.SampleHeight(new Vector3(point.x, 0f, point.z));
                 MovePlayer(player, new Vector3(point.x, y + 0.12f, point.z));
                 Note("SITE_" + index + "_WORLD=" + player.transform.position.ToString("F2"));
                 SessionState.SetFloat(Key + "SiteStart",
@@ -137,6 +137,45 @@ namespace Aaris.MapReview.Editor
                 return true;
             }
             return false;
+        }
+
+        // Editor lives in Assembly-CSharp-Editor and cannot access runtime's
+        // internal mesh helper; measure the identical source-mesh corners here.
+        private static bool MeasureMeshes(Transform root, Renderer[] renderers,
+            out Bounds bounds)
+        {
+            bounds = default(Bounds);
+            bool found = false;
+            if (root == null || renderers == null) return false;
+            foreach (Renderer renderer in renderers)
+            {
+                if (renderer == null) continue;
+                Bounds source;
+                if (renderer is SkinnedMeshRenderer skinned)
+                {
+                    if (skinned.sharedMesh == null) continue;
+                    source = skinned.localBounds;
+                }
+                else
+                {
+                    MeshFilter filter = renderer.GetComponent<MeshFilter>();
+                    if (filter == null || filter.sharedMesh == null) continue;
+                    source = filter.sharedMesh.bounds;
+                }
+                Vector3 c = source.center, e = source.extents;
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 local = c + new Vector3(
+                        (corner & 1) == 0 ? -e.x : e.x,
+                        (corner & 2) == 0 ? -e.y : e.y,
+                        (corner & 4) == 0 ? -e.z : e.z);
+                    Vector3 point = root.InverseTransformPoint(
+                        renderer.transform.TransformPoint(local));
+                    if (!found) { bounds = new Bounds(point, Vector3.zero); found = true; }
+                    else bounds.Encapsulate(point);
+                }
+            }
+            return found && bounds.size.sqrMagnitude > 0.000001f;
         }
 
         private static void CheckLootSite(int index, AarisThirdPersonPlayer player)
@@ -155,10 +194,15 @@ namespace Aaris.MapReview.Editor
                     if (!(renderer is MeshRenderer || renderer is SkinnedMeshRenderer))
                         continue; // Exclude the 1.65m nonphysical beacon.
                     visibleMesh |= renderer.enabled;
-                    if (!hasBounds) { gunBody = renderer.bounds; hasBounds = true; }
-                    else gunBody.Encapsulate(renderer.bounds);
+                    // Immediate Renderer.bounds can be stale after an FBX is moved
+                    // or rescaled. Inspect current mesh geometry in pickup space.
+                    // The same exact-mesh helper is used by live pickup placement.
+                    // Collect renderers once below, not a scene-wide query.
                 }
-                if (visibleMesh) models++;
+                var meshRenderers = pickup.GetComponentsInChildren<Renderer>(true);
+                hasBounds = MeasureMeshes(
+                    pickup.transform, meshRenderers, out gunBody);
+                if (visibleMesh && hasBounds) models++;
                 float dist = Vector3.Distance(player.transform.position,
                     pickup.transform.position);
                 nearest = Mathf.Min(nearest, dist);
@@ -205,10 +249,18 @@ namespace Aaris.MapReview.Editor
                 var gun = inventory.Current;
                 var renderers = gun.GetComponentsInChildren<Renderer>(true);
                 if (renderers.Length == 0) { Note("HELD_" + gunName + "=NO_RENDERERS"); success = false; continue; }
-                Bounds bounds = renderers[0].bounds;
-                for (int i = 1; i < renderers.Length; i++) bounds.Encapsulate(renderers[i].bounds);
-                float distance = Vector3.Distance(hand.position, bounds.center);
-                float size = Mathf.Max(bounds.size.x, bounds.size.y, bounds.size.z);
+                if (!MeasureMeshes(gun.transform, renderers,
+                    out Bounds bounds))
+                {
+                    Note("HELD_" + gunName + "=INVALID_SOURCE_MESH_BOUNDS");
+                    success = false;
+                    continue;
+                }
+                Vector3 measuredWorldCenter = gun.transform.TransformPoint(bounds.center);
+                Vector3 worldSize = Vector3.Scale(bounds.size, gun.transform.lossyScale);
+                float distance = Vector3.Distance(hand.position, measuredWorldCenter);
+                float size = Mathf.Max(Mathf.Abs(worldSize.x), Mathf.Abs(worldSize.y),
+                    Mathf.Abs(worldSize.z));
                 Note("HELD_" + gunName + " hand_center_m=" + distance.ToString("F3") +
                     " body_longest_m=" + size.ToString("F3"));
                 if (distance > 0.90f || size < 0.15f || size > 1.7f) success = false;
