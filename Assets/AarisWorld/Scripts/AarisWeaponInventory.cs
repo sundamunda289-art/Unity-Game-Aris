@@ -91,12 +91,15 @@ namespace Aaris.MapReview
             }
             float longest = Mathf.Max(combinedBounds.size.x,
                 combinedBounds.size.y, combinedBounds.size.z);
-            float scale = Mathf.Clamp(0.86f / longest, 0.0000001f, 10f) *
-                incoming.Spec.handScale;
+            float scale = Mathf.Clamp(
+                incoming.Spec.presentationLengthMetres / longest,
+                0.0000001f, 10f) * incoming.Spec.handScale;
             mesh.localScale *= scale;
             // Keep the entire gun body centered a short distance forward
             // from the animated right wrist, regardless of imported FBX pivot.
-            mesh.localPosition = new Vector3(0f, -0.025f, 0.19f) -
+            // Keep the receiver/trigger near the grip for all five real-size FBXs.
+            mesh.localPosition = new Vector3(0f, -0.025f,
+                incoming.Spec.presentationLengthMetres * 0.22f) -
                 combinedBounds.center * scale;
 
             var next = root.AddComponent<AarisEquippedGun>();
@@ -349,13 +352,15 @@ namespace Aaris.MapReview
                 leftForearm == null || leftHand == null ||
                 rightUpperArm == null || rightForearm == null) return;
             // Receiver at right trigger, front grip down barrel +Z.
-            // Gun size/foregrip calibration is owned by the separate weapon
-            // presentation-length review; preserve one consistent root axis.
+            // Preserve the right-hand trigger IK while matching the left
+            // support grip to this weapon's physical barrel length.
+            float foregrip = Mathf.Clamp(
+                equipped.Spec.presentationLengthMetres * 0.40f, 0.22f, 0.48f);
             ReachArm(rightUpperArm, rightForearm, hand,
                 weaponRoot.TransformPoint(new Vector3(0.015f, -0.045f, -0.045f)),
                 transform.right);
             ReachArm(leftUpperArm, leftForearm, leftHand,
-                weaponRoot.TransformPoint(new Vector3(-0.045f, -0.035f, 0.31f)),
+                weaponRoot.TransformPoint(new Vector3(-0.045f, -0.035f, foregrip)),
                 -transform.right);
         }
 
