@@ -693,8 +693,8 @@ namespace Aaris.MapReview
                 return false;
             }
             requestPickupUntil = 0f;
-            // A voluntary DROP means the player intends to be unarmed.
-            // Do not automatically equip another floor gun a frame later.
+            // A voluntary DROP must not auto-collect the same item next
+            // frame. A holstered backup may be promoted into the hand.
             allowInitialAutoPickup = false;
             return true;
         }
@@ -711,11 +711,10 @@ namespace Aaris.MapReview
             if (pickup == null || pickup.State == null || inventory == null ||
                 IsBlockedDrop(pickup) || !pickup.TryReserve()) return false;
 
-            // Reserve the previous gun at the location already proven to be
-            // a reachable, clear loot spot. This prevents inventing a second
-            // floor position inside a wall while switching weapons.
-            var outgoing = inventory.Current != null
-                ? inventory.Current.CaptureState() : null;
+            // The first exchange fills the visible back socket without a
+            // floor drop. On the third gun, reserve only the older HOLSTERED
+            // gun as a persistent pickup before committing either slot.
+            var outgoing = inventory.ReplacementOnPickup;
             var replacement = outgoing != null
                 ? CreateDropped(outgoing, pickup.transform.position, 1.25f,
                     deferVisual: true) : null;
@@ -823,7 +822,7 @@ namespace Aaris.MapReview
             }
             HasPickupInRange = bestPickup != null;
             return bestPickup != null &&
-                (explicitPickup || (!inventory.HasGun && allowInitialAutoPickup &&
+                (explicitPickup || (inventory.Current == null && allowInitialAutoPickup &&
                     (bestPickup.CandidateIndex >= 0 ||
                      bestPickup.CandidateIndex == starterLootId))) && TryTake(bestPickup);
         }
@@ -835,7 +834,7 @@ namespace Aaris.MapReview
             // location. This prevents nearby streamed meshes starving the
             // fallback entirely on dense settlements.
             int streamLimit = MaximumActiveLoot -
-                (!starterLootSettled && allowInitialAutoPickup && !inventory.HasGun ? 1 : 0);
+                (!starterLootSettled && allowInitialAutoPickup && inventory.Current == null ? 1 : 0);
             if (active.Count >= streamLimit) return false;
             float loadSquared = ActivationMetres * ActivationMetres;
             int buildAttempts = 0;
@@ -917,7 +916,7 @@ namespace Aaris.MapReview
         {
             if (starterLootSettled || !allowInitialAutoPickup)
                 return;
-            if (inventory.HasGun)
+            if (inventory.Current != null)
             {
                 starterLootSettled = true;
                 return;
@@ -1000,7 +999,7 @@ namespace Aaris.MapReview
         // It does not create fake world loot or touch terrain/render settings.
         private void TryLastResortStarterEquip()
         {
-            if (starterLootSettled || inventory == null || inventory.HasGun ||
+            if (starterLootSettled || inventory == null || inventory.Current != null ||
                 starterUnarmedSince < 0f ||
                 Time.unscaledTime - starterUnarmedSince < 3f) return;
             var spec = AarisWeaponCatalog.Select(ref rng, false);

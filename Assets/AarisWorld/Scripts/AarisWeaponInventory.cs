@@ -3,10 +3,10 @@ using UnityEngine;
 namespace Aaris.MapReview
 {
     /// <summary>
-    /// Exactly ONE carried weapon. Taking a second gun leaves the first at
-    /// the pickup location as persistent world loot with its real ammo state.
-    /// Dropping voluntarily restores the original unarmed punch.
-    /// No second gun is stored on the back or hidden in a second slot.
+    /// Two physical weapon slots: the active gun follows the right hand and
+    /// the previous gun stays visible on a back socket. Picking up a third
+    /// reserves the oldest stowed gun on the floor before transfer.
+    /// Fist mode holsters rather than silently destroying owned weapons.
     /// </summary>
     // Run after AarisCharacterVisual (order +200): its Playables update
     // the hand bones before this class places the gun at that pose.
@@ -16,6 +16,10 @@ namespace Aaris.MapReview
     {
         private AarisEquippedGun equipped;
         private Transform weaponRoot;
+        private AarisEquippedGun holstered;
+        private Transform holsterRoot;
+        private Transform chest;
+        private bool fistsMode;
         private AarisBattleActions combat;
         private AarisThirdPersonPlayer motor;
         private AarisWeaponLootWorld lootWorld;
@@ -25,7 +29,10 @@ namespace Aaris.MapReview
 
         public AarisEquippedGun Current => equipped;
         public bool Aiming => aiming;
-        public bool HasGun => equipped != null && equipped.Configured;
+        public bool HasGun => !fistsMode && equipped != null && equipped.Configured;
+        public bool HasHolsteredGun => holstered != null && holstered.Configured;
+        public AarisWeaponState ReplacementOnPickup =>
+            holstered != null ? holstered.CaptureState() : null;
         public bool PickupAvailable => lootWorld != null && lootWorld.HasPickupInRange;
 
         private void Awake()
@@ -39,9 +46,9 @@ namespace Aaris.MapReview
         public bool DropCurrent() => lootWorld != null && lootWorld.TryDropEquipped();
 
         /// <summary>
-        /// An atomic exchange. Preload the incoming FBX before detaching the
-        /// existing gun. The previous gun is returned as a complete state
-        /// snapshot so the world can leave it on the ground.
+        /// Atomic two-slot pickup. Preload and validate the FBX before changing
+        /// ownership. If both slots are occupied, the oldest stowed state has
+        /// already been reserved as persistent world loot by the caller.
         /// </summary>
         public bool TryPickup(AarisWeaponState incoming, out AarisWeaponState dropped)
         {
@@ -99,23 +106,30 @@ namespace Aaris.MapReview
                 return false;
             }
 
-            // Commit the replacement only after the new gun is valid.
-            dropped = equipped != null ? equipped.CaptureState() : null;
-            Transform old = weaponRoot;
+            // A previous right-hand gun becomes a physical back-holstered
+            // weapon. Only the third gun evicts the existing back slot.
+            dropped = holstered != null ? holstered.CaptureState() : null;
+            Transform evictedHolster = holsterRoot;
             if (combat != null) combat.SetFireHeld(false);
             aiming = false;
+            fistsMode = false;
             if (motor != null) motor.SetWeaponAimFov(-1f);
+            holstered = equipped;
+            holsterRoot = weaponRoot;
             equipped = next;
             weaponRoot = root.transform;
             if (combat != null) combat.Equip(next);
             AttachModelToHand();
-            if (old != null)
+            AttachModelToBack(holsterRoot, true);
+            if (evictedHolster != null)
             {
-                old.gameObject.SetActive(false); // No duplicate weapon render this frame.
-                Destroy(old.gameObject);
+                evictedHolster.gameObject.SetActive(false);
+                Destroy(evictedHolster.gameObject);
             }
-            Debug.Log("Aaris: carrying one gun: " + next.DisplayName +
-                (dropped != null ? " (previous weapon dropped)" : ""));
+            if (Debug.isDebugBuild)
+                Debug.Log("AARIS_WEAPON_EQUIP " + next.DisplayName +
+                    " holstered=" + (holstered != null) +
+                    " exchanged=" + (dropped != null));
             return true;
         }
 
@@ -135,17 +149,53 @@ namespace Aaris.MapReview
             aiming = false;
             if (motor != null) motor.SetWeaponAimFov(-1f);
             Transform old = weaponRoot;
-            equipped = null;
-            weaponRoot = null;
+            equipped = holstered;
+            weaponRoot = holsterRoot;
+            holstered = null;
+            holsterRoot = null;
+            fistsMode = false;
+            if (combat != null) combat.Equip(equipped);
             if (old != null)
             {
-                old.gameObject.SetActive(false); // No duplicate weapon render this frame.
+                old.gameObject.SetActive(false);
                 Destroy(old.gameObject);
             }
+            if (equipped != null) AttachModelToHand();
             return true;
         }
 
-        public bool Reload() => equipped != null && equipped.BeginReload();
+        public bool SwitchWeapon()
+        {
+            if (equipped == null || holstered == null) return false;
+            if (combat != null) combat.SetFireHeld(false);
+            AarisEquippedGun oldEquipped = equipped;
+            Transform oldRoot = weaponRoot;
+            equipped = holstered;
+            weaponRoot = holsterRoot;
+            holstered = oldEquipped;
+            holsterRoot = oldRoot;
+            fistsMode = false;
+            aiming = false;
+            if (motor != null) motor.SetWeaponAimFov(-1f);
+            if (combat != null) combat.Equip(equipped);
+            AttachModelToHand();
+            AttachModelToBack(holsterRoot, true);
+            return true;
+        }
+
+        public void ToggleFists()
+        {
+            if (equipped == null) return;
+            if (combat != null) combat.SetFireHeld(false);
+            fistsMode = !fistsMode;
+            aiming = false;
+            if (motor != null) motor.SetWeaponAimFov(-1f);
+            if (combat != null) combat.Equip(fistsMode ? null : equipped);
+            if (fistsMode) AttachModelToBack(weaponRoot, true);
+            else AttachModelToHand();
+        }
+
+        public bool Reload() => HasGun && equipped.BeginReload();
 
         public void ToggleAim()
         {
@@ -158,17 +208,7 @@ namespace Aaris.MapReview
         private void AttachModelToHand()
         {
             if (weaponRoot == null || equipped == null) return;
-            if (hand == null && Time.unscaledTime >= nextRigSearch)
-            {
-                nextRigSearch = Time.unscaledTime + 1f;
-                foreach (var animator in GetComponentsInChildren<Animator>(true))
-                {
-                    if (animator == null || animator.avatar == null ||
-                        !animator.avatar.isHuman) continue;
-                    hand = animator.GetBoneTransform(HumanBodyBones.RightHand);
-                    if (hand != null) break;
-                }
-            }
+            FindRigBones();
             // Keep the equipped weapon as a CHILD OF PLAYER, not the
             // imported FBX bone. Imported humanoid rigs can have 0.01x or
             // 100x transforms. Parenting the gun under that bone scaled it
@@ -188,17 +228,60 @@ namespace Aaris.MapReview
                     transform.rotation * grip);
         }
 
+        private void FindRigBones()
+        {
+            if (hand != null && chest != null) return;
+            if (Time.unscaledTime < nextRigSearch) return;
+            nextRigSearch = Time.unscaledTime + 1f;
+            foreach (var animator in GetComponentsInChildren<Animator>(true))
+            {
+                if (animator == null || animator.avatar == null ||
+                    !animator.avatar.isHuman) continue;
+                if (hand == null) hand = animator.GetBoneTransform(HumanBodyBones.RightHand);
+                if (chest == null) chest = animator.GetBoneTransform(HumanBodyBones.Chest);
+                if (chest == null) chest = animator.GetBoneTransform(HumanBodyBones.Spine);
+                if (hand != null && chest != null) break;
+            }
+        }
+
+        private void AttachModelToBack(Transform root, bool rightSide)
+        {
+            if (root == null) return;
+            if (root.parent != transform) root.SetParent(transform, false);
+            float side = rightSide ? 1f : -1f;
+            // The visual mesh is normalized to real metres on pickup. Keep
+            // the socket in PLAYER world space, not under scaled FBX bones.
+            Vector3 shoulder = chest != null ? chest.position :
+                transform.TransformPoint(new Vector3(0f, 1.28f, 0f));
+            Vector3 position = shoulder + transform.right * (side * .20f) -
+                transform.forward * .24f - transform.up * .05f;
+            Quaternion rotation = transform.rotation *
+                Quaternion.Euler(16f, side * 32f, side * 53f);
+            root.SetPositionAndRotation(position, rotation);
+        }
+
         private void LateUpdate()
         {
-            // Follow the LAST evaluated humanoid pose every rendered frame,
-            // not only the frame in which a weapon is first equipped.
-            if (equipped != null) AttachModelToHand();
+            // Animation graph finishes before this component (execution +310).
+            // Both carried meshes remain on the player, with zero physics
+            // queries, no mesh cloning and no per-frame FindObjectsOfType.
+            if (equipped == null && holstered == null) return;
+            FindRigBones();
+            if (equipped != null)
+            {
+                if (fistsMode) AttachModelToBack(weaponRoot, true);
+                else AttachModelToHand();
+            }
+            if (holstered != null)
+                AttachModelToBack(holsterRoot, !fistsMode);
         }
 
         private void Update()
         {
             if (Input.GetKeyDown(KeyCode.E)) RequestPickup();
             if (Input.GetKeyDown(KeyCode.G)) DropCurrent();
+            if (Input.GetKeyDown(KeyCode.Q)) SwitchWeapon();
+            if (Input.GetKeyDown(KeyCode.X)) ToggleFists();
             if (Input.GetKeyDown(KeyCode.R)) Reload();
             // Mouse-right is already used by the camera-look motor.
             // ADS on desktop uses V; mobile has the explicit ADS button.

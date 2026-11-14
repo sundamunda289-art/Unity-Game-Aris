@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-gun drop/swap conservation model + C# contract tests.
+"""Two-slot hand/back holster conservation model + C# contract tests.
 
 Not a real Unity physics test. Proves source invariants and exercises
 10,000 independent inventory transitions against a minimal reference model.
@@ -42,11 +42,14 @@ def audit():
     hud = text("AarisWeaponHUD.cs")
     actions = text("AarisBattleActions.cs")
     assert "private AarisEquippedGun equipped;" in inventory
+    assert "private AarisEquippedGun holstered;" in inventory
     assert "AarisEquippedGun[]" not in inventory
-    assert "CycleWeapon()" not in inventory
+    assert "public bool SwitchWeapon()" in inventory
+    assert "public void ToggleFists()" in inventory
     assert "public bool TryPickup(AarisWeaponState incoming, out AarisWeaponState dropped)" in inventory
-    assert "dropped = equipped != null ? equipped.CaptureState() : null;" in inventory
-    assert "if (old != null)" in inventory and "old.gameObject.SetActive(false);" in inventory
+    assert "dropped = holstered != null ? holstered.CaptureState() : null;" in inventory
+    assert "if (evictedHolster != null)" in inventory
+    assert "evictedHolster.gameObject.SetActive(false);" in inventory
     # A composite FBX cannot be sized from its first child Renderer.
     assert "var renderers = visible.GetComponentsInChildren<Renderer>(true);" in inventory
     # Real Unity Play Mode proved Renderer.bounds can be stale immediately
@@ -68,6 +71,7 @@ def audit():
     assert "public AarisWeaponState State => state;" in pickup
     assert "public bool Initialize(AarisWeaponState gunState, int index)" in pickup
     assert "private readonly List<AarisDroppedWeapon> dropped" in world
+    assert "var outgoing = inventory.ReplacementOnPickup;" in world
     assert "if (outgoing != null && replacement == null)" in world
     assert "pickup.ReleaseReservation();" in world
     assert "pickup.CommitConsumed();" in world
@@ -83,7 +87,7 @@ def audit():
     assert "rec.visible = null;" in world
     assert "if (record.visible != null) continue;" in world
     assert "Time.unscaledTime < record.blockedUntil" in world
-    assert "(!inventory.HasGun && allowInitialAutoPickup &&" in world
+    assert "(inventory.Current == null && allowInitialAutoPickup &&" in world
     # PICK is time-buffered and forces the next scheduled physics refresh.
     assert "requestPickupUntil = Time.unscaledTime + 1.5f;" in world
     assert "nextRefresh = 0f;" in world
@@ -107,8 +111,8 @@ def audit():
     assert "RetryDelaySeconds = 3f;" in world
     assert "nextCandidateProbeAt[i] = now + RetryDelaySeconds;" in world
     assert 'Add("PICK"' in hud and 'Add("DROP"' in hud
-    assert 'Add("SWAP"' not in hud
-    assert "i == 1 ? canPick : armed" in hud
+    assert 'Add("SWAP"' in hud and 'Add("FIST"' in hud
+    assert "i == 5 ? canSwap : armed" in hud
     # A KayKit punch locks the next swing through the full authored motion;
     # its delayed impact is sampled at the extension/contact frame, not
     # instantly on input, and must remain available with empty hands.
@@ -136,48 +140,50 @@ def audit():
                x["slot"] >= 100000 for x in c[514:])
     assert all(-1000 < x["x"] < 1000 and -1000 < x["z"] < 1000 for x in c)
 
-    # Reference model of one-gun ownership and ground drops. A unique weapon
-    # token must never be duplicated or deleted on random pickup/swap/drop.
+    # Reference model: two physical slots, a hand gun and a back gun.
+    # The third pickup evicts only the old back gun, never duplicating ammo.
     rng = random.Random(991207)
     gun_kinds = sorted(ids)
-    ground = [Weapon(i, gun_kinds[i % len(gun_kinds)], 30 - i % 25, 120 + i)
+    ground = [Weapon(i, gun_kinds[i % len(gun_kinds)], 30-i % 25, 120+i)
               for i in range(75)]
-    carried = None
+    hand = back = None
+    fists = False
     universe = set(range(75))
     now = 0.0
-    next_drop_id = -1
-    drop_positions = {}  # negative token means an actual dropped floor gun
     for step in range(10000):
         now += rng.random() * .1
-        if carried and rng.random() < .17:
-            carried.reload_deadline = now + 2.4
-            carried.magazine = min(carried.magazine, 10)
-        if carried and rng.random() < .25:
-            # Voluntary DROP. Only one gun leaves the hand and returns to floor.
-            ground.append(carried)
-            drop_positions[next_drop_id] = carried.unique_id
-            next_drop_id -= 1
-            carried = None
+        if hand and rng.random() < .17:
+            hand.reload_deadline = now + 2.4
+            hand.magazine = min(hand.magazine, 10)
+        action = rng.random()
+        if action < .15 and hand:
+            # Drop the hand weapon; the stowed one is promoted.
+            ground.append(hand)
+            hand, back = back, None
+            fists = False
+        elif action < .28 and hand:
+            fists = not fists
+        elif action < .43 and back:
+            hand, back = back, hand
+            fists = False
         elif ground:
-            index = rng.randrange(len(ground))
-            incoming = ground.pop(index)
-            old = carried
+            incoming = ground.pop(rng.randrange(len(ground)))
             incoming.complete_reload(now)
-            carried = incoming
-            if old:
-                ground.append(old)
-                drop_positions[next_drop_id] = old.unique_id
-                next_drop_id -= 1
-        inventory_tokens = [x.unique_id for x in ground] + (
-            [carried.unique_id] if carried is not None else [])
+            if back:
+                ground.append(back)
+            back, hand = hand, incoming
+            fists = False
+        inventory_tokens = [x.unique_id for x in ground]
+        inventory_tokens += [x.unique_id for x in (hand, back) if x is not None]
         assert len(inventory_tokens) == 75, (step, "lost weapon")
         assert set(inventory_tokens) == universe, (step, "duplicate weapon")
         assert len(set(inventory_tokens)) == 75
-        assert carried is None or isinstance(carried, Weapon)
+        assert back is None or hand is not None
+        assert not fists or hand is not None
         assert all(w.magazine >= 0 and w.reserve >= 0 for w in ground)
-    print("PASS: 10,000 randomized pick/swap/drop/reload ownership cases, 514 audited candidate locations, "
-          "one-gun HUD, wall-safe pickup, saved gun ammo and floor/roof checks")
-    print("NOTE: no Unity Editor Play-mode/physics run was performed.")
+    print("PASS: 10,000 randomized two-slot pick/holster/swap/drop/reload ownership cases, "
+          "514 stable authored candidate locations, wall-safe pickup and saved ammo state")
+    print("NOTE: static validation only; Unity Editor and Android tests still required.")
 
 
 if __name__ == "__main__":
