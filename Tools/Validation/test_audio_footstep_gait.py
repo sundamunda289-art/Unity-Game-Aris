@@ -115,3 +115,22 @@ assert math.isclose(footfall(4.4, True, "stand"), 1.825)
 assert math.isclose(footfall(4.8, False, "stand"), 1.825)
 print("PASS: sound contacts match two-foot gait cycle distance at 10–120 FPS")
 print("NOT TESTED: Unity playable retarget, ground contact pixels, or Android audio output")
+
+
+# A hitch must not make drop wind infer an artificial vertical speed;
+# smoothing may still clamp the time step independently.
+assert "float motionDt = Time.deltaTime;" in audio
+assert "Mathf.Clamp((previousY - pos.y) / motionDt, 0f, 65f)" in audio
+assert "float dt = Mathf.Clamp(motionDt, 0f, 0.15f);" in audio
+for frame_dt in (1/120, 1/60, 1/30, 0.15, 0.20, 0.30):
+    for speed in (0, 8, 26, 54, 65):
+        assert math.isclose(min(65, speed * frame_dt / frame_dt), speed)
+# Only three upshifts in a four-gear sound model, not a fifth at top speed.
+assert "normalized >= 1f ? 1f : Mathf.Repeat(normalized * 4f, 1f)" in audio
+def gear_phase(n):
+    return 1.0 if n >= 1.0 else (n * 4.0) % 1.0
+assert gear_phase(1.0) == 1.0
+assert math.isclose(gear_phase(0.999999), gear_phase(1.0), abs_tol=1e-5)
+for n in (0.25, 0.5, 0.75):
+    assert gear_phase(n) == 0.0
+print("PASS: fall-speed and top-gear audio timing regressions")

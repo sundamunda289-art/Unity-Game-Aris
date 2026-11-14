@@ -346,10 +346,13 @@ namespace Aaris.MapReview
 
         private void LateUpdate()
         {
-            float dt = Mathf.Clamp(Time.deltaTime, 0f, 0.15f);
+            // Measure velocity over the actual simulation frame; clamp only
+            // audio smoothing, otherwise a slow frame exaggerates wind speed.
+            float motionDt = Time.deltaTime;
+            float dt = Mathf.Clamp(motionDt, 0f, 0.15f);
             Vector3 pos = transform.position;
-            float fallSpeed = dt > 0.001f
-                ? Mathf.Clamp((previousY - pos.y) / dt, 0f, 65f) : 0f;
+            float fallSpeed = motionDt > 0.001f
+                ? Mathf.Clamp((previousY - pos.y) / motionDt, 0f, 65f) : 0f;
             previousY = pos.y;
             PlayScheduled();
             // Optional gameplay components can be attached after Awake.
@@ -450,7 +453,9 @@ namespace Aaris.MapReview
                 Mathf.Max(1f, car.TopSpeedMetresPerSecond));
             // Four smooth synthesized gear bands. Audio only: real physics
             // still owns RPM, WheelColliders, traction and torque.
-            float gearPhase = Mathf.Repeat(normalized * 4f, 1f);
+            // At maximum speed stay in fourth gear instead of wrapping
+            // to a nonexistent fifth gear and dropping engine pitch.
+            float gearPhase = normalized >= 1f ? 1f : Mathf.Repeat(normalized * 4f, 1f);
             float targetPitch = Mathf.Clamp(0.84f + normalized * 0.62f +
                 gearPhase * 0.31f + Mathf.Abs(car.ThrottleInput) * 0.09f,
                 0.8f, 2f);
