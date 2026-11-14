@@ -82,36 +82,45 @@ namespace Aaris.MapReview
             foreach (var collider in visible.GetComponentsInChildren<Collider>(true))
                 collider.enabled = false;
 
-            // Use the renderer array already cached above; requesting the
-            // entire FBX hierarchy a second time allocated an extra array
-            // on every streamed pickup, especially expensive during bursts
-            // on a 2 GB Android phone. Bounds still include every mesh.
-            Bounds modelBounds = modelRenderers[0].bounds;
-            for (int i = 1; i < modelRenderers.Length; i++)
-                modelBounds.Encapsulate(modelRenderers[i].bounds);
-            float length = Mathf.Max(modelBounds.size.x,
-                modelBounds.size.y, modelBounds.size.z);
-            if (length > 0.001f)
-                model.localScale *= Mathf.Clamp(0.82f / length, 0.001f, 10f);
-
+            // Measure actual mesh geometry in the pickup root's local space.
+            // Unity Renderer.bounds can lag a transform/scale change until a
+            // render update, producing giant or underground guns in APKs.
+            // Eight transformed corners per renderer are calculated ONCE on
+            // spawn, never in the streaming Update hot path.
             model.localPosition = Vector3.zero;
             model.localRotation = Quaternion.Euler(0f, 0f, -75f);
-            // FBX pivots need not sit inside the mesh. Recompute bounds after
-            // rotation/scaling and keep the complete pickup above the floor.
-            modelBounds = modelRenderers[0].bounds;
-            for (int i = 1; i < modelRenderers.Length; i++)
-                modelBounds.Encapsulate(modelRenderers[i].bounds);
-            Vector3 delta = new Vector3(
-                transform.position.x - modelBounds.center.x,
-                transform.position.y + 0.08f - modelBounds.min.y,
-                transform.position.z - modelBounds.center.z);
-            model.position += delta;
-            // World-space spin must pivot around the real visible gun center,
-            // not the arbitrary FBX import origin (which can be far away).
-            // One lightweight Transform per pickup, never a per-frame Bounds scan.
+            if (!AarisWeaponMeshBounds.TryMeasure(transform,
+                modelRenderers, out Bounds modelBounds))
+            {
+                Debug.LogError("Aaris: invalid local floor weapon mesh bounds: " +
+                    state.Spec.id);
+                Destroy(visible);
+                modelRenderers = null;
+                enabled = false;
+                return false;
+            }
+            float length = Mathf.Max(modelBounds.size.x,
+                modelBounds.size.y, modelBounds.size.z);
+            if (length < 0.001f)
+            {
+                Destroy(visible);
+                modelRenderers = null;
+                enabled = false;
+                return false;
+            }
+            float scale = Mathf.Clamp(0.82f / length, 0.0000001f, 10f);
+            model.localScale *= scale;
+            // Original root-space bounds scale linearly around the FBX pivot.
+            // Correct horizontal centering and leave the lowest geometry
+            // eight centimetres above the verified floor.
+            model.localPosition = new Vector3(
+                -modelBounds.center.x * scale,
+                0.08f - modelBounds.min.y * scale,
+                -modelBounds.center.z * scale);
             var visualPivot = new GameObject("Loot centered rotation pivot");
             visualPivot.transform.SetParent(transform, false);
-            visualPivot.transform.position = modelBounds.center + delta;
+            visualPivot.transform.localPosition = new Vector3(0f,
+                0.08f + (modelBounds.center.y - modelBounds.min.y) * scale, 0f);
             model.SetParent(visualPivot.transform, true);
             model = visualPivot.transform;
 
@@ -192,6 +201,56 @@ namespace Aaris.MapReview
         {
             activePickups.Remove(this);
             // Beacon material is shared and owned by the global cache.
+        }
+    }
+
+    /// <summary>
+    /// Exact imported weapon geometry bounds, independent of Renderer.bounds
+    /// update timing after Transform scaling or animation graph evaluation.
+    /// Called once per new floor pickup or hand equip; zero frame hotpath cost.
+    /// </summary>
+    internal static class AarisWeaponMeshBounds
+    {
+        internal static bool TryMeasure(Transform root, Renderer[] renderers,
+            out Bounds bounds)
+        {
+            bounds = default(Bounds);
+            bool found = false;
+            if (root == null || renderers == null) return false;
+            foreach (var renderer in renderers)
+            {
+                if (renderer == null) continue;
+                Bounds meshBounds;
+                if (renderer is SkinnedMeshRenderer skinned)
+                {
+                    if (skinned.sharedMesh == null) continue;
+                    meshBounds = skinned.localBounds;
+                }
+                else
+                {
+                    var meshFilter = renderer.GetComponent<MeshFilter>();
+                    if (meshFilter == null || meshFilter.sharedMesh == null)
+                        continue;
+                    meshBounds = meshFilter.sharedMesh.bounds;
+                }
+                Vector3 c = meshBounds.center, e = meshBounds.extents;
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 local = c + new Vector3(
+                        (corner & 1) == 0 ? -e.x : e.x,
+                        (corner & 2) == 0 ? -e.y : e.y,
+                        (corner & 4) == 0 ? -e.z : e.z);
+                    Vector3 point = root.InverseTransformPoint(
+                        renderer.transform.TransformPoint(local));
+                    if (!found)
+                    {
+                        bounds = new Bounds(point, Vector3.zero);
+                        found = true;
+                    }
+                    else bounds.Encapsulate(point);
+                }
+            }
+            return found && bounds.size.sqrMagnitude > 0.000001f;
         }
     }
 
