@@ -774,13 +774,22 @@ namespace Aaris.MapReview
                 actions.Stance == AarisBattleActions.PlayerStance.Standing &&
                 effectiveCrouchBlend < 0.01f &&
                 effectiveProneBlend < 0.01f && planar < 0.15f;
-            if (!groundedRigCalibrated && stableSoldier && bodySkin != null)
+            if (!groundedRigCalibrated && stableSoldier && bodySkin != null &&
+                proneHeadBone != null && leftFootBone != null &&
+                rightFootBone != null)
             {
-                float renderedHeight = bodySkin.bounds.size.y;
-                if (renderedHeight > 0.65f && renderedHeight < 2.5f)
+                // A SkinnedMeshRenderer.bounds AABB can include unused
+                // animation extremes (native prone bounds even crossed the
+                // ground by 0.6m). Calibrate against measured HEAD/ANKLES,
+                // not an inaccurate mesh AABB or unanimated T-pose bounds.
+                float boneSpan = proneHeadBone.position.y -
+                    Mathf.Min(leftFootBone.position.y, rightFootBone.position.y);
+                if (boneSpan > 0.80f && boneSpan < 2.50f)
                 {
+                    // 1.78m humanoid includes footwear/helmet; the head-to-
+                    // ankle bone span should be slightly shorter (1.64m).
                     float scaleFactor = Mathf.Clamp(
-                        TargetHeightMetres / renderedHeight, 0.85f, 1.5f);
+                        (TargetHeightMetres - 0.14f) / boneSpan, 0.85f, 1.5f);
                     if (Mathf.Abs(scaleFactor - 1f) > 0.025f)
                         visualRoot.localScale *= scaleFactor;
                     groundedRigCalibrated = true;
