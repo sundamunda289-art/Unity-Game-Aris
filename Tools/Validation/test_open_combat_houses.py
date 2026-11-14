@@ -92,6 +92,11 @@ class OpenCombatHouseContracts(unittest.TestCase):
         self.assertIn("transform.localRotation = Quaternion.Euler(0f, currentAngle, 0f);", panel)
         self.assertIn("if (!shouldOpen && Mathf.Abs(currentAngle) > .01f && ClosingBlocked())", panel)
         self.assertIn("if (solid != null) solid.enabled = false;", panel)
+        # Closed-leaf center must determine BOTH proximity and safe closing.
+        # The hinge's X offset must not shift the activation volume.
+        self.assertIn("leaf.position : transform.position;", panel)
+        self.assertIn("house.InverseTransformPoint(closedLeafCenter)", panel)
+        self.assertIn("Vector3 middle = worldDoorwayCenter;", panel)
 
     def test_openings_retain_walls_and_fit_player(self):
         src = MODULAR.read_text(encoding="utf-8")
