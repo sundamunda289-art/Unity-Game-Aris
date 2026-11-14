@@ -25,6 +25,30 @@ assert 'phaseDirection * distance / standStride' in visual
 assert 'phaseDirection * distance / 1.40f' in visual
 assert 'phaseDirection * distance / 0.90f' in visual
 assert 'smoothedStrafeBank = Mathf.Lerp(smoothedStrafeBank, bankTarget, alpha)' in visual
+# November native Unity stance-jump diagnostic measured a real 0.75m
+# standing shoe hover above terrain (physical capsule foot gap 0.035m).
+# Enforce animated-bone calibration, never a guessed -skinWidth offset.
+assert 'float boneSpan = proneHeadBone.position.y -' in visual
+assert '(TargetHeightMetres - 0.14f) / boneSpan' in visual
+assert 'visualRoot.localScale *= scaleFactor;' in visual
+assert 'standingShoeOffset + adjustment' in visual
+assert 'standingShoeOffset * uprightWeight' in visual
+assert 'Mathf.Min(leftFootBone.position.y,' in visual
+# Native crouch/prone Head has to stay below stance capsule ceiling;
+# knee solver then replants feet at the real floor under each foot.
+assert 'float capsuleTop = transform.TransformPoint(controller.center +' in visual
+assert 'Mathf.Min(excess, 0.45f) * lowPose' in visual
+assert 'private float SupportedAnkleY(Transform foot, float clearance)' in visual
+assert 'Physics.RaycastNonAlloc(new Ray(origin, Vector3.down)' in visual
+assert 'hit.collider.transform.IsChildOf(transform)' in visual
+assert 'PlantCrouchLeg(leftThigh, leftShin, leftFootBone,' in visual
+assert 'ProneAnkleClearanceMetres' in visual
+# Positive calibration and grounded correction remain bounded, including
+# low-FPS 10/30/60/120Hz startup and imported soldier bone spans.
+for span in (1.168, 1.35, 1.64):
+    scale = max(0.85, min(1.5, 1.64 / span))
+    assert 0.85 <= scale <= 1.5
+assert abs(1.64 / 1.168 - 1.4041) < 0.001
 assert 'float airResponseScale = desiredVelocity.sqrMagnitude < 0.001f' in motor
 assert 'Mathf.Min(airborneSteering, 0.18f)' in motor
 assert 'Mathf.Min(airborneSteering, 0.45f)' in motor

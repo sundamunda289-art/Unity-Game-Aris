@@ -20,8 +20,11 @@ namespace Aaris.MapReview
         private AarisThirdPersonPlayer motor;
         private AarisWeaponLootWorld lootWorld;
         private Transform hand, chest, leftUpperArm, leftForearm, leftHand;
+        private Transform rightUpperArm, rightForearm;
+        private CharacterController capsule;
         private float nextRigSearch;
         private bool aiming, fistMode;
+        public bool IsSprintHolstered { get; private set; }
 
         public AarisEquippedGun Current => equipped;
         public bool Aiming => aiming;
@@ -36,6 +39,7 @@ namespace Aaris.MapReview
         {
             combat = GetComponent<AarisBattleActions>();
             motor = GetComponent<AarisThirdPersonPlayer>();
+            capsule = GetComponent<CharacterController>();
         }
 
         public void BindLootWorld(AarisWeaponLootWorld world) => lootWorld = world;
@@ -211,7 +215,8 @@ namespace Aaris.MapReview
         private void FindHumanoidSockets()
         {
             if (hand != null && chest != null && leftUpperArm != null &&
-                leftForearm != null && leftHand != null) return;
+                leftForearm != null && leftHand != null &&
+                rightUpperArm != null && rightForearm != null) return;
             if (Time.unscaledTime < nextRigSearch) return;
             nextRigSearch = Time.unscaledTime + 1f;
             foreach (var animator in GetComponentsInChildren<Animator>(true))
@@ -225,6 +230,8 @@ namespace Aaris.MapReview
                 leftUpperArm = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
                 leftForearm = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm);
                 leftHand = animator.GetBoneTransform(HumanBodyBones.LeftHand);
+                rightUpperArm = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+                rightForearm = animator.GetBoneTransform(HumanBodyBones.RightLowerArm);
                 if (hand != null) break;
             }
         }
@@ -248,75 +255,129 @@ namespace Aaris.MapReview
             if (equipped == null || weaponRoot == null) return;
             FindHumanoidSockets();
             if (stowedRoot != null) PlaceOnBack(stowedRoot, true);
-            if (fistMode)
+            if (fistMode || IsSprintHolstered)
             {
                 PlaceOnBack(weaponRoot, stowedRoot != null ? false : true);
                 return;
             }
             if (weaponRoot.parent != transform)
                 weaponRoot.SetParent(transform, false);
-            Quaternion grip = Quaternion.Euler(equipped.Spec.handRotation);
-            if (hand != null)
-                weaponRoot.SetPositionAndRotation(
-                    hand.position + hand.rotation * equipped.Spec.handOffset,
-                    hand.rotation * grip);
+            // All five reviewed rifle/SMG FBXs point down local +Z.
+            // Anchor the receiver just ahead of the chest, not to the
+            // animated pistol wrist: the barrel must follow the camera
+            // when firing/ADS/prone, regardless of the body animation.
+            if (chest != null && hand != null && rightUpperArm != null &&
+                rightForearm != null)
+            {
+                Vector3 forward = transform.forward;
+                Camera view = motor != null ? motor.AimCamera : null;
+                if (view != null && (aiming || (combat != null &&
+                    (combat.FireHeld ||
+                     combat.Stance == AarisBattleActions.PlayerStance.Prone))))
+                    forward = view.transform.forward;
+                if (forward.sqrMagnitude < 0.01f) forward = transform.forward;
+                Quaternion aimRotation = Quaternion.LookRotation(forward, Vector3.up);
+                Vector3 receiver = chest.position +
+                    transform.right * 0.12f + transform.forward * 0.13f -
+                    Vector3.up * 0.105f;
+                weaponRoot.SetPositionAndRotation(receiver, aimRotation);
+            }
             else
-                weaponRoot.SetPositionAndRotation(
-                    transform.TransformPoint(new Vector3(.29f, 1.1f, .3f)),
-                    transform.rotation * grip);
+            {
+                // Missing Humanoid avatar: retain the working legacy grip
+                // instead of hiding/dropping an otherwise usable weapon.
+                Quaternion grip = Quaternion.Euler(equipped.Spec.handRotation);
+                if (hand != null)
+                    weaponRoot.SetPositionAndRotation(
+                        hand.position + hand.rotation * equipped.Spec.handOffset,
+                        hand.rotation * grip);
+                else
+                    weaponRoot.SetPositionAndRotation(
+                        transform.TransformPoint(new Vector3(.29f, 1.1f, .3f)),
+                        transform.rotation * grip);
+            }
         }
 
-        // A bounded analytic two-bone support-arm solver. It runs only when a
-        // Humanoid and an equipped gun both exist; no extra Animator layer,
-        // per-frame allocations, mesh raycasts or Animation Rigging dependency.
-        // The right hand owns the weapon pose; the support hand aims for the
-        // foregrip and bends using the existing elbow pole from the animation.
-        private void AlignSupportHand()
+        // No per-frame allocations or Animation Rigging dependency: the
+        // existing Humanoid bones form analytic shoulder/elbow/wrist chains.
+        // Both wrists are solved AFTER the PlayableGraph (execution order +310).
+        private static void ReachArm(Transform upper, Transform forearm,
+            Transform wrist, Vector3 desired, Vector3 fallbackPole)
         {
-            if (!HasGun || hand == null || leftUpperArm == null ||
-                leftForearm == null || leftHand == null) return;
-            Vector3 shoulder = leftUpperArm.position;
-            Vector3 elbow = leftForearm.position;
-            Vector3 wrist = leftHand.position;
+            if (upper == null || forearm == null || wrist == null) return;
+            Vector3 shoulder = upper.position;
+            Vector3 elbow = forearm.position;
             float upperLength = Vector3.Distance(shoulder, elbow);
-            float foreLength = Vector3.Distance(elbow, wrist);
-            if (upperLength < .05f || foreLength < .05f) return;
-            Vector3 desired = weaponRoot.TransformPoint(new Vector3(-.045f, -.035f, .31f));
-            Vector3 delta = desired - shoulder;
-            float distance = delta.magnitude;
-            if (distance < .05f) return;
-            Vector3 direction = delta / distance;
-            float limit = Mathf.Max(.06f, upperLength + foreLength - .015f);
-            float reach = Mathf.Clamp(distance,
-                Mathf.Abs(upperLength - foreLength) + .01f, limit);
+            float foreLength = Vector3.Distance(elbow, wrist.position);
+            if (upperLength < 0.05f || foreLength < 0.05f) return;
+            Vector3 toGrip = desired - shoulder;
+            float rawDistance = toGrip.magnitude;
+            if (rawDistance < 0.05f) return;
+            Vector3 direction = toGrip / rawDistance;
+            float reach = Mathf.Clamp(rawDistance,
+                Mathf.Abs(upperLength - foreLength) + 0.01f,
+                Mathf.Max(0.06f, upperLength + foreLength - 0.015f));
             Vector3 target = shoulder + direction * reach;
             float along = (upperLength * upperLength -
                 foreLength * foreLength + reach * reach) / (2f * reach);
-            float height = Mathf.Sqrt(Mathf.Max(0f,
+            float perpendicular = Mathf.Sqrt(Mathf.Max(0f,
                 upperLength * upperLength - along * along));
             Vector3 pole = Vector3.ProjectOnPlane(elbow - shoulder, direction);
-            if (pole.sqrMagnitude < .0001f)
-                pole = Vector3.ProjectOnPlane(transform.forward, direction);
-            if (pole.sqrMagnitude < .0001f) return;
-            Vector3 elbowTarget = shoulder + direction * along +
-                pole.normalized * height;
-            Vector3 beforeUpper = leftForearm.position - shoulder;
-            Vector3 afterUpper = elbowTarget - shoulder;
-            if (beforeUpper.sqrMagnitude < .001f || afterUpper.sqrMagnitude < .001f)
+            if (pole.sqrMagnitude < 0.0001f)
+                pole = Vector3.ProjectOnPlane(fallbackPole, direction);
+            if (pole.sqrMagnitude < 0.0001f) return;
+            Vector3 targetElbow = shoulder + direction * along +
+                pole.normalized * perpendicular;
+            Vector3 oldUpper = forearm.position - shoulder;
+            Vector3 newUpper = targetElbow - shoulder;
+            if (oldUpper.sqrMagnitude < 0.001f || newUpper.sqrMagnitude < 0.001f)
                 return;
-            leftUpperArm.rotation = Quaternion.FromToRotation(beforeUpper, afterUpper) *
-                leftUpperArm.rotation;
-            Vector3 beforeFore = leftHand.position - leftForearm.position;
-            Vector3 afterFore = target - leftForearm.position;
-            if (beforeFore.sqrMagnitude < .001f || afterFore.sqrMagnitude < .001f)
-                return;
-            leftForearm.rotation = Quaternion.FromToRotation(beforeFore, afterFore) *
-                leftForearm.rotation;
+            upper.rotation = Quaternion.FromToRotation(oldUpper, newUpper) *
+                upper.rotation;
+            Vector3 oldForearm = wrist.position - forearm.position;
+            Vector3 newForearm = target - forearm.position;
+            if (oldForearm.sqrMagnitude < 0.001f ||
+                newForearm.sqrMagnitude < 0.001f) return;
+            forearm.rotation = Quaternion.FromToRotation(oldForearm, newForearm) *
+                forearm.rotation;
+        }
+
+        private void AlignSupportHand()
+        {
+            if (!HasGun || IsSprintHolstered || hand == null ||
+                weaponRoot == null || leftUpperArm == null ||
+                leftForearm == null || leftHand == null ||
+                rightUpperArm == null || rightForearm == null) return;
+            // Receiver at right trigger, front grip down barrel +Z.
+            // Gun size/foregrip calibration is owned by the separate weapon
+            // presentation-length review; preserve one consistent root axis.
+            ReachArm(rightUpperArm, rightForearm, hand,
+                weaponRoot.TransformPoint(new Vector3(0.015f, -0.045f, -0.045f)),
+                transform.right);
+            ReachArm(leftUpperArm, leftForearm, leftHand,
+                weaponRoot.TransformPoint(new Vector3(-0.045f, -0.035f, 0.31f)),
+                -transform.right);
         }
 
         private void LateUpdate()
         {
-            if (equipped == null) return;
+            if (equipped == null)
+            {
+                IsSprintHolstered = false;
+                return;
+            }
+            // Never holster on a slow crouch/crawl, while ADS, or during
+            // a trigger pull. The actual motor speed gates this, not just
+            // a still-latched sprint HUD toggle.
+            Vector3 speed = capsule != null ? capsule.velocity : Vector3.zero;
+            float planarSpeedSqr = speed.x * speed.x + speed.z * speed.z;
+            bool sprintIntent = motor != null && motor.IsAutoSprinting ||
+                Input.GetKey(KeyCode.LeftShift);
+            IsSprintHolstered = !fistMode && !aiming && combat != null &&
+                !combat.FireHeld &&
+                combat.Stance == AarisBattleActions.PlayerStance.Standing &&
+                capsule != null && capsule.isGrounded &&
+                sprintIntent && planarSpeedSqr > 3.75f * 3.75f;
             AttachModelsToSockets();
             AlignSupportHand();
         }

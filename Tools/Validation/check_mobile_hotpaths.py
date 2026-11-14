@@ -118,7 +118,15 @@ def audit():
     # Do not dirty the native visual hierarchy every idle frame. The aerial
     # override is selected before the single final rotation setter (previously
     # two setters each skydiving frame). This changes no physical motor.
-    assert "Quaternion desiredRotation = restingLocalRotation *" in late
+    # Grounded player root stays upright: only the additive humanoid Spine
+    # gets running/turning balance, preserving the foot contacts.
+    assert "Quaternion desiredRotation = restingLocalRotation;" in late
+    assert "balanceSpineBone.localRotation *= Quaternion.Euler" in late
+    assert "balanceSpineBone = animator.GetBoneTransform(HumanBodyBones.Spine);" in startup
+    assert "80f, fallbackProne" not in late
+    assert "fallbackProne * 0.36f" not in late
+    assert "float crouchRigWeight = authoredProne" in late
+    # Aerial falling/parachute pose still owns a separate visual-root tilt.
     assert "desiredRotation = restingLocalRotation *" in late
     assert late.index("desiredRotation = restingLocalRotation *", late.index("if (aerialDrop != null && !aerialDrop.HasLanded)")) < late.index("if (visualRoot.localRotation != desiredRotation)")
     assert "if (visualRoot.localRotation != desiredRotation)" in late

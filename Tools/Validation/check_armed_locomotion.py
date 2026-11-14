@@ -91,7 +91,8 @@ def audit():
     # Jogging already uses the full run cycle by 3.4 m/s; armed sprint
     # still reaches its separate full-speed clip at the 4.4 m/s motor cap.
     assert "Mathf.InverseLerp(2.0f, 3.4f, horizontal)" in visual
-    assert "bool carrying = actions != null && actions.IsArmed;" in visual
+    assert "bool carrying = actions != null && actions.IsArmed &&" in visual
+    assert "!weaponInventory.IsSprintHolstered" in visual
     assert "carrying ? 4.4f : 4.8f, horizontal" in visual
     assert "Mathf.Max(4.8f, fullRunSpeed), horizontal" not in visual
     assert "Mathf.Lerp(0.36f, 0.15f, releaseArms)" in visual
@@ -126,7 +127,11 @@ def audit():
     assert "weaponRoot.SetParent(transform, false);" in inventory
     assert "hand.position + hand.rotation * equipped.Spec.handOffset" in inventory
     assert "hand.rotation * grip" in inventory
-    assert "if (equipped == null) return;" in inventory
+    assert "ReachArm(rightUpperArm, rightForearm, hand," in inventory
+    assert "ReachArm(leftUpperArm, leftForearm, leftHand," in inventory
+    assert "Quaternion.LookRotation(forward, Vector3.up)" in inventory
+    assert "if (equipped == null)" in inventory
+    assert "IsSprintHolstered = false;" in inventory
     assert "AttachModelsToSockets();" in inventory
     assert "AlignSupportHand();" in inventory
     assert "weaponRoot.SetParent(socket, false)" not in inventory
