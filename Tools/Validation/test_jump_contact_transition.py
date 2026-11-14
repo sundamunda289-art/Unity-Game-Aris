@@ -97,9 +97,9 @@ for fps in (10, 15, 30, 60, 120):
 # without affecting the authoritative movement controller or prone collision.
 import math
 assert "private bool motionHistoryReady;" in visual
-assert "if (motionHistoryReady && dt > 0.0001f)" in visual
-assert "(planarVelocity - lastPlanarVelocity) / dt" in visual
-assert "Mathf.DeltaAngle(lastFacingYaw, currentYaw) / dt" in visual
+assert "if (motionHistoryReady && motionDt > 0.0001f)" in visual
+assert "(planarVelocity - lastPlanarVelocity) / motionDt" in visual
+assert "Mathf.DeltaAngle(lastFacingYaw, currentYaw) / motionDt" in visual
 assert "1f - Mathf.Clamp01(crouchBlend + proneBlend) : 0f" in visual
 assert "smoothedStrafeBank + smoothedTurnBank" in visual
 assert "leaning + smoothedAccelerationPitch" in visual

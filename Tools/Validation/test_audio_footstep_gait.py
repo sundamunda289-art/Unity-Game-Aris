@@ -36,6 +36,32 @@ assert "distance / standStride" in visual
 assert "distance / 1.40f" in visual
 assert "distance / 0.90f" in visual
 
+# Contact timing is driven by the actual displacement of the collision
+# capsule, not a capped animation blend delta. A 200 ms hitch or wall slide
+# must not create an artificial change of footstep frequency.
+assert "Vector3 frameTravel = motorPosition - lastMotorPosition;" in visual
+assert "float resolvedGroundTravelMetres = motionHistoryReady && !movementDiscontinuity" in visual
+assert "Mathf.Sqrt(frameTravel.x * frameTravel.x + frameTravel.z * frameTravel.z)" in visual
+assert "float distance = resolvedGroundTravelMetres;" in visual
+assert "float distance = horizontal * dt;" not in visual
+assert "float motionDt = Time.deltaTime;" in visual
+assert "(planarVelocity - lastPlanarVelocity) / motionDt" in visual
+assert "Mathf.DeltaAngle(lastFacingYaw, currentYaw) / motionDt" in visual
+
+# At normal refresh rates both integrations agree, but after a hitch the
+# old min(deltaTime, .15) foot phase would lag actual movement.
+for frame_dt in (1 / 120, 1 / 60, 1 / 30, 1 / 10, 0.20, 0.30):
+    actual_metres = 4.8 * frame_dt
+    stride = 3.65
+    new_phase = actual_metres / stride
+    old_phase = 4.8 * min(frame_dt, 0.15) / stride
+    assert math.isclose(new_phase, actual_metres / stride)
+    assert new_phase + 1e-12 >= old_phase
+    if frame_dt > 0.15:
+        assert new_phase > old_phase
+# Teleport or vehicle displacement is never interpreted as a stride.
+assert "motionHistoryReady && !movementDiscontinuity" in visual
+
 
 def inv(a: float, b: float, v: float) -> float:
     return max(0.0, min(1.0, (v - a) / (b - a)))

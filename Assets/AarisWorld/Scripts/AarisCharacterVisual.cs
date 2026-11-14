@@ -563,9 +563,16 @@ namespace Aaris.MapReview
             // human-scale pivot. Reset the sampled gait balance before drawing;
             // a normal 4.8 m/s frame (even at 10 FPS) is far below two metres.
             Vector3 motorPosition = transform.position;
+            Vector3 frameTravel = motorPosition - lastMotorPosition;
             bool movementDiscontinuity = !controller.enabled ||
-                (motionHistoryReady &&
-                 (motorPosition - lastMotorPosition).sqrMagnitude > 4f);
+                (motionHistoryReady && frameTravel.sqrMagnitude > 4f);
+            // Sample actual capsule displacement BEFORE updating motion history.
+            // A long Android frame may exceed the capped blend delta, but the
+            // feet still have to cover the entire collision-resolved distance.
+            // Teleports/vehicle handoffs must never wind the gait forward.
+            float resolvedGroundTravelMetres = motionHistoryReady && !movementDiscontinuity
+                ? Mathf.Sqrt(frameTravel.x * frameTravel.x + frameTravel.z * frameTravel.z)
+                : 0f;
             if (movementDiscontinuity)
             {
                 motionHistoryReady = false;
@@ -579,11 +586,14 @@ namespace Aaris.MapReview
             float currentYaw = transform.eulerAngles.y;
             float forwardAcceleration = 0f;
             float yawRate = 0f;
-            if (motionHistoryReady && dt > 0.0001f)
+            // dt is deliberately capped for stable visual blend smoothing,
+            // but acceleration and yaw samples require the REAL frame interval.
+            float motionDt = Time.deltaTime;
+            if (motionHistoryReady && motionDt > 0.0001f)
             {
                 forwardAcceleration = Vector3.Dot(
-                    (planarVelocity - lastPlanarVelocity) / dt, transform.forward);
-                yawRate = Mathf.DeltaAngle(lastFacingYaw, currentYaw) / dt;
+                    (planarVelocity - lastPlanarVelocity) / motionDt, transform.forward);
+                yawRate = Mathf.DeltaAngle(lastFacingYaw, currentYaw) / motionDt;
             }
             motionHistoryReady = true;
             lastPlanarVelocity = planarVelocity;
@@ -774,7 +784,7 @@ namespace Aaris.MapReview
                 {
                     float standStride = Mathf.Lerp(1.25f,
                         Mathf.Lerp(2.55f, 3.65f, sprintBlend), walkRunBlend);
-                    float distance = horizontal * dt;
+                    float distance = resolvedGroundTravelMetres;
                     // Camera-facing combat allows real backpedalling. A forward
                     // walk clip played in forward time while travelling backwards
                     // makes the feet visibly skate. Reverse the continuous phase,
