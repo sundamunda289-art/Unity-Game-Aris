@@ -126,11 +126,11 @@ class OpenCombatHouseContracts(unittest.TestCase):
         colliders = []
         streamer = None
         for section in sections:
-            match = re.match(r"--- !u!(\\d+) &([-\\d]+)", section)
+            match = re.match(r"--- !u!(\d+) &([-\d]+)", section)
             if not match:
                 continue
             component_type, object_id = int(match.group(1)), match.group(2)
-            owner = re.search(r"(?m)^  m_GameObject: \\{fileID: ([-\\d]+)\\}", section)
+            owner = re.search(r"(?m)^  m_GameObject: \{fileID: ([-\d]+)\}", section)
             if component_type == 1:
                 name = re.search(r"(?m)^  m_Name: (.*)$", section)
                 if name:
@@ -144,7 +144,7 @@ class OpenCombatHouseContracts(unittest.TestCase):
 
         self.assertIsNotNone(streamer, "Missing authored collider streamer")
         tracked = set(re.findall(
-            r"(?m)^  - \\{fileID: ([-\\d]+)\\}", streamer
+            r"(?m)^  - \{fileID: ([-\d]+)\}", streamer
         ))
         tracked_meshes = [
             (object_id, gameobjects.get(go, "<unknown>"), section)
