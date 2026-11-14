@@ -395,8 +395,32 @@ assert ': Mathf.Clamp01(effectiveCrouchBlend + effectiveProneBlend);' in visual
 # If true prone clips are missing, the fallback stance must still lower the
 # rig with a bounded crouch blend rather than leaving the player airborne.
 assert 'float proneLowering = primaryLoaded && proneClip != null &&' in visual
-# Two crouch + two prone IK applications, plus the solver definition.
-assert visual.count('PlantCrouchLeg(') == 5
+# One two-bone solve per leg, irrespective of intermediate stance blends.
+assert visual.count('PlantCrouchLeg(') == 3  # definition + left + right
+assert visual.count('SupportedAnkleY(') == 3  # definition + two foot rays
+assert 'float totalRigWeight = crouchRigWeight + proneRigWeight;' in visual
+assert 'float ankleRigWeight = !visuallyAirborne && graphReady' in visual
+assert 'Mathf.Clamp01(totalRigWeight) : 0f;' in visual
+assert 'float proneShare = proneRigWeight / Mathf.Max(totalRigWeight, 0.0001f);' in visual
+assert 'Mathf.Lerp(PlantedAnkleMetres,' in visual
+assert 'SupportedAnkleY(leftFootBone, ankleClearance)' in visual
+assert 'SupportedAnkleY(rightFootBone, ankleClearance)' in visual
+for authored in (False, True):
+    for i in range(11):
+        for j in range(11):
+            crouch, prone = i / 10.0, j / 10.0
+            crouch_ik = crouch * (1.0 - prone) if authored else min(1.0, crouch + prone)
+            prone_ik = prone if authored else 0.0
+            total = crouch_ik + prone_ik
+            weight = min(1.0, total)
+            share = prone_ik / max(total, 0.0001)
+            ankle = 0.13 + (0.105 - 0.13) * share
+            assert 0.0 <= weight <= 1.0 and 0.0 <= share <= 1.0
+            assert 0.105 - 1e-12 <= ankle <= 0.13 + 1e-12
+            if not authored:
+                assert abs(ankle - 0.13) < 1e-12
+            if authored and crouch == 0 and prone > 0:
+                assert abs(ankle - 0.105) < 1e-12
 assert 'foot.rotation = footRotation;' in visual
 assert 'Quaternion.FromToRotation(oldUpper, newUpper)' in visual
 assert 'Quaternion.FromToRotation(oldLower, newLower)' in visual
