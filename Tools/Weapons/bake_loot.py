@@ -74,6 +74,32 @@ def build(layout):
             positions.append({"kind": "open", "x": x, "y": 0, "z": z,
                               "origin": "grid",
                               "slot": 200000 + (xi + 19) * 39 + (zi + 19)})
+
+    # Finish the last three 50m sample-grid gaps without renumbering
+    # existing loot or raising the 40-live-mesh mobile budget.
+    # These are authored choices only. Unity terrain, walls, roof and slope
+    # physics must still validate each location during nearby streaming.
+    last_mile_slot = 300000
+    for gx in range(-925, 926, 50):
+        for gz in range(-925, 926, 50):
+            if any(p["kind"] == "open" and
+                   (p["x"] - gx) ** 2 + (p["z"] - gz) ** 2 <= 50 ** 2
+                   for p in positions):
+                continue
+            for dx, dz in ((12, -10), (-12, 10), (0, 0),
+                           (12, 10), (-12, -10), (24, 0), (0, -24)):
+                x, z = gx + dx, gz + dz
+                if any(a[0]-8 <= x <= a[2]+8 and a[1]-8 <= z <= a[3]+8
+                       for a in occupied):
+                    continue
+                if any(p["kind"] == "open" and
+                       (p["x"]-x)**2 + (p["z"]-z)**2 < 14**2
+                       for p in positions):
+                    continue
+                positions.append({"kind":"open","x":x,"y":0,"z":z,
+                                  "origin":"grid","slot":last_mile_slot})
+                last_mile_slot += 1
+                break
     return {"schema": 1, "sizeMetres": 2000, "candidates": positions}
 
 if __name__ == "__main__":
