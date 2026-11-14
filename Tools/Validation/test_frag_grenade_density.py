@@ -18,6 +18,26 @@ if "--stdin" in sys.argv:
 
 
 class FragDensityContracts(unittest.TestCase):
+    def test_successful_frag_throw_cancels_medkit_channel(self):
+        # Real player: while standing still, throw used to proceed without
+        # stopping the in-progress 3s medkit and allowed a free heal.
+        tactical = (ROOT / "Assets/AarisWorld/Scripts/AarisOfflineTacticalHUD.cs").read_text(
+            encoding="utf-8")
+        throw = tactical[tactical.index("public void ThrowFrag()"):
+                         tactical.index("private void Build()", tactical.index("public void ThrowFrag()"))]
+        self.assertIn("Time.time < nextThrow) return;", throw)
+        self.assertIn("fragGrenades <= 0", throw)
+        self.assertIn("vehicle != null && vehicle.IsDriving", throw)
+        self.assertIn("if (healing) StopHealing();", throw)
+        self.assertLess(throw.index("AarisOfflineFragGrenade.Throw("),
+                        throw.index("if (healing) StopHealing();"))
+        self.assertLess(throw.index("if (healing) StopHealing();"),
+                        throw.index("fragGrenades--;"))
+        # Never burn a medkit as a side effect of throwing a grenade.
+        self.assertIn("medkits--;", tactical[tactical.index("private void UpdateHealing()"):
+                                            tactical.index("private void StreamMedicalSites()")])
+        self.assertIn("shownSeconds = shownMedkits = -1;", tactical)
+
     def test_first_frame_imported_colliders_cannot_bounce(self):
         start = TEXT.index("foreach (var collider in visual.GetComponentsInChildren<Collider>(true))")
         end = TEXT.index("if (grenadeMaterial == null)", start)

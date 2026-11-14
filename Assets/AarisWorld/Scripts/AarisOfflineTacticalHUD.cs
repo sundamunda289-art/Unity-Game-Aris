@@ -196,6 +196,11 @@ namespace Aaris.MapReview
             Vector3 origin = transform.position + Vector3.up * 1.45f + flat * 0.85f;
             Vector3 velocity = forward * 16f + Vector3.up * 6f;
             AarisOfflineFragGrenade.Throw(origin, velocity, gameObject);
+            // A stationary player could previously channel a medkit while
+            // throwing a grenade: throwing is combat and cancels that channel.
+            // Only cancel after a valid throw; cooldown/empty-ammo taps must
+            // not waste or interrupt a medkit already in progress.
+            if (healing) StopHealing();
             AarisAudioDirector.GrenadeThrow(origin);
             fragGrenades--;
             nextThrow = Time.time + grenadeCooldown;
