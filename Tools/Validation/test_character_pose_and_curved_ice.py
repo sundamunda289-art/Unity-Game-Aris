@@ -257,7 +257,9 @@ assert 'controller.Move(' not in visual
 # world-space discontinuity into a one-frame acceleration/bank animation.
 assert 'private Vector3 lastMotorPosition;' in visual
 assert 'bool movementDiscontinuity = !controller.enabled ||' in visual
-assert '(motorPosition - lastMotorPosition).sqrMagnitude > 4f' in visual
+assert 'Vector3 frameTravel = motorPosition - lastMotorPosition;' in visual
+assert 'frameTravel.sqrMagnitude > 4f' in visual
+assert 'float distance = resolvedGroundTravelMetres;' in visual
 assert 'if (movementDiscontinuity)' in visual
 assert 'motionHistoryReady = false;' in visual
 assert 'smoothedAccelerationPitch = 0f;' in visual
