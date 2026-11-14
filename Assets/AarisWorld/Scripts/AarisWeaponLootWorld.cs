@@ -82,6 +82,9 @@ namespace Aaris.MapReview
         private AarisWeaponSpec[] choices;
         private bool[] consumed;
         private float[] nextCandidateProbeAt;
+        // Rotate blocked slots between retry windows; do not repeat the same
+        // two blocked positions for the whole match.
+        private byte[] alternateProbeSweep;
         private AarisWeaponInventory inventory;
         private Transform player;
         private float nextRefresh, requestPickupUntil, nextStarterRetryAt;
@@ -168,6 +171,7 @@ namespace Aaris.MapReview
             candidates = allCandidates.ToArray();
             consumed = new bool[candidates.Length];
             nextCandidateProbeAt = new float[candidates.Length];
+            alternateProbeSweep = new byte[candidates.Length];
             choices = new AarisWeaponSpec[candidates.Length];
             int selected = 0;
             for (int i = 0; i < candidates.Length; i++)
@@ -444,7 +448,14 @@ namespace Aaris.MapReview
             bool relocateIndoor = candidate.kind == "indoor";
 
             uint hash = matchSeed ^ (unchecked((uint)(index + 1)) * 2654435761u);
-            float angle = (hash & 65535u) * (Mathf.PI * 2f / 65536f);
+            // The old deterministic offsets never changed: a rock or wall at
+            // both probes permanently emptied the slot. Sweep eight headings
+            // on successive 3s retries without raising the per-frame query cap.
+            int sweep = alternateProbeSweep[index] & 7;
+            if (alternateProbeBudget > 0)
+                alternateProbeSweep[index] = (byte)((sweep + 1) & 7);
+            float angle = (hash & 65535u) * (Mathf.PI * 2f / 65536f) +
+                sweep * (Mathf.PI * 0.25f);
             for (int alternative = 0; alternative < 2 && alternateProbeBudget > 0; alternative++)
             {
                 alternateProbeBudget--;
