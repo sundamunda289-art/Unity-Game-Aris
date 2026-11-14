@@ -198,30 +198,209 @@ jobs:
               'bash -lc "if pgrep -x Unity >/dev/null; then echo APK_EDITOR_ALREADY_ACTIVE; else echo APK_EDITOR_AVAILABLE; fi"' \
               > apk-evidence/editor-guard.txt 2> "$RUNNER_TEMP/private-editor-guard-errors.log"; then
             if grep -qxF APK_EDITOR_ALREADY_ACTIVE apk-evidence/editor-guard.txt; then
-              echo APK_EXISTING_UNITY_EDITOR_ACTIVE_NO_DUPLICATE_BUILD
-              exit 27
+              echo APK_EXISTING_UNITY_EDITOR_ACTIVE_WAITING_SAFELY
+              # Another build was started earlier from the exact pinned
+              # commit. Wait for that editor to release the project lock.
+              # NEVER kill Unity, delete Library or start a competing build.
+              editor_free=0
+              for attempt in $(seq 1 90); do
+                echo "APK_EXISTING_EDITOR_HEARTBEAT_${attempt}"
+                sleep 30
+                if timeout 75 gh codespace ssh -c "$CODESPACE" -- \
+                    -o ConnectTimeout=20 -o ServerAliveInterval=20 \
+                    'bash -lc "if pgrep -x Unity >/dev/null; then echo APK_EDITOR_ALREADY_ACTIVE; else echo APK_EDITOR_AVAILABLE; fi"' \
+                    > apk-evidence/editor-guard.txt \
+                    2> "$RUNNER_TEMP/private-editor-guard-errors.log"; then
+                  if grep -qxF APK_EDITOR_AVAILABLE apk-evidence/editor-guard.txt; then
+                    editor_free=1
+                    break
+                  fi
+                  grep -qxF APK_EDITOR_ALREADY_ACTIVE apk-evidence/editor-guard.txt || {
+                    echo APK_EDITOR_GUARD_UNEXPECTED_RESULT; exit 27;
+                  }
+                else
+                  echo APK_EDITOR_MONITOR_CONNECTION_RETRY
+                fi
+              done
+              test "$editor_free" = 1 || {
+                echo APK_EXISTING_EDITOR_STILL_BUSY_NO_DUPLICATE_BUILD
+                exit 27
+              }
+              echo APK_EXISTING_EDITOR_FINISHED_SAFE_TO_CONTINUE
+            else
+              grep -qxF APK_EDITOR_AVAILABLE apk-evidence/editor-guard.txt || {
+                echo APK_EDITOR_GUARD_UNEXPECTED_RESULT; exit 27;
+              }
             fi
-            grep -qxF APK_EDITOR_AVAILABLE apk-evidence/editor-guard.txt || {
-              echo APK_EDITOR_GUARD_UNEXPECTED_RESULT; exit 27;
-            }
           else
             echo APK_EDITOR_STATUS_CHECK_CONNECTION_FAILED
             exit 27
           fi
-          # A single long-lived SSH stream carries the expensive Unity build.
-          # Keep it alive during silent asset import; do NOT blindly retry the
-          # build itself after disconnection (which could start a second Editor).
-          timeout 16900 gh codespace ssh -c "$CODESPACE" -- \
-            -o ConnectTimeout=30 -o ConnectionAttempts=3 \
-            -o ServerAliveInterval=30 -o ServerAliveCountMax=6 \
-            "env AARIS_EXPECTED_BUILD_SHA=$AARIS_EXPECTED_BUILD_SHA bash -s -- $OPERATION" \
-            < Tools/Codespaces/android_apk.sh > apk-evidence/build-status.txt \
-            2> "$RUNNER_TEMP/private-apk-build-ssh-errors.log" || {
-            echo 'APK_NATIVE_CODESPACE_BUILD_FAILED'
-            grep -E '^APK_[A-Z0-9_]+$|^apk_(android_module|android_sdk|android_ndk|android_jdk)=[A-Za-z0-9.]+$' apk-evidence/build-status.txt > apk-evidence/build-status-safe.txt || true
-            cat apk-evidence/build-status-safe.txt
-            exit 20
-          }
+          # A prior standalone native build may have produced the exact
+          # requested APK while Actions was monitoring its active Editor.
+          # Reuse ONLY after verifying all release-signing and package markers
+          # and the immutable commit. Otherwise build from source once.
+          prior_verified=0
+          if test "$OPERATION" = build && timeout 85 gh codespace ssh -c "$CODESPACE" -- \
+                -o ConnectTimeout=20 -o ServerAliveInterval=20 \
+                'bash -lc "p=/tmp/aaris-codespaces/android-apk/build-status-544094d-20261114.txt; if test -f \"\$p\"; then grep -E \"^(APK_[A-Z0-9_]+|apk_commit=[0-9a-f]{40}|apk_bytes=[0-9]+)\$\" \"\$p\"; fi"' \
+                > apk-evidence/existing-status.txt \
+                2> "$RUNNER_TEMP/private-existing-apk-check-errors.log"; then
+            if grep -qxF APK_UPLOAD_READY apk-evidence/existing-status.txt &&
+                grep -qxF APK_INSTALLABILITY_SIGNATURE_MANIFEST_API33_VERIFIED apk-evidence/existing-status.txt &&
+                grep -qxF "apk_commit=$AARIS_EXPECTED_BUILD_SHA" apk-evidence/existing-status.txt; then
+              cp apk-evidence/existing-status.txt apk-evidence/build-status.txt
+              prior_verified=1
+              echo APK_PREVIOUSLY_VALIDATED_EXACT_COMMIT_REUSED
+            fi
+          fi
+          if test "$prior_verified" = 0; then
+            # A single long-lived SSH stream carries the expensive build.
+            # Never retry a failed transport: that could start a second Editor.
+            timeout 16900 gh codespace ssh -c "$CODESPACE" -- \
+              -o ConnectTimeout=30 -o ConnectionAttempts=3 \
+              -o ServerAliveInterval=30 -o ServerAliveCountMax=6 \
+              "env AARIS_EXPECTED_BUILD_SHA=$AARIS_EXPECTED_BUILD_SHA bash -s -- $OPERATION" \
+              < Tools/Codespaces/android_apk.sh > apk-evidence/build-status.txt \
+              2> "$RUNNER_TEMP/private-apk-build-ssh-errors.log" || {
+              echo 'APK_NATIVE_CODESPACE_BUILD_FAILED'
+              grep -E '^APK_[A-Z0-9_]+$|^apk_(android_module|android_sdk|android_ndk|android_jdk)=[A-Za-z0-9.]+
+          grep -qxF 'APK_UPLOAD_READY' apk-evidence/build-status.txt
+          grep -qxF 'APK_INSTALLABILITY_SIGNATURE_MANIFEST_API33_VERIFIED' apk-evidence/build-status.txt
+          grep -qxF 'APK_AUTHENTIC_822_LFS_VERIFIED' apk-evidence/build-status.txt || grep -qxF 'APK_REMOTE_822_LFS_SHA256_VERIFIED' apk-evidence/build-status.txt
+          grep -qxF "apk_commit=$AARIS_EXPECTED_BUILD_SHA" apk-evidence/build-status.txt
+          grep -E '^APK_[A-Z0-9_]+$|^apk_bytes=[0-9]+$|^apk_commit=[0-9a-f]{40}$' apk-evidence/build-status.txt > apk-evidence/build-status-safe.txt
+          cat apk-evidence/build-status-safe.txt
+      - name: Copy and SHA-256 verify actual APK from Codespace
+        if: env.OPERATION != 'preflight'
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # Legacy GH CLI SCP rejected an existing absolute remote APK path.
+          # -e uses actual remote-path expansion; SSH binary stream is a
+          # checksum-validated fallback, not another Unity build.
+          if ! timeout 1100 gh codespace cp -e -c "$CODESPACE" \
+            'remote:/tmp/aaris-codespaces/android-apk/Build/AarisGame.apk' \
+            dist/AarisGame.apk; then
+            rm -f dist/AarisGame.apk
+            # Binary copy fallback: retry transport, not the Unity build.
+            # Only accept a nonempty file and verify its remote SHA below.
+            transferred=0
+            for attempt in 1 2 3; do
+              if timeout 360 gh codespace ssh -c "$CODESPACE" -- \
+                  -o ConnectTimeout=20 -o ServerAliveInterval=30 \
+                  -o ServerAliveCountMax=6 \
+                  'cat /tmp/aaris-codespaces/android-apk/Build/AarisGame.apk' \
+                  > dist/AarisGame.apk && test -s dist/AarisGame.apk; then
+                transferred=1; break
+              fi
+              rm -f dist/AarisGame.apk
+              if test "$attempt" -lt 3; then sleep 5; fi
+            done
+            test "$transferred" = 1 || { echo APK_TRANSFER_CONNECTION_FAILED; exit 23; }
+          fi
+          hash_received=0
+          for attempt in 1 2 3; do
+            if timeout 60 gh codespace ssh -c "$CODESPACE" -- \
+                -o ConnectTimeout=20 -o ServerAliveInterval=30 \
+                -o ServerAliveCountMax=6 \
+                'cat /tmp/aaris-codespaces/android-apk/apk-sha256.txt' \
+                > dist/AarisGame.sha256 && test -s dist/AarisGame.sha256; then
+              hash_received=1; break
+            fi
+            if test "$attempt" -lt 3; then sleep 5; fi
+          done
+          test "$hash_received" = 1 || { echo APK_SHA256_CONNECTION_FAILED; exit 24; }
+          cd dist
+          sha256sum -c AarisGame.sha256
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          p=Path("AarisGame.apk")
+          assert 100000<p.stat().st_size<2_000_000_000
+          with zipfile.ZipFile(p) as z:
+              names=set(z.namelist())
+              assert "AndroidManifest.xml" in names
+              assert any(n.endswith(".dex") for n in names)
+          print("APK_RELEASE_BYTES_VERIFIED")
+          PY
+      - name: Publish validated installable APK as GitHub Release asset
+        if: env.OPERATION != 'preflight'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="apk-test-$GITHUB_RUN_ID"
+          BUILD_SOURCE="main"
+          APK_ABIS="ARMv7 and ARM64"
+          if test "$OPERATION" = build_hud; then
+            APK_ABIS="ARM64"
+            TAG="apk-hud-review-$GITHUB_RUN_ID"
+            BUILD_SOURCE="fixed HUD/parachute review branch"
+            grep -qxF APK_HUD_REVIEW_BUILD_VERIFIED apk-evidence/build-status.txt
+          fi
+          SHA="$(grep '^apk_commit=' apk-evidence/build-status-safe.txt | head -n1 | cut -d= -f2)"
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || exit 31
+          cat > apk-evidence/release-notes.md <<EOF
+          Temporary offline single-player Android test APK ($APK_ABIS), signed with the Unity debug key.
+          Unity source snapshot: $SHA ($BUILD_SOURCE).
+          Native 2 km x 2 km scene: Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity (four terrain tiles).
+          Download AarisGame.apk from Assets; verify with AarisGame.sha256 before installing.
+          This is a test build, not a Google Play production release. Android device FPS, crashes,
+          touch controls and real collision behavior must still be tested on a phone.
+          EOF
+          gh release create "$TAG" dist/AarisGame.apk dist/AarisGame.sha256 \
+            -R "$GITHUB_REPOSITORY" --target "$SHA" \
+            --title "Aaris Android Test APK - $GITHUB_RUN_ID" \
+            --notes-file apk-evidence/release-notes.md --prerelease
+          printf 'release_tag=%s\n' "$TAG" > apk-evidence/release-result.txt
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json url \
+            --jq .url >> apk-evidence/release-result.txt
+          echo APK_GITHUB_RELEASE_PUBLISHED
+      - name: Upload bounded classifications only; never source, license or private logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-codespace-apk-report-${{ github.run_id }}
+          path: |
+            apk-evidence/preflight-safe.txt
+            apk-evidence/build-status-safe.txt
+            apk-evidence/release-result.txt
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Tell owner build or preflight result on Issue 77
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECK_RESULT: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          {
+            echo '**AARIS CODESPACE ANDROID APK**'
+            echo "Mode: \`$OPERATION\` | Workflow outcome: \`$CHECK_RESULT\`"
+            echo '~~~text'
+            if test -s apk-evidence/preflight-safe.txt; then
+              cat apk-evidence/preflight-safe.txt
+            else
+              echo 'APK_PREFLIGHT_NO_REPORT'
+            fi
+            if test -s apk-evidence/build-status-safe.txt; then
+              cat apk-evidence/build-status-safe.txt
+            fi
+            if test -s apk-evidence/release-result.txt; then
+              cat apk-evidence/release-result.txt
+            fi
+            echo '~~~'
+            printf '[Build or diagnostic run](https://github.com/%s/actions/runs/%s)\n' \
+              "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+          } > apk-evidence/owner-reply.md
+          gh issue comment 77 -R "$GITHUB_REPOSITORY" -F apk-evidence/owner-reply.md
+ apk-evidence/build-status.txt > apk-evidence/build-status-safe.txt || true
+              cat apk-evidence/build-status-safe.txt
+              exit 20
+            }
+          fi
           grep -qxF 'APK_UPLOAD_READY' apk-evidence/build-status.txt
           grep -qxF 'APK_INSTALLABILITY_SIGNATURE_MANIFEST_API33_VERIFIED' apk-evidence/build-status.txt
           grep -qxF 'APK_AUTHENTIC_822_LFS_VERIFIED' apk-evidence/build-status.txt || grep -qxF 'APK_REMOTE_822_LFS_SHA256_VERIFIED' apk-evidence/build-status.txt
