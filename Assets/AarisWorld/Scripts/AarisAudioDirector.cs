@@ -35,7 +35,8 @@ namespace Aaris.MapReview
             "ar_shot", "battle_rifle_shot", "sniper_shot", "shotgun_shot",
             "bolt_reload", "shell_drop", "bullet_impact", "punch_hit",
             "grenade_pin", "grenade_throw", "grenade_bounce", "grenade_boom",
-            "car_start", "car_engine_loop", "tire_skid", "car_crash", "gloo_deploy"
+            "car_start", "car_engine_loop", "tire_skid", "car_crash", "gloo_deploy",
+            "door_swing"
         };
         public static IReadOnlyList<string> RequiredCueKeys => Keys;
         private readonly Dictionary<string, AudioClip> clips = new Dictionary<string, AudioClip>(32);
@@ -301,6 +302,14 @@ namespace Aaris.MapReview
         {
             if (instance != null && instance.isActiveAndEnabled)
                 instance.OneShot("gloo_deploy", position, 0.88f);
+        }
+
+        /// <summary>One shared 3D wood-hinge creak, dispatched only on door motion transitions.</summary>
+        public static void DoorSwing(Vector3 position, bool closing)
+        {
+            if (instance != null && instance.isActiveAndEnabled)
+                instance.OneShot("door_swing", position, closing ? 0.36f : 0.52f,
+                    closing ? 1.11f : 0.94f);
         }
 
         public static void VehicleCrash(Vector3 position, float relativeSpeed)

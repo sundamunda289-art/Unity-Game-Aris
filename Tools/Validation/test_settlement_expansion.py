@@ -8,6 +8,7 @@ import json
 import math
 import re
 import unittest
+import wave
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -195,6 +196,27 @@ class ExpansionIntegrity(unittest.TestCase):
                 self.assertFalse(abs(x-site["x"]) < margin_x+buffer and
                                  abs(z-site["z"]) < margin_z+buffer,
                                  (site["name"], tree["id"]))
+
+    def test_real_door_audio_is_once_per_swing_and_mobile_pooled(self):
+        audio = (ROOT / "Assets/AarisWorld/Scripts/AarisAudioDirector.cs").read_text("utf-8")
+        panel = (ROOT / "Assets/AarisWorld/Scripts/AarisBreakablePanel.cs").read_text("utf-8")
+        path = ROOT / "Assets/Resources/SFX/door_swing.wav"
+        meta = path.with_suffix(".wav.meta")
+        self.assertTrue(path.is_file(), path)
+        self.assertTrue(meta.is_file(), meta)
+        with wave.open(str(path), "rb") as clip:
+            self.assertEqual(clip.getnchannels(), 1)
+            self.assertEqual(clip.getsampwidth(), 2)
+            self.assertEqual(clip.getframerate(), 16000)
+            self.assertEqual(clip.getnframes(), 7040)
+        self.assertIn('guid: 9c512a54d9ee4f069538d580ec6124ef', meta.read_text())
+        self.assertIn('"door_swing"', audio)
+        self.assertIn('public static void DoorSwing(Vector3 position, bool closing)', audio)
+        self.assertIn('instance.OneShot("door_swing", position,', audio)
+        self.assertIn('private int lastSwingDirection;', panel)
+        self.assertIn('if (swing != lastSwingDirection)', panel)
+        self.assertIn('AarisAudioDirector.DoorSwing(worldDoorwayCenter, swing < 0);', panel)
+        self.assertIn('transform.localRotation = Quaternion.Euler(0f, currentAngle, 0f);', panel)
 
     def test_real_interactive_house_openings_and_offline_damage(self):
         scripts = ROOT / "Assets" / "AarisWorld" / "Scripts"
