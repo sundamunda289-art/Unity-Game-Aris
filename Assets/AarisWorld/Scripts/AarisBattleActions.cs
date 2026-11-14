@@ -58,12 +58,13 @@ namespace Aaris.MapReview
         public float LastPunchTime => lastPunchTime;
         public float LastShootTime => lastShootTime;
 
-        // Keep 30 cm standing stairs, but do not let prone movement
-        // automatically climb a ledge as high as a crouched torso.
+        // Preserve standing stairs, but limit crouched stepping to 18 cm and
+        // prone auto-stepping to 7.5 cm. Higher steps visibly float the chest
+        // above the ground and allow crawling over low cover without a vault.
         // This is independent from the temporary stepOffset=0 in the air.
         public float GroundStepOffset => stance == PlayerStance.Standing
             ? standingStepOffset : Mathf.Min(standingStepOffset,
-                stance == PlayerStance.Crouching ? 0.20f : 0.16f);
+                stance == PlayerStance.Crouching ? 0.18f : 0.075f);
 
         private void Awake()
         {

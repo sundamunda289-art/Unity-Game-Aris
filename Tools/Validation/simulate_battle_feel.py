@@ -94,7 +94,7 @@ def assert_regression() -> None:
     assert "controller.stepOffset = groundedStep;" in MOTOR
     assert "float rise = savedGroundStepOffset + 0.1f;" in MOTOR
     assert "public float GroundStepOffset" in ACTION
-    assert "0.20f : 0.16f" in ACTION
+    assert "0.18f : 0.075f" in ACTION
     assert "Time.deltaTime" in MOTOR and "airborneSteering" in MOTOR
     assert "previousVerticalVelocity" in MOTOR and "verticalStepSpeed" in MOTOR
     assert "(previousVerticalVelocity + verticalVelocity) * 0.5f" in MOTOR

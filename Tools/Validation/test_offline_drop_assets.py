@@ -237,7 +237,7 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("SafeFooting(next) && battle.CanAdvanceProne(next, test)", motor)
         self.assertIn("private float jumpHeight = 1.35f, gravity = 18.5f;", motor)
         self.assertIn("private float earlyJumpReleaseGravity = 1.35f;", motor)
-        self.assertIn("stance == PlayerStance.Crouching ? 0.20f : 0.16f", stance)
+        self.assertIn("stance == PlayerStance.Crouching ? 0.18f : 0.075f", stance)
         self.assertIn("if (height > capsule.height && !HasRoomAbove(height)) return false;", stance)
 
     def test_animation_stance_weights_remain_exclusive_and_prone_moves(self):

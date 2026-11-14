@@ -305,7 +305,7 @@ def audit() -> None:
     assert "if (driveCaption.text != desiredCaption)" in vehicle_hud
     assert "savedGroundStepOffset + 0.1f" in motor
     assert "public float GroundStepOffset" in state
-    assert "0.20f : 0.16f" in state
+    assert "0.18f : 0.075f" in state
     assert "minimumAscentElapsed" in motor
     assert "minimumJumpAscentSeconds" in motor
 

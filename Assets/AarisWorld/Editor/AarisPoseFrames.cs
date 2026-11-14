@@ -1,7 +1,9 @@
 using System;
 using System.IO;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 namespace Aaris.MapReview.Editor {
 [InitializeOnLoad] public static class AarisPoseFrames {
 const string Dir="/tmp/aaris-codespaces/motion-frames";
@@ -11,6 +13,16 @@ static AarisPoseFrames(){EditorApplication.update+=Tick;}
 static double Now=>EditorApplication.timeSinceStartup;
 static void Log(string s){Directory.CreateDirectory(Dir);File.AppendAllText(Dir+"/report.txt",s+"\n");Debug.Log("AARIS_POSE_FRAME "+s);}
 static void Phase(string s){File.WriteAllText(Dir+"/phase.txt",s+"\n");}
+// Native batchmode capture must open the actual Unity scene before entering Play.
+public static void CaptureBatch(){
+if(!Application.isBatchMode)throw new InvalidOperationException("BATCHMODE_REQUIRED");
+try{
+var scene=EditorSceneManager.OpenScene(AarisExplorerBuild.ScenePath,OpenSceneMode.Single);
+if(!scene.IsValid()||!scene.isLoaded)throw new InvalidOperationException("SCENE_LOAD_FAILED");
+SessionState.SetBool("pose.batch",true);
+Start();
+}catch(Exception ex){Debug.LogError("AARIS_POSE_BATCH_START_FAILED "+ex.GetType().Name);EditorApplication.Exit(2);}
+}
 static void Start(){
 Directory.CreateDirectory(Dir);
 foreach(var f in Directory.GetFiles(Dir,"*.jpg"))File.Delete(f);
@@ -35,6 +47,11 @@ Log("STAGE "+Names[n]+" accepted="+ok);
 static void Finish(string reason){
 Log(reason);SessionState.SetString("pose.state","");Phase("07_COMPLETE");
 if(EditorApplication.isPlaying)EditorApplication.isPlaying=false;
+if(SessionState.GetBool("pose.batch",false)){
+SessionState.EraseBool("pose.batch");
+int code=reason=="SUCCESS_18_REAL_FRAMES"?0:2;
+EditorApplication.delayCall+=()=>EditorApplication.Exit(code);
+}
 }
 static void Tick(){
 if(File.Exists(Req)&&!EditorApplication.isPlayingOrWillChangePlaymode&&
@@ -47,7 +64,11 @@ Phase("00_Drop");Log("ENTER_PLAYMODE");return;
 }
 var p=UnityEngine.Object.FindFirstObjectByType<AarisThirdPersonPlayer>();
 var d=UnityEngine.Object.FindFirstObjectByType<AarisOfflineDrop>();
-if(p==null||d==null)return;
+if(p==null||d==null){
+if(Now-SessionState.GetFloat("pose.time",(float)Now)>15)
+Finish("NO_PLAYER_OR_DROP");
+return;
+}
 var b=p.GetComponent<AarisBattleActions>();
 int n=SessionState.GetInt("pose.step",-1);
 double age=Now-SessionState.GetFloat("pose.time",(float)Now);
@@ -78,14 +99,27 @@ try{
 Camera cam=Camera.main;if(cam==null)throw new InvalidOperationException("CAMERA_MISSING");
 var rt=RenderTexture.GetTemporary(960,540,24);
 var old=cam.targetTexture;var active=RenderTexture.active;
+Vector3 savedCameraPosition=cam.transform.position;
+Quaternion savedCameraRotation=cam.transform.rotation;
 var image=new Texture2D(960,540,TextureFormat.RGB24,false);
 try{
+// The real game camera usually faces the aircraft or canopy and makes
+// stance screenshots unusable. For PHOTO readback only, move its view to
+// face the player at human scale, then restore the untouched game camera.
+float eye=b.Stance==AarisBattleActions.PlayerStance.Prone ? 0.42f :
+ b.Stance==AarisBattleActions.PlayerStance.Crouching ? 0.85f : 1.18f;
+Vector3 target=p.transform.position+Vector3.up*eye;
+Vector3 photoPosition=target+p.transform.forward*3.0f+Vector3.up*0.42f;
+cam.transform.position=photoPosition;
+cam.transform.rotation=Quaternion.LookRotation(target-photoPosition,Vector3.up);
 cam.targetTexture=rt;cam.Render();RenderTexture.active=rt;
 image.ReadPixels(new Rect(0,0,960,540),0,0,false);image.Apply(false);
 var bytes=image.EncodeToJPG(82);
 if(bytes.Length<4000)throw new InvalidOperationException("EMPTY_FRAME");
 File.WriteAllBytes(Dir+"/"+Names[n]+"_f"+count+".jpg",bytes);
-}finally{cam.targetTexture=old;RenderTexture.active=active;
+}finally{
+cam.transform.SetPositionAndRotation(savedCameraPosition,savedCameraRotation);
+cam.targetTexture=old;RenderTexture.active=active;
 UnityEngine.Object.DestroyImmediate(image);RenderTexture.ReleaseTemporary(rt);}
 SessionState.SetInt("pose.count",count+1);
 Log("FRAME "+Names[n]+" "+count+" stance="+b.Stance+
