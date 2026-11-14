@@ -59,6 +59,18 @@ def run():
         diffs = [(i, a, b) for i, (a, b) in enumerate(zip(rebuilt["candidates"], loot["candidates"])) if a != b]
         raise AssertionError(f"Authored candidate drift, counts={len(rebuilt['candidates'])}/{len(loot['candidates'])}, examples={diffs[:6]}")
 
+    # PR #454's remaining useful coverage, integrated additively over
+    # the newer 1,574-slot main. This is a PLANNING bound, not a claim that
+    # every candidate passes native roof/ground physics on a mobile device.
+    final_open = [p for p in loot["candidates"] if p["kind"] == "open"]
+    final_gap_slots = [p for p in final_open if p["slot"] >= 300000]
+    assert len(final_gap_slots) == 3
+    assert [p["slot"] for p in final_gap_slots] == [300000, 300001, 300002]
+    for gx in range(-925, 926, 50):
+        for gz in range(-925, 926, 50):
+            assert any((p["x"] - gx) ** 2 + (p["z"] - gz) ** 2 <= 50 ** 2
+                       for p in final_open), ("50m authored coverage hole", gx, gz)
+
     catalog_cs = (SCRIPTS / "AarisWeaponCatalog.cs").read_text()
     gun_cs = (SCRIPTS / "AarisEquippedGun.cs").read_text()
     inventory = (SCRIPTS / "AarisWeaponInventory.cs").read_text()

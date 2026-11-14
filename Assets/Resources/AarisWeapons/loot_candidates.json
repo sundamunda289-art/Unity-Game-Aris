@@ -12593,6 +12593,30 @@
       "z": 945,
       "origin": "grid",
       "slot": 201520
+    },
+    {
+      "kind": "open",
+      "x": -363,
+      "y": 0,
+      "z": 365,
+      "origin": "grid",
+      "slot": 300000
+    },
+    {
+      "kind": "open",
+      "x": 287,
+      "y": 0,
+      "z": -185,
+      "origin": "grid",
+      "slot": 300001
+    },
+    {
+      "kind": "open",
+      "x": 437,
+      "y": 0,
+      "z": 165,
+      "origin": "grid",
+      "slot": 300002
     }
   ]
 }
