@@ -693,8 +693,8 @@ namespace Aaris.MapReview
                 return false;
             }
             requestPickupUntil = 0f;
-            // A voluntary DROP means the player intends to be unarmed.
-            // Do not automatically equip another floor gun a frame later.
+            // A voluntary DROP must not auto-collect the same item next
+            // frame. A holstered backup may be promoted into the hand.
             allowInitialAutoPickup = false;
             return true;
         }
@@ -711,11 +711,10 @@ namespace Aaris.MapReview
             if (pickup == null || pickup.State == null || inventory == null ||
                 IsBlockedDrop(pickup) || !pickup.TryReserve()) return false;
 
-            // Reserve the previous gun at the location already proven to be
-            // a reachable, clear loot spot. This prevents inventing a second
-            // floor position inside a wall while switching weapons.
-            var outgoing = inventory.Current != null
-                ? inventory.Current.CaptureState() : null;
+            // The first exchange fills the visible back socket without a
+            // floor drop. On the third gun, reserve only the older HOLSTERED
+            // gun as a persistent pickup before committing either slot.
+            var outgoing = inventory.ReplacementOnPickup;
             var replacement = outgoing != null
                 ? CreateDropped(outgoing, pickup.transform.position, 1.25f,
                     deferVisual: true) : null;
