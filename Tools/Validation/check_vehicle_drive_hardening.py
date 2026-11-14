@@ -148,19 +148,63 @@ def test():
     # car/player collisions, yet reacts to the nearest OTHER world wall.
     assert "private void LateUpdate()" in session
     assert "if (car != null && followCamera != null) FollowCarCamera();" in session
-    assert "Physics.SphereCastNonAlloc(new Ray(start, direction)" in session
+    assert "Physics.SphereCastNonAlloc(sweep," in session
     assert "hit.collider.transform.IsChildOf(vehicle)" in session
     assert "hit.collider.transform.IsChildOf(transform)" in session
     assert "nearest = Mathf.Min(nearest, hit.distance)" in session
     assert "if (count >= cameraObstacles.Length)" in session
+    # A crowded forest can saturate the 32-hit unsorted buffer. A blind 45cm
+    # clamp strands the camera against the car even if every hit was the car
+    # itself. Exhaustively resolve rare overflow while preserving normal
+    # per-frame NonAlloc performance and own-collider exclusion.
+    follow = session.split("private void FollowCarCamera()", 1)[1].split(
+        "private void OnDisable()", 1)[0]
+    assert "Ray sweep = new Ray(start, direction);" in follow
+    assert "RaycastHit[] hits = cameraObstacles;" in follow
+    assert "private readonly RaycastHit[] crowdedCameraObstacles = new RaycastHit[128];" in session
+    assert "hits = crowdedCameraObstacles;" in follow
+    assert "count = Physics.SphereCastNonAlloc(sweep, .22f," in follow
+    assert "if (count >= crowdedCameraObstacles.Length)" in follow
+    assert "hits = Physics.SphereCastAll(sweep, .22f, length," in follow
+    assert "count = hits.Length;" in follow
+    assert "var hit = hits[i];" in follow
+    assert "nearest = .45f;" not in follow
+    assert follow.index("if (count >= cameraObstacles.Length)") < follow.index(
+        "hits = Physics.SphereCastAll(sweep, .22f, length,")
+    assert follow.index("hits = crowdedCameraObstacles;") < follow.index(
+        "if (count >= crowdedCameraObstacles.Length)")
+    assert follow.index("if (count >= crowdedCameraObstacles.Length)") < follow.index(
+        "hits = Physics.SphereCastAll(sweep, .22f, length,")
+    assert follow.index("count = hits.Length;") < follow.index(
+        "for (int i = 0; i < count; i++)")
+    # A 33-127 hit forest uses one extra preallocated sweep, not a GC-heavy
+    # SphereCastAll every frame. Only >128 contacts need the full query.
+    for contact_count in (0, 31, 32, 33, 63, 127, 128, 180):
+        retried = contact_count >= 32
+        alloc = retried and contact_count >= 128
+        assert (contact_count < 128 or alloc)
+        if contact_count <= 127:
+            assert not alloc
+    # If the full hit set contains only the owner, retain the 6.7m
+    # chase camera rather than artificially collapsing it. On a wall hit,
+    # the closest EXTERNAL collider must win regardless of hit ordering.
+    for contacts in (
+        [(0.1, True)] * 35,
+        [(0.1, True)] * 35 + [(2.8, False), (4.6, False)],
+        [(4.6, False)] + [(0.1, True)] * 35 + [(2.8, False)],
+    ):
+        valid = [distance for distance, owned in contacts if not owned]
+        nearest = min(valid, default=6.7)
+        assert nearest == (2.8 if valid else 6.7)
     assert "Physics.SphereCast(" not in session
     # The actual rendered smoothed camera, not only the ideal follow goal,
-    # must be swept before assignment. One cast preserves mobile budget.
+    # is swept before assignment. The fast path has just one nonalloc cast;
+    # only saturation adds a second preallocated cast.
     follow = session.split("private void FollowCarCamera()", 1)[1].split(
         "private void OnDisable()", 1)[0]
     assert "Vector3 ray = next - start;" in follow
     assert "Vector3 goal = requested;" not in follow
-    assert follow.count("Physics.SphereCastNonAlloc(") == 1
+    assert follow.count("Physics.SphereCastNonAlloc(") == 2
     assert follow.index("Vector3 next = Vector3.SmoothDamp(") < (
         follow.index("Physics.SphereCastNonAlloc("))
     assert follow.index("Physics.SphereCastNonAlloc(") < (

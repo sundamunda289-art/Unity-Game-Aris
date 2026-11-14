@@ -17,6 +17,8 @@ namespace Aaris.MapReview
         private readonly RaycastHit[] exitGround = new RaycastHit[32];
         private readonly RaycastHit[] entrySight = new RaycastHit[24];
         private readonly RaycastHit[] cameraObstacles = new RaycastHit[32];
+        // Avoid allocating a full hit array every frame in crowded forests.
+        private readonly RaycastHit[] crowdedCameraObstacles = new RaycastHit[128];
         private AarisVehicleWorld world;
         private AarisThirdPersonPlayer footMotor;
         private CharacterController capsule;
@@ -338,19 +340,35 @@ namespace Aaris.MapReview
                 // SphereCast (single-hit) can hit our own body first and
                 // incorrectly ignore a wall BEHIND it. Scan bounded hits
                 // and choose the closest obstacle not owned by car/player.
-                int count = Physics.SphereCastNonAlloc(new Ray(start, direction),
+                Ray sweep = new Ray(start, direction);
+                int count = Physics.SphereCastNonAlloc(sweep,
                     .22f, cameraObstacles, length, Physics.DefaultRaycastLayers,
                     QueryTriggerInteraction.Ignore);
-                float nearest = length;
+                RaycastHit[] hits = cameraObstacles;
                 if (count >= cameraObstacles.Length)
                 {
-                    // Fail closed when the nonalloc buffer is saturated:
-                    // prioritize a clear view over clipping through a wall.
-                    nearest = .45f;
+                    // NonAlloc hits are unordered and incomplete on saturation.
+                    // Forcing the camera to 45 cm makes crowded forest driving
+                    // impossible. Retry in scratch storage without allocations,
+                    // and query all hits only if even that storage is saturated,
+                    // then apply the SAME owned-car/player exclusion rules.
+                    hits = crowdedCameraObstacles;
+                    count = Physics.SphereCastNonAlloc(sweep, .22f,
+                        crowdedCameraObstacles, length,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                    if (count >= crowdedCameraObstacles.Length)
+                    {
+                        // Preserve correct closest-hit selection even when
+                        // 128 nonalloc slots are insufficient.
+                        hits = Physics.SphereCastAll(sweep, .22f, length,
+                            Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                        count = hits.Length;
+                    }
                 }
-                else for (int i = 0; i < count; i++)
+                float nearest = length;
+                for (int i = 0; i < count; i++)
                 {
-                    var hit = cameraObstacles[i];
+                    var hit = hits[i];
                     if (hit.collider == null ||
                         hit.collider.transform.IsChildOf(vehicle) ||
                         hit.collider.transform.IsChildOf(transform))
