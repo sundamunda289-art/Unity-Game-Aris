@@ -92,7 +92,7 @@ namespace Aaris.MapReview
             float length = Mathf.Max(modelBounds.size.x,
                 modelBounds.size.y, modelBounds.size.z);
             if (length > 0.001f)
-                model.localScale *= Mathf.Clamp(0.82f / length, 0.001f, 10f);
+                model.localScale *= Mathf.Clamp(0.82f / length, 0.0000001f, 10f);
 
             model.localPosition = Vector3.zero;
             model.localRotation = Quaternion.Euler(0f, 0f, -75f);
