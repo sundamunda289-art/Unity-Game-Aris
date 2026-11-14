@@ -26,6 +26,11 @@ def run():
     catalog = json.loads((ROOT / "Assets/Resources/AarisWeapons/weapon_catalog.json").read_text())
     ids = [entry["id"] for entry in catalog["weapons"]]
     assert ids == list(EXPECTED), ids
+    # Scale both presentation paths from physically distinct weapon lengths.
+    lengths = {gun["id"]: gun["presentationLengthMetres"] for gun in catalog["weapons"]}
+    assert lengths == {"SMG": 0.65, "AssaultRifle": 0.91,
+                       "BattleRifle": 1.06, "Sniper": 1.23, "Shotgun": 1.03}
+    assert lengths["SMG"] < lengths["AssaultRifle"] < lengths["Sniper"]
     for gun in catalog["weapons"]:
         name = gun["id"]
         assert gun["modelResource"] == "AarisWeapons/Models/" + name
@@ -203,6 +208,8 @@ def run():
     assert "candidate.collider.attachedRigidbody != null" in world
     assert "Mathf.Abs(candidate.point.y - expectedGround) > 0.38f" in world
     assert "TryResolve" in world and "Physics.CheckCapsule" in world
+    assert "alternateProbeSweep = new byte[candidates.Length];" in world
+    assert "alternateProbeSweep[index] = (byte)((sweep + 1) & 7);" in world
     # Native Unity Play Mode: all 11 sampled ground slots returned zero
     # TerrainCollider ray hits while using SampleHeight as world Y. The
     # native tile origin is -120m; the corrected ray hits exactly at
@@ -272,9 +279,12 @@ def run():
                      inventory.index("public bool TryRemove(")]
     assert "AarisWeaponMeshBounds.TryMeasure(root.transform," in grip
     assert "mesh.localScale *= scale;" in grip
-    assert "Mathf.Clamp(0.86f / longest" in grip
+    assert "incoming.Spec.presentationLengthMetres / longest" in grip
+    assert "presentationLengthMetres >= 0.48f" in catalog_cs
     assert "combinedBounds.center * scale" in grip
-    assert "mesh.localPosition = new Vector3(0f, -0.025f, 0.19f) -" in grip
+    assert "incoming.Spec.presentationLengthMetres * 0.22f" in grip
+    assert "state.Spec.presentationLengthMetres / length" in pickup_cs
+    assert "equipped.Spec.presentationLengthMetres * 0.40f" in inventory
     assert "combinedBounds = renderers[0].bounds;" not in grip
     assert grip.index("TryMeasure(root.transform,") < grip.index(
         "mesh.localScale *= scale;") < grip.index(
