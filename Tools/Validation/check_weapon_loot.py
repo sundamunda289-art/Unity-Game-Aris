@@ -180,6 +180,17 @@ def run():
     assert "candidate.collider.attachedRigidbody != null" in world
     assert "Mathf.Abs(candidate.point.y - expectedGround) > 0.38f" in world
     assert "TryResolve" in world and "Physics.CheckCapsule" in world
+    # Native Unity Play Mode: all 11 sampled ground slots returned zero
+    # TerrainCollider ray hits while using SampleHeight as world Y. The
+    # native tile origin is -120m; the corrected ray hits exactly at
+    # SampleHeight + tile-origin Y. Never regress to floating gun probes.
+    assert "float expectedGround = indoor ? c.y :" in world
+    assert "terrain.transform.position.y +" in world
+    assert "terrain.SampleHeight(new Vector3(x, 0f, z));" in world
+    assert "Terrain.SampleHeight is already in world-space Y;" not in world
+    native_ground = -120.0 + 92.20836
+    assert round(native_ground, 5) == -27.79164
+    assert 92.20836 + 1.9 - 3.3 > native_ground + 100.0
     # Sealed-house fallback: bounded outdoor probes, not inaccessible floor loot.
     assert 'bool indoor = c.kind == "indoor" && !forceOutdoor;' in world
     assert 'bool relocateIndoor = candidate.kind == "indoor";' in world
