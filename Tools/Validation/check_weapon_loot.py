@@ -231,6 +231,26 @@ def run():
     assert "MaximumActiveLoot = 40" in world
     assert "MaximumBuildAttemptsPerFrame = 2" in world
 
+    # The imported FBX pivot is NOT a guaranteed wrist grip anchor.
+    # Scale the full multi-renderer model first, then recenter its bounds
+    # around the real right-hand bone; this runs only on equip, never on
+    # per-frame mobile character motion.
+    grip = inventory[inventory.index("public bool TryPickup("):
+                     inventory.index("public bool TryRemove(")]
+    self_centers = "root.transform.InverseTransformPoint(combinedBounds.center);"
+    assert "mesh.localScale *= Mathf.Clamp(0.86f / longest" in grip
+    assert "mesh.localPosition = Vector3.zero;" in grip
+    assert "combinedBounds = renderers[0].bounds;" in grip
+    assert self_centers in grip
+    assert "mesh.localPosition = new Vector3(0f, -0.025f, 0.19f) -" in grip
+    assert grip.index("mesh.localScale *= Mathf.Clamp(") < grip.index(
+        self_centers) < grip.index("var next = root.AddComponent<AarisEquippedGun>();")
+    attach = inventory[inventory.index("private void AttachModelToHand("):
+                       inventory.index("private void Update()")]
+    assert "hand.position + hand.rotation * equipped.Spec.handOffset" in attach
+    assert "weaponRoot.SetParent(transform, false);" in attach
+    assert "if (equipped != null) AttachModelToHand();" in attach
+
     # The normal landing pickup remains physical; only after failed
     # floor/visibility checks may the existing inventory grant one starter.
     # Prevent a future refactor from silently stranding players unarmed.
