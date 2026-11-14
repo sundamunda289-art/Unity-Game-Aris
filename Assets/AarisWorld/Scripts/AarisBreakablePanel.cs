@@ -19,6 +19,7 @@ namespace Aaris.MapReview
         private float nextFarCheck;
         private float health, lastNear = -999f, currentAngle, openDirection = 1f;
         private bool isDoor, destroyed;
+        private int lastSwingDirection;
         private readonly Collider[] blockers = new Collider[16];
 
         public bool IsBroken => destroyed;
@@ -81,10 +82,19 @@ namespace Aaris.MapReview
             // interactive collider. Saturated queries also fail open.
             if (!shouldOpen && Mathf.Abs(currentAngle) > .01f && ClosingBlocked())
                 shouldOpen = true;
-            float next = Mathf.MoveTowards(currentAngle, shouldOpen ? OpenAngle * openDirection : 0f,
+            float targetAngle = shouldOpen ? OpenAngle * openDirection : 0f;
+            float next = Mathf.MoveTowards(currentAngle, targetAngle,
                 OpenSpeed * Time.deltaTime);
             if (Mathf.Abs(next - currentAngle) > .001f)
             {
+                // Emit one cue when a genuinely moving leaf starts opening or
+                // closing. Never allocate per frame or play sounds on idle doors.
+                int swing = Mathf.Abs(next) > Mathf.Abs(currentAngle) ? 1 : -1;
+                if (swing != lastSwingDirection)
+                {
+                    lastSwingDirection = swing;
+                    AarisAudioDirector.DoorSwing(worldDoorwayCenter, swing < 0);
+                }
                 currentAngle = next;
                 transform.localRotation = Quaternion.Euler(0f, currentAngle, 0f);
             }
