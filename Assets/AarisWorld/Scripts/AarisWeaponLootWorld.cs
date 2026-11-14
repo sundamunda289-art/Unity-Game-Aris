@@ -714,7 +714,10 @@ namespace Aaris.MapReview
             // Reserve the previous gun at the location already proven to be
             // a reachable, clear loot spot. This prevents inventing a second
             // floor position inside a wall while switching weapons.
-            var outgoing = inventory.Current != null
+            // A spare back slot absorbs the previous gun without creating a
+            // phantom ground pickup. Reserve a replacement only when both
+            // physical carried slots are already full.
+            var outgoing = inventory.RequiresExchangeDrop && inventory.Current != null
                 ? inventory.Current.CaptureState() : null;
             var replacement = outgoing != null
                 ? CreateDropped(outgoing, pickup.transform.position, 1.25f,
