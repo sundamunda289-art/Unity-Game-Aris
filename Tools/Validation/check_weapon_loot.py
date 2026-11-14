@@ -110,10 +110,15 @@ def run():
     assert pickup_cs.count("visible.GetComponentsInChildren<Renderer>(true)") == 1
     assert "visible.GetComponentInChildren<Renderer>(true)" not in pickup_cs
     assert "if (modelRenderers.Length == 0)" in pickup_cs
-    assert "modelBounds.Encapsulate(modelRenderers[i].bounds)" in pickup_cs
-    assert "transform.position.y + 0.08f - modelBounds.min.y" in pickup_cs
-    assert "modelBounds.center + delta" in pickup_cs
+    assert "AarisWeaponMeshBounds.TryMeasure(transform," in pickup_cs
+    assert "0.08f - modelBounds.min.y * scale" in pickup_cs
+    assert "(modelBounds.center.y - modelBounds.min.y) * scale" in pickup_cs
     assert "model.SetParent(visualPivot.transform, true);" in pickup_cs
+    assert "meshFilter.sharedMesh.bounds" in pickup_cs
+    assert "skinned.localBounds" in pickup_cs
+    assert "renderer.transform.TransformPoint(local)" in pickup_cs
+    assert "root.InverseTransformPoint(" in pickup_cs
+    assert "modelBounds.Encapsulate(modelRenderers[i].bounds)" not in pickup_cs
     # Pickup swaps must reserve the old gun BEFORE committing, then retire
     # the collected world pickup without duping its ammo/weapon state.
     assert "private AarisDroppedWeapon CreateDropped" in world
@@ -241,6 +246,26 @@ def run():
     assert dense_expected > 1.2 * improved_expected
     assert "MaximumActiveLoot = 40" in world
     assert "MaximumBuildAttemptsPerFrame = 2" in world
+
+    # Native Unity Play Mode baseline: five equipped FBX body bounds
+    # measured 5.5-9m despite the wrist following correctly. Source mesh
+    # corners, not stale Renderer.bounds, must drive equip scaling.
+    grip = inventory[inventory.index("public bool TryPickup("):
+                     inventory.index("public bool TryRemove(")]
+    assert "AarisWeaponMeshBounds.TryMeasure(root.transform," in grip
+    assert "mesh.localScale *= scale;" in grip
+    assert "Mathf.Clamp(0.86f / longest" in grip
+    assert "combinedBounds.center * scale" in grip
+    assert "mesh.localPosition = new Vector3(0f, -0.025f, 0.19f) -" in grip
+    assert "combinedBounds = renderers[0].bounds;" not in grip
+    assert grip.index("TryMeasure(root.transform,") < grip.index(
+        "mesh.localScale *= scale;") < grip.index(
+        "var next = root.AddComponent<AarisEquippedGun>();")
+    attach = inventory[inventory.index("private void AttachModelToHand("):
+                       inventory.index("private void LateUpdate()")]
+    assert "hand.position + hand.rotation * equipped.Spec.handOffset" in attach
+    assert "weaponRoot.SetParent(transform, false);" in attach
+    assert "if (equipped != null) AttachModelToHand();" in attach
 
     # The normal landing pickup remains physical; only after failed
     # floor/visibility checks may the existing inventory grant one starter.
