@@ -111,7 +111,7 @@ def audit() -> None:
     assert all(f"WriteWeightIfChanged(mixer, lastBaseWeights, {i}," in visual for i in range(12))
     assert "mixer.SetInputWeight(12" not in visual
     assert "float stanceScale = stanceTotal > 1f ? pose / stanceTotal : 1f;" in visual
-    assert "crouchBlend * stanceScale" in visual and "proneBlend * stanceScale" in visual
+    assert "effectiveCrouchBlend * stanceScale" in visual and "effectiveProneBlend * stanceScale" in visual
     assert "HasProneClearance" in state
     assert "return HasProneClearance(worldPosition, transform.forward);" in state, (
         "Prone strafing footprint must align with the facing body, not travel vector"

@@ -24,6 +24,11 @@ public static void CaptureDiagnostic(){
 SessionState.SetBool("pose.diag",true);
 CaptureBatch();
 }
+// No camera/ReadPixels: exercise transitions and the real motor in Play Mode.
+public static void CaptureStanceJumpDiagnostic(){
+SessionState.SetBool("pose.stanceJump",true);
+CaptureBatch();
+}
 public static void CaptureBatch(){
 if(!Application.isBatchMode)throw new InvalidOperationException("BATCHMODE_REQUIRED");
 try{
@@ -75,7 +80,14 @@ if(n==1)ok=b.TrySetStance(AarisBattleActions.PlayerStance.Crouching);
 if(n==2)ok=b.TrySetStance(AarisBattleActions.PlayerStance.Prone);
 if(n==3){p.CancelAutoSprint();ok=b.TryStand();}
 if(n==4){ok=b.TryStand();p.ToggleAutoSprint();}
-if(n==5){p.CancelAutoSprint();ok=b.TryStand();p.RequestJump();}
+if(n==5){
+p.CancelAutoSprint();ok=b.TryStand();
+if(ok){
+SessionState.SetFloat("pose.jumpRequestAt",Time.unscaledTime);
+SessionState.SetFloat("pose.jumpY",p.transform.position.y);
+SessionState.SetFloat("pose.jumpMax",0f);
+p.RequestJump();
+}}
 Log("STAGE "+Names[n]+" accepted="+ok);
 if(!ok) Finish("STANCE_REJECTED_"+Names[n]);
 }
@@ -143,8 +155,10 @@ SessionState.EraseBool("pose.batch");
 SessionState.EraseBool("pose.diag");
 int code=(reason=="SUCCESS_18_REAL_FRAMES"||
  reason=="SUCCESS_PRONE_DIAGNOSTIC"||
- reason=="SUCCESS_PRONE_GEOMETRY_ONLY")?0:2;
+ reason=="SUCCESS_PRONE_GEOMETRY_ONLY"||
+ reason=="SUCCESS_STANCE_JUMP_MOTOR")?0:2;
 SessionState.EraseBool("pose.geometryOnly");
+SessionState.EraseBool("pose.stanceJump");
 EditorApplication.delayCall+=()=>EditorApplication.Exit(code);
 }
 }
@@ -189,6 +203,41 @@ return;
 }
 if(b==null){Finish("NO_BATTLE_COMPONENT");return;}
 int count=SessionState.GetInt("pose.count",0);
+// Deterministic stand > crouch > prone > stand > jump > land sequence.
+// Treat a rejected stance, missing takeoff or missing landing event as FAIL.
+if(SessionState.GetBool("pose.stanceJump",false)){
+if((n==0||n==1||n==2||n==3)&&age>0.65){
+if(n==2&&b.Stance!=AarisBattleActions.PlayerStance.Prone){
+Finish("PRONE_NOT_ACTIVE");return;}
+if(n==3&&b.Stance!=AarisBattleActions.PlayerStance.Standing){
+Finish("STAND_NOT_ACTIVE");return;}
+LogPhysicalHeight(p,b);
+Stage(n==3?5:n+1,p,b);
+return;
+}
+if(n==5){
+float requested=SessionState.GetFloat("pose.jumpRequestAt",-10f);
+float before=SessionState.GetFloat("pose.jumpY",p.transform.position.y);
+bool launched=p.LastJumpStartedTime>=requested-0.001f;
+float maxHeight=SessionState.GetFloat("pose.jumpMax",0f);
+maxHeight=Mathf.Max(maxHeight,p.transform.position.y-before);
+SessionState.SetFloat("pose.jumpMax",maxHeight);
+if(launched && p.LastLandingTime>p.LastJumpStartedTime &&
+   Time.unscaledTime-p.LastJumpStartedTime>0.40f){
+Log("JUMP_MOTOR jumpApexMetres="+maxHeight.ToString("F3")+
+" landingImpact="+p.LastLandingImpactSpeed.ToString("F3")+
+" landed="+(!p.IsInAir));
+if(!p.IsInAir&&maxHeight>=0.45f){
+Finish("SUCCESS_STANCE_JUMP_MOTOR");return;}}
+if(age>8f){
+Log("JUMP_MOTOR_TIMEOUT launched="+launched+
+" maxHeight="+maxHeight.ToString("F3")+
+" landingAfterTakeoff="+(p.LastLandingTime>p.LastJumpStartedTime));
+Finish("JUMP_FAILED");}
+return;
+}
+return;
+}
 if(n==2 && SessionState.GetBool("pose.geometryOnly",false) && age>0.8){
 if(b.Stance != AarisBattleActions.PlayerStance.Prone){
 Finish("PRONE_NOT_ACTIVE");return;

@@ -63,6 +63,9 @@ namespace Aaris.MapReview
         private Transform punchArm;
         private Transform leftThigh, leftShin, leftFootBone;
         private Transform rightThigh, rightShin, rightFootBone;
+        private Transform proneChestBone, proneHeadBone;
+        private const float ProneChestCorrectionMaxDegrees = 24f;
+        private const float ProneHeadColliderInset = 0.10f;
         private const float CrouchRigLowering = 0.50f;
         private const float ProneRigLowering = 0.22f;
         private const float PlantedAnkleMetres = 0.24f;
@@ -185,6 +188,8 @@ namespace Aaris.MapReview
             rightThigh = animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
             rightShin = animator.GetBoneTransform(HumanBodyBones.RightLowerLeg);
             rightFootBone = animator.GetBoneTransform(HumanBodyBones.RightFoot);
+            proneChestBone = animator.GetBoneTransform(HumanBodyBones.Chest);
+            proneHeadBone = animator.GetBoneTransform(HumanBodyBones.Head);
             animator.applyRootMotion = false;
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             SetupAnimations();
@@ -596,6 +601,15 @@ namespace Aaris.MapReview
             bool deliberateJump = jumpAge >= 0f && jumpAge < 0.65f;
             bool visuallyAirborne = !groundedNow &&
                 (deliberateJump || now - lastReliableGroundContact > 0.13f);
+            // A crouch-to-jump action stands the capsule instantly, but its
+            // old animation blends linger. Release that pose during takeoff
+            // to avoid crouched limbs mixing with the airborne jump cycle.
+            float takeoffStanceSuppression = deliberateJump &&
+                actions != null &&
+                actions.Stance == AarisBattleActions.PlayerStance.Standing
+                ? Mathf.Clamp01(jumpAge / 0.12f) : 0f;
+            float effectiveCrouchBlend = crouchBlend * (1f - takeoffStanceSuppression);
+            float effectiveProneBlend = proneBlend * (1f - takeoffStanceSuppression);
             float planar = new Vector2(velocity.x, velocity.z).magnitude;
             float leaning = Mathf.InverseLerp(3.4f, fullRunSpeed, planar) *
                 sprintForwardLeanDegrees * (primaryLoaded ? 0.8f : 1f) * (1f - proneBlend);
@@ -701,11 +715,11 @@ namespace Aaris.MapReview
                 : 0f;
             // The imported crouch clip leaves the head above the short collision
             // capsule. Replant the knees after lowering this visual-only rig.
-            float crouchRigWeight = crouchBlend * (1f - proneBlend);
+            float crouchRigWeight = effectiveCrouchBlend * (1f - effectiveProneBlend);
             float crouchLowering = CrouchRigLowering * crouchRigWeight;
             // Source crawling hips/ankles float above the floor by about 22 cm.
             float proneLowering = primaryLoaded && proneClip != null &&
-                crawlClip != null ? ProneRigLowering * proneBlend : 0f;
+                crawlClip != null ? ProneRigLowering * effectiveProneBlend : 0f;
             Vector3 desiredPosition = restingLocalPosition +
                 new Vector3(0f, fallbackProne * 0.36f - landingDip -
                     crouchLowering - proneLowering, fallbackProne * 0.14f);
@@ -718,6 +732,36 @@ namespace Aaris.MapReview
                     transform.forward, crouchRigWeight);
                 PlantCrouchLeg(rightThigh, rightShin, rightFootBone, ankleY,
                     transform.forward, crouchRigWeight);
+            }
+            // The authored crawling clip places the head higher than the
+            // 62cm prone capsule while its ankles already touch the terrain.
+            // Pivot the chest gently forward instead of sinking the entire
+            // humanoid rig and burying the shoes. Only animation transforms
+            // change; this never adjusts collisions or camera authority.
+            if (!visuallyAirborne && graphReady && authoredProne &&
+                effectiveProneBlend > 0.01f &&
+                proneChestBone != null && proneHeadBone != null)
+            {
+                Vector3 headFromChest = proneHeadBone.position - proneChestBone.position;
+                Vector3 horizontal = Vector3.ProjectOnPlane(headFromChest, Vector3.up);
+                if (horizontal.sqrMagnitude > 0.0144f && headFromChest.y > 0f)
+                {
+                    float capTop = transform.TransformPoint(controller.center +
+                        Vector3.up * controller.height * 0.5f).y;
+                    float desiredHeadY = capTop - ProneHeadColliderInset;
+                    float desiredDeltaY = Mathf.Min(headFromChest.y,
+                        desiredHeadY - proneChestBone.position.y);
+                    Vector3 wanted = horizontal + Vector3.up * desiredDeltaY;
+                    if (wanted.sqrMagnitude > 0.0144f)
+                    {
+                        Quaternion tilt = Quaternion.FromToRotation(headFromChest, wanted);
+                        tilt = Quaternion.Slerp(Quaternion.identity, tilt,
+                            effectiveProneBlend);
+                        tilt = Quaternion.RotateTowards(Quaternion.identity, tilt,
+                            ProneChestCorrectionMaxDegrees);
+                        proneChestBone.rotation = tilt * proneChestBone.rotation;
+                    }
+                }
             }
 
             // The same support decision now drives gait phase, airborne pose,
@@ -747,11 +791,11 @@ namespace Aaris.MapReview
                 // Rapid crouch/prone changes can overlap during exponential
                 // smoothing. Normalize to one stance share, including during
                 // an interrupted transition; never exceed the base mixer sum.
-                float stanceTotal = crouchBlend + proneBlend;
+                float stanceTotal = effectiveCrouchBlend + effectiveProneBlend;
                 float pose = Mathf.Clamp01(stanceTotal);
                 float stanceScale = stanceTotal > 1f ? pose / stanceTotal : 1f;
-                float crouchWeight = authoredProne ? crouchBlend * stanceScale : pose;
-                float proneWeight = authoredProne ? proneBlend * stanceScale : 0f;
+                float crouchWeight = authoredProne ? effectiveCrouchBlend * stanceScale : pose;
+                float proneWeight = authoredProne ? effectiveProneBlend * stanceScale : 0f;
                 float crouchMoving = Mathf.InverseLerp(0.06f, 0.85f, horizontal);
                 float crawlMoving = Mathf.InverseLerp(0.05f, 0.55f, horizontal);
                 float grounded = (1f - airborneBlend) * (1f - pose);

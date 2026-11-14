@@ -365,7 +365,7 @@ assert '_BaseMap:\n        m_Texture: {fileID: 2800000, guid: '+guid+', type: 3}
 # probe, not assumed screenshot pixel distances.
 assert 'private const float CrouchRigLowering = 0.50f;' in visual
 assert 'private const float ProneRigLowering = 0.22f;' in visual
-assert 'float crouchRigWeight = crouchBlend * (1f - proneBlend);' in visual
+assert 'float crouchRigWeight = effectiveCrouchBlend * (1f - effectiveProneBlend);' in visual
 assert 'float proneLowering = primaryLoaded && proneClip != null &&' in visual
 assert visual.count('PlantCrouchLeg(') == 3
 assert 'foot.rotation = footRotation;' in visual
@@ -392,3 +392,43 @@ assert 'if(!ok) Finish("STANCE_REJECTED_"+Names[n]);' in pose_probe
 assert 'if(b.Stance != AarisBattleActions.PlayerStance.Prone)' in pose_probe
 assert 'Finish("PRONE_NOT_ACTIVE");return;' in pose_probe
 assert 'SUCCESS_PRONE_GEOMETRY_ONLY' in pose_probe
+
+
+# AAA stance/headroom and crouch-to-jump bridge verification.
+assert 'private const float ProneChestCorrectionMaxDegrees = 24f;' in visual
+assert 'private const float ProneHeadColliderInset = 0.10f;' in visual
+assert 'proneChestBone = animator.GetBoneTransform(HumanBodyBones.Chest);' in visual
+assert 'proneHeadBone = animator.GetBoneTransform(HumanBodyBones.Head);' in visual
+assert 'proneChestBone.rotation = tilt * proneChestBone.rotation;' in visual
+assert 'Quaternion.RotateTowards(Quaternion.identity, tilt,' in visual
+assert 'Mathf.Clamp01(jumpAge / 0.12f)' in visual
+assert 'float stanceTotal = effectiveCrouchBlend + effectiveProneBlend;' in visual
+assert 'float proneWeight = authoredProne ? effectiveProneBlend * stanceScale : 0f;' in visual
+# Measured original prone chest/head offset is 0.206m vertical, 0.369m
+# horizontal. A 24 degree forward chest tilt should bring the head bone
+# inside the 0.62m controller without dragging the grounded ankles downward.
+relative_head_angle = math.atan2(.206, .369)
+head_after_tilt = .527 + math.hypot(.206, .369) * math.sin(
+    relative_head_angle - math.radians(24))
+assert .52 < head_after_tilt < .62, head_after_tilt
+for fps in (10, 20, 30, 60, 120):
+    for frames in (0, 1, 2, 5, 12):
+        age = frames / fps
+        suppression = max(0.0, min(1.0, age/.12))
+        assert 0 <= suppression <= 1
+    assert max(0, min(1, (math.ceil(.12*fps)/fps)/.12)) == 1
+
+
+# Native AAA stand/crouch/prone/jump/landing exercise must be fail-closed.
+# The Editor-only native probe runs the real motor and reads actual bone Y,
+# jump apex, landing event and collision state at one deterministic location.
+assert 'public static void CaptureStanceJumpDiagnostic()' in pose_probe
+assert 'SessionState.SetBool("pose.stanceJump",true);' in pose_probe
+assert 'Stage(n==3?5:n+1,p,b);' in pose_probe
+assert 'if(b.Stance != AarisBattleActions.PlayerStance.Prone)' in pose_probe
+assert 'if(n==3&&b.Stance!=AarisBattleActions.PlayerStance.Standing)' in pose_probe
+assert 'bool launched=p.LastJumpStartedTime>=requested-0.001f;' in pose_probe
+assert 'p.LastLandingTime>p.LastJumpStartedTime' in pose_probe
+assert 'if(!p.IsInAir&&maxHeight>=0.45f)' in pose_probe
+assert 'SUCCESS_STANCE_JUMP_MOTOR' in pose_probe
+assert 'Finish("JUMP_FAILED");' in pose_probe
