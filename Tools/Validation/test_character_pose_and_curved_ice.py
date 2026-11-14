@@ -358,3 +358,37 @@ assert 'textureType: 0' in meta
 guid = 'a26b95582e905f30b703a95779c69777'
 assert 'guid: '+guid in meta
 assert '_BaseMap:\n        m_Texture: {fileID: 2800000, guid: '+guid+', type: 3}' in primary_mat
+
+
+# Native-measured crouch/prone visual contact regression.
+# Head/ankle readings are from the actual Unity 6000.3.26f1 humanoid pose
+# probe, not assumed screenshot pixel distances.
+assert 'private const float CrouchRigLowering = 0.50f;' in visual
+assert 'private const float ProneRigLowering = 0.22f;' in visual
+assert 'float crouchRigWeight = crouchBlend * (1f - proneBlend);' in visual
+assert 'float proneLowering = primaryLoaded && proneClip != null &&' in visual
+assert visual.count('PlantCrouchLeg(') == 3
+assert 'foot.rotation = footRotation;' in visual
+assert 'Quaternion.FromToRotation(oldUpper, newUpper)' in visual
+assert 'Quaternion.FromToRotation(oldLower, newLower)' in visual
+assert 1.00 < 1.611 - 0.50 < 1.14  # Crouch head enters 1.14m capsule
+assert 0.01 < 0.258 - 0.22 < 0.08  # Prone ankle reaches the ground
+# Solver must stay numerically bounded for nearly folded / extended knees.
+for upper, lower in ((0.31, 0.32), (0.42, 0.44), (0.55, 0.48)):
+    for measured in (0.02, 0.16, 0.5, 1.6):
+        d = max(abs(upper - lower) + .005,
+                min(upper + lower - .005, measured))
+        along = (upper ** 2 - lower ** 2 + d ** 2) / (2 * d)
+        across = math.sqrt(max(0.0, upper ** 2 - along ** 2))
+        assert math.isfinite(along) and math.isfinite(across)
+        assert 0 <= across <= upper
+
+
+# Editor native pose probe must never report success from a rejected stance.
+# Use a fixed surveyed point rather than arbitrarily landing in vegetation.
+pose_probe = (ROOT / "Assets/AarisWorld/Editor/AarisPoseFrames.cs").read_text()
+assert 'if(!SurveyTeleport(p))' in pose_probe
+assert 'if(!ok) Finish("STANCE_REJECTED_"+Names[n]);' in pose_probe
+assert 'if(b.Stance != AarisBattleActions.PlayerStance.Prone)' in pose_probe
+assert 'Finish("PRONE_NOT_ACTIVE");return;' in pose_probe
+assert 'SUCCESS_PRONE_GEOMETRY_ONLY' in pose_probe

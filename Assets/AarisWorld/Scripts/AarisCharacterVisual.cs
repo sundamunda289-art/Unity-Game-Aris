@@ -61,6 +61,11 @@ namespace Aaris.MapReview
         // Optional scripts can join after Start, but never probe every animation frame.
         private float nextOptionalComponentRefresh;
         private Transform punchArm;
+        private Transform leftThigh, leftShin, leftFootBone;
+        private Transform rightThigh, rightShin, rightFootBone;
+        private const float CrouchRigLowering = 0.50f;
+        private const float ProneRigLowering = 0.22f;
+        private const float PlantedAnkleMetres = 0.24f;
         private Vector3 restingLocalPosition;
         private Quaternion restingLocalRotation;
         private float crouchBlend, proneBlend;
@@ -174,6 +179,12 @@ namespace Aaris.MapReview
             restingLocalPosition = visual.transform.localPosition;
             restingLocalRotation = visual.transform.localRotation;
             punchArm = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+            leftThigh = animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
+            leftShin = animator.GetBoneTransform(HumanBodyBones.LeftLowerLeg);
+            leftFootBone = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
+            rightThigh = animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
+            rightShin = animator.GetBoneTransform(HumanBodyBones.RightLowerLeg);
+            rightFootBone = animator.GetBoneTransform(HumanBodyBones.RightFoot);
             animator.applyRootMotion = false;
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             SetupAnimations();
@@ -489,6 +500,50 @@ namespace Aaris.MapReview
             lastLayerWeight = weight;
         }
 
+        // Analytical two-bone knee solve: keeps the feet above ground after
+        // lowering the crouched hip. No collision queries or heap allocation.
+        private static void PlantCrouchLeg(Transform thigh, Transform shin,
+            Transform foot, float ankleWorldY, Vector3 forward, float weight)
+        {
+            if (thigh == null || shin == null || foot == null) return;
+            Vector3 hip = thigh.position;
+            Vector3 knee = shin.position;
+            Vector3 ankle = foot.position;
+            float upper = (knee - hip).magnitude;
+            float lower = (ankle - knee).magnitude;
+            if (upper < 0.05f || lower < 0.05f) return;
+            Vector3 targetFoot = ankle;
+            targetFoot.y = Mathf.Lerp(ankle.y, ankleWorldY, Mathf.Clamp01(weight));
+            Vector3 line = targetFoot - hip;
+            float actualDistance = line.magnitude;
+            if (actualDistance < 0.01f) return;
+            float distance = Mathf.Clamp(actualDistance,
+                Mathf.Abs(upper - lower) + 0.005f, upper + lower - 0.005f);
+            Vector3 axis = line / actualDistance;
+            Vector3 bend = Vector3.ProjectOnPlane(forward, axis);
+            if (bend.sqrMagnitude < 0.0001f)
+                bend = Vector3.ProjectOnPlane(Vector3.up, axis);
+            if (bend.sqrMagnitude < 0.0001f) return;
+            bend.Normalize();
+            float along = (upper * upper - lower * lower + distance * distance) /
+                (2f * distance);
+            float across = Mathf.Sqrt(Mathf.Max(0f, upper * upper - along * along));
+            Vector3 kneeGoal = hip + axis * along + bend * across;
+            Vector3 oldUpper = shin.position - thigh.position;
+            Vector3 newUpper = kneeGoal - thigh.position;
+            if (oldUpper.sqrMagnitude < 0.0001f || newUpper.sqrMagnitude < 0.0001f)
+                return;
+            Quaternion footRotation = foot.rotation;
+            thigh.rotation = Quaternion.FromToRotation(oldUpper, newUpper) *
+                thigh.rotation;
+            Vector3 oldLower = foot.position - shin.position;
+            Vector3 newLower = targetFoot - shin.position;
+            if (oldLower.sqrMagnitude > 0.0001f && newLower.sqrMagnitude > 0.0001f)
+                shin.rotation = Quaternion.FromToRotation(oldLower, newLower) *
+                    shin.rotation;
+            foot.rotation = footRotation;
+        }
+
         private static void LoopPlayable(AnimationClipPlayable playable, AnimationClip clip, double cycle)
         {
             if (clip == null || clip.length < 0.02f) return;
@@ -644,10 +699,26 @@ namespace Aaris.MapReview
                 ? Mathf.Sin(Mathf.PI * landingAge / 0.2f) * landingCompressionMetres *
                     Mathf.Lerp(0.55f, 1.15f, impactBlend)
                 : 0f;
+            // The imported crouch clip leaves the head above the short collision
+            // capsule. Replant the knees after lowering this visual-only rig.
+            float crouchRigWeight = crouchBlend * (1f - proneBlend);
+            float crouchLowering = CrouchRigLowering * crouchRigWeight;
+            // Source crawling hips/ankles float above the floor by about 22 cm.
+            float proneLowering = primaryLoaded && proneClip != null &&
+                crawlClip != null ? ProneRigLowering * proneBlend : 0f;
             Vector3 desiredPosition = restingLocalPosition +
-                new Vector3(0f, fallbackProne * 0.36f - landingDip, fallbackProne * 0.14f);
+                new Vector3(0f, fallbackProne * 0.36f - landingDip -
+                    crouchLowering - proneLowering, fallbackProne * 0.14f);
             if (visualRoot.localPosition != desiredPosition)
                 visualRoot.localPosition = desiredPosition;
+            if (!visuallyAirborne && crouchRigWeight > 0.005f && graphReady)
+            {
+                float ankleY = transform.position.y + PlantedAnkleMetres;
+                PlantCrouchLeg(leftThigh, leftShin, leftFootBone, ankleY,
+                    transform.forward, crouchRigWeight);
+                PlantCrouchLeg(rightThigh, rightShin, rightFootBone, ankleY,
+                    transform.forward, crouchRigWeight);
+            }
 
             // The same support decision now drives gait phase, airborne pose,
             // acceleration pitch and lateral bank without extra physics probes.
