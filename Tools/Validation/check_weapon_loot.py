@@ -86,14 +86,18 @@ def run():
     assert "magazine--;" in gun_cs and "nextFire = Time.time + spec.ShotInterval;" in gun_cs
     assert "BeginReload()" in gun_cs and "reloading" in gun_cs
     assert "semiShotQueued" in action and "equippedGun.Automatic" in action
-    # Exactly ONE weapon in hand, no hidden second slot or backpack gun.
-    assert "private AarisEquippedGun equipped;" in inventory
+    # One held weapon, one genuinely visible back-stowed weapon, no third slot.
+    assert "private AarisEquippedGun equipped, stowed;" in inventory
+    assert "private Transform weaponRoot, stowedRoot;" in inventory
     assert "new AarisEquippedGun[2]" not in inventory
     assert "slots[" not in inventory and "CycleWeapon()" not in inventory
-    assert "public bool HasGun => equipped != null && equipped.Configured;" in inventory
+    assert "public bool HasGun => equipped != null && equipped.Configured && !fistMode;" in inventory
+    assert "public bool RequiresExchangeDrop => equipped != null && stowed != null;" in inventory
     assert "TryPickup(AarisWeaponState incoming, out AarisWeaponState dropped)" in inventory
     assert "TryRemove(out AarisWeaponState removed)" in inventory
-    assert "combat.Equip(null)" in inventory, "Unarmed Fire must return to Punch."
+    assert "public bool SwapWeapons()" in inventory
+    assert "public bool ToggleFists()" in inventory
+    assert "combat.Equip(fistMode ? null : equipped)" in inventory, "Fist mode must restore Punch."
     assert "CaptureState()" in gun_cs and "Configure(AarisWeaponState state)" in gun_cs
     assert "AarisWeaponState" in gun_cs
     assert "RefreshReload();" in gun_cs and "Time.time < reloadUntil" in gun_cs
@@ -152,7 +156,9 @@ def run():
     assert "UndoDrop(starter);" in starter
     assert "starterLootId = 0;" in starter
     assert 'Add("PICK"' in hud and 'Add("DROP"' in hud
-    assert 'Add("SWAP"' not in hud
+    assert 'Add("SWAP"' in hud and 'Add("FIST"' in hud
+    assert "i == 4 ? hasStored : i == 5 ? hasAny : armed;" in hud
+    assert "inventory.RequiresExchangeDrop" in world
     # Players must be able to discover an already-streamed gun without
     # camera-wide scans, extra 3D markers or touch-blocking HUD graphics.
     assert "internal static IEnumerable<AarisWeaponPickup> ActivePickups" in pickup_cs
@@ -261,12 +267,17 @@ def run():
     assert grip.index("TryMeasure(root.transform,") < grip.index(
         "mesh.localScale *= scale;") < grip.index(
         "var next = root.AddComponent<AarisEquippedGun>();")
-    attach = inventory[inventory.index("private void AttachModelToHand("):
-                       inventory.index("private void LateUpdate()")]
+    attach = inventory[inventory.index("private void AttachModelsToSockets("):
+                       inventory.index("private void AlignSupportHand()")]
     late = inventory[inventory.index("private void LateUpdate()"):]
     assert "hand.position + hand.rotation * equipped.Spec.handOffset" in attach
     assert "weaponRoot.SetParent(transform, false);" in attach
-    assert "if (equipped != null) AttachModelToHand();" in late
+    assert "PlaceOnBack(stowedRoot, true)" in attach
+    assert "if (fistMode)" in attach
+    assert "AttachModelsToSockets();" in late
+    assert "AlignSupportHand();" in late
+    assert "Vector3 elbowTarget = " in inventory
+    assert "Quaternion.FromToRotation(beforeUpper, afterUpper)" in inventory
 
     # The normal landing pickup remains physical; only after failed
     # floor/visibility checks may the existing inventory grant one starter.
@@ -279,7 +290,7 @@ def run():
     assert "starterLootSettled = true;" in starter
 
     assert "UnityWebRequest" not in "\n".join([catalog_cs,gun_cs,inventory,world,hud])
-    print("PASS: 5 locally committed, SHA-verified CC0 weapon FBXs, single-weapon swap/drop, magazine/recoil/scope, "
+    print("PASS: 5 locally committed, SHA-verified CC0 weapon FBXs, two-slot holster/swap/drop, magazine/recoil/scope, "
           "authored 2km loot candidates, streaming and combat source contracts")
     print("Unity Editor import, playable gun handling and visible materials NOT YET TESTED")
 
