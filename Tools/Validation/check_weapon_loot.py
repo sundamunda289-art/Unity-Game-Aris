@@ -136,7 +136,7 @@ def run():
     assert "MaximumDroppedLoot = 320" in world
     assert "rec.visible = null;" in world and "record.state" in world
     # Deliberate exchange, never auto-pick a recently dropped gun.
-    assert "(!inventory.HasGun && allowInitialAutoPickup &&" in world
+    assert "(inventory.Current == null && allowInitialAutoPickup &&" in world
     assert "requestPickupUntil = Time.unscaledTime + 1.5f;" in world
     assert "nextRefresh = 0f;" in world
     assert "allowInitialAutoPickup = false;" in world
@@ -155,7 +155,7 @@ def run():
     assert "UndoDrop(starter);" in starter
     assert "starterLootId = 0;" in starter
     assert 'Add("PICK"' in hud and 'Add("DROP"' in hud
-    assert 'Add("SWAP"' not in hud
+    assert 'Add("SWAP"' in hud and 'Add("FIST"' in hud
     # Players must be able to discover an already-streamed gun without
     # camera-wide scans, extra 3D markers or touch-blocking HUD graphics.
     assert "internal static IEnumerable<AarisWeaponPickup> ActivePickups" in pickup_cs
@@ -269,7 +269,9 @@ def run():
     late = inventory[inventory.index("private void LateUpdate()"):]
     assert "hand.position + hand.rotation * equipped.Spec.handOffset" in attach
     assert "weaponRoot.SetParent(transform, false);" in attach
-    assert "if (equipped != null) AttachModelToHand();" in late
+    assert "if (equipped != null)" in late
+    assert "else AttachModelToHand();" in late
+    assert "AttachModelToBack(holsterRoot, !fistsMode);" in late
 
     # The normal landing pickup remains physical; only after failed
     # floor/visibility checks may the existing inventory grant one starter.
@@ -282,7 +284,7 @@ def run():
     assert "starterLootSettled = true;" in starter
 
     assert "UnityWebRequest" not in "\n".join([catalog_cs,gun_cs,inventory,world,hud])
-    print("PASS: 5 locally committed, SHA-verified CC0 weapon FBXs, single-weapon swap/drop, magazine/recoil/scope, "
+    print("PASS: 5 locally committed, SHA-verified CC0 weapon FBXs, two-slot back-holster/swap/drop, magazine/recoil/scope, "
           "authored 2km loot candidates, streaming and combat source contracts")
     print("Unity Editor import, playable gun handling and visible materials NOT YET TESTED")
 
