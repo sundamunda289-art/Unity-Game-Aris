@@ -342,9 +342,12 @@ namespace Aaris.MapReview
             bool indoor = c.kind == "indoor" && !forceOutdoor;
             // For outdoor positions use the native Terrain surface, NOT
             // the first arbitrary roof encountered from the sky.
-            // Terrain.SampleHeight is already in world-space Y; do not add tile Y twice.
+            // Terrain.SampleHeight samples world XZ but returns the height relative
+            // to the Terrain transform. These tiles start at world Y = -120;
+            // omitting that offset makes all floor rays start 120m too high.
             // Indoor locations retain the authored floor height.
             float expectedGround = indoor ? c.y :
+                terrain.transform.position.y +
                 terrain.SampleHeight(new Vector3(x, 0f, z));
             if (expectedGround <= SeaLevel + 0.7f) return false;
             Vector3 start = new Vector3(x, expectedGround + 1.9f, z);
