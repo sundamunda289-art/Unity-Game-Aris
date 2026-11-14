@@ -263,9 +263,10 @@ def run():
         "var next = root.AddComponent<AarisEquippedGun>();")
     attach = inventory[inventory.index("private void AttachModelToHand("):
                        inventory.index("private void LateUpdate()")]
+    late = inventory[inventory.index("private void LateUpdate()"):]
     assert "hand.position + hand.rotation * equipped.Spec.handOffset" in attach
     assert "weaponRoot.SetParent(transform, false);" in attach
-    assert "if (equipped != null) AttachModelToHand();" in attach
+    assert "if (equipped != null) AttachModelToHand();" in late
 
     # The normal landing pickup remains physical; only after failed
     # floor/visibility checks may the existing inventory grant one starter.
