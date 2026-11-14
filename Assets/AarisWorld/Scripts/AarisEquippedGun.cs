@@ -196,6 +196,9 @@ namespace Aaris.MapReview
                 bool targetFound = FirstExternalHit(aim, spec.rangeMetres,
                     owner.transform, out RaycastHit target);
                 Vector3 destination = targetFound ? target.point : aim.GetPoint(spec.rangeMetres);
+                // Keep the reticle hit for damage selection, but place the impact
+                // cue at the actual first muzzle contact whenever one exists.
+                Vector3 impactPoint = destination;
                 Vector3 path = destination - muzzle;
                 float distance = path.magnitude;
                 if (distance > 0.025f)
@@ -203,6 +206,7 @@ namespace Aaris.MapReview
                     bool muzzleHitFound = FirstExternalHit(
                         new Ray(muzzle, path / distance), distance,
                         owner.transform, out RaycastHit muzzleHit);
+                    if (muzzleHitFound) impactPoint = muzzleHit.point;
                     if (muzzleHitFound &&
                         (!targetFound || !SameTarget(target.collider, muzzleHit.collider)))
                     {
@@ -220,7 +224,7 @@ namespace Aaris.MapReview
                     // not only if pellet zero happens to connect.
                     if (!impactSoundEmitted)
                     {
-                        AarisAudioDirector.BulletImpact(target.point);
+                        AarisAudioDirector.BulletImpact(impactPoint);
                         impactSoundEmitted = true;
                     }
                     ApplyDamage(target.collider, spec.damage, owner);
