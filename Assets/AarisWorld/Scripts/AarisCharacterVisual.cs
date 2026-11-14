@@ -804,7 +804,10 @@ namespace Aaris.MapReview
             if (graphReady)
             {
                 float horizontal = planar;
-                bool carrying = actions != null && actions.IsArmed;
+                // Hide the pistol-ready upper-body pose when the real rifle is
+                // sprint-holstered, so both arms retain their natural run cycle.
+                bool carrying = actions != null && actions.IsArmed &&
+                    (weaponInventory == null || !weaponInventory.IsSprintHolstered);
                 float movementTarget = Mathf.InverseLerp(0.08f, 1.2f, horizontal);
                 // Both arms and legs must reach their complete authored gait
                 // at the actual motor cap: 4.4 m/s armed, 4.8 m/s unarmed.
