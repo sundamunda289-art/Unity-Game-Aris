@@ -6,6 +6,7 @@ actual game-time physics/animation require separate Unity import/playmode QA.
 """
 from __future__ import annotations
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -285,6 +286,39 @@ def run():
     assert "state.Spec.presentationLengthMetres / length" in pickup_cs
     assert "equipped.Spec.presentationLengthMetres * 0.40f" in inventory
     assert "weaponRoot.TransformPoint(new Vector3(-0.045f, -0.035f, foregrip))" in inventory
+    # Gun models do not all have the same length; a fixed long-barrel
+    # support point is physically unreachable on shorter humanoid arms.
+    # The bounded rail/sphere intersection must precede the left-arm IK.
+    assert "private static float ReachableSupportGripZ(" in inventory
+    assert "foregrip = ReachableSupportGripZ(" in inventory
+    assert "maximumReach = upperLength + lowerLength - 0.025f;" in inventory
+    assert "halfChordSquared = maximumReach * maximumReach - radialSquared;" in inventory
+    assert "minimumForegripZ = 0.14f;" in inventory
+    assert inventory.index("foregrip = ReachableSupportGripZ(") < inventory.index(
+        "ReachArm(leftUpperArm, leftForearm, leftHand,")
+
+    def reachable_rail_grip(dx, dy, dz, arm_reach, preferred):
+        # Forward-facing barrel = +Z. C# uses the same quadratic intersection
+        # for arbitrary barrel direction via a 3D dot product.
+        radial_sq = dx * dx + dy * dy
+        chord_sq = arm_reach * arm_reach - radial_sq
+        if chord_sq <= 0:
+            return preferred
+        zmin = -dz - math.sqrt(chord_sq)
+        zmax = -dz + math.sqrt(chord_sq)
+        if zmax < 0.14 or zmin > preferred:
+            return preferred
+        return min(max(preferred, max(0.14, zmin)), zmax)
+
+    # Small shoulders/forearms and the longest guns used to show a palm
+    # floating beyond the physical barrel grip. A short SMG stays untouched.
+    for weapon_length in lengths.values():
+        preferred = max(0.22, min(0.48, weapon_length * 0.40))
+        z = reachable_rail_grip(0.295, -0.18, 0.13, 0.555, preferred)
+        assert 0.14 <= z <= preferred
+        assert 0.295**2 + 0.18**2 + (0.13 + z)**2 <= 0.555**2 + 1e-8
+    assert reachable_rail_grip(0.10, -0.08, 0.10, 1.0, 0.48) == 0.48
+    assert reachable_rail_grip(1.2, 0.0, 0.10, 0.555, 0.48) == 0.48
     assert "combinedBounds = renderers[0].bounds;" not in grip
     assert grip.index("TryMeasure(root.transform,") < grip.index(
         "mesh.localScale *= scale;") < grip.index(
