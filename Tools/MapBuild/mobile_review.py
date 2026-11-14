@@ -279,12 +279,18 @@ def upgrade(root):
             if n=='GameObject':d['m_StaticEditorFlags']&=~4
         write_yaml(p,objects)
     player_tr=next(i for i,d in scene.transforms.items()if names.get(d['m_GameObject']['fileID'])=='AarisPlayer')
-    spawn=scene.transforms[player_tr]['m_LocalPosition'];sx,sz=spawn['x'],spawn['z'];initially_disabled=0
-    building_boxes={b['name']:b['aabb_xz_m']for b in layout['buildings']}
+    building_names={b['name']for b in layout['buildings']}
     for c,i,n,d in scene.objects:
-        if n=='MeshCollider'and names.get(d['m_GameObject']['fileID'])in building_boxes:
-            a=building_boxes[names[d['m_GameObject']['fileID']]];dx=max(a[0]-sx,0,sx-a[2]);dz=max(a[1]-sz,0,sz-a[3])
-            d['m_Enabled']=int(dx*dx+dz*dz<=55*55);initially_disabled+=int(not d['m_Enabled'])
+        if n=='MeshCollider'and names.get(d['m_GameObject']['fileID'])in building_names:
+            # IMPORTANT: Do not serialize distant houses with m_Enabled:0.
+            # AarisNearbyColliders.Awake() skips already-disabled colliders
+            # to protect intentionally disabled content. The old build step
+            # made ~56 visible houses permanent ghosts: none could stream in.
+            # Serialize solid authored meshes enabled. The nearby runtime
+            # component disables distant collisions and activates local ones.
+            # This changes NO renderer, mesh, terrain or mobile frame budget.
+            d['m_Enabled']=1
+    initially_disabled=0
     # Saved service bindings; nothing reconstructs terrain, buildings or props at scene load.
     go,tr,gd=scene.object('MobileRuntime',static=False)
     terrains=[i for c,i,n,d in scene.objects if n=='Terrain'];colliders=[i for c,i,n,d in scene.objects if n in ('MeshCollider','BoxCollider')]
