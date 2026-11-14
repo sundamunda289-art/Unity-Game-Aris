@@ -76,7 +76,7 @@ namespace Aaris.MapReview
                 Destroy(root);
                 return false;
             }
-            mesh.localScale *= Mathf.Clamp(0.86f / longest, 0.001f, 10f) *
+            mesh.localScale *= Mathf.Clamp(0.86f / longest, 0.0000001f, 10f) *
                 incoming.Spec.handScale;
             mesh.localPosition = Vector3.zero;
             mesh.localRotation = Quaternion.identity;
