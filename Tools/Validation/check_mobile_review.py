@@ -36,6 +36,18 @@ def check(native=False):
     assert len(runtime['terrains'])==4 and all(byid[r['fileID']][0]=='Terrain'for r in runtime['terrains'])
     gated={r['fileID']for r in nearby['obstacles']};actual={i for c,i,n,d in objects if n in ['MeshCollider','BoxCollider']}
     assert gated==actual and nearby['activationDistance']==55 and nearby['cellSize']==250
+    # The runtime streamer skips colliders serialized disabled in Awake.
+    # Previously 56 visible houses/landmarks were never registered and
+    # remained permanently non-solid even after approaching them.
+    phantom = [
+        (names.get(d['m_GameObject']['fileID']), i)
+        for c,i,n,d in objects if n=='MeshCollider' and i in gated
+        and d['m_Enabled'] != 1
+    ]
+    assert not phantom, f'Saved map has permanently disabled house walls: {phantom}'
+    generator=(ROOT/'Tools/MapBuild/mobile_review.py').read_text()
+    assert "d['m_Enabled']=1" in generator
+    assert "d['m_Enabled']=int(dx*dx+dz*dz<=55*55)" not in generator
     assert report['collision_spatial_cell_size_m']==250 and not report['full_terrain_asset_streaming_enabled']
     assert all(byid[i][0]not in ['TerrainCollider','CharacterController']for i in gated)
     assert sum(n=='TerrainCollider'and d['m_Enabled']==1 and d['m_EnableTreeColliders']==1 for c,i,n,d in objects)==4
