@@ -257,7 +257,7 @@ def test():
 
     # Existing map and touchscreen interaction protections must remain.
     assert "Physics.OverlapBoxNonAlloc" in world
-    assert "float ground = terrain.SampleHeight(" in world
+    assert "float ground = terrain.transform.position.y +" in world
     assert "record.visible.CanPark" in world
     assert "(!IsDriving)" not in session  # no duplicate input owner gate
     assert "Physics.OverlapCapsuleNonAlloc" in session

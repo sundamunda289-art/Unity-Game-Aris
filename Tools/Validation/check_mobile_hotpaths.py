@@ -34,6 +34,18 @@ def audit():
     assert motor.count("controller.Move(") == 1
     assert "HasWalkableGroundWithinStep()" in motor
     assert "Mathf.Cos(controller.slopeLimit * Mathf.Deg2Rad)" in motor
+    # All native Terrain tiles have origin Y=-120. The Unity-proven height
+    # difference broke floor loot, ocean checks, vehicle placement and
+    # parachute touchdown. Terrain.SampleHeight is tile-relative here;
+    # each world-height consumer must add exactly one tile origin Y.
+    assert "ground = Mathf.Max(ground, origin.y + t.SampleHeight(position));" in motor
+    drop = (SRC / "AarisOfflineDrop.cs").read_text(encoding="utf-8")
+    tactical = (SRC / "AarisOfflineTacticalHUD.cs").read_text(encoding="utf-8")
+    assert "p.y + terrain.SampleHeight(new Vector3(x, 0f, z))" in drop
+    assert "float groundY = origin.y + tile.SampleHeight(now);" in drop
+    assert "support = Mathf.Max(support, p.y + t.SampleHeight(position));" in drop
+    assert "origin.y + tile.SampleHeight(point) + 0.8f" in drop
+    assert "ground = origin.y + tile.SampleHeight(p);" in tactical
 
     # High-rate frames settle to exact target FOV instead of writing a tiny
     # new fraction to the native camera property every stable frame.

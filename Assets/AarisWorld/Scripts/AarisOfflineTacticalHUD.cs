@@ -472,7 +472,7 @@ namespace Aaris.MapReview
                 float v = (p.z - origin.z) / size.z;
                 if (tile.terrainData.GetInterpolatedNormal(u, v).y < 0.87f)
                     return false;
-                ground = tile.SampleHeight(p);
+                ground = origin.y + tile.SampleHeight(p);
                 supported = true;
                 break;
             }

@@ -126,9 +126,12 @@ def test():
     assert "obstacles = Physics.OverlapBox(center, halfExtents, angle," in world
     assert "var obstacle = obstacles[i];" in world
     assert "obstacle is TerrainCollider" in world
-    assert "float ground = terrain.SampleHeight(" in world
-    assert "terrain.transform.position.y +" not in world
-    assert "Terrain.SampleHeight already returns a WORLD-SPACE Y." in world
+    # The authored terrain tiles are offset at world Y=-120. Native Unity
+    # Physics.Raycast missed the ground by exactly 120 metres when this
+    # offset was omitted, rejecting all garage and roadside vehicles.
+    assert "float ground = terrain.transform.position.y +" in world
+    assert "terrain.SampleHeight(new Vector3(x, 0f, z));" in world
+    assert "Terrain.SampleHeight already returns a WORLD-SPACE Y." not in world
     assert "record.previouslySpawned" in world and "record.rotation" in world
     # New houses and rocks can block a planned 45-garage/33-roadside node.
     # Nearby recovery is allowed only for never-driven cars and must use

@@ -84,7 +84,7 @@ class OfflineCombatAssetChecks(unittest.TestCase):
             touchdown)
         camera = drop.split("private Vector3 ClampCameraAboveTerrain(", 1)[1].split(
             "private void LateUpdate()", 1)[0]
-        self.assertIn("point.y = Mathf.Max(point.y, tile.SampleHeight(point) + 0.8f);",
+        self.assertIn("origin.y + tile.SampleHeight(point) + 0.8f);",
                       camera)
         self.assertNotIn("break;", camera)
 
@@ -129,8 +129,8 @@ class OfflineCombatAssetChecks(unittest.TestCase):
 
     def test_player_safe_footing_uses_same_world_space_ground_height(self):
         player = (SCRIPTS / "AarisThirdPersonPlayer.cs").read_text("utf-8")
-        self.assertIn("ground = Mathf.Max(ground, t.SampleHeight(position));", player)
-        self.assertNotIn("origin.y + t.SampleHeight(position)", player)
+        self.assertIn("ground = Mathf.Max(ground, origin.y + t.SampleHeight(position));", player)
+        self.assertNotIn("ground = Mathf.Max(ground, t.SampleHeight(position));", player)
         self.assertIn("if (GroundHeight(position) >= seaLevel + 0.35f)", player)
 
     def test_drop_resolves_components_added_after_its_awake(self):
@@ -342,12 +342,12 @@ class OfflineCombatAssetChecks(unittest.TestCase):
                       "lastJumpStarted = jumpUntil = -10f;"):
             self.assertIn(token, before_reset)
     
-    def test_world_y_not_double_added_to_drop_altitude(self):
+    def test_world_y_includes_native_terrain_origin_for_drop_altitude(self):
         source = (SCRIPTS / "AarisOfflineDrop.cs").read_text(encoding="utf-8")
-        self.assertIn("tallest = Mathf.Max(tallest, terrain.SampleHeight(", source)
-        self.assertIn("support = Mathf.Max(support, t.SampleHeight(position));", source)
-        self.assertNotIn("terrain.SampleHeight(new Vector3(x, 0f, z)) + p.y", source)
-        self.assertNotIn("p.y + t.SampleHeight(position)", source)
+        self.assertIn("p.y + terrain.SampleHeight(new Vector3(x, 0f, z))", source)
+        self.assertIn("support = Mathf.Max(support, p.y + t.SampleHeight(position));", source)
+        self.assertIn("float groundY = origin.y + tile.SampleHeight(now);", source)
+        self.assertIn("origin.y + tile.SampleHeight(point) + 0.8f", source)
 
     def test_replacement_cargo_plane_has_swept_four_engine_art(self):
         verts, faces, materials, size = read_obj(MODELS["aircraft"][0])
@@ -498,8 +498,8 @@ class OfflineCombatAssetChecks(unittest.TestCase):
                       drop.index("private void LateUpdate()")]
         camera = drop[drop.index("private void LateUpdate()"):
                       drop.index("private void RestoreFootControls()")]
-        self.assertIn("tile.SampleHeight(point) + 0.8f", helper)
-        self.assertNotIn("tile.transform.position.y + tile.SampleHeight", helper)
+        self.assertIn("origin.y + tile.SampleHeight(point) + 0.8f", helper)
+        self.assertNotIn("Mathf.Max(point.y, tile.SampleHeight(point)", helper)
         self.assertIn("if (phase != DropPhase.InPlane &&", camera)
         self.assertIn("(next - pos).sqrMagnitude > 0.00000001f)", camera)
         self.assertIn("next = CameraSafePosition(focus, next);", camera)

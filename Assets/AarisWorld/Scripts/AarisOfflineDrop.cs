@@ -173,9 +173,11 @@ namespace Aaris.MapReview
                         for (int b = 0; b <= 4; b++)
                         {
                             float x = p.x + s.x * (a / 4f), z = p.z + s.z * (b / 4f);
-                            // Unity Terrain.SampleHeight returns the sampled world-space Y.
-                            // Adding the Terrain tile's Y again corrupts flight clearance.
-                            tallest = Mathf.Max(tallest, terrain.SampleHeight(new Vector3(x, 0f, z)));
+                            // Terrain.SampleHeight returns terrain-relative Y,
+                            // so include the native tile's -120m world origin
+                            // before computing actual airplane clearance.
+                            tallest = Mathf.Max(tallest,
+                                p.y + terrain.SampleHeight(new Vector3(x, 0f, z)));
                         }
                 }
             }
@@ -494,7 +496,7 @@ namespace Aaris.MapReview
                 Vector3 size = tile.terrainData.size;
                 if (now.x < origin.x || now.x > origin.x + size.x ||
                     now.z < origin.z || now.z > origin.z + size.z) continue;
-                float groundY = tile.SampleHeight(now);
+                float groundY = origin.y + tile.SampleHeight(now);
                 // Only a nearby, walkable, above-water surface qualifies.
                 // This bounded correction handles a missed Terrain collider
                 // contact without snapping distant airborne players or ocean.
@@ -539,7 +541,7 @@ namespace Aaris.MapReview
                     Vector3 p = t.transform.position, sz = t.terrainData.size;
                     if (position.x >= p.x && position.x <= p.x + sz.x &&
                         position.z >= p.z && position.z <= p.z + sz.z)
-                        support = Mathf.Max(support, t.SampleHeight(position));
+                        support = Mathf.Max(support, p.y + t.SampleHeight(position));
                 }
 
             Ray groundRay = new Ray(position + Vector3.up * 0.75f, Vector3.down);
@@ -711,7 +713,8 @@ namespace Aaris.MapReview
                 // Overlapping terrain tiles can differ at their edges.
                 // Clamp to the highest actual surface rather than trusting
                 // whichever tile happens to be enumerated first.
-                point.y = Mathf.Max(point.y, tile.SampleHeight(point) + 0.8f);
+                point.y = Mathf.Max(point.y,
+                    origin.y + tile.SampleHeight(point) + 0.8f);
             }
             return point;
         }
