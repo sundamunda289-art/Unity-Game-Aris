@@ -25,6 +25,7 @@ namespace Aaris.MapReview
         private AarisBattleActions actions;
         private AarisWeaponInventory inventory;
         private AarisWeaponLootWorld lootWorld;
+        private AarisNearbyColliders nearbyColliders;
         private bool previousBattleActive, previousInventoryActive, previousLootActive;
         private AarisVehicleMotor car;
         private Camera followCamera;
@@ -52,6 +53,7 @@ namespace Aaris.MapReview
             actions = GetComponent<AarisBattleActions>();
             inventory = GetComponent<AarisWeaponInventory>();
             lootWorld = FindFirstObjectByType<AarisWeaponLootWorld>();
+            nearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
             followCamera = player.AimCamera;
             originalParent = transform.parent;
         }
@@ -216,6 +218,10 @@ namespace Aaris.MapReview
         {
             position = default(Vector3);
             if (car == null) return false;
+            // A late-created collider streamer may not exist at Configure.
+            // Resolve only on an explicit exit request, never each frame.
+            if (nearbyColliders == null)
+                nearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
             var t = car.transform;
             float seaLevel = -38.07552f;
             // Exit candidates are computed on demand, without allocating
@@ -260,6 +266,17 @@ namespace Aaris.MapReview
                 float r = Mathf.Max(.12f, capsule.radius - capsule.skinWidth);
                 Vector3 bottom = support + Vector3.up * (r + .1f);
                 Vector3 top = support + Vector3.up * (capsule.height - r + .1f);
+                // Physics overlap cannot detect disabled streamed house walls.
+                // Before an immediate exit after a fast drive or teleport,
+                // conservatively check the capsule's full bounding box in the
+                // existing cached house grid, without waking distant physics.
+                Vector3 capsuleCenter = (bottom + top) * .5f;
+                Vector3 capsuleHalfBounds = new Vector3(r,
+                    Mathf.Abs(top.y - bottom.y) * .5f + r, r);
+                if (nearbyColliders != null &&
+                    nearbyColliders.HasPotentialInactiveObstacle(
+                        capsuleCenter, capsuleHalfBounds, Quaternion.identity))
+                    continue;
                 int overlaps = Physics.OverlapCapsuleNonAlloc(bottom, top, r,
                     exitOverlap, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
                 Collider[] occupiedColliders = exitOverlap;
