@@ -66,35 +66,30 @@ namespace Aaris.MapReview
             foreach (var collider in visible.GetComponentsInChildren<Collider>(true))
                 collider.enabled = false;
             var mesh = visible.transform;
-            Bounds combinedBounds = renderers[0].bounds;
-            for (int i = 1; i < renderers.Length; i++)
-                combinedBounds.Encapsulate(renderers[i].bounds);
-            float longest = Mathf.Max(combinedBounds.size.x,
-                combinedBounds.size.y, combinedBounds.size.z);
-            if (longest < 0.001f)
-            {
-                Destroy(root);
-                return false;
-            }
-            mesh.localScale *= Mathf.Clamp(0.86f / longest, 0.0000001f, 10f) *
-                incoming.Spec.handScale;
             mesh.localPosition = Vector3.zero;
             mesh.localRotation = Quaternion.identity;
-            // FBX model pivots are not guaranteed to be at the weapon body.
-            // The floor pickup already compensates for this, but the equipped
-            // gun previously placed the raw FBX origin at the hand bone,
-            // leaving some meshes visibly floating or intersecting the arm.
-            // Recenter the POST-SCALE full rendered mesh once on pickup.
-            // Keep the gun's stock close to the right grip and its centre
-            // slightly forward; the hand/socket still follows the real
-            // animated Humanoid each frame without parenting to bone scale.
-            combinedBounds = renderers[0].bounds;
-            for (int i = 1; i < renderers.Length; i++)
-                combinedBounds.Encapsulate(renderers[i].bounds);
-            Vector3 modelCenterInGripSpace =
-                root.transform.InverseTransformPoint(combinedBounds.center);
+            // Renderer.bounds is an asynchronously updated world-space AABB.
+            // Reading it again immediately after scaling the FBX caused
+            // 5-9 metre guns in a real Unity Play Mode audit on the Android
+            // character. Measure the source MESH corners instead and scale
+            // those root-local bounds mathematically (one-off equip only).
+            if (!AarisWeaponMeshBounds.TryMeasure(root.transform,
+                renderers, out Bounds combinedBounds))
+            {
+                Destroy(root);
+                Debug.LogError("Aaris: weapon has invalid mesh geometry: " +
+                    incoming.Spec.id);
+                return false;
+            }
+            float longest = Mathf.Max(combinedBounds.size.x,
+                combinedBounds.size.y, combinedBounds.size.z);
+            float scale = Mathf.Clamp(0.86f / longest, 0.0000001f, 10f) *
+                incoming.Spec.handScale;
+            mesh.localScale *= scale;
+            // Keep the entire gun body centered a short distance forward
+            // from the animated right wrist, regardless of imported FBX pivot.
             mesh.localPosition = new Vector3(0f, -0.025f, 0.19f) -
-                modelCenterInGripSpace;
+                combinedBounds.center * scale;
 
             var next = root.AddComponent<AarisEquippedGun>();
             next.Configure(incoming);
