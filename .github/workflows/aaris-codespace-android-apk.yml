@@ -31,7 +31,9 @@ jobs:
        github.event.issue.number == 77 &&
        github.event.comment.user.login == 'sundamunda289-art' &&
        (github.event.comment.body == 'APK PREFLIGHT' ||
-        (github.event.comment.body == 'APK BUILD' || github.event.comment.body == 'APK HUD BUILD')))
+        (github.event.comment.body == 'APK BUILD' ||
+        github.event.comment.body == 'APK HUD BUILD' ||
+        startsWith(github.event.comment.body, 'APK BUILD SHA '))))
     runs-on: ubuntu-latest
     timeout-minutes: 355
     concurrency:
@@ -45,7 +47,7 @@ jobs:
       issues: write
     env:
       GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
-      OPERATION: ${{ github.event_name == 'push' && 'build' || github.event_name == 'workflow_dispatch' && inputs.operation || (github.event.comment.body == 'APK HUD BUILD' && 'build_hud' || github.event.comment.body == 'APK BUILD' && 'build' || 'preflight') }}
+      OPERATION: ${{ github.event_name == 'push' && 'build' || github.event_name == 'workflow_dispatch' && inputs.operation || (github.event.comment.body == 'APK HUD BUILD' && 'build_hud' || (github.event.comment.body == 'APK BUILD' || startsWith(github.event.comment.body, 'APK BUILD SHA ')) && 'build' || 'preflight') }}
       # The run's immutable main commit supplies the game and its bundled audio.
       AARIS_EXPECTED_BUILD_SHA: ${{ github.sha }}
       AARIS_CONTROLLER_SHA: ${{ github.sha }}
@@ -69,6 +71,30 @@ jobs:
           test "$(git rev-parse HEAD)" = "$AARIS_CONTROLLER_SHA" || { echo APK_WORKFLOW_CHECKOUT_NOT_EVENT_COMMIT; exit 15; }
           mkdir -p apk-evidence
           echo "APK_STATIC_SCENE_AND_BUILDER_VALID"
+      - name: Verify pinned APK source and exact Codespace from owner request
+        if: github.event_name == 'issue_comment' && startsWith(github.event.comment.body, 'APK BUILD SHA ')
+        env:
+          AARIS_OWNER_BUILD_REQUEST: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          # The comment is data only: strict validation, never shell execution.
+          if [[ "$AARIS_OWNER_BUILD_REQUEST" =~ ^APK[[:space:]]BUILD[[:space:]]SHA[[:space:]]([0-9a-f]{40})[[:space:]]MACHINE[[:space:]]([A-Za-z0-9-]{3,110})$ ]]; then
+            SOURCE_SHA="${BASH_REMATCH[1]}"
+            REQUESTED_MACHINE="${BASH_REMATCH[2]}"
+          else
+            echo APK_OWNER_PINNED_REQUEST_INVALID
+            exit 14
+          fi
+          # Prove the exact immutable commit belongs to this public repo.
+          git fetch --quiet --no-tags --depth=1 "https://github.com/$GITHUB_REPOSITORY.git" "$SOURCE_SHA" || {
+            echo APK_REQUESTED_COMMIT_FETCH_FAILED; exit 14;
+          }
+          test "$(git rev-parse FETCH_HEAD)" = "$SOURCE_SHA" || {
+            echo APK_REQUESTED_COMMIT_MISMATCH; exit 14;
+          }
+          echo "AARIS_EXPECTED_BUILD_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "AARIS_REQUESTED_MACHINE=$REQUESTED_MACHINE" >> "$GITHUB_ENV"
+          echo APK_OWNER_PINNED_SOURCE_AND_MACHINE_VERIFIED
       - name: Select an existing authorized Codespace without creating another
         env:
           REQUESTED_CODESPACE: ${{ github.event_name == 'workflow_dispatch' && inputs.machine || '' }}
@@ -84,6 +110,9 @@ jobs:
               ((if (.repository | type) == "string" then .repository
                  else (.repository.nameWithOwner // .repository.full_name // "") end)
                 | test("^[^/]+/Unity-Game-Aris$")))]')"
+          if test -n "${AARIS_REQUESTED_MACHINE:-}"; then
+            REQUESTED_CODESPACE="$AARIS_REQUESTED_MACHINE"
+          fi
           if test -n "${REQUESTED_CODESPACE:-}"; then
             [[ "$REQUESTED_CODESPACE" =~ ^[A-Za-z0-9-]{3,110}$ ]] || {
               echo APK_CODESPACE_NAME_INVALID; exit 12;
@@ -161,6 +190,24 @@ jobs:
               refs/heads/fix/android-ugui-shader-parachute-20261110 | cut -f1)"
           fi
           [[ "$AARIS_EXPECTED_BUILD_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 18
+          # Do not start a second Unity Editor over an in-flight Codespace build
+          # or the user's existing GUI session. The remote editor may still be
+          # working even if its Cloudflare status bridge has gone offline.
+          if timeout 60 gh codespace ssh -c "$CODESPACE" -- \
+              -o ConnectTimeout=20 -o ServerAliveInterval=20 \
+              'bash -lc "if pgrep -x Unity >/dev/null; then echo APK_EDITOR_ALREADY_ACTIVE; else echo APK_EDITOR_AVAILABLE; fi"' \
+              > apk-evidence/editor-guard.txt 2> "$RUNNER_TEMP/private-editor-guard-errors.log"; then
+            if grep -qxF APK_EDITOR_ALREADY_ACTIVE apk-evidence/editor-guard.txt; then
+              echo APK_EXISTING_UNITY_EDITOR_ACTIVE_NO_DUPLICATE_BUILD
+              exit 27
+            fi
+            grep -qxF APK_EDITOR_AVAILABLE apk-evidence/editor-guard.txt || {
+              echo APK_EDITOR_GUARD_UNEXPECTED_RESULT; exit 27;
+            }
+          else
+            echo APK_EDITOR_STATUS_CHECK_CONNECTION_FAILED
+            exit 27
+          fi
           # A single long-lived SSH stream carries the expensive Unity build.
           # Keep it alive during silent asset import; do NOT blindly retry the
           # build itself after disconnection (which could start a second Editor).
