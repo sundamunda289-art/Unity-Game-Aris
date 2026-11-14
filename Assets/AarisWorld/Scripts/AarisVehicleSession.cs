@@ -17,6 +17,8 @@ namespace Aaris.MapReview
         private readonly RaycastHit[] exitGround = new RaycastHit[32];
         private readonly RaycastHit[] entrySight = new RaycastHit[24];
         private readonly RaycastHit[] cameraObstacles = new RaycastHit[32];
+        // Avoid allocating a full hit array every frame in crowded forests.
+        private readonly RaycastHit[] crowdedCameraObstacles = new RaycastHit[128];
         private AarisVehicleWorld world;
         private AarisThirdPersonPlayer footMotor;
         private CharacterController capsule;
@@ -347,11 +349,21 @@ namespace Aaris.MapReview
                 {
                     // NonAlloc hits are unordered and incomplete on saturation.
                     // Forcing the camera to 45 cm makes crowded forest driving
-                    // impossible. Query all hits only on this rare overflow,
+                    // impossible. Retry in scratch storage without allocations,
+                    // and query all hits only if even that storage is saturated,
                     // then apply the SAME owned-car/player exclusion rules.
-                    hits = Physics.SphereCastAll(sweep, .22f, length,
+                    hits = crowdedCameraObstacles;
+                    count = Physics.SphereCastNonAlloc(sweep, .22f,
+                        crowdedCameraObstacles, length,
                         Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                    count = hits.Length;
+                    if (count >= crowdedCameraObstacles.Length)
+                    {
+                        // Preserve correct closest-hit selection even when
+                        // 128 nonalloc slots are insufficient.
+                        hits = Physics.SphereCastAll(sweep, .22f, length,
+                            Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                        count = hits.Length;
+                    }
                 }
                 float nearest = length;
                 for (int i = 0; i < count; i++)
