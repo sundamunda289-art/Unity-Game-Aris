@@ -53,6 +53,27 @@ def build(layout):
                 continue
             positions.append({"kind": "open", "x": x, "y": 0, "z": z,
                               "origin": "grid", "slot": 100000 + index * 2 + side})
+    # Coverage audit: on a 50m lattice, 166/1521 sampled locations had no
+    # authored outdoor point within a 50m stream radius. Add only missing
+    # sectors as candidate LOCATIONS, not immediately instantiated FBX meshes.
+    # Keep every old candidate index unchanged and validate each new spot on
+    # native Terrain + real collision when the player comes near it.
+    # A 50m grid with <=6m offset avoids visual lines of guns.
+    for xi in range(-19, 20):
+        for zi in range(-19, 20):
+            h = (((xi + 31) * 73856093) ^ ((zi + 47) * 19349663)) & 0xffffffff
+            x = xi * 50 + ((h % 13) - 6)
+            z = zi * 50 + (((h >> 8) % 13) - 6)
+            if any(a[0] - 8 <= x <= a[2] + 8 and
+                   a[1] - 8 <= z <= a[3] + 8 for a in occupied):
+                continue
+            if any(p["kind"] == "open" and
+                   (p["x"] - x) ** 2 + (p["z"] - z) ** 2 < 40 ** 2
+                   for p in positions):
+                continue
+            positions.append({"kind": "open", "x": x, "y": 0, "z": z,
+                              "origin": "grid",
+                              "slot": 200000 + (xi + 19) * 39 + (zi + 19)})
     return {"schema": 1, "sizeMetres": 2000, "candidates": positions}
 
 if __name__ == "__main__":

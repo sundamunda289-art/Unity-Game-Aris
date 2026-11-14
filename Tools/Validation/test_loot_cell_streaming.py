@@ -273,6 +273,36 @@ class LootGridRegression(unittest.TestCase):
         self.assertIn("if (streamed[i] && c != null && !c.enabled &&", obstacles)
         self.assertNotIn("Physics.SyncTransforms()", spawn)
 
+    def test_open_ground_gun_coverage_at_50m_sample_sites(self):
+        # Before this fix: 166/1521 sampled open-map locations had NO
+        # outdoor candidate within the 50m streaming circle. Sample the
+        # shipped baked JSON, not just generator/source intentions.
+        import json
+        data = json.loads((ROOT / "Assets/Resources/AarisWeapons/"
+                           "loot_candidates.json").read_text(encoding="utf-8"))
+        points = [(p["x"], p["z"]) for p in data["candidates"]
+                  if p["kind"] == "open"]
+        self.assertGreaterEqual(len(points), 1400)
+        misses = []
+        for x in range(-950, 951, 50):
+            for z in range(-950, 951, 50):
+                if not any((px-x)**2 + (pz-z)**2 < RADIUS**2
+                           for px, pz in points):
+                    misses.append((x, z))
+        self.assertLessEqual(len(misses), 2, f"Uncovered outdoor sites: {misses}")
+        generated = [p for p in data["candidates"] if
+                     p["kind"] == "open" and p["slot"] >= 200000]
+        self.assertGreaterEqual(len(generated), 300)
+        self.assertIn('c.kind == "open" && c.slot >= 200000 ? 1f : 0.78f;', SOURCE)
+        for p in generated:
+            self.assertLessEqual(abs(p["x"]), 957)
+            self.assertLessEqual(abs(p["z"]), 957)
+        # New points are only logical slots. Never increase active scene
+        # gun meshes / per-frame spawn and physics work on 2GB phones.
+        self.assertIn("private const int MaximumActiveLoot = 40;", SOURCE)
+        self.assertIn("private const int MaximumBuildAttemptsPerFrame = 2;", SOURCE)
+        self.assertIn("private const int MaximumCandidateProbesPerFrame = 6;", SOURCE)
+
     def test_all_points_in_circle_covered_and_priority_preserved(self):
         rng = random.Random(20261110)
         points = [(rng.uniform(-1000, 1000), rng.uniform(-1000, 1000))

@@ -184,8 +184,13 @@ namespace Aaris.MapReview
                 // The old 32% open-ground chance made most outdoor landing
                 // spots look empty. Plan more existing candidates without
                 // increasing the active mesh or per-frame physics budgets.
+                // Sparse-sector fallback points fill measured 50m map gaps.
+                // Always PLAN these candidates; actual visibility still
+                // requires real Terrain, floor clearance and collision checks.
+                // This changes no live-FBX, build-per-frame or physics budgets.
                 float chance = indoor ? 0.72f :
-                    c.kind == "tree" ? 0.92f : 0.78f;
+                    c.kind == "tree" ? 0.92f :
+                    c.kind == "open" && c.slot >= 200000 ? 1f : 0.78f;
                 if (AarisWeaponRandom.Next01(ref rng) > chance) continue;
                 var spec = AarisWeaponCatalog.Select(ref rng, indoor);
                 if (spec == null) continue;
