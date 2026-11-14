@@ -36,6 +36,7 @@ namespace Aaris.MapReview
         private readonly Collider[] medicalHits = new Collider[20];
         private readonly RaycastHit[] medicalSightHits = new RaycastHit[24];
         private Terrain[] medicalTerrains;
+        private AarisNearbyColliders medicalNearbyColliders;
         private AarisOfflineHealth medicalHealth;
         private AarisBattleActions medicalBattle;
         private CharacterController medicalController;
@@ -90,6 +91,7 @@ namespace Aaris.MapReview
             medicalBattle = GetComponent<AarisBattleActions>();
             medicalController = GetComponent<CharacterController>();
             medicalTerrains = Terrain.activeTerrains;
+            medicalNearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
             if (motor == null || gloo == null) { enabled = false; return; }
             LoadMedicalSites();
             Build();
@@ -479,6 +481,16 @@ namespace Aaris.MapReview
                 return false;
             Vector3 center = spot + Vector3.up * 0.26f;
             Vector3 halfExtents = new Vector3(0.31f, 0.16f, 0.24f);
+            // Disabled streamed house colliders are invisible to Physics overlap.
+            // A scene teleport or delayed collider refresh must not leave a
+            // medkit/helmet trapped inside a sealed building when it streams in.
+            // Reuse the existing world-bounds grid: no physics wake-up or alloc.
+            if (medicalNearbyColliders == null)
+                medicalNearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
+            if (medicalNearbyColliders != null &&
+                medicalNearbyColliders.HasPotentialInactiveObstacle(
+                    center, halfExtents, Quaternion.identity))
+                return false;
             int count = Physics.OverlapBoxNonAlloc(center, halfExtents, medicalHits,
                 Quaternion.identity, Physics.DefaultRaycastLayers,
                 QueryTriggerInteraction.Ignore);
