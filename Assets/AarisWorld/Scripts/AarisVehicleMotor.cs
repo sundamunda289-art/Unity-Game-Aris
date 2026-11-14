@@ -325,7 +325,7 @@ namespace Aaris.MapReview
             float maxAngle = Mathf.Lerp(32f, 10f, Mathf.InverseLerp(0f, 24f, planarSpeed));
             float target = turn * maxAngle;
             smoothSteer = Mathf.MoveTowards(smoothSteer, target, 125f * Time.fixedDeltaTime);
-            wheels[0].steerAngle = wheels[1].steerAngle = smoothSteer;
+            ApplyAckermannSteering(smoothSteer);
 
             // Axle load transfer: counter excessive roll on fast bends and
             // uneven slopes without freezing Rigidbody rotation or faking
@@ -357,6 +357,32 @@ namespace Aaris.MapReview
                     " brake_Nm=" + brake.ToString("F0") +
                     " roll_deg=" + Vector3.Angle(transform.up, Vector3.up).ToString("F1"));
             }
+        }
+
+        // Inside and outside tyres follow different radii in a turn.
+        // Read the actual fitted wheel positions, so every vehicle body type
+        // keeps correct steering geometry without new per-frame allocations.
+        private void ApplyAckermannSteering(float centerAngle)
+        {
+            if (Mathf.Abs(centerAngle) < .01f)
+            {
+                wheels[0].steerAngle = wheels[1].steerAngle = centerAngle;
+                return;
+            }
+            float track = Mathf.Abs(wheels[1].transform.localPosition.x -
+                                    wheels[0].transform.localPosition.x);
+            float wheelbase = Mathf.Abs(wheels[0].transform.localPosition.z -
+                                        wheels[2].transform.localPosition.z);
+            if (track < .01f || wheelbase < .01f)
+            {
+                wheels[0].steerAngle = wheels[1].steerAngle = centerAngle;
+                return;
+            }
+            float radius = wheelbase / Mathf.Tan(Mathf.Abs(centerAngle) * Mathf.Deg2Rad);
+            float inner = Mathf.Atan2(wheelbase, Mathf.Max(.01f, radius - track * .5f)) * Mathf.Rad2Deg;
+            float outer = Mathf.Atan2(wheelbase, radius + track * .5f) * Mathf.Rad2Deg;
+            wheels[0].steerAngle = centerAngle > 0f ? outer : -inner;
+            wheels[1].steerAngle = centerAngle > 0f ? inner : -outer;
         }
 
         private void ApplyAntiRoll(int leftIndex, int rightIndex)
