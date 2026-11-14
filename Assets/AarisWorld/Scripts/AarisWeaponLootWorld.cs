@@ -822,7 +822,7 @@ namespace Aaris.MapReview
             }
             HasPickupInRange = bestPickup != null;
             return bestPickup != null &&
-                (explicitPickup || (!inventory.HasGun && allowInitialAutoPickup &&
+                (explicitPickup || (inventory.Current == null && allowInitialAutoPickup &&
                     (bestPickup.CandidateIndex >= 0 ||
                      bestPickup.CandidateIndex == starterLootId))) && TryTake(bestPickup);
         }
@@ -834,7 +834,7 @@ namespace Aaris.MapReview
             // location. This prevents nearby streamed meshes starving the
             // fallback entirely on dense settlements.
             int streamLimit = MaximumActiveLoot -
-                (!starterLootSettled && allowInitialAutoPickup && !inventory.HasGun ? 1 : 0);
+                (!starterLootSettled && allowInitialAutoPickup && inventory.Current == null ? 1 : 0);
             if (active.Count >= streamLimit) return false;
             float loadSquared = ActivationMetres * ActivationMetres;
             int buildAttempts = 0;
@@ -916,7 +916,7 @@ namespace Aaris.MapReview
         {
             if (starterLootSettled || !allowInitialAutoPickup)
                 return;
-            if (inventory.HasGun)
+            if (inventory.Current != null)
             {
                 starterLootSettled = true;
                 return;
@@ -999,7 +999,7 @@ namespace Aaris.MapReview
         // It does not create fake world loot or touch terrain/render settings.
         private void TryLastResortStarterEquip()
         {
-            if (starterLootSettled || inventory == null || inventory.HasGun ||
+            if (starterLootSettled || inventory == null || inventory.Current != null ||
                 starterUnarmedSince < 0f ||
                 Time.unscaledTime - starterUnarmedSince < 3f) return;
             var spec = AarisWeaponCatalog.Select(ref rng, false);
