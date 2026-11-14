@@ -228,7 +228,17 @@ def test():
 
     # Full WheelCollider physics without fake step velocity teleports.
     assert "wheelPrefabs[i] = Resources.Load<GameObject>(item.wheelResource);" in world
-    assert "motor.AttachWheelModels(wheelSource, paletteMaterial)" in world
+    assert "motor.AttachWheelModels(wheelSource, paletteMaterial," in world
+    assert "record.type.preserveAuthoredUrpMaterials)" in world
+    assert "public bool preserveAuthoredUrpMaterials;" in world
+    assert "if (!record.type.preserveAuthoredUrpMaterials)" in build
+    assert "if (!preserveAuthoredUrpMaterials)" in wheels
+    assert "HasCompatibleUrpMaterials(prefabs[i])" in world
+    assert "HasCompatibleUrpMaterials(wheelPrefabs[i])" in world
+    assert 'material.shader.name != "Universal Render Pipeline/Lit"' in world
+    assert "prefabs[i] = null;" in world
+    # The six bundled CC0 Kenney types must remain byte-/appearance-compatible.
+    assert all(not x.get("preserveAuthoredUrpMaterials", False) for x in types)
     assert "visualWheels[i].SetPositionAndRotation(worldPosition, worldRotation);" in motor
     assert "wheels[i].GetWorldPose(out Vector3 worldPosition," in motor
     assert "new WheelCollider[4]" in motor
