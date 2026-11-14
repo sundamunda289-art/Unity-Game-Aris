@@ -864,9 +864,12 @@ def audit():
     pickup_init = pickup.split("public bool Initialize(", 1)[1].split(
         "private void Update()", 1)[0]
     assert pickup_init.count("visible.GetComponentsInChildren<Renderer>(true)") == 1
-    assert "Bounds modelBounds = modelRenderers[0].bounds;" in pickup_init
-    assert "modelBounds = modelRenderers[0].bounds;" in pickup_init
-    assert "modelRenderers[i].bounds" in pickup_init
+    # Freshly spawned/scaled FBX renderer AABBs can be stale in Unity.
+    # Measure real mesh corners only once, before computing stable scale.
+    assert pickup_init.count("AarisWeaponMeshBounds.TryMeasure(transform,") == 1
+    assert "modelBounds.center.y - modelBounds.min.y" in pickup_init
+    assert "modelRenderers[i].bounds" not in pickup_init
+    assert "internal static class AarisWeaponMeshBounds" in pickup
     assert "pendingSpinDegrees += 19f * Time.deltaTime;" in spin
     assert "if (pendingSpinDegrees >= 360f)" in spin
     assert "Mathf.Repeat(pendingSpinDegrees, 360f)" in spin
