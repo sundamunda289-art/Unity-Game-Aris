@@ -87,12 +87,16 @@ namespace Aaris.MapReview
             }
             float longest = Mathf.Max(combinedBounds.size.x,
                 combinedBounds.size.y, combinedBounds.size.z);
-            float scale = Mathf.Clamp(0.86f / longest, 0.0000001f, 10f) *
-                incoming.Spec.handScale;
+            float scale = Mathf.Clamp(
+                incoming.Spec.presentationLengthMetres / longest,
+                0.0000001f, 10f) * incoming.Spec.handScale;
             mesh.localScale *= scale;
             // Keep the entire gun body centered a short distance forward
             // from the animated right wrist, regardless of imported FBX pivot.
-            mesh.localPosition = new Vector3(0f, -0.025f, 0.19f) -
+            // Put the trigger/receiver zone near the animated right palm:
+            // a compact SMG and a long sniper must not share a fixed pivot.
+            mesh.localPosition = new Vector3(0f, -0.025f,
+                incoming.Spec.presentationLengthMetres * 0.22f) -
                 combinedBounds.center * scale;
 
             var next = root.AddComponent<AarisEquippedGun>();
@@ -281,7 +285,12 @@ namespace Aaris.MapReview
             float upperLength = Vector3.Distance(shoulder, elbow);
             float foreLength = Vector3.Distance(elbow, wrist);
             if (upperLength < .05f || foreLength < .05f) return;
-            Vector3 desired = weaponRoot.TransformPoint(new Vector3(-.045f, -.035f, .31f));
+            // Long guns need a farther support hand, compact guns a closer
+            // one; clamp to the arm's plausible reach before two-bone IK.
+            float foregrip = Mathf.Clamp(
+                equipped.Spec.presentationLengthMetres * 0.40f, 0.22f, 0.48f);
+            Vector3 desired = weaponRoot.TransformPoint(
+                new Vector3(-.045f, -.035f, foregrip));
             Vector3 delta = desired - shoulder;
             float distance = delta.magnitude;
             if (distance < .05f) return;

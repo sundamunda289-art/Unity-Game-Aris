@@ -18,6 +18,9 @@ namespace Aaris.MapReview
         public Vector3 handOffset = new Vector3(0.02f, 0f, 0.02f);
         public Vector3 handRotation = new Vector3(0f, 90f, 0f);
         public float handScale = 1f;
+        // Physical weapon length in metres. Imported FBX pivots and units are
+        // not reliable; both floor pickup and hand equip use this single value.
+        public float presentationLengthMetres = 0.86f;
 
         public float ShotInterval => 60f / Mathf.Max(1, rpm);
 
@@ -30,7 +33,8 @@ namespace Aaris.MapReview
             recoilPitchDegrees >= 0f && recoilPitchDegrees <= 20f &&
             pellets >= 1 && pellets <= 16 && reloadSeconds >= 0.1f &&
             reloadSeconds <= 12f && adsFov >= 8f && adsFov <= 65f &&
-            weight > 0f && handScale > 0f && handScale <= 12f;
+            weight > 0f && handScale > 0f && handScale <= 12f &&
+            presentationLengthMetres >= 0.48f && presentationLengthMetres <= 1.4f;
     }
 
     [Serializable]
