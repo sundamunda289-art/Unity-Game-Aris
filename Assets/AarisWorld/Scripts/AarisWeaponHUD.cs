@@ -8,7 +8,7 @@ namespace Aaris.MapReview
     /// <summary>
     /// Compact utility HUD: ADS, PICK, DROP, RELOAD, SWAP and FIST/DRAW.
     /// The original five movement/combat buttons remain unchanged.
-    /// Only PICK is available while empty-handed near floor loot.
+    /// PICK is available near reachable floor loot, even with equipped guns.
     /// </summary>
     public sealed class AarisWeaponHUD : MonoBehaviour
     {
@@ -189,12 +189,11 @@ namespace Aaris.MapReview
             bool armed = inventory != null && inventory.HasGun;
             // The gun hint is refreshed at most once per 1.25s, never by a
             // scene-wide search or during each mobile HUD frame.
-            if (armed)
-            {
-                if (nearbyGunHint != null) nearbyGunHint.enabled = false;
-                nextNearbyGunHintAt = 0f;
-            }
-            else if (Time.unscaledTime >= nextNearbyGunHintAt)
+            // An auto-equipped starter gun must not hide discovery of nearby
+            // floor loot: players still need to fill/swap their back weapon.
+            // The hint scans only the already-streamed pickups every 1.25s,
+            // without additional physics, 3D draw calls or touch targets.
+            if (Time.unscaledTime >= nextNearbyGunHintAt)
             {
                 nextNearbyGunHintAt = Time.unscaledTime + 1.25f;
                 RefreshNearbyGunHint();

@@ -179,6 +179,13 @@ def run():
     assert "RuntimeInitializeLoadType.SubsystemRegistration" in pickup_cs
     assert "if (state != null && model != null && !consumed)" in pickup_cs
     assert "foreach (var pickup in AarisWeaponPickup.ActivePickups)" in hud
+    # An automatically equipped starter must not suppress discovery of the
+    # next floor gun. Preserve 1.25s throttling and the existing model cap.
+    hint_tick = hud.split("private void LateUpdate()", 1)[1].split(
+        "bool canPick =", 1)[0]
+    assert "if (armed)" not in hint_tick
+    assert "if (Time.unscaledTime >= nextNearbyGunHintAt)" in hint_tick
+    assert "RefreshNearbyGunHint();" in hint_tick
     assert "nextNearbyGunHintAt = Time.unscaledTime + 1.25f;" in hud
     assert "nearbyGunHint.raycastTarget = false;" in hud
     assert "float closestSquare = 48f * 48f;" in hud
