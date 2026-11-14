@@ -141,27 +141,43 @@ namespace Aaris.MapReview.Editor
 
         private static void CheckLootSite(int index, AarisThirdPersonPlayer player)
         {
-            int active = 0, models = 0, nearby = 0;
-            float nearest = float.PositiveInfinity;
+            int active = 0, models = 0, nearby = 0, oversize = 0;
+            float nearest = float.PositiveInfinity, longestNearby = 0f;
             foreach (var pickup in Object.FindObjectsByType<AarisWeaponPickup>(
                 FindObjectsSortMode.None))
             {
                 if (pickup == null || !pickup.gameObject.activeInHierarchy) continue;
                 active++;
-                bool visibleMesh = false;
+                bool visibleMesh = false, hasBounds = false;
+                Bounds gunBody = default(Bounds);
                 foreach (var renderer in pickup.GetComponentsInChildren<Renderer>(true))
-                    if (renderer is MeshRenderer || renderer is SkinnedMeshRenderer)
-                        visibleMesh |= renderer.enabled;
+                {
+                    if (!(renderer is MeshRenderer || renderer is SkinnedMeshRenderer))
+                        continue; // Exclude the 1.65m nonphysical beacon.
+                    visibleMesh |= renderer.enabled;
+                    if (!hasBounds) { gunBody = renderer.bounds; hasBounds = true; }
+                    else gunBody.Encapsulate(renderer.bounds);
+                }
                 if (visibleMesh) models++;
                 float dist = Vector3.Distance(player.transform.position,
                     pickup.transform.position);
                 nearest = Mathf.Min(nearest, dist);
-                if (dist < 50f && visibleMesh) nearby++;
+                if (dist < 50f && visibleMesh)
+                {
+                    nearby++;
+                    float longest = Mathf.Max(gunBody.size.x,
+                        gunBody.size.y, gunBody.size.z);
+                    longestNearby = Mathf.Max(longestNearby, longest);
+                    if (longest < .12f || longest > 1.7f) oversize++;
+                }
             }
-            if (nearby > 0) SessionState.SetInt(Key + "LootSites",
-                SessionState.GetInt(Key + "LootSites", 0) + 1);
+            if (nearby > 0 && oversize == 0)
+                SessionState.SetInt(Key + "LootSites",
+                    SessionState.GetInt(Key + "LootSites", 0) + 1);
             Note("SITE_" + index + "_PICKUPS active=" + active + " mesh=" +
-                models + " within50m=" + nearby + " nearest=" +
+                models + " within50m=" + nearby + " invalidSize=" + oversize +
+                " longestNearby_m=" + longestNearby.ToString("F3") +
+                " nearest=" +
                 (float.IsInfinity(nearest) ? -1f : nearest).ToString("F2"));
         }
 
@@ -224,6 +240,12 @@ namespace Aaris.MapReview.Editor
                     return;
                 if (stage == 1)
                 {
+                    // Test physical floor visibility independent of the
+                    // intentionally automatic first-time starter pickup.
+                    // Otherwise a correctly spawned gun disappears from
+                    // the scene immediately and yields a misleading zero.
+                    typeof(AarisWeaponLootWorld).GetField(
+                        "allowInitialAutoPickup", Private).SetValue(world, false);
                     var drop = player.GetComponent<AarisOfflineDrop>();
                     if (drop != null && !drop.HasLanded)
                     {
@@ -239,7 +261,7 @@ namespace Aaris.MapReview.Editor
                 if (stage >= 2 && stage <= 4)
                 {
                     if (EditorApplication.timeSinceStartup -
-                        SessionState.GetFloat(Key + "SiteStart", 0) < 3.2f) return;
+                        SessionState.GetFloat(Key + "SiteStart", 0) < 7.5f) return;
                     CheckLootSite(index, player);
                     if (stage < 4 && !StartSite(index + 1, player))
                     { Abort("NEXT_SITE_NOT_FOUND"); return; }
@@ -281,7 +303,7 @@ namespace Aaris.MapReview.Editor
                         FindObjectsSortMode.None))
                         if (panel != null && panel.IsOpen) doorsOpen++;
                     Note("RUNTIME_DOORS_OPEN=" + doorsOpen);
-                    bool passed = SessionState.GetInt(Key + "LootSites", 0) > 0 &&
+                    bool passed = SessionState.GetInt(Key + "LootSites", 0) >= 2 &&
                         SessionState.GetBool(Key + "Hands", false) && doorsOpen > 0;
                     Finish(passed ? 0 : 1);
                 }
