@@ -166,6 +166,14 @@ class OpenCombatHouseContracts(unittest.TestCase):
         runtime = (SCRIPTS / "AarisNearbyColliders.cs").read_text(encoding="utf-8")
         self.assertIn("if (c == null || !c.enabled) continue;", runtime)
         self.assertIn("if (!c.enabled) c.enabled = true;", runtime)
+        # Rebuilding the map must not silently revert #505's native fix.
+        # Gate ALL distant colliders at runtime, only AFTER the streamer
+        # has indexed their local geometry in Awake.
+        generator = (ROOT / "Tools/MapBuild/mobile_review.py").read_text(
+            encoding="utf-8")
+        self.assertIn("d['m_Enabled']=1", generator)
+        self.assertIn("initially_disabled=0", generator)
+        self.assertNotIn("d['m_Enabled']=int(dx*dx+dz*dz<=55*55)", generator)
 
     def test_native_house_baker_preserves_unsaved_editor_scenes(self):
         src = (ROOT / "Assets/AarisWorld/Editor/AarisGpt6OpenEntrySceneBaker.cs").read_text(encoding="utf-8")
