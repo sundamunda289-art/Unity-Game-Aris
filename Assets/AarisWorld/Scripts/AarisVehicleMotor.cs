@@ -123,6 +123,44 @@ namespace Aaris.MapReview
         }
 
         /// <summary>
+        /// Fit each imported vehicle's physical shell and axle track to the
+        /// authored car model once on spawn, never in FixedUpdate.
+        /// </summary>
+        public void FitShellAndWheelbase(Bounds visualBounds)
+        {
+            Vector3 size = visualBounds.size;
+            if (body == null || size.x < .25f || size.y < .25f || size.z < .5f ||
+                float.IsNaN(size.x) || float.IsInfinity(size.x) ||
+                float.IsNaN(size.y) || float.IsInfinity(size.y) ||
+                float.IsNaN(size.z) || float.IsInfinity(size.z)) return;
+            var shell = GetComponent<BoxCollider>();
+            if (shell == null) return;
+            // Wheels, not the chassis shell, must carry vehicle weight.
+            float bottom = Mathf.Clamp(visualBounds.min.y + .05f, .20f, .40f);
+            float top = Mathf.Clamp(visualBounds.max.y - .05f, .95f, 2.55f);
+            if (top <= bottom + .45f) return;
+            shell.center = new Vector3(
+                Mathf.Clamp(visualBounds.center.x, -.15f, .15f),
+                (top + bottom) * .5f,
+                Mathf.Clamp(visualBounds.center.z, -.20f, .20f));
+            shell.size = new Vector3(
+                Mathf.Clamp(size.x * .94f, 1.35f, 2.25f),
+                top - bottom,
+                Mathf.Clamp(size.z * .94f, 2.35f, 4.30f));
+            // Match the wheel geometry across short hatchbacks and longer
+            // vans/SUVs without introducing additional wheel GameObjects.
+            float halfTrack = Mathf.Clamp(size.x * .445f, .63f, .90f);
+            float halfWheelbase = Mathf.Clamp(size.z * .322f, .92f, 1.43f);
+            for (int i = 0; i < wheels.Length; i++)
+            {
+                if (wheels[i] == null) continue;
+                wheels[i].transform.localPosition = new Vector3(
+                    (i & 1) == 0 ? -halfTrack : halfTrack,
+                    -.10f, i < 2 ? halfWheelbase : -halfWheelbase);
+            }
+        }
+
+        /// <summary>
         /// Instantiate REAL separate FBX wheel geometry, not primitive
         /// cylinders. Synchronize rendered pose to each WheelCollider.
         /// No duplicated physics colliders exist on the visible wheels.
@@ -280,7 +318,11 @@ namespace Aaris.MapReview
             }
             // Gradually reduce steering angle at speed so 100km/h inputs
             // cannot instantaneously rotate a multi-ton vehicle by 70°/s.
-            float maxAngle = Mathf.Lerp(32f, 10f, Mathf.InverseLerp(0f, 24f, speedAbs));
+            // A sideways skid can have near-zero forward speed even at
+            // road speed. Reduce steering by actual planar vehicle speed.
+            float planarSpeed = Vector3.ProjectOnPlane(
+                body.linearVelocity, transform.up).magnitude;
+            float maxAngle = Mathf.Lerp(32f, 10f, Mathf.InverseLerp(0f, 24f, planarSpeed));
             float target = turn * maxAngle;
             smoothSteer = Mathf.MoveTowards(smoothSteer, target, 125f * Time.fixedDeltaTime);
             wheels[0].steerAngle = wheels[1].steerAngle = smoothSteer;
@@ -292,8 +334,8 @@ namespace Aaris.MapReview
             ApplyAntiRoll(2, 3);
 
             // Mild aero downforce supports handling but cannot defeat walls.
-            if (speedAbs > 6f)
-                body.AddForce(-transform.up * Mathf.Min(18000f, 20f * speedAbs * speedAbs),
+            if (planarSpeed > 6f)
+                body.AddForce(-transform.up * Mathf.Min(18000f, 20f * planarSpeed * planarSpeed),
                     ForceMode.Force);
 
             // Diagnostic telemetry is development-build only and bounded to

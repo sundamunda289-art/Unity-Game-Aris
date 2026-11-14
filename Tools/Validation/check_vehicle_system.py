@@ -226,6 +226,25 @@ def test():
         assert math.isclose(2 / 4, 0.5)
     assert 4 > 2 * 1.1  # local sideways FBX should still be turned once
 
+    # Do not give every model a sedan-size physical shell and wheelbase.
+    assert "motor.FitShellAndWheelbase(new Bounds(new Vector3(0f, .48f, 0f)," in build
+    assert "public void FitShellAndWheelbase(Bounds visualBounds)" in motor
+    assert "Mathf.Clamp(size.x * .94f, 1.35f, 2.25f)" in motor
+    assert "Mathf.Clamp(size.z * .94f, 2.35f, 4.30f)" in motor
+    assert "Mathf.Clamp(size.z * .322f, .92f, 1.43f)" in motor
+    assert "wheels[i].transform.localPosition = new Vector3(" in motor
+    assert "float.IsNaN(size.x)" in motor and "float.IsInfinity(size.z)" in motor
+    # Lateral skid speed must attenuate steering and downforce too.
+    assert "Vector3.ProjectOnPlane(" in motor
+    assert "body.linearVelocity, transform.up).magnitude;" in motor
+    assert "Mathf.InverseLerp(0f, 24f, planarSpeed)" in motor
+    assert "if (planarSpeed > 6f)" in motor
+    for fwd, sideways in ((0, 0), (0, 15), (15, 0), (12, 16), (0, 35)):
+        speed = math.hypot(fwd, sideways)
+        steer = 32 - 22 * min(1, max(0, speed / 24))
+        assert 10 <= steer <= 32
+        if sideways >= 15: assert steer < 20
+
     # Full WheelCollider physics without fake step velocity teleports.
     assert "wheelPrefabs[i] = Resources.Load<GameObject>(item.wheelResource);" in world
     assert "motor.AttachWheelModels(wheelSource, paletteMaterial," in world

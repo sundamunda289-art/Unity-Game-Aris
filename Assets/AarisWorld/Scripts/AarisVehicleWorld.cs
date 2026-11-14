@@ -565,6 +565,11 @@ namespace Aaris.MapReview
             mesh.transform.localPosition += new Vector3(0f, .48f, 0f) - bounds.center;
             var motor = root.AddComponent<AarisVehicleMotor>();
             motor.Configure(record.type.id, record.type.maxSpeedMetres, record.type.massKg);
+            // After the mesh is recentered to local Y=.48, its size remains
+            // valid in chassis space at every road yaw. Align physical shell
+            // and wheels to the visible type instead of a generic sedan.
+            motor.FitShellAndWheelbase(new Bounds(new Vector3(0f, .48f, 0f),
+                bounds.size));
             if (!motor.AttachWheelModels(wheelSource, paletteMaterial,
                 record.type.preserveAuthoredUrpMaterials))
             {
