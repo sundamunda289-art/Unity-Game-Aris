@@ -285,11 +285,24 @@ def run():
     assert "hand.position + hand.rotation * equipped.Spec.handOffset" in attach
     assert "weaponRoot.SetParent(transform, false);" in attach
     assert "PlaceOnBack(stowedRoot, true)" in attach
-    assert "if (fistMode)" in attach
+    # Fists AND full-speed armed sprint must carry the physical gun on
+    # the back, while ADS/fire/prone retain the shoulder-ready weapon.
+    assert "if (fistMode || IsSprintHolstered)" in attach
+    assert "PlaceOnBack(weaponRoot, stowedRoot != null ? false : true);" in attach
+    assert "AimCamera" in attach
+    assert "combat.Stance == AarisBattleActions.PlayerStance.Prone" in attach
+    assert "Quaternion.LookRotation(forward, Vector3.up)" in attach
     assert "AttachModelsToSockets();" in late
     assert "AlignSupportHand();" in late
-    assert "Vector3 elbowTarget = " in inventory
-    assert "Quaternion.FromToRotation(beforeUpper, afterUpper)" in inventory
+    assert "IsSprintHolstered = !fistMode && !aiming" in late
+    assert "!combat.FireHeld" in late
+    assert "capsule.isGrounded" in late
+    assert "sprintIntent && planarSpeedSqr > 3.75f * 3.75f" in late
+    assert "private static void ReachArm(" in inventory
+    assert "ReachArm(rightUpperArm, rightForearm, hand," in inventory
+    assert "ReachArm(leftUpperArm, leftForearm, leftHand," in inventory
+    assert "Vector3 targetElbow = " in inventory
+    assert "Quaternion.FromToRotation(oldUpper, newUpper)" in inventory
 
     # The normal landing pickup remains physical; only after failed
     # floor/visibility checks may the existing inventory grant one starter.
