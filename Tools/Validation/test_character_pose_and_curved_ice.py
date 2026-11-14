@@ -245,9 +245,9 @@ assert max(strengths) * 0.055 < 0.07
 # Turn/brake balance changes the visual hierarchy only, not locomotion physics.
 # It must use actual capsule velocity and signed shortest-angle yaw changes.
 assert 'private bool motionHistoryReady;' in visual
-assert 'if (motionHistoryReady && dt > 0.0001f)' in visual
-assert '(planarVelocity - lastPlanarVelocity) / dt' in visual
-assert 'Mathf.DeltaAngle(lastFacingYaw, currentYaw) / dt' in visual
+assert 'if (motionHistoryReady && motionDt > 0.0001f)' in visual
+assert '(planarVelocity - lastPlanarVelocity) / motionDt' in visual
+assert 'Mathf.DeltaAngle(lastFacingYaw, currentYaw) / motionDt' in visual
 assert '1f - Mathf.Clamp01(crouchBlend + proneBlend) : 0f' in visual
 assert 'Mathf.InverseLerp(0.8f, 3.4f, planar) * standingShare' in visual
 assert 'leaning + smoothedAccelerationPitch' in visual
