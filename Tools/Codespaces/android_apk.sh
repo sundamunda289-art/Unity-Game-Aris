@@ -419,15 +419,62 @@ fi
 echo APK_NATIVE_UNITY_BUILD_STARTED
 # -buildTarget Android is required BEFORE executeMethod to avoid broken
 # batchmode domain reload/scripting target switches.
+# Report a live, sanitized heartbeat from the REAL Unity process, not a
+# detached green GitHub timer. The GitHub SSH job exits when the editor does.
 set +e
+APK_UNITY_STARTED="$(date +%s)"
 timeout --signal=TERM 12000 env DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 \
   AARIS_ANDROID_COMPILE_SDK="$COMPILE_SDK" TMPDIR="$BASE/UnityTemp" \
   "$EDITOR" -batchmode -quit -force-glcore -job-worker-count 2 \
   -projectPath "$PROJECT" -buildTarget Android \
   -executeMethod Aaris.MapReview.Editor.AarisCodespaceAndroidBuild.BuildTestApk \
   -logFile "$BASE/private-editor.log" \
-  >"$BASE/private-stdout.log" 2>"$BASE/private-stderr.log"
+  >"$BASE/private-stdout.log" 2>"$BASE/private-stderr.log" &
+APK_EDITOR_SUPERVISOR_PID=$!
+(
+  last_log_bytes=-1
+  last_cpu_time=
+  last_progress="$APK_UNITY_STARTED"
+  missing_ticks=0
+  while kill -0 "$APK_EDITOR_SUPERVISOR_PID" 2>/dev/null; do
+    sleep 45
+    kill -0 "$APK_EDITOR_SUPERVISOR_PID" 2>/dev/null || break
+    now="$(date +%s)"
+    elapsed=$((now - APK_UNITY_STARTED))
+    if pgrep -x Unity >/dev/null 2>&1; then
+      missing_ticks=0
+      log_bytes="$(stat -c %s "$BASE/private-editor.log" 2>/dev/null || echo 0)"
+      cpu_time="$(ps -C Unity -o cputime= | tr -d '[:space:]')"
+      if test "$log_bytes" != "$last_log_bytes" ||
+         test "$cpu_time" != "$last_cpu_time"; then
+        last_progress="$now"
+        last_log_bytes="$log_bytes"
+        last_cpu_time="$cpu_time"
+      fi
+      echo "APK_NATIVE_UNITY_ACTIVE_ELAPSED_SECONDS_$elapsed"
+      # Fail a truly silent/deadlocked editor instead of spinning green for
+      # hours. Active shader import or Gradle compilation advances CPU/log.
+      if test $((now - last_progress)) -ge 900; then
+        echo APK_NATIVE_UNITY_STALLED_NO_CPU_OR_LOG_15_MIN
+        kill -TERM "$APK_EDITOR_SUPERVISOR_PID" 2>/dev/null || true
+        break
+      fi
+    else
+      missing_ticks=$((missing_ticks + 1))
+      echo "APK_NATIVE_UNITY_STARTUP_OR_EXIT_ELAPSED_SECONDS_$elapsed"
+      if test "$missing_ticks" -ge 4; then
+        echo APK_NATIVE_UNITY_PROCESS_MISSING_FAIL_CLOSED
+        kill -TERM "$APK_EDITOR_SUPERVISOR_PID" 2>/dev/null || true
+        break
+      fi
+    fi
+  done
+) &
+APK_UNITY_HEARTBEAT_PID=$!
+wait "$APK_EDITOR_SUPERVISOR_PID"
 RC=$?
+kill "$APK_UNITY_HEARTBEAT_PID" 2>/dev/null || true
+wait "$APK_UNITY_HEARTBEAT_PID" 2>/dev/null || true
 set -e
 if test "$RC" -ne 0; then
   # Emit only fixed error categories. Private Unity logs, license state,

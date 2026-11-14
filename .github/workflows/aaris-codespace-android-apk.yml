@@ -64,6 +64,9 @@ jobs:
         run: |
           set -euo pipefail
           bash -n Tools/Codespaces/android_apk.sh
+          grep -q 'APK_NATIVE_UNITY_ACTIVE_ELAPSED_SECONDS_' Tools/Codespaces/android_apk.sh
+          grep -q 'APK_NATIVE_UNITY_PROCESS_MISSING_FAIL_CLOSED' Tools/Codespaces/android_apk.sh
+          grep -q 'tee apk-evidence/build-status.txt' .github/workflows/aaris-codespace-android-apk.yml
           test -s Assets/AarisWorld/Editor/AarisCodespaceAndroidBuild.cs
           test -s Assets/AarisWorld/Editor/AarisCodespaceAndroidBuild.cs.meta
           grep -q 'm_EditorVersion: 6000.3.26f1' ProjectSettings/ProjectVersion.txt
@@ -242,8 +245,9 @@ jobs:
             -o ConnectTimeout=30 -o ConnectionAttempts=3 \
             -o ServerAliveInterval=30 -o ServerAliveCountMax=6 \
             "env AARIS_EXPECTED_BUILD_SHA=$AARIS_EXPECTED_BUILD_SHA bash -s -- $OPERATION" \
-            < Tools/Codespaces/android_apk.sh > apk-evidence/build-status.txt \
-            2> "$RUNNER_TEMP/private-apk-build-ssh-errors.log" || {
+            < Tools/Codespaces/android_apk.sh \
+            2> "$RUNNER_TEMP/private-apk-build-ssh-errors.log" \
+            | tee apk-evidence/build-status.txt || {
             echo 'APK_NATIVE_CODESPACE_BUILD_FAILED'
             grep -E '^APK_[A-Z0-9_]+$|^apk_(android_module|android_sdk|android_ndk|android_jdk)=[A-Za-z0-9.]+$' apk-evidence/build-status.txt > apk-evidence/build-status-safe.txt || true
             cat apk-evidence/build-status-safe.txt
