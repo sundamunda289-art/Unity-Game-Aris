@@ -2,6 +2,10 @@
 
 Repository: sundamunda289-art/Unity-Game-Aris; branch: main. Public repository: NEVER commit or release passwords, tokens, Unity license files, Hub state, private content or secrets.
 
+## 2026-11-14: IMPORTANT — reconcile old agent PRs before any merge
+
+Read [Docs/OPEN_AGENT_PR_RECONCILIATION_20261114.md](Docs/OPEN_AGENT_PR_RECONCILIATION_20261114.md). On this snapshot 41 old PRs were still open, many Draft or conflicting. Multiple old changes are already on main through newer commits; bulk merging old branches can DELETE later two-slot gun holster, door audio, physics and mobile improvements. PR #518 selectively merged the only three remaining 50m ground-loot planning gaps from old #454. Continue reviewing unmerged native scene/forest/ops work independently and preserve the live Codespace's 745 dirty files. The ledger is dated evidence, not a current mergeability claim.
+
 ## 2026-11-12: CANONICAL Git sync when Codespaces accounts rotate
 
 Canonical master stays sundamunda289-art/Unity-Game-Aris on main. The
