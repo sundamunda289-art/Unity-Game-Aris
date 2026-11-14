@@ -61,6 +61,47 @@ namespace Aaris.MapReview.Editor
                 if (BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Android,
                                                           BuildTarget.Android) == false)
                     throw new InvalidOperationException("ANDROID_BUILD_MODULE_MISSING");
+
+                // Unity's Embedded JDK preference does not always recognize a
+                // manually-installed AndroidPlayer/OpenJDK symbolic link on Linux.
+                // JDK 17, NDK r27c and the Android SDK are present and verified,
+                // but AndroidExternalToolsSettings must point to their real roots
+                // BEFORE BuildPipeline's prerequisite and Gradle steps.
+#if UNITY_ANDROID
+                string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                string jdkRoot = Environment.GetEnvironmentVariable("AARIS_ANDROID_JDK_ROOT");
+                if (String.IsNullOrWhiteSpace(jdkRoot))
+                    jdkRoot = "/usr/lib/jvm/java-17-openjdk-amd64";
+                string sdkRoot = Environment.GetEnvironmentVariable("AARIS_ANDROID_SDK_ROOT");
+                if (String.IsNullOrWhiteSpace(sdkRoot))
+                    sdkRoot = Path.Combine(home, ".local/share/aaris-android-sdk");
+                string ndkRoot = Environment.GetEnvironmentVariable("AARIS_ANDROID_NDK_ROOT");
+                if (String.IsNullOrWhiteSpace(ndkRoot))
+                    ndkRoot = Path.Combine(sdkRoot, "ndk/27.2.12479018");
+
+                if (!File.Exists(Path.Combine(jdkRoot, "bin/java")) ||
+                    !File.Exists(Path.Combine(jdkRoot, "bin/javac")) ||
+                    !File.Exists(Path.Combine(jdkRoot, "release")))
+                    throw new InvalidOperationException("ANDROID_JDK17_NOT_INSTALLED_OR_INCOMPLETE");
+                if (!File.Exists(Path.Combine(sdkRoot, "platform-tools/adb")) ||
+                    !Directory.Exists(Path.Combine(sdkRoot, "platforms/android-33")) ||
+                    !Directory.Exists(Path.Combine(sdkRoot, "platforms/android-35")) ||
+                    !Directory.Exists(Path.Combine(sdkRoot, "build-tools/36.0.0")))
+                    throw new InvalidOperationException("ANDROID_SDK_PLATFORM_OR_TOOLS_MISSING");
+                if (!File.Exists(Path.Combine(ndkRoot, "source.properties")))
+                    throw new InvalidOperationException("ANDROID_NDK_R27C_MISSING");
+                AndroidExternalToolsSettings.jdkRootPath = jdkRoot;
+                AndroidExternalToolsSettings.sdkRootPath = sdkRoot;
+                AndroidExternalToolsSettings.ndkRootPath = ndkRoot;
+                if (AndroidExternalToolsSettings.jdkRootPath != jdkRoot ||
+                    AndroidExternalToolsSettings.sdkRootPath != sdkRoot ||
+                    AndroidExternalToolsSettings.ndkRootPath != ndkRoot)
+                    throw new InvalidOperationException("ANDROID_UNITY_EXTERNAL_TOOLS_PATH_REJECTED");
+                Debug.Log("AARIS_ANDROID_TOOLS_EXPLICIT_JDK17_SDK_NDKR27C_VERIFIED");
+#else
+                throw new InvalidOperationException("ANDROID_EDITOR_SCRIPT_SYMBOL_MISSING");
+#endif
+
                 var enabled = EditorBuildSettings.scenes
                     .Where(x => x.enabled).Select(x => x.path).ToArray();
                 evidence.sceneCount = enabled.Length;
