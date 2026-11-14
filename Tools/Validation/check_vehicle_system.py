@@ -286,6 +286,14 @@ def test():
                   "return grounded >= 2"):
         assert guard in exit_gate, "Missing safe-boarding guard: " + guard
 
+    # Close-contact camera sweep must not interpolate past a detected wall.
+    assert "Mathf.Max(0f, nearest - .24f)" in session
+    assert "Mathf.Max(.35f, nearest - .24f)" not in session
+    for contact in (0.0, .05, .1, .2, .24, .3, .35, .45, 1.0, 6.0):
+        assert 0 <= max(0.0, contact - .24) <= contact
+    disabled = session.split("private void OnDisable()", 1)[1]
+    assert "touchMove = touchSteer = 0f;" in disabled
+
     # One owner, safe exit, collision-before-enable and no F resetting.
     assert "footMotor.enabled = false;" in session and "capsule.enabled = false;" in session
     assert "capsule.enabled = true;" in session and "footMotor.enabled = true;" in session

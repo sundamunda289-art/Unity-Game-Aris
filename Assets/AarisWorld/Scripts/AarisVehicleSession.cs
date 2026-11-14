@@ -394,7 +394,9 @@ namespace Aaris.MapReview
                 }
                 if (nearest < length)
                 {
-                    next = start + direction * Mathf.Max(.35f, nearest - .24f);
+                    // A minimum camera distance can move the camera beyond a
+                    // close collision. Never advance past the reported contact.
+                    next = start + direction * Mathf.Max(0f, nearest - .24f);
                     // Stop smoothing velocity from repeatedly pushing through
                     // the same obstacle after this collision correction.
                     cameraVelocity = Vector3.zero;
@@ -410,6 +412,7 @@ namespace Aaris.MapReview
 
         private void OnDisable()
         {
+            touchMove = touchSteer = 0f;
             if (car != null) car.SetInput(0f, 0f);
         }
     }
