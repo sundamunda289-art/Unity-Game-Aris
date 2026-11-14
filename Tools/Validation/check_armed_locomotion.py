@@ -126,7 +126,9 @@ def audit():
     assert "weaponRoot.SetParent(transform, false);" in inventory
     assert "hand.position + hand.rotation * equipped.Spec.handOffset" in inventory
     assert "hand.rotation * grip" in inventory
-    assert "if (equipped != null) AttachModelToHand();" in inventory
+    assert "if (equipped == null) return;" in inventory
+    assert "AttachModelsToSockets();" in inventory
+    assert "AlignSupportHand();" in inventory
     assert "weaponRoot.SetParent(socket, false)" not in inventory
 
     # Real Unity humanoid mask implementation keeps running feet under
