@@ -20,6 +20,11 @@ namespace Aaris.MapReview
         private float health, lastNear = -999f, currentAngle, openDirection = 1f;
         private bool isDoor, destroyed;
         private readonly Collider[] blockers = new Collider[16];
+        // Cached packaged CC0 effects: no network or per-frame resource lookup.
+        private static AudioClip openingSound, closingSound;
+        private static bool soundsLoaded;
+        private AudioSource soundSource;
+        private bool lastRequestedOpen;
 
         public bool IsBroken => destroyed;
         public bool IsOpen => isDoor && (destroyed || Mathf.Abs(currentAngle) > 80f);
@@ -40,6 +45,26 @@ namespace Aaris.MapReview
                 // house transform on every Android frame.
                 worldDoorwayCenter = house != null
                     ? house.TransformPoint(doorwayCenter) : transform.position;
+                if (!soundsLoaded)
+                {
+                    openingSound = Resources.Load<AudioClip>(
+                        "SFX/CC0/impactMetal_light_000");
+                    closingSound = Resources.Load<AudioClip>(
+                        "SFX/CC0/impactSoft_heavy_000");
+                    soundsLoaded = true;
+                }
+                if (openingSound != null || closingSound != null)
+                {
+                    // Only actual interactive doors get one lightweight 3D voice.
+                    soundSource = gameObject.AddComponent<AudioSource>();
+                    soundSource.playOnAwake = false;
+                    soundSource.spatialBlend = 1f;
+                    soundSource.rolloffMode = AudioRolloffMode.Linear;
+                    soundSource.minDistance = 1.2f;
+                    soundSource.maxDistance = 14f;
+                    soundSource.dopplerLevel = 0f;
+                    soundSource.volume = 0.5f;
+                }
             }
             health = Mathf.Max(1f, hitPoints);
             enabled = door; // windows do no per-frame polling
@@ -85,6 +110,15 @@ namespace Aaris.MapReview
                 OpenSpeed * Time.deltaTime);
             if (Mathf.Abs(next - currentAngle) > .001f)
             {
+                if (shouldOpen != lastRequestedOpen)
+                {
+                    // Trigger once per actual opening/closing transition.
+                    // A blocked closing sweep never plays the closing cue.
+                    AudioClip cue = shouldOpen ? openingSound : closingSound;
+                    if (soundSource != null && cue != null)
+                        soundSource.PlayOneShot(cue, shouldOpen ? 0.55f : 0.70f);
+                }
+                lastRequestedOpen = shouldOpen;
                 currentAngle = next;
                 transform.localRotation = Quaternion.Euler(0f, currentAngle, 0f);
             }
