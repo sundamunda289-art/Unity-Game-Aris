@@ -68,6 +68,12 @@ namespace Aaris.MapReview
         private Transform balanceSpineBone;
         private const float ProneChestCorrectionMaxDegrees = 24f;
         private const float ProneHeadColliderInset = 0.10f;
+        // The imported soldier's animated standing bounds are shorter than
+        // its static FBX bounds. Calibrate once against the ACTUAL idle mesh.
+        private SkinnedMeshRenderer bodySkin;
+        private bool groundedRigCalibrated;
+        private float standingShoeOffset;
+        private readonly RaycastHit[] ankleSupportHits = new RaycastHit[12];
         private const float CrouchRigLowering = 0.50f;
         // New rig's crouched Humanoid head was 1.34m above terrain against
         // a 1.14m capsule. Extra 23cm retains headroom; the existing two-bone
@@ -78,7 +84,8 @@ namespace Aaris.MapReview
         // than the previous superhero rig. Native hand/foot bone measurements
         // confirm this additional visual-only lowering keeps feet above ground.
         private const float RealisticSoldierProneRigLowering = 0.64f;
-        private const float PlantedAnkleMetres = 0.24f;
+        private const float PlantedAnkleMetres = 0.13f;
+        private const float ProneAnkleClearanceMetres = 0.105f;
         private Vector3 restingLocalPosition;
         private Quaternion restingLocalRotation;
         private float crouchBlend, proneBlend;
@@ -190,6 +197,7 @@ namespace Aaris.MapReview
             }
 
             TryApplySkin();
+            bodySkin = visual.GetComponentInChildren<SkinnedMeshRenderer>(true);
             actions = GetComponent<AarisBattleActions>();
             playerMotor = GetComponent<AarisThirdPersonPlayer>();
             weaponInventory = GetComponent<AarisWeaponInventory>();
@@ -567,6 +575,30 @@ namespace Aaris.MapReview
             foot.rotation = footRotation;
         }
 
+        // One non-allocating ground sample per foot on low stances; unlike
+        // motor-bottom height this works on bridge and sloped terrain.
+        private float SupportedAnkleY(Transform foot, float clearance)
+        {
+            float fallback = transform.position.y + clearance;
+            if (foot == null) return fallback;
+            Vector3 origin = foot.position + Vector3.up * 0.70f;
+            int worldMask = Physics.DefaultRaycastLayers & ~(1 << gameObject.layer);
+            int count = Physics.RaycastNonAlloc(new Ray(origin, Vector3.down),
+                ankleSupportHits, 1.70f, worldMask, QueryTriggerInteraction.Ignore);
+            float closest = float.PositiveInfinity;
+            float floor = fallback;
+            for (int i = 0; i < count; i++)
+            {
+                RaycastHit hit = ankleSupportHits[i];
+                if (hit.collider == null || hit.normal.y < 0.55f ||
+                    hit.collider.transform.IsChildOf(transform) ||
+                    hit.distance >= closest) continue;
+                closest = hit.distance;
+                floor = hit.point.y + clearance;
+            }
+            return floor;
+        }
+
         private static void LoopPlayable(AnimationClipPlayable playable, AnimationClip clip, double cycle)
         {
             if (clip == null || clip.length < 0.02f) return;
@@ -731,6 +763,29 @@ namespace Aaris.MapReview
                 ? Mathf.Sin(Mathf.PI * landingAge / 0.2f) * landingCompressionMetres *
                     Mathf.Lerp(0.55f, 1.15f, impactBlend)
                 : 0f;
+            // Real 6000.3.26f1 PlayMode measurement: standing soldier shoes
+            // floated 0.75m while capsule bottom was only 0.035m above the
+            // terrain. The static import fit cannot calibrate animated poses.
+            // Only the reviewed soldier gets this one-time runtime scale fit.
+            bool stableSoldier = realisticSoldierLoaded && graphReady &&
+                groundedNow && !visuallyAirborne &&
+                (aerialDrop == null || aerialDrop.HasLanded) &&
+                actions != null &&
+                actions.Stance == AarisBattleActions.PlayerStance.Standing &&
+                effectiveCrouchBlend < 0.01f &&
+                effectiveProneBlend < 0.01f && planar < 0.15f;
+            if (!groundedRigCalibrated && stableSoldier && bodySkin != null)
+            {
+                float renderedHeight = bodySkin.bounds.size.y;
+                if (renderedHeight > 0.65f && renderedHeight < 2.5f)
+                {
+                    float scaleFactor = Mathf.Clamp(
+                        TargetHeightMetres / renderedHeight, 0.85f, 1.5f);
+                    if (Mathf.Abs(scaleFactor - 1f) > 0.025f)
+                        visualRoot.localScale *= scaleFactor;
+                    groundedRigCalibrated = true;
+                }
+            }
             // The imported crouch clip leaves the head above the short collision
             // capsule. Replant the knees after lowering this visual-only rig.
             // Missing prone clips must not activate the old 80-degree root-tilt
@@ -743,17 +798,69 @@ namespace Aaris.MapReview
             float proneLowering = primaryLoaded && proneClip != null &&
                 crawlClip != null ?
                 (realisticSoldierLoaded ? RealisticSoldierProneRigLowering : ProneRigLowering) * effectiveProneBlend : 0f;
+            // Preserve calibrated standing-ground offset through takeoff:
+            // switching it off in the air would instantly teleport the model
+            // upwards by the original ~0.75m shoe gap.
+            float uprightWeight = 1f - Mathf.Clamp01(
+                effectiveCrouchBlend + effectiveProneBlend);
             Vector3 desiredPosition = restingLocalPosition +
-                new Vector3(0f, -landingDip - crouchLowering - proneLowering, 0f);
+                new Vector3(0f, -landingDip - crouchLowering -
+                    proneLowering + standingShoeOffset * uprightWeight, 0f);
             if (visualRoot.localPosition != desiredPosition)
                 visualRoot.localPosition = desiredPosition;
-            if (!visuallyAirborne && crouchRigWeight > 0.005f && graphReady)
+            if (groundedRigCalibrated && stableSoldier &&
+                leftFootBone != null && rightFootBone != null)
             {
-                float ankleY = transform.position.y + PlantedAnkleMetres;
-                PlantCrouchLeg(leftThigh, leftShin, leftFootBone, ankleY,
+                float lowestAnkle = Mathf.Min(leftFootBone.position.y,
+                    rightFootBone.position.y);
+                float error = transform.position.y + 0.045f - lowestAnkle;
+                float adjustment = Mathf.Clamp(error, -0.35f, 0.18f) *
+                    Mathf.Clamp01(dt * 14f);
+                float corrected = Mathf.Clamp(
+                    standingShoeOffset + adjustment, -1.4f, 0.30f);
+                if (Mathf.Abs(corrected - standingShoeOffset) > 0.00025f)
+                {
+                    visualRoot.localPosition += Vector3.up *
+                        (corrected - standingShoeOffset);
+                    standingShoeOffset = corrected;
+                }
+            }
+            // Match the stance headroom to the physical 1.14m/0.62m
+            // capsule after any retargeting scale adjustment. Never move
+            // collisions/camera; the skeleton and its IK are visual-only.
+            float lowPose = Mathf.Clamp01(effectiveCrouchBlend + effectiveProneBlend);
+            if (!visuallyAirborne && graphReady && lowPose > 0.01f &&
+                proneHeadBone != null)
+            {
+                float capsuleTop = transform.TransformPoint(controller.center +
+                    Vector3.up * controller.height * 0.5f).y;
+                float headInset = Mathf.Lerp(0.10f, 0.20f,
+                    Mathf.Clamp01(effectiveProneBlend));
+                float excess = proneHeadBone.position.y -
+                    (capsuleTop - headInset);
+                if (excess > 0.005f)
+                    visualRoot.localPosition += Vector3.down *
+                        Mathf.Min(excess, 0.45f) * lowPose;
+            }
+            if (!visuallyAirborne && graphReady && crouchRigWeight > 0.005f)
+            {
+                PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
+                    SupportedAnkleY(leftFootBone, PlantedAnkleMetres),
                     transform.forward, crouchRigWeight);
-                PlantCrouchLeg(rightThigh, rightShin, rightFootBone, ankleY,
+                PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
+                    SupportedAnkleY(rightFootBone, PlantedAnkleMetres),
                     transform.forward, crouchRigWeight);
+            }
+            float proneRigWeight = !visuallyAirborne && graphReady &&
+                authoredProne ? effectiveProneBlend : 0f;
+            if (proneRigWeight > 0.005f)
+            {
+                PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
+                    SupportedAnkleY(leftFootBone, ProneAnkleClearanceMetres),
+                    transform.forward, proneRigWeight);
+                PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
+                    SupportedAnkleY(rightFootBone, ProneAnkleClearanceMetres),
+                    transform.forward, proneRigWeight);
             }
             // The authored crawling clip places the head higher than the
             // 62cm prone capsule while its ankles already touch the terrain.
