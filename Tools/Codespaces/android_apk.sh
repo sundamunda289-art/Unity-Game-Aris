@@ -82,6 +82,58 @@ echo "apk_tmp_free_gb=$(df -BG /tmp | awk 'END {gsub(/G/,"",$4);print $4}')"
 echo APK_PREFLIGHT_RECORDED
 if test "$MODE" = preflight; then exit 0; fi
 
+# Unity 6000.3.26f1 can reject Ubuntu's patched OpenJDK 17.0.21.0.3
+# even though java and javac exist and execute correctly. Use a complete,
+# vendor-built JDK 17 instead of the Linux distro symlink. The downloaded
+# Temurin binary is SHA-256 checked and kept ONLY in isolated /tmp storage.
+# Never replace the user's Unity Editor, its license, or system-wide Java.
+JDK_ROOT="${AARIS_ANDROID_JDK_ROOT:-$BASE/temurin-openjdk-17}"
+if test "$JDK_ROOT" = "$BASE/temurin-openjdk-17" && ! test -x "$JDK_ROOT/bin/java"; then
+  JDK_ARCHIVE="$BASE/OpenJDK17U-jdk_x64_linux_hotspot_17.0.21_9.tar.gz"
+  JDK_HASH=8b9b611d917e3dfd8419d3566b5949226f69b052fed7e109c1368add1dfe8711
+  if ! test -s "$JDK_ARCHIVE" ||
+     ! printf '%s  %s\n' "$JDK_HASH" "$JDK_ARCHIVE" | sha256sum --check --status; then
+    echo APK_PINNED_TEMURIN_JDK17_DOWNLOAD_START
+    PART="$JDK_ARCHIVE.partial.$"
+    trap 'rm -f "$PART"' EXIT
+    curl --fail --location --silent --show-error --retry 3 --retry-delay 2 \
+      --connect-timeout 20 --max-time 300 \
+      --output "$PART" \
+      'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21%2B9/OpenJDK17U-jdk_x64_linux_hotspot_17.0.21_9.tar.gz' || {
+      echo APK_TEMURIN_DOWNLOAD_FAILED; exit 16;
+    }
+    printf '%s  %s\n' "$JDK_HASH" "$PART" | sha256sum --check --status || {
+      echo APK_TEMURIN_SHA256_MISMATCH; exit 16;
+    }
+    mv -f "$PART" "$JDK_ARCHIVE"
+    trap - EXIT
+  fi
+  TEMP_JDK="$JDK_ROOT.partial.$"
+  test ! -e "$TEMP_JDK" || { echo APK_TEMP_JDK_PATH_UNSAFE; exit 16; }
+  mkdir -p "$TEMP_JDK"
+  tar -xzf "$JDK_ARCHIVE" -C "$TEMP_JDK" --strip-components=1 || {
+    echo APK_TEMURIN_UNPACK_FAILED; exit 16;
+  }
+  test -x "$TEMP_JDK/bin/java" && test -x "$TEMP_JDK/bin/javac" || {
+    echo APK_TEMURIN_TOOLS_MISSING; exit 16;
+  }
+  if test -e "$JDK_ROOT"; then
+    echo APK_EXISTING_TEMP_JDK_PATH_NOT_REPLACED
+    exit 16
+  fi
+  mv "$TEMP_JDK" "$JDK_ROOT"
+fi
+test -x "$JDK_ROOT/bin/java" && test -x "$JDK_ROOT/bin/javac" ||
+  { echo APK_ANDROID_JDK17_MISSING; exit 16; }
+JDK_VERSION="$("$JDK_ROOT/bin/java" -version 2>&1)" ||
+  { echo APK_ANDROID_JDK17_EXECUTION_FAILED; exit 16; }
+if ! grep -qF 'openjdk version "17.' <<< "$JDK_VERSION"; then
+  echo APK_ANDROID_JDK17_VERSION_UNSUPPORTED
+  exit 16
+fi
+export AARIS_ANDROID_JDK_ROOT="$JDK_ROOT"
+echo APK_TEMURIN_JDK17_VERIFIED_AND_EXPORTED
+
 # Official Unity CLI/Hub installations are the only supported source of
 # Android SDK/NDK/JDK modules. If the original Unity Editor was installed
 # manually, install the exact *same version* to isolated /tmp. Never touch the
