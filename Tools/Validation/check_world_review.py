@@ -39,7 +39,28 @@ def check(native=False):
         assert colliders[0]['m_Mesh']['guid']==model['guid']
         prefab_checks.append(name)
     objects=documents(ROOT/SCENE);names={i:d['m_Name'] for c,i,n,d in objects if n=='GameObject'}
-    transforms={names[d['m_GameObject']['fileID']]:d for c,i,n,d in objects if n=='Transform'}
+    # Unity serializes nested prefab roots as stripped Transforms that have
+    # m_PrefabInstance instead of m_GameObject. The original authored house
+    # anchors still retain real GameObjects and their precise scale.
+    transforms={names[d['m_GameObject']['fileID']]:d for c,i,n,d in objects
+                if n=='Transform' and 'm_GameObject' in d}
+    stripped=[d for c,i,n,d in objects if n=='Transform' and 'm_GameObject' not in d]
+    instances={i:d for c,i,n,d in objects if n=='PrefabInstance'}
+    assert len(stripped) in (0,47), 'Unexpected stripped home transforms'
+    assert len(stripped)==len(instances), 'Nested prefab Transform count mismatch'
+    for t in stripped:
+        ref=t['m_PrefabInstance']['fileID']
+        assert ref in instances, 'Nested home prefab reference lost'
+        inst=instances[ref]
+        assert t['m_CorrespondingSourceObject']['guid']==inst['m_SourcePrefab']['guid']
+        parent=inst['m_Modification']['m_TransformParent']['fileID']
+        assert any(d.get('m_GameObject',{}).get('fileID') in names and i==parent
+                   for c,i,n,d in objects if n=='Transform'), 'Orphaned native home'
+        scales={r['propertyPath']:float(r['value']) for r in
+                inst['m_Modification']['m_Modifications']
+                if r.get('propertyPath') in ('m_LocalScale.x','m_LocalScale.y','m_LocalScale.z')}
+        assert len(scales)==3 and all(.5<=v<=1.5 for v in scales.values()), 'Home scale invalid'
+        assert max(scales.values())-min(scales.values())<.001, 'Distorted native home'
     for b in layout['buildings']:assert list(transforms[b['name']]['m_LocalScale'].values())==b['scale']
     scene_spawn = transforms['AarisPlayer']['m_LocalPosition']
     reported_spawn = report['safe_spawn_m']
