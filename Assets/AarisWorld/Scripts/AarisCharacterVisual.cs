@@ -851,25 +851,25 @@ namespace Aaris.MapReview
                     visualRoot.localPosition += Vector3.down *
                         Mathf.Min(excess, 0.45f) * lowPose;
             }
-            if (!visuallyAirborne && graphReady && crouchRigWeight > 0.005f)
+            // Resolve each knee once when crouch and prone blend together.
+            // Previously the second pass twisted an already-solved lower leg,
+            // causing foot jitter and bent knees during rapid stance switching.
+            // The per-frame collision queries and allocations cannot increase.
+            float proneRigWeight = authoredProne ? effectiveProneBlend : 0f;
+            float totalRigWeight = crouchRigWeight + proneRigWeight;
+            float ankleRigWeight = !visuallyAirborne && graphReady
+                ? Mathf.Clamp01(totalRigWeight) : 0f;
+            if (ankleRigWeight > 0.005f)
             {
+                float proneShare = proneRigWeight / Mathf.Max(totalRigWeight, 0.0001f);
+                float ankleClearance = Mathf.Lerp(PlantedAnkleMetres,
+                    ProneAnkleClearanceMetres, proneShare);
                 PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
-                    SupportedAnkleY(leftFootBone, PlantedAnkleMetres),
-                    transform.forward, crouchRigWeight);
+                    SupportedAnkleY(leftFootBone, ankleClearance),
+                    transform.forward, ankleRigWeight);
                 PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
-                    SupportedAnkleY(rightFootBone, PlantedAnkleMetres),
-                    transform.forward, crouchRigWeight);
-            }
-            float proneRigWeight = !visuallyAirborne && graphReady &&
-                authoredProne ? effectiveProneBlend : 0f;
-            if (proneRigWeight > 0.005f)
-            {
-                PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
-                    SupportedAnkleY(leftFootBone, ProneAnkleClearanceMetres),
-                    transform.forward, proneRigWeight);
-                PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
-                    SupportedAnkleY(rightFootBone, ProneAnkleClearanceMetres),
-                    transform.forward, proneRigWeight);
+                    SupportedAnkleY(rightFootBone, ankleClearance),
+                    transform.forward, ankleRigWeight);
             }
             // The authored crawling clip places the head higher than the
             // 62cm prone capsule while its ankles already touch the terrain.
