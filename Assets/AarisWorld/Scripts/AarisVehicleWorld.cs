@@ -81,6 +81,52 @@ namespace Aaris.MapReview
         // Limit physics probes as well as successful Instantiate operations.
         private int spawnProbeBudgetPerPoll = 8;
 
+
+        // Bounds in VEHICLE-LOCAL coordinates, not Unity Renderer.bounds (which
+        // rotates with road heading). A 90-degree parked sedan must not be
+        // interpreted as a sideways FBX and rotated a second time.
+        // Evaluated once when a model spawns; never on the frame hot path.
+        internal static bool TryGetVisualBoundsLocal(Transform localSpace, out Bounds combined)
+        {
+            combined = new Bounds();
+            if (localSpace == null) return false;
+            bool found = false;
+            Matrix4x4 toLocal = localSpace.worldToLocalMatrix;
+            foreach (var filter in localSpace.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (filter == null || filter.sharedMesh == null ||
+                    filter.GetComponent<MeshRenderer>() == null) continue;
+                AccumulateLocalBounds(filter.sharedMesh.bounds,
+                    toLocal * filter.transform.localToWorldMatrix,
+                    ref combined, ref found);
+            }
+            foreach (var skinned in localSpace.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (skinned == null || skinned.sharedMesh == null) continue;
+                AccumulateLocalBounds(skinned.localBounds,
+                    toLocal * skinned.transform.localToWorldMatrix,
+                    ref combined, ref found);
+            }
+            return found;
+        }
+
+        private static void AccumulateLocalBounds(Bounds meshBounds, Matrix4x4 toLocal,
+            ref Bounds combined, ref bool found)
+        {
+            Vector3 e = meshBounds.extents;
+            Vector3 projected = new Vector3(
+                Mathf.Abs(toLocal.m00) * e.x + Mathf.Abs(toLocal.m01) * e.y +
+                    Mathf.Abs(toLocal.m02) * e.z,
+                Mathf.Abs(toLocal.m10) * e.x + Mathf.Abs(toLocal.m11) * e.y +
+                    Mathf.Abs(toLocal.m12) * e.z,
+                Mathf.Abs(toLocal.m20) * e.x + Mathf.Abs(toLocal.m21) * e.y +
+                    Mathf.Abs(toLocal.m22) * e.z);
+            Bounds part = new Bounds(toLocal.MultiplyPoint3x4(meshBounds.center),
+                projected * 2f);
+            if (!found) { combined = part; found = true; }
+            else combined.Encapsulate(part);
+        }
+
         private void Awake()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -460,20 +506,22 @@ namespace Aaris.MapReview
                 for (int i = 0; i < submeshes; i++) materials[i] = paletteMaterial;
                 renderer.sharedMaterials = materials;
             }
-            Bounds bounds = renderers[0].bounds;
-            foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
+            // Inspect the model in chassis space; world-space AABBs change
+            // when the authored road marker is rotated 45/90/135 degrees.
+            if (!TryGetVisualBoundsLocal(root.transform, out Bounds bounds))
+            { Destroy(root); return false; }
             if (bounds.size.x > bounds.size.z * 1.1f)
                 mesh.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
-            bounds = renderers[0].bounds;
-            foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
-            if (bounds.size.z < .1f || bounds.size.x < .1f)
+            if (!TryGetVisualBoundsLocal(root.transform, out bounds) ||
+                bounds.size.z < .1f || bounds.size.x < .1f)
             { Destroy(root); return false; }
             float scale = Mathf.Min(1.88f / bounds.size.x, 4.28f / bounds.size.z);
             mesh.transform.localScale *= Mathf.Clamp(scale, .01f, 50f);
-            bounds = renderers[0].bounds;
-            foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
-            Vector3 targetCenter = root.transform.TransformPoint(new Vector3(0f, .48f, 0f));
-            mesh.transform.position += targetCenter - bounds.center;
+            if (!TryGetVisualBoundsLocal(root.transform, out bounds))
+            { Destroy(root); return false; }
+            // Both this offset and bounds are expressed in the root's LOCAL
+            // frame: chassis collider, FBX art and WheelCollider heading agree.
+            mesh.transform.localPosition += new Vector3(0f, .48f, 0f) - bounds.center;
             var motor = root.AddComponent<AarisVehicleMotor>();
             motor.Configure(record.type.id, record.type.maxSpeedMetres, record.type.massKg);
             if (!motor.AttachWheelModels(wheelSource, paletteMaterial))

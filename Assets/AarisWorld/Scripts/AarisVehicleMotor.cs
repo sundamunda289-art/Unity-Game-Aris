@@ -142,15 +142,18 @@ namespace Aaris.MapReview
                     Destroy(instance);
                     return false;
                 }
-                Bounds combined = renderers[0].bounds;
                 foreach (var renderer in renderers)
                 {
-                    combined.Encapsulate(renderer.bounds);
                     int n = Mathf.Max(1, renderer.sharedMaterials.Length);
                     var materials = new Material[n];
                     for (int j = 0; j < n; j++) materials[j] = palette;
                     renderer.sharedMaterials = materials;
                 }
+                // Wheel size must not shrink or grow merely because a car
+                // is parked at a different compass heading.
+                if (!AarisVehicleWorld.TryGetVisualBoundsLocal(
+                    instance.transform, out Bounds combined))
+                { Destroy(instance); return false; }
                 float maxDimension = Mathf.Max(combined.size.x,
                     Mathf.Max(combined.size.y, combined.size.z));
                 if (maxDimension < .001f)

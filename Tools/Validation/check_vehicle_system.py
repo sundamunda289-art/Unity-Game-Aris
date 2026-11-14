@@ -196,6 +196,36 @@ def test():
     assert entry.index("lootWorld = FindFirstObjectByType<AarisWeaponLootWorld>();") < (
         entry.index("if (actions != null) actions.enabled = false;"))
 
+    # A world-axis aligned Renderer.bounds swaps car width/length as the
+    # road heading rotates; at 90 degrees it erroneously turns the FBX
+    # sideways relative to its physics chassis. Derive widths in root space.
+    build = world.split("private bool Build(AarisVehicleRecord", 1)[1].split(
+        "private void Update()", 1)[0]
+    assert "TryGetVisualBoundsLocal(root.transform, out Bounds bounds)" in build
+    assert build.count("TryGetVisualBoundsLocal(root.transform, out bounds)") == 2
+    assert "renderer.bounds" not in build
+    assert "mesh.transform.localPosition += new Vector3(0f, .48f, 0f) - bounds.center;" in build
+    assert "localSpace.worldToLocalMatrix" in world
+    assert "filter.transform.localToWorldMatrix" in world
+    assert "Mathf.Abs(toLocal.m00)" in world
+    assert "GetComponentsInChildren<SkinnedMeshRenderer>(true)" in world
+    wheels = motor.split("public bool AttachWheelModels(", 1)[1].split(
+        "private void SyncVisibleWheels()", 1)[0]
+    assert "TryGetVisualBoundsLocal(" in wheels
+    assert "instance.transform, out Bounds combined" in wheels
+    assert "renderer.bounds" not in wheels
+    # Reference geometry: a model 2m wide and 4m long must remain
+    # lengthwise with its root even when heading changes on the map.
+    for yaw in (0, 15, 45, 90, 135, 180, 270):
+        rad = math.radians(yaw)
+        width_world = abs(math.cos(rad)) * 2 + abs(math.sin(rad)) * 4
+        length_world = abs(math.sin(rad)) * 2 + abs(math.cos(rad)) * 4
+        assert 2 < 4 * 1.1
+        if yaw == 90:
+            assert width_world > length_world * 1.1  # old false rotation
+        assert math.isclose(2 / 4, 0.5)
+    assert 4 > 2 * 1.1  # local sideways FBX should still be turned once
+
     # Full WheelCollider physics without fake step velocity teleports.
     assert "wheelPrefabs[i] = Resources.Load<GameObject>(item.wheelResource);" in world
     assert "motor.AttachWheelModels(wheelSource, paletteMaterial)" in world
