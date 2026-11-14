@@ -343,10 +343,12 @@ namespace Aaris.MapReview
             float z = (record.previouslySpawned ? record.position.z : p.z) + offsetZ;
             var terrain = TerrainAt(x, z);
             if (terrain == null) return false;
-            // Terrain.SampleHeight already returns a WORLD-SPACE Y.
-            // Adding terrain.transform.position.y again breaks placement
-            // on our four elevated/negative-height native Terrain tiles.
-            float ground = terrain.SampleHeight(new Vector3(x, 0f, z));
+            // Terrain.SampleHeight returns a height relative to the Terrain
+            // transform, not an absolute Y. Our four native tiles start
+            // at -120m: without this correction all authored vehicles fail
+            // their +/-2.5m road-height validation before reaching physics.
+            float ground = terrain.transform.position.y +
+                terrain.SampleHeight(new Vector3(x, 0f, z));
             float authoredY = record.previouslySpawned ? record.position.y - .71f : p.y;
             // Any fallback stays near the original authored road elevation.
             // At an offset, prefer local terrain as the down-ray floor target,
