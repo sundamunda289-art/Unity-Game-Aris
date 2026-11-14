@@ -154,6 +154,8 @@ class LootGridRegression(unittest.TestCase):
         # Swapping a gun must still reserve its persistent record without
         # constructing a second model on the same frame.
         self.assertIn("deferVisual: true", SOURCE)
+        self.assertIn("inventory.RequiresExchangeDrop", SOURCE)
+        self.assertIn("inventory.HasAnyGun", SOURCE)
         # Bounded model: repeated direct drops cannot add a 41st live mesh,
         # while deferred swaps add zero new live meshes at any occupancy.
         for live in range(0, 41):
@@ -175,7 +177,7 @@ class LootGridRegression(unittest.TestCase):
     def test_full_mesh_pool_and_disabled_flight_do_not_starve_starter(self):
         starter = SOURCE[SOURCE.index("private void EnsureStarterLoot("):
                          SOURCE.index("private bool IsCurrentlyActive(")]
-        guard = starter.split("if (inventory.HasGun)", 1)[0]
+        guard = starter.split("if (inventory.HasAnyGun)", 1)[0]
         self.assertNotIn("active.Count >= MaximumActiveLoot", guard)
         self.assertIn("flight.isActiveAndEnabled && !flight.HasLanded", starter)
         self.assertIn("if (active.Count >= MaximumActiveLoot)", starter)
