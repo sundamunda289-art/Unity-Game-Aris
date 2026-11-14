@@ -51,7 +51,11 @@ class OpenCombatHouseContracts(unittest.TestCase):
         self.assertIn("Front(t,width,depth,h,player,includePanels);", modular)
         self.assertIn("Back(t,width,depth,h,includePanels);", modular)
         self.assertIn("AarisModularHouse.Create(position, rotation", expansion)
-        self.assertIn("transform, interactionTarget, prefab)", expansion)
+        # The four intentionally interactive houses must instantiate a
+        # real physical leaf in a genuine wall hole. The default Create()
+        # path for other doorless combat homes stays unchanged.
+        self.assertIn("transform, interactionTarget, prefab,", expansion)
+        self.assertIn("includePanels: true)", expansion)
         self.assertNotIn("transform, interactionTarget, prefab, true)", expansion)
 
         window = modular.split("private static void Window(", 1)[1].split(
@@ -75,6 +79,19 @@ class OpenCombatHouseContracts(unittest.TestCase):
             "private static bool Prepare(", 1)[1].split(
             "private static Material Match(", 1)[0])
         self.assertRegex(modular, r"if \(includePanels\)\s+door = Match")
+
+    def test_interactive_door_swings_and_keeps_real_collider(self):
+        modular = MODULAR.read_text(encoding="utf-8")
+        panel = (SCRIPTS / "AarisBreakablePanel.cs").read_text(encoding="utf-8")
+        front = modular.split("private static void Front(", 1)[1].split(
+            "private static void Back(", 1)[0]
+        self.assertIn('new GameObject("AutomaticBreakableDoorHinge")', front)
+        self.assertIn('GameObject leaf = Box(hinge.transform,"RealDoorLeaf",', front)
+        self.assertIn("leaf.transform,leaf.GetComponent<BoxCollider>(),player,true,85f,root);", front)
+        self.assertIn("private const float NearRadius = 3.2f;", panel)
+        self.assertIn("transform.localRotation = Quaternion.Euler(0f, currentAngle, 0f);", panel)
+        self.assertIn("if (!shouldOpen && Mathf.Abs(currentAngle) > .01f && ClosingBlocked())", panel)
+        self.assertIn("if (solid != null) solid.enabled = false;", panel)
 
     def test_openings_retain_walls_and_fit_player(self):
         src = MODULAR.read_text(encoding="utf-8")
