@@ -127,9 +127,11 @@ namespace Aaris.MapReview
         /// cylinders. Synchronize rendered pose to each WheelCollider.
         /// No duplicated physics colliders exist on the visible wheels.
         /// </summary>
-        public bool AttachWheelModels(GameObject wheelPrefab, Material palette)
+        public bool AttachWheelModels(GameObject wheelPrefab, Material palette,
+            bool preserveAuthoredUrpMaterials = false)
         {
-            if (wheelPrefab == null || palette == null) return false;
+            if (wheelPrefab == null ||
+                (!preserveAuthoredUrpMaterials && palette == null)) return false;
             for (int i = 0; i < wheels.Length; i++)
             {
                 var instance = Instantiate(wheelPrefab, transform, false);
@@ -142,12 +144,15 @@ namespace Aaris.MapReview
                     Destroy(instance);
                     return false;
                 }
-                foreach (var renderer in renderers)
+                if (!preserveAuthoredUrpMaterials)
                 {
-                    int n = Mathf.Max(1, renderer.sharedMaterials.Length);
-                    var materials = new Material[n];
-                    for (int j = 0; j < n; j++) materials[j] = palette;
-                    renderer.sharedMaterials = materials;
+                    foreach (var renderer in renderers)
+                    {
+                        int n = Mathf.Max(1, renderer.sharedMaterials.Length);
+                        var materials = new Material[n];
+                        for (int j = 0; j < n; j++) materials[j] = palette;
+                        renderer.sharedMaterials = materials;
+                    }
                 }
                 // Wheel size must not shrink or grow merely because a car
                 // is parked at a different compass heading.
