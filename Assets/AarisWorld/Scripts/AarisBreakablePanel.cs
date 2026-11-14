@@ -35,12 +35,15 @@ namespace Aaris.MapReview
             house = houseRoot;
             if (isDoor)
             {
-                doorwayCenter = new Vector3(0f, 0f, transform.localPosition.z);
-                // These modular houses are static after construction. Cache
-                // their world doorway position rather than multiplying the
-                // house transform on every Android frame.
-                worldDoorwayCenter = house != null
-                    ? house.TransformPoint(doorwayCenter) : transform.position;
+                // Cache the real CLOSED door-leaf center, not the hinge pivot
+                // or the house origin. Offset/rotated houses then activate at
+                // their visible doorway rather than several metres away.
+                // This work happens once at construction, never per frame.
+                Vector3 closedLeafCenter = leaf != null
+                    ? leaf.position : transform.position;
+                worldDoorwayCenter = closedLeafCenter;
+                doorwayCenter = house != null
+                    ? house.InverseTransformPoint(closedLeafCenter) : closedLeafCenter;
             }
             health = Mathf.Max(1f, hitPoints);
             enabled = door; // windows do no per-frame polling
@@ -104,8 +107,9 @@ namespace Aaris.MapReview
         {
             if (leaf == null) return false;
             // Doorframe safety volume, regardless of current swing angle.
-            Vector3 middle = house.TransformPoint(new Vector3(0f, 1.18f,
-                transform.localPosition.z));
+            // Check the exact doorway that triggered the swing. The panel
+            // collider still rotates with its hinge and is never disabled.
+            Vector3 middle = worldDoorwayCenter;
             int hits = Physics.OverlapBoxNonAlloc(middle, new Vector3(.9f, 1.20f, .95f),
                 blockers, house.rotation, Physics.DefaultRaycastLayers,
                 QueryTriggerInteraction.Ignore);
