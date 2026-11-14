@@ -251,6 +251,28 @@ class LootGridRegression(unittest.TestCase):
         self.assertIn("if (!foundFloor) return false;", SOURCE)
         self.assertIn("Physics.CheckCapsule(center", SOURCE)
 
+    def test_medkit_and_helmet_respect_unloaded_house_colliders(self):
+        # A disabled 55m streamed wall is invisible to Physics overlap.
+        # Verify the actual medkit/helmet spawn path checks the existing
+        # cached authored collider grid BEFORE attempting a physics overlap.
+        tactical = (ROOT / "Assets/AarisWorld/Scripts/AarisOfflineTacticalHUD.cs").read_text(
+            encoding="utf-8")
+        obstacles = (ROOT / "Assets/AarisWorld/Scripts/AarisNearbyColliders.cs").read_text(
+            encoding="utf-8")
+        self.assertIn("private AarisNearbyColliders medicalNearbyColliders;", tactical)
+        self.assertIn("medicalNearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();", tactical)
+        spawn = tactical[tactical.index("private bool TrySpawnMedicalCase("):
+                         tactical.index("private static void HelmetPart(")]
+        guard = "medicalNearbyColliders.HasPotentialInactiveObstacle("
+        self.assertIn(guard, spawn)
+        self.assertIn("center, halfExtents, Quaternion.identity))", spawn)
+        self.assertLess(spawn.index(guard), spawn.index("Physics.OverlapBoxNonAlloc("))
+        self.assertIn("if (site.isHelmet)", spawn)
+        self.assertIn("var root = new GameObject(\"Aaris Streamed Medkit\")", spawn)
+        self.assertIn("if (!isActiveAndEnabled || obstacles == null", obstacles)
+        self.assertIn("if (streamed[i] && c != null && !c.enabled &&", obstacles)
+        self.assertNotIn("Physics.SyncTransforms()", spawn)
+
     def test_all_points_in_circle_covered_and_priority_preserved(self):
         rng = random.Random(20261110)
         points = [(rng.uniform(-1000, 1000), rng.uniform(-1000, 1000))
