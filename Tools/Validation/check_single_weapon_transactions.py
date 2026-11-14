@@ -49,9 +49,15 @@ def audit():
     assert "if (old != null)" in inventory and "old.gameObject.SetActive(false);" in inventory
     # A composite FBX cannot be sized from its first child Renderer.
     assert "var renderers = visible.GetComponentsInChildren<Renderer>(true);" in inventory
-    assert "combinedBounds.Encapsulate(renderers[i].bounds);" in inventory
+    # Real Unity Play Mode proved Renderer.bounds can be stale immediately
+    # after changing the imported FBX scale. Measure each mesh corner in
+    # root-local space once, before applying scale to hand or floor.
+    assert "AarisWeaponMeshBounds.TryMeasure(root.transform," in inventory
     assert "Mathf.Max(combinedBounds.size.x" in inventory
+    assert "combinedBounds.center * scale;" in inventory
     assert "renderer.bounds.size" not in inventory
+    assert "internal static class AarisWeaponMeshBounds" in pickup
+    assert "renderer.transform.TransformPoint(local)" in pickup
     assert "combat.Equip(null)" in inventory and "combat.SetFireHeld(false)" in inventory
     assert "public bool TryRemove(out AarisWeaponState removed)" in inventory
     assert "Configure(AarisWeaponState state)" in gun
