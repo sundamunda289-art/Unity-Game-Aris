@@ -198,12 +198,13 @@ def test():
         assert nearest == (2.8 if valid else 6.7)
     assert "Physics.SphereCast(" not in session
     # The actual rendered smoothed camera, not only the ideal follow goal,
-    # must be swept before assignment. One cast preserves mobile budget.
+    # is swept before assignment. The fast path has just one nonalloc cast;
+    # only saturation adds a second preallocated cast.
     follow = session.split("private void FollowCarCamera()", 1)[1].split(
         "private void OnDisable()", 1)[0]
     assert "Vector3 ray = next - start;" in follow
     assert "Vector3 goal = requested;" not in follow
-    assert follow.count("Physics.SphereCastNonAlloc(") == 1
+    assert follow.count("Physics.SphereCastNonAlloc(") == 2
     assert follow.index("Vector3 next = Vector3.SmoothDamp(") < (
         follow.index("Physics.SphereCastNonAlloc("))
     assert follow.index("Physics.SphereCastNonAlloc(") < (
