@@ -75,6 +75,7 @@ namespace Aaris.MapReview
         private Vector3 lastMotorPosition;
         private AnimationClip idleClip, walkClip, runClip;
         private float locomotionPhase, crouchPhase, crawlPhase;
+        private float gaitDirection = 1f; // Stable contact phase for backpedal.
         // Avoid repeated managed-to-native Playables calls for settled poses.
         // Each cached value mirrors the weight last sent to the native graph.
         private const float WeightWriteEpsilon = 0.00025f;
@@ -521,8 +522,8 @@ namespace Aaris.MapReview
             // Entering a lower pose should catch up promptly, while standing
             // back up eases slightly longer so shoulders do not snap upward.
             // Exponential time constants preserve feel from 10 to 120 FPS.
-            float crouchAlpha = 1f - Mathf.Exp(-dt / (crouching ? 0.11f : 0.15f));
-            float proneAlpha = 1f - Mathf.Exp(-dt / (prone ? 0.11f : 0.15f));
+            float crouchAlpha = 1f - Mathf.Exp(-dt / (crouching ? 0.085f : 0.15f));
+            float proneAlpha = 1f - Mathf.Exp(-dt / (prone ? 0.085f : 0.15f));
             crouchBlend = Mathf.Lerp(crouchBlend, crouching ? 1f : 0f, crouchAlpha);
             proneBlend = Mathf.Lerp(proneBlend, prone ? 1f : 0f, proneAlpha);
 
@@ -791,9 +792,18 @@ namespace Aaris.MapReview
                     // never jump the sample time, so contact remains continuous
                     // through a direction change, including crouch and crawl.
                     float forwardSpeed = Vector3.Dot(velocity, transform.forward);
-                    float phaseDirection = forwardSpeed < -0.20f &&
-                        Mathf.Abs(forwardSpeed) > Mathf.Abs(strafeSpeed) * 0.6f
-                        ? -1f : 1f;
+                    // Hysteresis prevents backward feet switching on analogue noise,
+                    // strafe blends and shallow wall slides.
+                    float sideSpeed = Mathf.Abs(strafeSpeed);
+                    if (horizontal < 0.06f)
+                        gaitDirection = 1f;
+                    else if (forwardSpeed < -0.32f &&
+                             -forwardSpeed > sideSpeed * 0.75f)
+                        gaitDirection = -1f;
+                    else if (forwardSpeed > -0.08f ||
+                             sideSpeed > -forwardSpeed * 1.40f)
+                        gaitDirection = 1f;
+                    float phaseDirection = gaitDirection;
                     if (pose < 0.999f)
                         locomotionPhase = Mathf.Repeat(locomotionPhase +
                             phaseDirection * distance / standStride, 1f);

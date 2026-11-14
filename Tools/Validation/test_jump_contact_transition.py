@@ -14,7 +14,7 @@ audio = (ROOT / "Assets/AarisWorld/Scripts/AarisAudioDirector.cs").read_text("ut
 assert "bool previousMoveGrounded = controller.isGrounded;" in motor
 assert "bool wasGrounded = previousMoveGrounded;" in motor
 assert "wasGrounded = HasWalkableGroundWithinStep();" in motor
-assert "if (!previousMoveGrounded && !launchJump)" in motor
+assert "if (!previousMoveGrounded && !launchJump &&" in motor
 assert "lastLanding = now;" in motor
 assert "float preSupportFallSpeed = Mathf.Max(0f, -verticalVelocity);" in motor
 assert "lastLandingImpactSpeed = Mathf.Max(preSupportFallSpeed," in motor
@@ -118,3 +118,13 @@ for fps in (10, 30, 60, 120):
 
 print("PASS: jump touchdown, predictive downhill and real impact retention")
 print("NOT TESTED: Unity collision sweeps, actual animation poses, device audio")
+
+
+# Short stair/terrain-seam contact gaps are not physical landing impacts.
+assert 'private float lastPhysicalGroundContact = -10f;' in motor
+assert 'if (previousMoveGrounded) lastPhysicalGroundContact = now;' in motor
+assert 'now - lastPhysicalGroundContact >= 0.12f' in motor
+assert 'lastPhysicalGroundContact = now;\n                lastGrounded = now;' in motor
+for airborne_seconds, should_land in ((0,False),(1/60,False),(0.1,False),
+                                     (0.119,False),(0.12,True),(0.45,True)):
+    assert (airborne_seconds >= 0.12) == should_land

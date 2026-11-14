@@ -20,7 +20,7 @@ assert '? 0d : crouchClip.length * (10d / 24d)' in visual
 assert 'jumpPlayable.SetTime(jump.length * 0.39d)' in visual
 assert 'fallPlayable.SetTime(fall.length * 0.72d)' in visual
 assert 'jumpStartPlayable.SetSpeed(Mathf.Clamp' in visual
-assert 'float phaseDirection = forwardSpeed < -0.20f' in visual
+assert 'float phaseDirection = gaitDirection;' in visual
 assert 'phaseDirection * distance / standStride' in visual
 assert 'phaseDirection * distance / 1.40f' in visual
 assert 'phaseDirection * distance / 0.90f' in visual
@@ -136,8 +136,8 @@ for head, legs, slope, permitted in (
     assert mesh_support_clear(head, legs, slope) == permitted, (head, legs, slope)
 # Stance visual catch-up is quicker than the upward recovery, with a
 # frame-rate independent exponential; the physics capsule is untouched.
-assert 'crouching ? 0.11f : 0.15f' in visual
-assert 'prone ? 0.11f : 0.15f' in visual
+assert 'crouching ? 0.085f : 0.15f' in visual
+assert 'prone ? 0.085f : 0.15f' in visual
 assert 'if (!visuallyAirborne)' in visual
 assert 'if (!visuallyAirborne && horizontal < 0.045f)' in visual
 assert 'if (controller.isGrounded && horizontal < 0.045f)' not in visual
@@ -151,8 +151,8 @@ for fps in (10, 30, 60, 120):
     dt = 1.0 / fps
     pose_value = 0.0
     for _ in range(round(0.3 * fps)):
-        pose_value += (1.0 - pose_value) * (1.0 - math.exp(-dt / 0.11))
-    expected = 1.0 - math.exp(-0.3 / 0.11)
+        pose_value += (1.0 - pose_value) * (1.0 - math.exp(-dt / 0.085))
+    expected = 1.0 - math.exp(-0.3 / 0.085)
     assert abs(pose_value - expected) < 1e-12, (fps, pose_value)
     assert pose_value > 1.0 - math.exp(-0.3 / 0.16)
 # Idle-only rephase cannot touch an actively visible or airborne gait.
@@ -331,3 +331,30 @@ for fps in (10, 20, 30, 60, 120):
     assert abs(integrated - 0.3) < 1e-9, (fps, integrated)
 # Retaining the old cap would have integrated only 0.15 seconds at 10 FPS.
 assert abs(sum(min(0.1, 0.05) for _ in range(3)) - 0.15) < 1e-9
+
+
+# Stable backpedal gait avoids contact-direction chatter around -0.2 m/s.
+assert 'private float gaitDirection = 1f;' in visual
+assert 'forwardSpeed < -0.32f' in visual
+assert 'forwardSpeed > -0.08f' in visual
+direction = 1.0
+for forward in (-0.38,-0.21,-0.18,-0.23,-0.19,-0.27):
+    if forward < -0.32: direction = -1.0
+    elif forward > -0.08: direction = 1.0
+    assert direction == -1.0
+assert 0.12 > -0.08
+
+# Small, native URP Lit cloth albedo with mip streaming; no extra runtime material.
+from struct import unpack
+tex = ROOT / 'Assets/Resources/AarisCharacters/Primary/Textures/AarisTacticalFabric_512.png'
+raw = tex.read_bytes()
+assert raw[:8] == b'\x89PNG\r\n\x1a\n'
+assert unpack('>II', raw[16:24]) == (512,512)
+meta = tex.with_suffix('.png.meta').read_text()
+assert 'streamingMipmaps: 1' in meta
+assert 'enableMipMap: 1' in meta
+assert 'sRGBTexture: 1' in meta
+assert 'textureType: 0' in meta
+guid = 'a26b95582e905f30b703a95779c69777'
+assert 'guid: '+guid in meta
+assert '_BaseMap:\n        m_Texture: {fileID: 2800000, guid: '+guid+', type: 3}' in primary_mat

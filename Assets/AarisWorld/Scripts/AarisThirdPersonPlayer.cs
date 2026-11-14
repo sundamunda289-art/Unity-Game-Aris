@@ -85,6 +85,8 @@ namespace Aaris.MapReview
         private float lastJumpStarted = -10f;
         private float lastLanding = -10f;
         private float lastLandingImpactSpeed;
+        // Only actual motor contact defines a meaningful landing.
+        private float lastPhysicalGroundContact = -10f;
         public bool IsInAir => controller != null && !controller.isGrounded;
         public float LastLandingTime => lastLanding;
         public float LastLandingImpactSpeed => lastLandingImpactSpeed;
@@ -198,6 +200,7 @@ namespace Aaris.MapReview
             if (nearbyColliders == null) nearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
             spawn = transform.position;
             spawnRotation = transform.rotation;
+            lastPhysicalGroundContact = Time.unscaledTime;
             spawn.y = GroundHeight(spawn) + controller.skinWidth + 0.05f;
             controller.enabled = false;
             transform.position = spawn;
@@ -419,6 +422,7 @@ namespace Aaris.MapReview
             // downhill support probe. A near-ground probe can assist walking,
             // but it must not suppress the first actual landing event.
             bool previousMoveGrounded = controller.isGrounded;
+            if (previousMoveGrounded) lastPhysicalGroundContact = now;
             // A downhill support prediction can reduce the motor's falling speed
             // before Move reports actual contact. Keep the pre-probe descent
             // speed for the one-shot visual/audio landing impact only.
@@ -621,13 +625,15 @@ namespace Aaris.MapReview
                 // Record touchdown only when Move really contacts ground.
                 // The downhill probe may have set wasGrounded=true *before*
                 // Move; using that prediction hid land poses and impact audio.
-                if (!previousMoveGrounded && !launchJump)
+                if (!previousMoveGrounded && !launchJump &&
+                    now - lastPhysicalGroundContact >= 0.12f)
                 {
                     lastLanding = now;
                     // Real contact, not a downhill support prediction, drives the pose.
                     lastLandingImpactSpeed = Mathf.Max(preSupportFallSpeed,
                         Mathf.Max(0f, -verticalVelocity));
                 }
+                lastPhysicalGroundContact = now;
                 lastGrounded = now;
                 if (verticalVelocity < 0f) verticalVelocity = -groundedDownVelocity;
                 if (!Mathf.Approximately(controller.stepOffset, groundedStep))
