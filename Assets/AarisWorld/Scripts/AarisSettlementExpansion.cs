@@ -144,9 +144,12 @@ namespace Aaris.MapReview
                     skippedTrees++;
                     continue;
                 }
-                if (CollidersBlock(site, y))
+                if (CollidersBlock(site, y) &&
+                    (!site.interactive || !TryRelocateInteractiveSite(site, terrains, out y)))
                 {
                     skippedObstacle++;
+                    Debug.LogWarning("AARIS_EXPANSION_OBSTACLE_SITE " + site.name +
+                        " x=" + site.x.ToString("F1") + " z=" + site.z.ToString("F1"));
                     continue;
                 }
 
@@ -173,6 +176,43 @@ namespace Aaris.MapReview
                 " planned=" + plan.siteCount + " terrain_skips=" + skippedTerrain +
                 " tree_skips=" + skippedTrees + " obstacle_skips=" + skippedObstacle +
                 " asset_skips=" + skippedResources);
+        }
+
+        // A blocked interactive house should not simply disappear.
+        // Search deterministic nearby foundations while preserving all terrain,
+        // slope, vegetation, and physical-collider requirements. This runs only
+        // once at scene load, never in the mobile streaming hot path.
+        private bool TryRelocateInteractiveSite(AarisExpansionSite site,
+            Terrain[] terrains, out float elevation)
+        {
+            float originalX = site.x, originalZ = site.z;
+            elevation = 0f;
+            Vector2[] offsets = {
+                new Vector2(0f, 18f), new Vector2(18f, 0f),
+                new Vector2(0f, -18f), new Vector2(-18f, 0f),
+                new Vector2(18f, 18f), new Vector2(-18f, 18f),
+                new Vector2(18f, -18f), new Vector2(-18f, -18f),
+                new Vector2(0f, 26f), new Vector2(26f, 0f),
+                new Vector2(0f, -26f), new Vector2(-26f, 0f)
+            };
+            foreach (Vector2 offset in offsets)
+            {
+                site.x = originalX + offset.x;
+                site.z = originalZ + offset.y;
+                if (!CoordinatesValid(site) ||
+                    !TryGround(site, terrains, out _, out float candidateY) ||
+                    TreesBlock(site, terrains) || CollidersBlock(site, candidateY))
+                    continue;
+                elevation = candidateY;
+                Debug.Log("AARIS_INTERACTIVE_HOUSE_SAFE_RELOCATION " + site.name +
+                    " from (" + originalX.ToString("F1") + "," +
+                    originalZ.ToString("F1") + ") to (" +
+                    site.x.ToString("F1") + "," + site.z.ToString("F1") + ")");
+                return true;
+            }
+            site.x = originalX;
+            site.z = originalZ;
+            return false;
         }
 
         private static bool CoordinatesValid(AarisExpansionSite site)
