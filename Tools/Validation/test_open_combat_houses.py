@@ -93,6 +93,20 @@ class OpenCombatHouseContracts(unittest.TestCase):
         self.assertIn("if (!shouldOpen && Mathf.Abs(currentAngle) > .01f && ClosingBlocked())", panel)
         self.assertIn("if (solid != null) solid.enabled = false;", panel)
 
+    def test_interactive_door_sounds_use_packaged_clips_and_no_frame_allocations(self):
+        panel = (SCRIPTS / "AarisBreakablePanel.cs").read_text(encoding="utf-8")
+        packaged = RESOURCES / "SFX/CC0"
+        self.assertTrue((packaged / "impactMetal_light_000.ogg").is_file())
+        self.assertTrue((packaged / "impactSoft_heavy_000.ogg").is_file())
+        self.assertIn('Resources.Load<AudioClip>(', panel)
+        self.assertIn('"SFX/CC0/impactMetal_light_000"', panel)
+        self.assertIn('"SFX/CC0/impactSoft_heavy_000"', panel)
+        self.assertIn("if (!soundsLoaded)", panel)
+        self.assertIn("soundSource.spatialBlend = 1f;", panel)
+        self.assertIn("if (shouldOpen != lastRequestedOpen)", panel)
+        self.assertIn("soundSource.PlayOneShot(cue,", panel)
+        self.assertIn("lastRequestedOpen = shouldOpen;", panel)
+
     def test_openings_retain_walls_and_fit_player(self):
         src = MODULAR.read_text(encoding="utf-8")
         self.assertIn("WallSection(root,left,right,DoorHeight,height,z);", src)
