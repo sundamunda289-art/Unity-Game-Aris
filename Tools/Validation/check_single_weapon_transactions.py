@@ -87,7 +87,7 @@ def audit():
     assert "rec.visible = null;" in world
     assert "if (record.visible != null) continue;" in world
     assert "Time.unscaledTime < record.blockedUntil" in world
-    assert "(!inventory.HasGun && allowInitialAutoPickup &&" in world
+    assert "(!inventory.HasAnyGun && allowInitialAutoPickup &&" in world
     # PICK is time-buffered and forces the next scheduled physics refresh.
     assert "requestPickupUntil = Time.unscaledTime + 1.5f;" in world
     assert "nextRefresh = 0f;" in world
