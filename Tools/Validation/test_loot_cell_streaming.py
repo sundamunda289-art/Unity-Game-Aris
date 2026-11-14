@@ -253,6 +253,23 @@ class LootGridRegression(unittest.TestCase):
         self.assertIn("if (!foundFloor) return false;", SOURCE)
         self.assertIn("Physics.CheckCapsule(center", SOURCE)
 
+    def test_blocked_loot_probes_sweep_new_headings_without_extra_rays(self):
+        # Each 3s retry must explore a different compass sector, not re-test
+        # the same permanently blocked two points all match long.
+        self.assertIn("private byte[] alternateProbeSweep;", SOURCE)
+        self.assertIn("alternateProbeSweep = new byte[candidates.Length];", SOURCE)
+        self.assertIn("int sweep = alternateProbeSweep[index] & 7;", SOURCE)
+        self.assertIn("alternateProbeSweep[index] = (byte)((sweep + 1) & 7);", SOURCE)
+        self.assertIn("sweep * (Mathf.PI * 0.25f)", SOURCE)
+        self.assertIn("alternative < 2 && alternateProbeBudget > 0", SOURCE)
+        self.assertIn("int alternateProbeBudget = 3;", SOURCE)
+        self.assertIn("MaximumCandidateProbesPerFrame = 6;", SOURCE)
+        # A fixed initial hash angle plus eight 45-degree steps covers 360.
+        import math
+        headings = [(0.13 + i * math.pi / 4) % (2 * math.pi)
+                    for i in range(8)]
+        assert len({round(h, 7) for h in headings}) == 8
+
     def test_medkit_and_helmet_respect_unloaded_house_colliders(self):
         # A disabled 55m streamed wall is invisible to Physics overlap.
         # Verify the actual medkit/helmet spawn path checks the existing
