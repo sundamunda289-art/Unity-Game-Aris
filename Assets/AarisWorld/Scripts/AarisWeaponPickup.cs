@@ -108,7 +108,8 @@ namespace Aaris.MapReview
                 enabled = false;
                 return false;
             }
-            float scale = Mathf.Clamp(0.82f / length, 0.0000001f, 10f);
+            float scale = Mathf.Clamp(state.Spec.presentationLengthMetres / length,
+                0.0000001f, 10f);
             model.localScale *= scale;
             // Original root-space bounds scale linearly around the FBX pivot.
             // Correct horizontal centering and leave the lowest geometry
