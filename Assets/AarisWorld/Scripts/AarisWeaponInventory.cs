@@ -345,6 +345,39 @@ namespace Aaris.MapReview
                 forearm.rotation;
         }
 
+        // A fixed foregrip point on a long sniper/rifle can lie beyond the
+        // left arm's actual Humanoid reach, leaving the palm visibly detached.
+        // Intersect the gun's forward grip rail with the arm's reach sphere;
+        // slide only toward the receiver, never outside the existing rail.
+        // Pure pose math: no raycasts, allocations, or extra components.
+        private static float ReachableSupportGripZ(Transform upper,
+            Transform forearm, Transform wrist, Transform gun, float preferredZ)
+        {
+            Vector3 shoulder = upper.position;
+            float upperLength = Vector3.Distance(shoulder, forearm.position);
+            float lowerLength = Vector3.Distance(forearm.position, wrist.position);
+            if (upperLength < 0.05f || lowerLength < 0.05f)
+                return preferredZ;
+            float maximumReach = upperLength + lowerLength - 0.025f;
+            Vector3 offset = gun.TransformPoint(
+                new Vector3(-0.045f, -0.035f, 0f)) - shoulder;
+            Vector3 barrelDirection = gun.forward;
+            float along = Vector3.Dot(offset, barrelDirection);
+            float radialSquared = Mathf.Max(0f, offset.sqrMagnitude - along * along);
+            float halfChordSquared = maximumReach * maximumReach - radialSquared;
+            if (halfChordSquared <= 0f) return preferredZ;
+            float halfChord = Mathf.Sqrt(halfChordSquared);
+            float minimumReachableZ = -along - halfChord;
+            float maximumReachableZ = -along + halfChord;
+            const float minimumForegripZ = 0.14f;
+            // No usable rail segment intersects the reach sphere. Keep the
+            // existing grip rather than snapping a hand through the receiver.
+            if (maximumReachableZ < minimumForegripZ ||
+                minimumReachableZ > preferredZ) return preferredZ;
+            return Mathf.Clamp(preferredZ,
+                Mathf.Max(minimumForegripZ, minimumReachableZ), maximumReachableZ);
+        }
+
         private void AlignSupportHand()
         {
             if (!HasGun || IsSprintHolstered || hand == null ||
@@ -356,6 +389,8 @@ namespace Aaris.MapReview
             // support grip to this weapon's physical barrel length.
             float foregrip = Mathf.Clamp(
                 equipped.Spec.presentationLengthMetres * 0.40f, 0.22f, 0.48f);
+            foregrip = ReachableSupportGripZ(
+                leftUpperArm, leftForearm, leftHand, weaponRoot, foregrip);
             ReachArm(rightUpperArm, rightForearm, hand,
                 weaponRoot.TransformPoint(new Vector3(0.015f, -0.045f, -0.045f)),
                 transform.right);
