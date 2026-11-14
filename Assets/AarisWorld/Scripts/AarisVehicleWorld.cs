@@ -24,6 +24,9 @@ namespace Aaris.MapReview
         public string id, modelResource, wheelResource;
         public int weight;
         public float maxSpeedMetres, massKg;
+        // Opt-in for imported car AND wheel prefabs with valid URP Lit PBR materials.
+        // Legacy Kenney models still use the shared atlas and unchanged art budget.
+        public bool preserveAuthoredUrpMaterials;
     }
 
     [Serializable]
@@ -214,6 +217,18 @@ namespace Aaris.MapReview
                     wheelPrefabs[i] = null;
                     continue;
                 }
+
+                // A Standard/pink/missing material must never silently ship as
+                // a realistic car. Fail this *type* closed, not the full match.
+                if (item.preserveAuthoredUrpMaterials &&
+                    (!HasCompatibleUrpMaterials(prefabs[i]) ||
+                     !HasCompatibleUrpMaterials(wheelPrefabs[i])))
+                {
+                    Debug.LogWarning("Aaris vehicles: incompatible URP materials on " + item.id);
+                    prefabs[i] = null;
+                    wheelPrefabs[i] = null;
+                    continue;
+                }
                 availableWeight += item.weight;
                 validModels++;
             }
@@ -277,6 +292,29 @@ namespace Aaris.MapReview
                 " hubs=45 authoredCandidates=" + file.candidates.Length +
                 " sectorCoverage=" + sectors.Count + " (physics validated when nearby)");
             return plans.Count >= 18;
+        }
+
+        // One import-time check per model, never a frame-loop allocation.
+        // Source FBXs need explicit URP Lit material authoring in the Editor.
+        private static bool HasCompatibleUrpMaterials(GameObject source)
+        {
+            if (source == null) return false;
+            var renderers = source.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0) return false;
+            foreach (var renderer in renderers)
+            {
+                var materials = renderer.sharedMaterials;
+                if (materials == null || materials.Length == 0) return false;
+                foreach (var material in materials)
+                {
+                    if (material == null || material.shader == null ||
+                        material.shader.name != "Universal Render Pipeline/Lit" ||
+                        !material.HasProperty("_BaseColor") ||
+                        !material.HasProperty("_Metallic") ||
+                        !material.HasProperty("_Smoothness")) return false;
+                }
+            }
+            return true;
         }
 
         private uint Next()
@@ -499,12 +537,15 @@ namespace Aaris.MapReview
             // Kenney Car Kit uses one UV palette atlas. Share ONE URP Lit
             // material across streamed instances; never instantiate new
             // materials per car/per frame.
-            foreach (var renderer in renderers)
+            if (!record.type.preserveAuthoredUrpMaterials)
             {
-                int submeshes = Mathf.Max(1, renderer.sharedMaterials.Length);
-                Material[] materials = new Material[submeshes];
-                for (int i = 0; i < submeshes; i++) materials[i] = paletteMaterial;
-                renderer.sharedMaterials = materials;
+                foreach (var renderer in renderers)
+                {
+                    int submeshes = Mathf.Max(1, renderer.sharedMaterials.Length);
+                    Material[] materials = new Material[submeshes];
+                    for (int i = 0; i < submeshes; i++) materials[i] = paletteMaterial;
+                    renderer.sharedMaterials = materials;
+                }
             }
             // Inspect the model in chassis space; world-space AABBs change
             // when the authored road marker is rotated 45/90/135 degrees.
@@ -524,7 +565,8 @@ namespace Aaris.MapReview
             mesh.transform.localPosition += new Vector3(0f, .48f, 0f) - bounds.center;
             var motor = root.AddComponent<AarisVehicleMotor>();
             motor.Configure(record.type.id, record.type.maxSpeedMetres, record.type.massKg);
-            if (!motor.AttachWheelModels(wheelSource, paletteMaterial))
+            if (!motor.AttachWheelModels(wheelSource, paletteMaterial,
+                record.type.preserveAuthoredUrpMaterials))
             {
                 Destroy(root);
                 return false;
