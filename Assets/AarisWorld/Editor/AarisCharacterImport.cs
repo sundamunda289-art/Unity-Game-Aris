@@ -101,6 +101,29 @@ namespace Aaris.MapReview.Editor
             // never a second transform-driven animation controller.
         }
 
+        [MenuItem("Aaris/Validate Realistic Soldier FBX")]
+        public static void ValidateRealisticSoldier()
+        {
+            const string path=Prefix+"RealisticSoldier/RealisticSoldier.fbx";
+            var model=AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            if(model==null)throw new InvalidOperationException("TACTICAL_FBX_MISSING");
+            var avatar=AssetDatabase.LoadAllAssetsAtPath(path).OfType<Avatar>()
+                .FirstOrDefault(x=>x!=null&&x.isValid&&x.isHuman);
+            if(avatar==null)throw new InvalidOperationException("TACTICAL_HUMANOID_AVATAR_INVALID");
+            var renderers=model.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            int materials=0,textured=0;
+            foreach(var r in renderers)
+                foreach(var mat in r.sharedMaterials){
+                    if(mat==null)continue;
+                    materials++;
+                    if(mat.mainTexture!=null)textured++;
+                }
+            if(renderers.Length<1||materials<7)
+                throw new InvalidOperationException("TACTICAL_SKINNED_PARTS_MISSING");
+            Debug.Log("AARIS_REAL_SOLDIER_VALID avatar=human skinned="+renderers.Length+
+                " materials="+materials+" texturedSlots="+textured);
+        }
+
         [MenuItem("Aaris/Validate Vendored Male Character")]
         public static void Validate()
         {

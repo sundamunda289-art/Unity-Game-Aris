@@ -14,7 +14,8 @@ namespace Aaris.MapReview
     [DefaultExecutionOrder(200)]
     public sealed class AarisCharacterVisual : MonoBehaviour
     {
-        private const string PrimaryModel = "AarisCharacters/Primary/Player";
+        private const string PrimaryModel = "AarisCharacters/Primary/RealisticSoldier/RealisticSoldier";
+        private const string PreviousPrimaryModel = "AarisCharacters/Primary/Player";
         private const string FallbackModel = "AarisCharacters/Kenney/characterMedium";
         private const string KenneyClips = "AarisCharacters/Kenney/";
         private const string PrimaryClips = "AarisCharacters/Primary/Animations/";
@@ -67,7 +68,15 @@ namespace Aaris.MapReview
         private const float ProneChestCorrectionMaxDegrees = 24f;
         private const float ProneHeadColliderInset = 0.10f;
         private const float CrouchRigLowering = 0.50f;
+        // New rig's crouched Humanoid head was 1.34m above terrain against
+        // a 1.14m capsule. Extra 23cm retains headroom; the existing two-bone
+        // knee IK preserves shoe/ground contact after lowering the hip.
+        private const float RealisticSoldierCrouchRigLowering = 0.73f;
         private const float ProneRigLowering = 0.22f;
+        // The Bamen tactical rig retargets its crawling pose ~42 cm higher
+        // than the previous superhero rig. Native hand/foot bone measurements
+        // confirm this additional visual-only lowering keeps feet above ground.
+        private const float RealisticSoldierProneRigLowering = 0.64f;
         private const float PlantedAnkleMetres = 0.24f;
         private Vector3 restingLocalPosition;
         private Quaternion restingLocalRotation;
@@ -95,6 +104,7 @@ namespace Aaris.MapReview
         private float lastCrouchPhase = float.NaN;
         private float lastCrawlPhase = float.NaN;
         private bool primaryLoaded;
+        private bool realisticSoldierLoaded;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AttachToExistingPlayer()
@@ -123,7 +133,10 @@ namespace Aaris.MapReview
         private void Start()
         {
             var source = Resources.Load<GameObject>(PrimaryModel);
+            if (source == null)
+                source = Resources.Load<GameObject>(PreviousPrimaryModel);
             primaryLoaded = source != null;
+            realisticSoldierLoaded = source != null && source.name == "RealisticSoldier";
             if (source == null)
                 source = Resources.Load<GameObject>(FallbackModel);
             if (source == null)
@@ -146,7 +159,8 @@ namespace Aaris.MapReview
             if (animator.avatar == null)
             {
                 Avatar[] avatars = Resources.LoadAll<Avatar>(
-                    source.name == "Player" ? PrimaryModel : FallbackModel);
+                    source.name == "RealisticSoldier" ? PrimaryModel :
+                    source.name == "Player" ? PreviousPrimaryModel : FallbackModel);
                 for (int i = 0; i < avatars.Length; i++)
                 {
                     if (avatars[i] != null && avatars[i].isValid && avatars[i].isHuman)
@@ -716,10 +730,11 @@ namespace Aaris.MapReview
             // The imported crouch clip leaves the head above the short collision
             // capsule. Replant the knees after lowering this visual-only rig.
             float crouchRigWeight = effectiveCrouchBlend * (1f - effectiveProneBlend);
-            float crouchLowering = CrouchRigLowering * crouchRigWeight;
+            float crouchLowering = (realisticSoldierLoaded ? RealisticSoldierCrouchRigLowering : CrouchRigLowering) * crouchRigWeight;
             // Source crawling hips/ankles float above the floor by about 22 cm.
             float proneLowering = primaryLoaded && proneClip != null &&
-                crawlClip != null ? ProneRigLowering * effectiveProneBlend : 0f;
+                crawlClip != null ?
+                (realisticSoldierLoaded ? RealisticSoldierProneRigLowering : ProneRigLowering) * effectiveProneBlend : 0f;
             Vector3 desiredPosition = restingLocalPosition +
                 new Vector3(0f, fallbackProne * 0.36f - landingDip -
                     crouchLowering - proneLowering, fallbackProne * 0.14f);

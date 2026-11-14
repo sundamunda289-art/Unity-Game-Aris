@@ -29,6 +29,10 @@ public static void CaptureStanceJumpDiagnostic(){
 SessionState.SetBool("pose.stanceJump",true);
 CaptureBatch();
 }
+public static void CapturePortrait(){
+SessionState.SetBool("pose.portrait",true);
+CaptureBatch();
+}
 public static void CaptureBatch(){
 if(!Application.isBatchMode)throw new InvalidOperationException("BATCHMODE_REQUIRED");
 try{
@@ -130,8 +134,22 @@ Log("SKIN stance="+b.Stance+" name="+skin.gameObject.name+
 }
 var animator=p.GetComponentInChildren<Animator>(true);
 if(animator!=null&&animator.isHuman){
+if(SessionState.GetBool("pose.portrait",false)&&
+(b.Stance==AarisBattleActions.PlayerStance.Crouching||
+ b.Stance==AarisBattleActions.PlayerStance.Prone)){
+var head=animator.GetBoneTransform(HumanBodyBones.Head);
+if(head==null)throw new InvalidOperationException("ACTOR_HEAD_BONE_MISSING");
+float capTop=p.transform.TransformPoint(capsule.center+
+ Vector3.up*(capsule.height*.5f)).y;
+float excess=head.position.y-capTop;
+Log("PORTRAIT_HEADROOM stance="+b.Stance+
+ " excessMetres="+excess.ToString("F3"));
+if(excess>.055f)throw new InvalidOperationException("ACTOR_HEAD_PENETRATES_CEILING_"+b.Stance);
+}
 HumanBodyBones[] bones={HumanBodyBones.Hips,HumanBodyBones.Chest,
-HumanBodyBones.Head,HumanBodyBones.LeftFoot,HumanBodyBones.RightFoot};
+HumanBodyBones.Head,HumanBodyBones.LeftFoot,HumanBodyBones.RightFoot,
+HumanBodyBones.LeftHand,HumanBodyBones.RightHand,
+HumanBodyBones.LeftLowerLeg,HumanBodyBones.RightLowerLeg};
 foreach(var bone in bones){
 var t=animator.GetBoneTransform(bone);
 if(t==null)continue;
@@ -156,9 +174,11 @@ SessionState.EraseBool("pose.diag");
 int code=(reason=="SUCCESS_18_REAL_FRAMES"||
  reason=="SUCCESS_PRONE_DIAGNOSTIC"||
  reason=="SUCCESS_PRONE_GEOMETRY_ONLY"||
- reason=="SUCCESS_STANCE_JUMP_MOTOR")?0:2;
+ reason=="SUCCESS_STANCE_JUMP_MOTOR"||
+ reason=="SUCCESS_7_ACTOR_PORTRAITS")?0:2;
 SessionState.EraseBool("pose.geometryOnly");
 SessionState.EraseBool("pose.stanceJump");
+SessionState.EraseBool("pose.portrait");
 EditorApplication.delayCall+=()=>EditorApplication.Exit(code);
 }
 }
@@ -248,16 +268,23 @@ return;
 }
 bool fastProbe=SessionState.GetBool("pose.diag",false) ||
 SessionState.GetBool("pose.geometryOnly",false);
-int needed=fastProbe?(n==2?1:0):3;
-if(count<needed&&age>.25+count*.30){
+bool portrait=SessionState.GetBool("pose.portrait",false);
+int needed=portrait?(n==5?2:1):fastProbe?(n==2?1:0):3;
+if(count<needed&&age>(portrait?(n==5?(count==0?.30:1.15):.52):.25+count*.30)){
 try{
 Camera cam=Camera.main;if(cam==null)throw new InvalidOperationException("CAMERA_MISSING");
-int imageWidth=SessionState.GetBool("pose.diag",false)?640:960;
-int imageHeight=SessionState.GetBool("pose.diag",false)?360:540;
+int imageWidth=portrait?640:SessionState.GetBool("pose.diag",false)?640:960;
+int imageHeight=portrait?720:SessionState.GetBool("pose.diag",false)?360:540;
 var rt=RenderTexture.GetTemporary(imageWidth,imageHeight,24);
 var old=cam.targetTexture;var active=RenderTexture.active;
 Vector3 savedCameraPosition=cam.transform.position;
 Quaternion savedCameraRotation=cam.transform.rotation;
+int savedMask=cam.cullingMask;
+CameraClearFlags savedClear=cam.clearFlags;
+Color savedBackground=cam.backgroundColor;
+float savedFov=cam.fieldOfView;
+GameObject portraitGround=null;
+Material groundMaterial=null;
 var image=new Texture2D(imageWidth,imageHeight,TextureFormat.RGB24,false);
 try{
 // The real game camera usually faces the aircraft or canopy and makes
@@ -269,6 +296,26 @@ Vector3 target=p.transform.position+Vector3.up*eye;
 Vector3 photoPosition=target+p.transform.forward*3.0f+Vector3.up*0.42f;
 cam.transform.position=photoPosition;
 cam.transform.rotation=Quaternion.LookRotation(target-photoPosition,Vector3.up);
+if(portrait){cam.cullingMask=1 << p.gameObject.layer;
+cam.clearFlags=CameraClearFlags.SolidColor;
+cam.backgroundColor=new Color(.11f,.15f,.19f,1f);
+cam.fieldOfView=50f;
+// The QA-only neutral floor makes foot/hand contact visible, without the
+// expensive terrain render. It has no collider and is destroyed after readback.
+portraitGround=GameObject.CreatePrimitive(PrimitiveType.Plane);
+portraitGround.layer=p.gameObject.layer;
+portraitGround.transform.position=p.transform.position+Vector3.down*0.04f;
+portraitGround.transform.localScale=Vector3.one*0.34f;
+Collider floorCollider=portraitGround.GetComponent<Collider>();
+if(floorCollider!=null)floorCollider.enabled=false;
+Shader floorShader=Shader.Find("Universal Render Pipeline/Unlit");
+if(floorShader==null)floorShader=Shader.Find("Unlit/Color");
+if(floorShader!=null){
+groundMaterial=new Material(floorShader);
+groundMaterial.color=new Color(0.21f,0.24f,0.25f,1f);
+portraitGround.GetComponent<Renderer>().sharedMaterial=groundMaterial;
+}
+}
 cam.targetTexture=rt;cam.Render();RenderTexture.active=rt;
 image.ReadPixels(new Rect(0,0,imageWidth,imageHeight),0,0,false);image.Apply(false);
 var bytes=image.EncodeToJPG(82);
@@ -276,6 +323,10 @@ if(bytes.Length<4000)throw new InvalidOperationException("EMPTY_FRAME");
 File.WriteAllBytes(Dir+"/"+Names[n]+"_f"+count+".jpg",bytes);
 }finally{
 cam.transform.SetPositionAndRotation(savedCameraPosition,savedCameraRotation);
+cam.cullingMask=savedMask;cam.clearFlags=savedClear;
+cam.backgroundColor=savedBackground;cam.fieldOfView=savedFov;
+if(portraitGround!=null)UnityEngine.Object.DestroyImmediate(portraitGround);
+if(groundMaterial!=null)UnityEngine.Object.DestroyImmediate(groundMaterial);
 cam.targetTexture=old;RenderTexture.active=active;
 UnityEngine.Object.DestroyImmediate(image);RenderTexture.ReleaseTemporary(rt);}
 SessionState.SetInt("pose.count",count+1);
@@ -284,11 +335,11 @@ Log("FRAME "+Names[n]+" "+count+" stance="+b.Stance+
 if(count==0)LogPhysicalHeight(p,b);
 }catch(Exception ex){Finish("ERROR_"+ex.GetType().Name+"_"+ex.Message);return;}
 }
-if(age>(fastProbe?0.38:1.3)&&
+if(age>(portrait?(n==5?1.35:.70):fastProbe?.38:1.3)&&
  SessionState.GetInt("pose.count",0)>=needed){
 if(SessionState.GetBool("pose.diag",false)&&n>=2){
 p.CancelAutoSprint();Finish("SUCCESS_PRONE_DIAGNOSTIC");
-}else if(n+1>=Names.Length){p.CancelAutoSprint();Finish("SUCCESS_18_REAL_FRAMES");}
+}else if(n+1>=Names.Length){p.CancelAutoSprint();Finish(portrait?"SUCCESS_7_ACTOR_PORTRAITS":"SUCCESS_18_REAL_FRAMES");}
 else Stage(n+1,p,b);}
 }
 }

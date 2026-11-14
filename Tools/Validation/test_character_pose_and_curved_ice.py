@@ -432,3 +432,22 @@ assert 'p.LastLandingTime>p.LastJumpStartedTime' in pose_probe
 assert 'if(!p.IsInAir&&maxHeight>=0.45f)' in pose_probe
 assert 'SUCCESS_STANCE_JUMP_MOTOR' in pose_probe
 assert 'Finish("JUMP_FAILED");' in pose_probe
+
+
+# Native tactical-soldier model replacement and six-pose QA.
+soldier_path=ROOT / "Assets/Resources/AarisCharacters/Primary/RealisticSoldier/RealisticSoldier.fbx"
+assert soldier_path.is_file() and 300000 < soldier_path.stat().st_size < 2500000
+credit=(soldier_path.parent / "ATTRIBUTION.txt").read_text()
+assert "BAMEN" in credit and "CC BY 4.0" in credit and "sketchfab" in credit.lower()
+assert 'private const string PrimaryModel = "AarisCharacters/Primary/RealisticSoldier/RealisticSoldier";' in visual
+assert 'PreviousPrimaryModel = "AarisCharacters/Primary/Player";' in visual
+assert 'source = Resources.Load<GameObject>(PreviousPrimaryModel);' in visual
+assert 'private const float RealisticSoldierProneRigLowering = 0.64f;' in visual
+assert 'private const float RealisticSoldierCrouchRigLowering = 0.73f;' in visual
+assert 'realisticSoldierLoaded ? RealisticSoldierProneRigLowering : ProneRigLowering' in visual
+assert 'realisticSoldierLoaded ? RealisticSoldierCrouchRigLowering : CrouchRigLowering' in visual
+assert 'public static void CapturePortrait()' in pose_probe
+assert 'ACTOR_HEAD_PENETRATES_CEILING_' in pose_probe
+assert 'SUCCESS_7_ACTOR_PORTRAITS' in pose_probe
+assert 'cam.cullingMask=savedMask;' in pose_probe
+assert 'cam.targetTexture=old;RenderTexture.active=active;' in pose_probe

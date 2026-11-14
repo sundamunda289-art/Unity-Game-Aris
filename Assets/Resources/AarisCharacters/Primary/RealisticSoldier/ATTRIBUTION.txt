@@ -1,0 +1,10 @@
+Realistic Soldier Character - source attribution
+Original 3D character: FREE [Military Soldier] RIGGED
+Creator: BAMEN
+https://sketchfab.com/3d-models/free-military-soldier-rigged-e9c56308a67d4a3db62e914fafa4d198
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+Redistributed via cktang88/3d-fps, public/assets/models/characters/soldier.glb.
+Converted from GLB to FBX using Blender 4.5.16, stripped original animation
+takes (the game uses its own humanoid animation clips); appearance kept
+under the original artist's CC BY licence. Attribution must be retained.

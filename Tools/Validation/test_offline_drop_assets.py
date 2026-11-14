@@ -246,10 +246,10 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("pronePlayable.SetSpeed(0d);", source)
         self.assertLess(source.index("pronePlayable.SetSpeed(0d);"),
                         source.index("pronePlayable.SetTime("))
-        self.assertIn("float stanceTotal = crouchBlend + proneBlend;", source)
+        self.assertIn("float stanceTotal = effectiveCrouchBlend + effectiveProneBlend;", source)
         self.assertIn("float stanceScale = stanceTotal > 1f ? pose / stanceTotal : 1f;", source)
-        self.assertIn("float crouchWeight = authoredProne ? crouchBlend * stanceScale : pose;", source)
-        self.assertIn("float proneWeight = authoredProne ? proneBlend * stanceScale : 0f;", source)
+        self.assertIn("float crouchWeight = authoredProne ? effectiveCrouchBlend * stanceScale : pose;", source)
+        self.assertIn("float proneWeight = authoredProne ? effectiveProneBlend * stanceScale : 0f;", source)
         self.assertIn("float grounded = (1f - airborneBlend) * (1f - pose);", source)
         self.assertIn("WriteWeightIfChanged(mixer, lastBaseWeights, 5, baseWeight * crouchWeight", source)
         self.assertIn("WriteWeightIfChanged(mixer, lastBaseWeights, 6, baseWeight * crouchWeight", source)
