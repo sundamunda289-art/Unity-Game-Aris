@@ -86,11 +86,14 @@ def run():
     assert "magazine--;" in gun_cs and "nextFire = Time.time + spec.ShotInterval;" in gun_cs
     assert "BeginReload()" in gun_cs and "reloading" in gun_cs
     assert "semiShotQueued" in action and "equippedGun.Automatic" in action
-    # Exactly ONE weapon in hand, no hidden second slot or backpack gun.
+    # Exactly one active weapon and at most one visible back-holstered gun.
     assert "private AarisEquippedGun equipped;" in inventory
+    assert "private AarisEquippedGun holstered;" in inventory
     assert "new AarisEquippedGun[2]" not in inventory
-    assert "slots[" not in inventory and "CycleWeapon()" not in inventory
-    assert "public bool HasGun => equipped != null && equipped.Configured;" in inventory
+    assert "slots[" not in inventory
+    assert "public bool SwitchWeapon()" in inventory
+    assert "public void ToggleFists()" in inventory
+    assert "public bool HasGun => !fistsMode && equipped != null && equipped.Configured;" in inventory
     assert "TryPickup(AarisWeaponState incoming, out AarisWeaponState dropped)" in inventory
     assert "TryRemove(out AarisWeaponState removed)" in inventory
     assert "combat.Equip(null)" in inventory, "Unarmed Fire must return to Punch."
