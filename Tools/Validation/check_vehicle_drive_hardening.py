@@ -62,6 +62,29 @@ def test():
     assert "occupiedColliders = Physics.OverlapCapsule(bottom, top, r," in exit_path
     assert "overlaps = occupiedColliders.Length;" in exit_path
     assert "var obstacle = occupiedColliders[i];" in exit_path
+    # Authored house collider streaming disables distant walls. A sudden
+    # exit before its next refresh must still reject a location inside one.
+    # The cached world AABB is conservative until the real collider streams
+    # in, when the original capsule physics remains authoritative.
+    assert "private AarisNearbyColliders nearbyColliders;" in session
+    assert "nearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();" in session
+    assert "Vector3 capsuleCenter = (bottom + top) * .5f;" in exit_path
+    assert "Mathf.Abs(top.y - bottom.y) * .5f + r, r);" in exit_path
+    assert "nearbyColliders.HasPotentialInactiveObstacle(" in exit_path
+    assert "capsuleCenter, capsuleHalfBounds, Quaternion.identity))" in exit_path
+    assert exit_path.index("nearbyColliders.HasPotentialInactiveObstacle(") < (
+        exit_path.index("Physics.OverlapCapsuleNonAlloc("))
+    assert "continue;" in exit_path[exit_path.index(
+        "nearbyColliders.HasPotentialInactiveObstacle("):
+        exit_path.index("Physics.OverlapCapsuleNonAlloc(")]
+    nearby_source = source("AarisNearbyColliders.cs")
+    assert "internal bool HasPotentialInactiveObstacle(Vector3 center," in nearby_source
+    assert "streamed[i] && c != null && !c.enabled" in nearby_source
+    for lower, upper, radius in ((0.2, 1.7, 0.22), (-3.0, -1.7, 0.31)):
+        center = (lower + upper) * .5
+        extent = abs(upper - lower) * .5 + radius
+        assert center - extent <= lower - radius + 1e-9
+        assert center + extent >= upper + radius - 1e-9
     assert "if (hits >= exitGround.Length) continue;" not in exit_path
     assert "if (overlaps >= exitOverlap.Length) continue;" not in exit_path
     assert exit_path.index("Physics.RaycastNonAlloc(") < exit_path.index("Physics.RaycastAll(")
