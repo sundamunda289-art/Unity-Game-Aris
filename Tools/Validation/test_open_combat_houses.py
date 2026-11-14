@@ -115,6 +115,58 @@ class OpenCombatHouseContracts(unittest.TestCase):
                     rf"(?m)^  {key}: \{{fileID: \d+, guid: {guid.group(1)}, type: 3\}}$")
 
 
+    def test_saved_scene_house_colliders_can_reenter_streaming(self):
+        # Regression for 56 native MeshColliders serialized with m_Enabled:0
+        # while AarisNearbyColliders.Awake() intentionally skips disabled
+        # colliders. Such walls would remain permanently non-solid in play.
+        scene = (ROOT / "Assets/TerrainDemoScene_URP/Scenes/"
+                 "TerrainDemoScene.unity").read_text(encoding="utf-8")
+        sections = re.split(r"(?=^--- !u!)", scene, flags=re.MULTILINE)
+        gameobjects = {}
+        colliders = []
+        streamer = None
+        for section in sections:
+            match = re.match(r"--- !u!(\d+) &([-\d]+)", section)
+            if not match:
+                continue
+            component_type, object_id = int(match.group(1)), match.group(2)
+            owner = re.search(r"(?m)^  m_GameObject: \{fileID: ([-\d]+)\}", section)
+            if component_type == 1:
+                name = re.search(r"(?m)^  m_Name: (.*)$", section)
+                if name:
+                    gameobjects[object_id] = name.group(1)
+            elif component_type == 64 and owner:
+                colliders.append((object_id, owner.group(1), section))
+            elif component_type == 114 and (
+                "guid: f99aebde001f56119c583c593f64c271" in section
+            ):
+                streamer = section
+
+        self.assertIsNotNone(streamer, "Missing authored collider streamer")
+        tracked = set(re.findall(
+            r"(?m)^  - \{fileID: ([-\d]+)\}", streamer
+        ))
+        tracked_meshes = [
+            (object_id, gameobjects.get(go, "<unknown>"), section)
+            for object_id, go, section in colliders if object_id in tracked
+        ]
+        self.assertGreaterEqual(len(tracked_meshes), 90)
+        disabled = [
+            (name, object_id) for object_id, name, section in tracked_meshes
+            if re.search(r"(?m)^  m_Enabled: 0$", section)
+        ]
+        self.assertEqual(disabled, [], f"Phantom house mesh colliders: {disabled}")
+        missing_mesh = [
+            (name, object_id) for object_id, name, section in tracked_meshes
+            if "m_Mesh: {fileID: 0}" in section or
+               "m_Mesh: {fileID: 0," in section
+        ]
+        self.assertEqual(missing_mesh, [])
+        self.assertIn("target: {fileID: 201417}", streamer)
+        runtime = (SCRIPTS / "AarisNearbyColliders.cs").read_text(encoding="utf-8")
+        self.assertIn("if (c == null || !c.enabled) continue;", runtime)
+        self.assertIn("if (!c.enabled) c.enabled = true;", runtime)
+
     def test_native_house_baker_preserves_unsaved_editor_scenes(self):
         src = (ROOT / "Assets/AarisWorld/Editor/AarisGpt6OpenEntrySceneBaker.cs").read_text(encoding="utf-8")
         self.assertIn("SceneManager.sceneCount", src)
