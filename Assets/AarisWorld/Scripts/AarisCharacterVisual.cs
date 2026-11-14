@@ -65,6 +65,7 @@ namespace Aaris.MapReview
         private Transform leftThigh, leftShin, leftFootBone;
         private Transform rightThigh, rightShin, rightFootBone;
         private Transform proneChestBone, proneHeadBone;
+        private Transform balanceSpineBone;
         private const float ProneChestCorrectionMaxDegrees = 24f;
         private const float ProneHeadColliderInset = 0.10f;
         private const float CrouchRigLowering = 0.50f;
@@ -204,6 +205,7 @@ namespace Aaris.MapReview
             rightFootBone = animator.GetBoneTransform(HumanBodyBones.RightFoot);
             proneChestBone = animator.GetBoneTransform(HumanBodyBones.Chest);
             proneHeadBone = animator.GetBoneTransform(HumanBodyBones.Head);
+            balanceSpineBone = animator.GetBoneTransform(HumanBodyBones.Spine);
             animator.applyRootMotion = false;
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             SetupAnimations();
@@ -364,6 +366,8 @@ namespace Aaris.MapReview
             sprintClip = FindClip("sprint", "sprint") ?? runClip;
             proneClip = FindClip("prone", "prone");
             crawlClip = FindClip("crawl", "crawl");
+            if (proneClip == null || crawlClip == null)
+                Debug.LogWarning("Aaris: authored prone/crawl motion unavailable; using a low crouch fallback instead of tilting the entire character.");
             // Each FBX has one reviewed humanoid motion: never use the
             // Jump_Land clip for takeoff or airborne looping.
             AnimationClip jump = FindClip("jump", "jump");
@@ -602,7 +606,6 @@ namespace Aaris.MapReview
             proneBlend = Mathf.Lerp(proneBlend, prone ? 1f : 0f, proneAlpha);
 
             bool authoredProne = proneClip != null && crawlClip != null;
-            float fallbackProne = authoredProne ? 0f : proneBlend;
             Vector3 velocity = controller.velocity;
             // Share the existing 130 ms terrain-contact grace between foot
             // timing and balance. A one-frame stair seam is not a jump and
@@ -697,9 +700,10 @@ namespace Aaris.MapReview
                 accelerationPitchTarget, 1f - Mathf.Exp(-dt / 0.10f));
             smoothedTurnBank = Mathf.Lerp(smoothedTurnBank,
                 turnBankTarget, 1f - Mathf.Exp(-dt / 0.13f));
-            Quaternion desiredRotation = restingLocalRotation *
-                Quaternion.Euler(Mathf.Lerp(leaning + smoothedAccelerationPitch,
-                    80f, fallbackProne), 0f, smoothedStrafeBank + smoothedTurnBank);
+            // Keep the grounded mesh root upright. Pitching the entire rig
+            // pivots the feet away from the terrain, especially on slopes.
+            // The standing balance lean is applied to the humanoid spine below.
+            Quaternion desiredRotation = restingLocalRotation;
             // Visual-only skydiving pose; never tilt the physical CharacterController.
             // Choose the final rotation before touching the hierarchy: the
             // aerial override previously caused two native Transform writes.
@@ -729,15 +733,18 @@ namespace Aaris.MapReview
                 : 0f;
             // The imported crouch clip leaves the head above the short collision
             // capsule. Replant the knees after lowering this visual-only rig.
-            float crouchRigWeight = effectiveCrouchBlend * (1f - effectiveProneBlend);
+            // Missing prone clips must not activate the old 80-degree root-tilt
+            // illusion; use a lowered crouch until the actual FBX imports work.
+            float crouchRigWeight = authoredProne
+                ? effectiveCrouchBlend * (1f - effectiveProneBlend)
+                : Mathf.Clamp01(effectiveCrouchBlend + effectiveProneBlend);
             float crouchLowering = (realisticSoldierLoaded ? RealisticSoldierCrouchRigLowering : CrouchRigLowering) * crouchRigWeight;
             // Source crawling hips/ankles float above the floor by about 22 cm.
             float proneLowering = primaryLoaded && proneClip != null &&
                 crawlClip != null ?
                 (realisticSoldierLoaded ? RealisticSoldierProneRigLowering : ProneRigLowering) * effectiveProneBlend : 0f;
             Vector3 desiredPosition = restingLocalPosition +
-                new Vector3(0f, fallbackProne * 0.36f - landingDip -
-                    crouchLowering - proneLowering, fallbackProne * 0.14f);
+                new Vector3(0f, -landingDip - crouchLowering - proneLowering, 0f);
             if (visualRoot.localPosition != desiredPosition)
                 visualRoot.localPosition = desiredPosition;
             if (!visuallyAirborne && crouchRigWeight > 0.005f && graphReady)
@@ -777,6 +784,18 @@ namespace Aaris.MapReview
                         proneChestBone.rotation = tilt * proneChestBone.rotation;
                     }
                 }
+            }
+
+            // Additive spine balance keeps shoes and hips fixed under the
+            // locomotion animation. Never apply this in crouch, prone or air.
+            if (!visuallyAirborne && graphReady && balanceSpineBone != null &&
+                standingShare > 0.001f)
+            {
+                float bodyPitch = Mathf.Clamp(leaning + smoothedAccelerationPitch,
+                    -8f, 8f) * standingShare;
+                float bodyRoll = Mathf.Clamp(smoothedStrafeBank + smoothedTurnBank,
+                    -6f, 6f) * standingShare;
+                balanceSpineBone.localRotation *= Quaternion.Euler(bodyPitch, 0f, bodyRoll);
             }
 
             // The same support decision now drives gait phase, airborne pose,
