@@ -6,16 +6,16 @@ using UnityEngine.UI;
 namespace Aaris.MapReview
 {
     /// <summary>
-    /// Compact utility HUD: ADS, intentional PICK exchange, DROP and RELOAD.
+    /// Compact utility HUD: ADS, PICK, DROP, RELOAD, SWAP and FIST/DRAW.
     /// The original five movement/combat buttons remain unchanged.
     /// Only PICK is available while empty-handed near floor loot.
     /// </summary>
     public sealed class AarisWeaponHUD : MonoBehaviour
     {
         private static AarisWeaponHUD instance;
-        private readonly List<RectTransform> hitRects = new List<RectTransform>(4);
-        private readonly List<Button> buttons = new List<Button>(4);
-        private readonly List<Text> captions = new List<Text>(4);
+        private readonly List<RectTransform> hitRects = new List<RectTransform>(6);
+        private readonly List<Button> buttons = new List<Button>(6);
+        private readonly List<Text> captions = new List<Text>(6);
         private AarisWeaponInventory inventory;
         private Text nearbyGunHint;
         private Transform nearbyGunOwner;
@@ -73,6 +73,8 @@ namespace Aaris.MapReview
             Add("PICK", new Vector2(-225f, -57f), () => inventory.RequestPickup());
             Add("DROP", new Vector2(-141f, -57f), () => inventory.DropCurrent());
             Add("RELOAD", new Vector2(-57f, -57f), () => inventory.Reload());
+            Add("SWAP", new Vector2(-141f, -137f), () => inventory.SwapWeapons());
+            Add("FIST", new Vector2(-57f, -137f), () => inventory.ToggleFists());
             AddNearbyGunHint();
             AarisHudGlyphs.ApplyCanvasShader(go.transform);
             UpdateArea(true);
@@ -198,12 +200,17 @@ namespace Aaris.MapReview
                 RefreshNearbyGunHint();
             }
             bool canPick = inventory != null && inventory.PickupAvailable;
+            bool hasStored = inventory != null && inventory.HasStowedGun;
+            bool hasAny = inventory != null && inventory.HasAnyGun;
             for (int i = 0; i < buttons.Count; i++)
             {
-                bool show = i == 1 ? canPick : armed;
+                bool show = i == 1 ? canPick :
+                    i == 4 ? hasStored : i == 5 ? hasAny : armed;
                 if (buttons[i].gameObject.activeSelf != show)
                     buttons[i].gameObject.SetActive(show);
             }
+            string fistLabel = inventory != null && inventory.FistMode ? "DRAW" : "FIST";
+            if (captions[5].text != fistLabel) captions[5].text = fistLabel;
             if (!armed)
             {
                 // A drop while aiming must not retain stale ADS text or
