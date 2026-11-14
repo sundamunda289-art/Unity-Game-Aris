@@ -73,6 +73,8 @@ namespace Aaris.MapReview
             Add("PICK", new Vector2(-225f, -57f), () => inventory.RequestPickup());
             Add("DROP", new Vector2(-141f, -57f), () => inventory.DropCurrent());
             Add("RELOAD", new Vector2(-57f, -57f), () => inventory.Reload());
+            Add("FIST", new Vector2(-309f, -137f), () => inventory.ToggleFists());
+            Add("SWAP", new Vector2(-225f, -137f), () => inventory.SwitchWeapon());
             AddNearbyGunHint();
             AarisHudGlyphs.ApplyCanvasShader(go.transform);
             UpdateArea(true);
@@ -198,9 +200,12 @@ namespace Aaris.MapReview
                 RefreshNearbyGunHint();
             }
             bool canPick = inventory != null && inventory.PickupAvailable;
+            bool carried = inventory != null && inventory.Current != null;
+            bool canSwap = inventory != null && inventory.HasHolsteredGun;
             for (int i = 0; i < buttons.Count; i++)
             {
-                bool show = i == 1 ? canPick : armed;
+                bool show = i == 1 ? canPick : i == 4 ? carried :
+                    i == 5 ? canSwap : armed;
                 if (buttons[i].gameObject.activeSelf != show)
                     buttons[i].gameObject.SetActive(show);
             }
