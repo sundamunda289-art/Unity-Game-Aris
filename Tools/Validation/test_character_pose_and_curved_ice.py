@@ -702,6 +702,8 @@ assert 'DisablePrimaryImportHelpers(resourcePath);' in visual
 assert 'visual.transform.Find("Icosphere")' in visual
 assert 'helperRenderer.enabled = false;' in visual
 assert 'helper.gameObject.SetActive(false);' in visual
+assert 'FitVisualToController(resourcePath)' in visual
+assert 'if (resourcePath == PrimaryModel && TryFitHumanoidBonesToController())' in visual
 assert 'Vector3 footAnchor = (leftFoot.position + rightFoot.position) * 0.5f;' in visual
 assert 'footAnchor.y = Mathf.Min(leftFoot.position.y, rightFoot.position.y);' in visual
 assert 'Vector3 targetFootAnchor = transform.position +' in visual
