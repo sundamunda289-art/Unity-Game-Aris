@@ -1,7 +1,9 @@
 name: Aaris character mocap visual QA
 
 on:
-  pull_request:
+  push:
+    branches:
+      - 'agent/100style-mocap-gameplay-20261115'
     paths:
       - 'Assets/AarisWorld/Scripts/AarisCharacterVisual.cs'
       - 'Assets/AarisWorld/Editor/AarisPoseFrames.cs'
@@ -15,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: aaris-character-mocap-visual-${{ github.event.pull_request.number || github.ref }}
+  group: aaris-character-mocap-visual-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
