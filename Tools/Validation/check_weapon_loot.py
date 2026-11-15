@@ -662,6 +662,15 @@ def run():
         "private static float GripFrameScale()")]
     assert "handlingMassKg >= 2.0f" in catalog_cs
 
+    # Camera aim may hit the same collider deeper than the barrel ray.
+    # Damage can keep the reticle target, but sound/VFX must use first muzzle contact.
+    assert "Vector3 impactPoint = destination;" in gun_cs
+    assert "Vector3 impactNormal = targetFound ? target.normal : -look;" in gun_cs
+    assert "impactPoint = muzzleHit.point;" in gun_cs
+    assert "impactNormal = muzzleHit.normal;" in gun_cs
+    assert "AarisAudioDirector.BulletImpact(impactPoint);" in gun_cs
+    assert "TriggerImpactParticles(impactPoint, impactNormal);" in gun_cs
+
     # The normal landing pickup remains physical; only after failed
     # floor/visibility checks may the existing inventory grant one starter.
     # Prevent a future refactor from silently stranding players unarmed.
