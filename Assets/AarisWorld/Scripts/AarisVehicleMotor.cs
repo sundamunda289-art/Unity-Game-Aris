@@ -380,6 +380,11 @@ namespace Aaris.MapReview
             float speedAbs = Mathf.Abs(speed);
             float throttle = driver != null ? forward : 0f;
             float turn = driver != null ? steering : 0f;
+            // Reuse last physics step's real WheelHit slip as a zero-query
+            // traction-control signal. This avoids cartoon wheelspin on loose
+            // terrain/water without adding raycasts or changing WheelCollider
+            // authority. The current step refreshes tyreSlip below.
+            float previousTyreSlip = tyreSlip;
 
             // Four progressive torque bands are speed-derived, not arbitrary
             // teleporting 9/16/22/28 m/s velocities after an input timer.
@@ -401,6 +406,11 @@ namespace Aaris.MapReview
                 // Realistic rolling drag; touching neither arrow coasts
                 // rather than stopping instantly in mid-air.
                 brake = driver == null ? ParkingBrakeTorque : 155f;
+            }
+            if (Mathf.Abs(drive) > 0.01f && previousTyreSlip > 0.35f)
+            {
+                float slip01 = Mathf.InverseLerp(0.35f, 1.10f, previousTyreSlip);
+                drive *= Mathf.Lerp(1f, 0.52f, slip01);
             }
             // Downhill speed control: apply brake instead of directly
             // overwriting velocity, which would ignore collision impulses.
