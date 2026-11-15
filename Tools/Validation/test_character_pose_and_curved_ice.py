@@ -66,6 +66,23 @@ assert 'if (!naturalMocapLoaded && primaryLoaded && walkClip != runClip)' in vis
 assert 'crouchPlayable.SetTime(naturalMocapLoaded' in visual
 assert 'float crouchLowering = naturalMocapLoaded ? 0f :' in visual
 assert 'UnityWebRequest' not in visual
+# Fresh Unity imports must auto-map each FBX from its own hierarchy. Never
+# serialize a HumanDescription copied from another soldier/rig: that made
+# TacticalSoldier's Avatar invalid and produced multi-metre mocap leg errors.
+tactical_humanoid_meta = (ROOT / 'Assets/Resources/AarisCharacters/Primary/TacticalSoldier/TacticalSoldier.fbx.meta').read_text()
+mocap_humanoid_meta = (ROOT / 'Assets/Resources/AarisMocap/mocap_locomotion.fbx.meta').read_text()
+for humanoid_meta in (tactical_humanoid_meta, mocap_humanoid_meta):
+    assert '    human: []' in humanoid_meta
+    assert '    skeleton: []' in humanoid_meta
+    assert '  autoGenerateAvatarMappingIfUnspecified: 1' in humanoid_meta
+    assert '  animationType: 3' in humanoid_meta
+    assert '  avatarSetup: 1' in humanoid_meta
+assert 'RealisticSoldier(Clone)' not in tactical_humanoid_meta
+assert 'BamenMilitarySoldierRig' not in tactical_humanoid_meta
+# Translation DoF adds a Humanoid retargeting step on mobile. The native
+# clean-import pose contract showed no lower-body benefit here, so keep the
+# cheaper rotation-only path for the 2 GB Android target.
+assert '    hasTranslationDoF: 0' in mocap_humanoid_meta
 # November native Unity stance-jump diagnostic measured a real 0.75m
 # standing shoe hover above terrain (physical capsule foot gap 0.035m).
 # Enforce animated-bone calibration, never a guessed -skinWidth offset.
