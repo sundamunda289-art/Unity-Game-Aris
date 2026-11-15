@@ -926,10 +926,19 @@ namespace Aaris.MapReview
             }
             float closest = float.PositiveInfinity;
             float floor = float.NaN;
+            // Plant only on surfaces the authoritative CharacterController can
+            // actually stand/walk on. The old fixed normal.y >= 0.55 gate
+            // accepted ~57-degree faces even though the saved player capsule
+            // uses a 46-degree slope limit, making boots stick to steep rock
+            // sides while the body correctly slid away. A small tolerance
+            // absorbs triangle-normal noise at road/terrain seams.
+            float slopeLimit = controller != null ? controller.slopeLimit : 46f;
+            float minWalkableNormalY = Mathf.Cos(
+                Mathf.Clamp(slopeLimit + 3f, 0f, 89f) * Mathf.Deg2Rad);
             for (int i = 0; i < count; i++)
             {
                 RaycastHit hit = hits[i];
-                if (hit.collider == null || hit.normal.y < 0.55f ||
+                if (hit.collider == null || hit.normal.y < minWalkableNormalY ||
                     hit.collider.transform.IsChildOf(transform) ||
                     hit.distance >= closest) continue;
                 closest = hit.distance;
