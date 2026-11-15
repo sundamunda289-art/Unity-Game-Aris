@@ -446,6 +446,51 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertNotIn('"PropellerBladeA"', source)
         self.assertNotIn('"PropellerBladeB"', source)
 
+    def test_preferred_realistic_cargo_plane_is_vendored_and_bounded(self):
+        path = ASSETS / "AarisDrop" / "CargoPlaneRealistic.obj"
+        self.assertTrue(path.is_file(), str(path))
+        self.assertTrue(path.with_suffix(".mtl").is_file())
+        self.assertTrue(Path(str(path) + ".meta").is_file())
+        self.assertTrue(Path(str(path.with_suffix(".mtl")) + ".meta").is_file())
+        self.assertTrue((ASSETS / "AarisDrop" / "CargoPlaneRealistic_SOURCE.txt").is_file())
+
+        vertices, faces, materials, bounds = read_obj(path)
+        self.assertGreaterEqual(len(vertices), 80000)
+        self.assertLessEqual(len(vertices), 100000)
+        self.assertGreaterEqual(len(faces), 40000)
+        self.assertLessEqual(len(faces), 50000)
+        self.assertGreater(bounds[0], 24)
+        self.assertGreater(bounds[1], 6)
+        self.assertGreater(bounds[2], 22)
+        self.assertTrue({"HulledMetal", "DarkCockpit", "WingPanels",
+                         "EngineDark", "SafetyAccent"}.issubset(materials))
+
+        raw = path.read_bytes()
+        self.assertEqual(
+            hashlib.sha256(raw).hexdigest(),
+            "e8be17599956157d4304bfe6f083d27428f900ddfb79ab52da5aed5057148ae8")
+        source_note = (ASSETS / "AarisDrop" /
+                       "CargoPlaneRealistic_SOURCE.txt").read_text("utf-8")
+        self.assertIn("Asset ID: 32587", source_note)
+        self.assertIn("License: CC0 1.0 Universal", source_note)
+        self.assertIn(
+            "Source GLB SHA-256: 4fc998fda721e47fef83e5615a11a62eddb947486ae87baecabb9ed1e8623da4",
+            source_note)
+        self.assertIn(
+            "Converted OBJ SHA-256: e8be17599956157d4304bfe6f083d27428f900ddfb79ab52da5aed5057148ae8",
+            source_note)
+
+        visuals = (SCRIPTS / "AarisOfflineDropVisuals.cs").read_text("utf-8")
+        self.assertIn(
+            'Resources.Load<GameObject>("AarisDrop/CargoPlaneRealistic")',
+            visuals)
+        self.assertIn(
+            'prefab = Resources.Load<GameObject>("AarisDrop/CargoPlane")',
+            visuals)
+        self.assertIn("if (!highDetailTwin)", visuals)
+        self.assertIn("new float[] { -4f, 4f }", visuals)
+        self.assertIn("rotorScale = highDetailTwin ? 1.17f : 1f", visuals)
+
     def test_low_fps_airborne_sweeps_preserve_motion_and_plane_flyaway(self):
         source = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
         self.assertIn("Mathf.Clamp(Time.deltaTime, 0f, 0.20f)", source)
