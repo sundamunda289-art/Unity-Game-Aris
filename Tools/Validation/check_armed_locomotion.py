@@ -137,6 +137,10 @@ def audit():
     assert "ReachArm(rightUpperArm, rightForearm, hand," in inventory
     assert "ReachArm(leftUpperArm, leftForearm, leftHand," in inventory
     assert "Quaternion.LookRotation(forward, Vector3.up)" in inventory
+    # Weapon receiver translation and barrel rotation must share aim yaw.
+    assert "Vector3 aimRight = aimRotation * Vector3.right;" in inventory
+    assert "Vector3 shoulderForward = Vector3.ProjectOnPlane(" in inventory
+    assert "aimRight * 0.12f + shoulderForward * 0.13f" in inventory
     assert "if (equipped == null)" in inventory
     assert "IsSprintHolstered = false;" in inventory
     assert "AttachModelsToSockets();" in inventory
