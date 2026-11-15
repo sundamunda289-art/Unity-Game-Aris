@@ -369,6 +369,32 @@ def test():
     assert "worldRotation * visualWheelRotationOffsets[i]" in motor
     assert "wheels[i].GetWorldPose(out Vector3 worldPosition," in motor
     assert "public bool AttachEmbeddedWheelModels(Transform bodyRoot)" in motor
+    # Embedded tyre radius and axle center must be fitted in chassis space,
+    # not a yaw-dependent world AABB. All four bounds are checked before edits.
+    embedded = motor.split("public bool AttachEmbeddedWheelModels(", 1)[1].split(
+        "private void SyncVisibleWheels()", 1)[0]
+    assert "transform, found[i], out bounds[i]" in embedded
+    assert "Mathf.Max(bounds[i].size.y, bounds[i].size.z)" in embedded
+    assert "wheels[i].transform.localPosition = bounds[i].center;" in embedded
+    assert "worldBounds" not in embedded
+    assert embedded.index("out bounds[i]") < embedded.index("obstacle.enabled = false")
+    assert "Transform subtree, out Bounds combined" in world
+    assert "toLocal * filter.transform.localToWorldMatrix" in world
+    # A rectangular tyre envelope demonstrates the old world-axis error.
+    # A 0.42m-wide, 0.65m-diameter wheel has invariant chassis diameter
+    # even though its diagonal world AABB grows at some yaw angles.
+    width, diameter = .42, .65
+    old_diameters = []
+    for yaw in (0, 30, 45, 60, 90, 135, 180, 270):
+        theta = math.radians(yaw)
+        world_z = abs(math.sin(theta)) * width + abs(math.cos(theta)) * diameter
+        old_diameters.append(max(diameter, world_z))
+        # The composed chassis inverse and car yaw cancel.
+        c, s = math.cos(theta), math.sin(theta)
+        assert math.isclose(c*c+s*s, 1.0)
+        assert math.isclose(c*s-s*c, 0.0, abs_tol=1e-9)
+        assert math.isclose(max(diameter, (c*c+s*s)*diameter), diameter)
+    assert max(old_diameters) > diameter + .05
     for token in ("wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr"):
         assert token in motor and token in world
     assert "HasEmbeddedWheelSet(authoredBody)" in world
