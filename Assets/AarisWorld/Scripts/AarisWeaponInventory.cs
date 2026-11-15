@@ -584,9 +584,21 @@ namespace Aaris.MapReview
                     forward = view.transform.forward;
                 if (forward.sqrMagnitude < 0.01f) forward = transform.forward;
                 Quaternion aimRotation = Quaternion.LookRotation(forward, Vector3.up);
+                // Rotation and receiver translation share the same aim-yaw basis.
+                // Otherwise the solved hands chase a diagonal pivot during
+                // camera yaw, especially in ADS/prone.
+                Vector3 aimRight = aimRotation * Vector3.right;
+                Vector3 shoulderForward = Vector3.ProjectOnPlane(
+                    forward, Vector3.up);
+                if (shoulderForward.sqrMagnitude < 0.01f)
+                    shoulderForward = transform.forward;
+                else
+                    shoulderForward.Normalize();
+                float aimPitch = Mathf.Clamp(Vector3.Dot(
+                    forward.normalized, Vector3.up), -0.75f, 0.75f);
                 Vector3 receiver = chest.position +
-                    transform.right * 0.12f + transform.forward * 0.13f -
-                    Vector3.up * 0.105f;
+                    aimRight * 0.12f + shoulderForward * 0.13f -
+                    Vector3.up * 0.105f + Vector3.up * aimPitch * 0.025f;
                 weaponRoot.SetPositionAndRotation(receiver, aimRotation);
             }
             else
