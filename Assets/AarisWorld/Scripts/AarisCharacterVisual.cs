@@ -48,6 +48,7 @@ namespace Aaris.MapReview
         // Ignore one-frame grounded loss across terrain seams without delaying a deliberate jump.
         private float lastReliableGroundContact;
         private float walkRunBlend;
+        private float runPhaseOffset, sprintPhaseOffset;
         private float sprintBlend;
         private AnimationClipPlayable idlePlayable, walkPlayable, runPlayable, jumpPlayable,
             fallPlayable, crouchPlayable, crouchWalkPlayable, jumpStartPlayable,
@@ -364,9 +365,18 @@ namespace Aaris.MapReview
         private void SetupAnimations()
         {
             idleClip = FindClip("idle", "idle");
-            walkClip = FindClip("walk", "walk") ?? FindClip("run", "run");
             runClip = FindClip("run", "run");
+            walkClip = FindClip("walk", "walk") ?? runClip;
             sprintClip = FindClip("sprint", "sprint") ?? runClip;
+            // The primary gait clips start at slightly different foot contacts.
+            // Unity humanoid preview sampling aligned run two samples earlier
+            // and sprint one sample later in a 60-sample cycle. Keep shared
+            // fallback clips at one sample time and leave other rigs unshifted.
+            if (primaryLoaded && walkClip != runClip)
+            {
+                runPhaseOffset = -2f / 60f;
+                sprintPhaseOffset = sprintClip == runClip ? runPhaseOffset : 1f / 60f;
+            }
             proneClip = FindClip("prone", "prone");
             crawlClip = FindClip("crawl", "crawl");
             if (proneClip == null || crawlClip == null)
@@ -1097,8 +1107,8 @@ namespace Aaris.MapReview
                 if (lastLocomotionPhase != locomotionPhase)
                 {
                     LoopPlayable(walkPlayable, walkClip, locomotionPhase);
-                    LoopPlayable(runPlayable, runClip, locomotionPhase);
-                    LoopPlayable(sprintPlayable, sprintClip, locomotionPhase);
+                    LoopPlayable(runPlayable, runClip, locomotionPhase + runPhaseOffset);
+                    LoopPlayable(sprintPlayable, sprintClip, locomotionPhase + sprintPhaseOffset);
                     lastLocomotionPhase = locomotionPhase;
                 }
                 if (lastCrouchPhase != crouchPhase)
