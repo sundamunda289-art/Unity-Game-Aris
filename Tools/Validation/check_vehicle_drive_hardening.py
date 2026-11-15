@@ -29,6 +29,12 @@ def test():
     assert "car == null || !car.IsSafeToExit" in session
     assert "car.SpeedMetresPerSecond > 1.1f" not in session
 
+    # A closer sliding/overturned car must not mask a safe nearby car.
+    nearest = world.split("public AarisVehicleMotor NearestAvailable(", 1)[1]
+    assert "record.visible.IsOccupied" in nearest
+    assert "if (d >= best || !record.visible.IsSafeToExit) continue;" in nearest
+    assert nearest.index("!record.visible.IsSafeToExit") < nearest.index("nearest = record.visible;")
+
     # The unsorted entry sight probe can saturate with owned vehicle/player
     # hits. Do not deny a valid DRIVE tap or skip a hidden wall just because
     # the 24-slot fast-path buffer is full.

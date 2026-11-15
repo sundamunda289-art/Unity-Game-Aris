@@ -9,7 +9,8 @@ namespace Aaris.MapReview
     /// pointer up, a disabled button, scene unload or application pause.
     /// </summary>
     public sealed class AarisHudButton : MonoBehaviour,
-        IPointerDownHandler, IPointerUpHandler, ICancelHandler, IDragHandler
+        IPointerDownHandler, IPointerUpHandler, ICancelHandler, IDragHandler,
+        IInitializePotentialDragHandler
     {
         private AarisBattleHUD owner;
         private AarisBattleHUD.Action kind;
@@ -56,6 +57,15 @@ namespace Aaris.MapReview
                 if (kind == AarisBattleHUD.Action.Fire) aimPointerId = eventData.pointerId;
                 owner.Down(kind);
             }
+        }
+
+        // Fire is a continuous look input, not a draggable UI item. Unity's
+        // default pixel drag threshold discards initial micro-aim motion.
+        // Disable it for this pointer only; never change the global EventSystem.
+        public void OnInitializePotentialDrag(PointerEventData eventData)
+        {
+            if (eventData != null && kind == AarisBattleHUD.Action.Fire)
+                eventData.useDragThreshold = false;
         }
 
         // Fire can drag to aim while held. Jump is a vertical ACTION,

@@ -645,7 +645,9 @@ namespace Aaris.MapReview
             {
                 if (record.visible == null || record.visible.IsOccupied) continue;
                 float d = (record.visible.transform.position - origin).sqrMagnitude;
-                if (d >= best) continue;
+                // An unusable closer car must not hide a safe DRIVE target.
+                // Check distance first to avoid wheel-ground probes for far cars.
+                if (d >= best || !record.visible.IsSafeToExit) continue;
                 best = d;
                 nearest = record.visible;
             }
