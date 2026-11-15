@@ -772,8 +772,10 @@ namespace Aaris.MapReview
             out Vector3 supportNormal)
         {
             supportNormal = Vector3.up;
-            float fallback = transform.position.y + clearance;
-            if (foot == null) return fallback;
+            // A ray miss is not a floor. At ledges, gaps or non-walkable
+            // surfaces, preserve the authored unsupported foot instead of
+            // inventing a support plane at the motor origin.
+            if (foot == null) return float.NaN;
             Vector3 origin = foot.position + Vector3.up * 0.70f;
             int worldMask = Physics.DefaultRaycastLayers & ~(1 << gameObject.layer);
             Ray ray = new Ray(origin, Vector3.down);
@@ -790,7 +792,7 @@ namespace Aaris.MapReview
                 count = hits.Length;
             }
             float closest = float.PositiveInfinity;
-            float floor = fallback;
+            float floor = float.NaN;
             for (int i = 0; i < count; i++)
             {
                 RaycastHit hit = hits[i];
@@ -818,6 +820,7 @@ namespace Aaris.MapReview
                 uprightWeight <= 0.001f) return;
             float supportY = SupportedAnkleY(foot,
                 UprightAnkleClearanceMetres, out Vector3 supportNormal);
+            if (float.IsNaN(supportY)) return;
             float gap = foot.position.y - supportY;
             // Always recover penetration. When the ankle is above the floor,
             // engage only through the final 14 cm of a step so a swing foot
@@ -1118,7 +1121,7 @@ namespace Aaris.MapReview
                     ? leftFootBone : rightFootBone;
                 float supportY = SupportedAnkleY(stanceFoot, UprightAnkleClearanceMetres);
                 float stanceGap = stanceFoot.position.y - supportY;
-                if (Mathf.Abs(stanceGap) > 0.07f)
+                if (!float.IsNaN(stanceGap) && Mathf.Abs(stanceGap) > 0.07f)
                 {
                     float error = -stanceGap;
                     float adjustment = Mathf.Clamp(error, -0.35f, 0.18f) *
@@ -1178,18 +1181,22 @@ namespace Aaris.MapReview
                     ankleClearance, out Vector3 leftSupportNormal);
                 float rightAnkleY = SupportedAnkleY(rightFootBone,
                     ankleClearance, out Vector3 rightSupportNormal);
-                PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
-                    leftAnkleY, transform.forward, ankleRigWeight);
-                PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
-                    rightAnkleY, transform.forward, ankleRigWeight);
+                if (!float.IsNaN(leftAnkleY))
+                    PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
+                        leftAnkleY, transform.forward, ankleRigWeight);
+                if (!float.IsNaN(rightAnkleY))
+                    PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
+                        rightAnkleY, transform.forward, ankleRigWeight);
                 // Crouch/prone used to correct only ankle height, leaving the
                 // sole visually cutting through a sloped road or bridge deck.
                 // Reuse the exact two support normals sampled above; no extra
                 // Physics query is introduced by this low-stance correction.
-                AlignFootToSupport(leftFootBone, leftSupportNormal,
-                    ankleRigWeight, 26f, 0.72f);
-                AlignFootToSupport(rightFootBone, rightSupportNormal,
-                    ankleRigWeight, 26f, 0.72f);
+                if (!float.IsNaN(leftAnkleY))
+                    AlignFootToSupport(leftFootBone, leftSupportNormal,
+                        ankleRigWeight, 26f, 0.72f);
+                if (!float.IsNaN(rightAnkleY))
+                    AlignFootToSupport(rightFootBone, rightSupportNormal,
+                        ankleRigWeight, 26f, 0.72f);
             }
             // Standing/walk/run need world-space contact too. Apply the same
             // analytic leg solve only to a near-ground stance foot; high swing
