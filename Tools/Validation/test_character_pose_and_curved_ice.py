@@ -22,7 +22,7 @@ assert 'fallPlayable.SetTime(fall.length * 0.72d)' in visual
 assert 'jumpStartPlayable.SetSpeed(Mathf.Clamp' in visual
 # Authored samples keep the continuous locomotion distance phase and
 # shift only the contact points of distinct primary run and sprint clips.
-assert 'if (primaryLoaded && walkClip != runClip)' in visual
+assert 'if (!naturalMocapLoaded && primaryLoaded && walkClip != runClip)' in visual
 assert 'runPhaseOffset = -2f / 60f;' in visual
 assert 'sprintPhaseOffset = sprintClip == runClip ? runPhaseOffset : 0f;' in visual
 assert 'LoopPlayable(runPlayable, runClip, locomotionPhase + runPhaseOffset);' in visual
