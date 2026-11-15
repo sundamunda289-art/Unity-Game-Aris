@@ -262,7 +262,7 @@ namespace Aaris.MapReview
                 }
             }
             if (animator.avatar != null && animator.avatar.isValid && animator.avatar.isHuman &&
-                FitVisualToController())
+                FitVisualToController(resourcePath))
             {
                 primaryLoaded = resourcePath != FallbackModel;
                 tacticalSoldierLoaded = resourcePath == PrimaryModel;
@@ -331,8 +331,15 @@ namespace Aaris.MapReview
             return true;
         }
 
-        private bool FitVisualToController()
+        private bool FitVisualToController(string resourcePath)
         {
+            // TacticalSoldier's authored skinned AABBs are not a reliable scale
+            // source even after its root helper is hidden (one skin still spans
+            // roughly 113 bind-space units). A valid Human skeleton is the
+            // authoritative metric source for this known primary asset.
+            if (resourcePath == PrimaryModel && TryFitHumanoidBonesToController())
+                return true;
+
             var renderers = visual.GetComponentsInChildren<Renderer>(true);
             Bounds combined = new Bounds();
             bool hasBounds = false;
