@@ -182,6 +182,10 @@ namespace Aaris.MapReview
             float initialScale = constrainedGraphics
                 ? (compactDisplay ? 0.92f : 0.85f)
                 : (compactDisplay ? 0.96f : 0.92f);
+            // The configured quality floor applies from the very first frame,
+            // not just after the adaptive governor has sampled gameplay.
+            initialScale = Mathf.Max(initialScale,
+                Mathf.Clamp(minimumAndroidRenderScale, 0.65f, 1f));
             androidPipeline.renderScale = Mathf.Min(originalRenderScale, initialScale);
             lastAppliedRenderScale = androidPipeline.renderScale;
             // Mipmap streaming was already enabled by the saved QualitySettings.
