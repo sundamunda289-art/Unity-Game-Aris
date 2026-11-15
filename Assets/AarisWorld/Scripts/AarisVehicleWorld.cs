@@ -134,11 +134,19 @@ namespace Aaris.MapReview
 
         internal static bool TryGetVisualBoundsLocal(Transform localSpace, out Bounds combined)
         {
+            return TryGetVisualBoundsLocal(localSpace, localSpace, out combined);
+        }
+
+        // Measure one imported subtree directly in another transform's axes.
+        // Project source mesh bounds once, never a world-aligned bounding box.
+        internal static bool TryGetVisualBoundsLocal(Transform localSpace,
+            Transform subtree, out Bounds combined)
+        {
             combined = new Bounds();
-            if (localSpace == null) return false;
+            if (localSpace == null || subtree == null) return false;
             bool found = false;
             Matrix4x4 toLocal = localSpace.worldToLocalMatrix;
-            foreach (var filter in localSpace.GetComponentsInChildren<MeshFilter>(true))
+            foreach (var filter in subtree.GetComponentsInChildren<MeshFilter>(true))
             {
                 if (filter == null || filter.sharedMesh == null ||
                     filter.GetComponent<MeshRenderer>() == null) continue;
@@ -146,7 +154,7 @@ namespace Aaris.MapReview
                     toLocal * filter.transform.localToWorldMatrix,
                     ref combined, ref found);
             }
-            foreach (var skinned in localSpace.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            foreach (var skinned in subtree.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 if (skinned == null || skinned.sharedMesh == null) continue;
                 AccumulateLocalBounds(skinned.localBounds,
