@@ -13,6 +13,28 @@ ROOT = Path(__file__).resolve().parents[2]
 audio = (ROOT / "Assets/AarisWorld/Scripts/AarisAudioDirector.cs").read_text("utf-8")
 visual = (ROOT / "Assets/AarisWorld/Scripts/AarisCharacterVisual.cs").read_text("utf-8")
 
+# Vendored 100STYLE clips may replace the pose source, but locomotion remains
+# capsule-authoritative and distance-driven. Missing/corrupt clips must fall
+# back to the already-reviewed local animation set instead of breaking play.
+for part in (
+    'private const string MocapLocomotion = "AarisMocap/mocap_locomotion";',
+    'Resources.LoadAll<AnimationClip>(MocapLocomotion)',
+    'FindMocapClip(mocap, "mocap_walk")',
+    'FindMocapClip(mocap, "mocap_jog")',
+    'FindMocapClip(mocap, "mocap_run")',
+    'FindMocapClip(mocap, "mocap_crouch")',
+    'if (mocapWalk == null || mocapJog == null || mocapRun == null)',
+    'walkClip = mocapWalk;',
+    'runClip = mocapJog;',
+    'sprintClip = mocapRun;',
+    'runPhaseOffset = 0f;',
+    'sprintPhaseOffset = 0f;',
+    'animator.applyRootMotion = false;',
+):
+    assert part in visual, part
+assert 'mocapLocomotionLoaded = true;' in visual
+assert 'distance-driven gait, root motion disabled.' in visual
+
 # The actual visual uses distance-driven gait phases; audio should play at
 # alternating contacts (half the cycle), including crouch/prone movement.
 for part in (
