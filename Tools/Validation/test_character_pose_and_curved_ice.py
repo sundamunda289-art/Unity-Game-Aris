@@ -85,7 +85,22 @@ assert 'bool stableSoldier = uprightGroundedSoldier && planar < 0.15f;' in visua
 assert 'Transform stanceFoot = leftFootBone.position.y <= rightFootBone.position.y' in visual
 assert 'float supportY = SupportedAnkleY(stanceFoot, UprightAnkleClearanceMetres);' in visual
 assert 'float stanceGap = stanceFoot.position.y - supportY;' in visual
-assert 'if (Mathf.Abs(stanceGap) > 0.07f)' in visual
+assert 'if (!float.IsNaN(stanceGap) && Mathf.Abs(stanceGap) > 0.07f)' in visual
+# A missing support hit must not fabricate a ground plane at the motor origin.
+# Unsupported feet keep authored motion; supported feet still use the same
+# bounded ankle/normal correction path.
+assert 'float floor = float.NaN;' in visual
+assert 'if (foot == null) return float.NaN;' in visual
+assert 'float fallback = transform.position.y + clearance;' not in visual
+assert 'if (float.IsNaN(supportY)) return;' in visual
+assert visual.count('if (!float.IsNaN(leftAnkleY))') == 2
+assert visual.count('if (!float.IsNaN(rightAnkleY))') == 2
+import math
+for support, foot_y, expected in ((float('nan'), 0.5, False),
+                                  (0.075, 0.5, True),
+                                  (0.075, 0.08, False)):
+    gap = foot_y - support
+    assert (not math.isnan(gap) and abs(gap) > 0.07) == expected
 assert 'transform.position.y + 0.045f - lowestAnkle' not in visual
 # Positive calibration and grounded correction remain bounded, including
 # low-FPS 10/30/60/120Hz startup and imported soldier bone spans.
