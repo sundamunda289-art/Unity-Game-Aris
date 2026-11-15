@@ -25,7 +25,7 @@
   "geometry_textures_metadata_prefabs_and_scene_preserved": true,
   "native_pipeline_files": {
     "Assets/TerrainDemoScene_URP/Settings/URP/URP-HighQuality Pipeline Asset.asset": {
-      "sha256": "b8e9925c44089bdebeab41b2213f541a748e429c26a099e9d735d70b1448ff47",
+      "sha256": "921a8aef9a5a76518ef1e493435ea22d08785b851eddc91725ebf44a97ce5ef5",
       "size": 4357
     },
     "Assets/TerrainDemoScene_URP/Settings/URP/Universal Render Pipeline Asset_Renderer.asset": {
