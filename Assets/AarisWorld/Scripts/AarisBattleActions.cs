@@ -453,6 +453,11 @@ namespace Aaris.MapReview
             punchContactTime = -1f;
         }
 
+        private void OnApplicationFocus(bool focused)
+        {
+            if (!focused) OnDisable();
+        }
+
         private void OnApplicationPause(bool paused)
         {
             if (!paused) return;
