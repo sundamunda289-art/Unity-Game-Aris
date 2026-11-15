@@ -38,6 +38,21 @@ assert 'phaseDirection * distance / standStride' in visual
 assert 'phaseDirection * distance / 1.40f' in visual
 assert 'phaseDirection * distance / 0.90f' in visual
 assert 'smoothedStrafeBank = Mathf.Lerp(smoothedStrafeBank, bankTarget, alpha)' in visual
+# Natural locomotion is a complete, local-only 100STYLE set. Never partially
+# mix it with KayKit gait clips, and never add runtime network/download work.
+assert 'private const string MocapLocomotion = "AarisMocap/mocap_locomotion";' in visual
+assert 'Resources.LoadAll<AnimationClip>(MocapLocomotion)' in visual
+assert 'naturalMocapLoaded = naturalWalk != null && naturalJog != null &&' in visual
+assert 'naturalRun != null && naturalCrouch != null;' in visual
+assert 'runClip = naturalMocapLoaded ? naturalJog' in visual
+assert 'walkClip = naturalMocapLoaded ? naturalWalk' in visual
+assert 'sprintClip = naturalMocapLoaded ? naturalRun' in visual
+assert 'crouchClip = naturalMocapLoaded ? naturalCrouch' in visual
+assert 'crouchWalkClip = naturalMocapLoaded ? naturalCrouch' in visual
+assert 'if (!naturalMocapLoaded && primaryLoaded && walkClip != runClip)' in visual
+assert 'crouchPlayable.SetTime(naturalMocapLoaded' in visual
+assert 'float crouchLowering = naturalMocapLoaded ? 0f :' in visual
+assert 'UnityWebRequest' not in visual
 # November native Unity stance-jump diagnostic measured a real 0.75m
 # standing shoe hover above terrain (physical capsule foot gap 0.035m).
 # Enforce animated-bone calibration, never a guessed -skinWidth offset.
