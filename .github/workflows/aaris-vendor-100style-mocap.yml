@@ -142,6 +142,8 @@ jobs:
           assert "autoGenerateAvatarMappingIfUnspecified: 1" in meta
           assert "    human: []" in meta and "    skeleton: []" in meta
           assert "    hasTranslationDoF: 0" in meta
+          assert "    globalScale: 1" in meta
+          assert "    globalScale: 0" not in meta
           assert "RealisticSoldier(Clone)" not in meta
           assert "BamenMilitarySoldierRig\\n      parentName:" not in meta
           (out / "mocap_locomotion.fbx.meta").write_text(meta)
