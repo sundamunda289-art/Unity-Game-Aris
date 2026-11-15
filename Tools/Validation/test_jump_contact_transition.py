@@ -78,10 +78,11 @@ for taking_off in (False, True):
 # A grounded direction reversal should first brake, while a jump must retain
 # the original, reduced air steering. Check the new source guard and the
 # deterministic 1D equivalent of Vector3.MoveTowards at low mobile FPS.
-assert "if (wasGrounded && desiredVelocity.sqrMagnitude > 0.001f &&" in motor
+assert "bool airborneIntent = launchJump || !wasGrounded;" in motor
+assert "if (!airborneIntent && desiredVelocity.sqrMagnitude > 0.001f &&" in motor
 assert "Vector3.Dot(horizontalVelocity, desiredVelocity) < -0.05f" in motor
 assert "response = Mathf.Max(response, horizontalBraking);" in motor
-assert motor.index("response = Mathf.Max(response, horizontalBraking);") < motor.index("if (!wasGrounded)")
+assert motor.index("response = Mathf.Max(response, horizontalBraking);") < motor.index("if (airborneIntent)", motor.index("Vector3 desiredVelocity ="))
 
 def approach(current: float, goal: float, rate: float, dt: float) -> float:
     delta = goal - current
@@ -92,6 +93,18 @@ for fps in (10, 15, 30, 60, 120):
     braked = approach(4.8, -3.4, 19.0, dt)
     unbraked = approach(4.8, -3.4, 13.0, dt)
     assert -3.4 <= braked < unbraked < 4.8
+
+    # Release and reverse on the same frame as takeoff after a grounded Move.
+    # Takeoff must use the same air response as the subsequent airborne frames.
+    for launch_jump, was_grounded in ((True, True), (False, False), (False, True)):
+        airborne = launch_jump or not was_grounded
+        released_speed = approach(4.8, 0.0, 19.0 * (0.18 if airborne else 1.0), dt)
+        reversed_speed = approach(4.8, -3.4, 13.0 * 0.45 if airborne else 19.0, dt)
+        if airborne:
+            assert released_speed > approach(4.8, 0.0, 19.0, dt)
+            assert reversed_speed > braked
+        else:
+            assert reversed_speed == braked
 
 # Real capsule acceleration and shortest-angle yaw should inform *visual* lean
 # without affecting the authoritative movement controller or prone collision.
