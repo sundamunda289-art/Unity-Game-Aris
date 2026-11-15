@@ -21,6 +21,7 @@ namespace Aaris.MapReview
         private const string FallbackModel = "AarisCharacters/Kenney/characterMedium";
         private const string KenneyClips = "AarisCharacters/Kenney/";
         private const string PrimaryClips = "AarisCharacters/Primary/Animations/";
+        private const string MocapLocomotion = "AarisMocap/mocap_locomotion";
         private const float TargetHeightMetres = 1.78f;
 
         [SerializeField, Range(-180f, 180f)] private float modelYawOffset;
@@ -135,6 +136,7 @@ namespace Aaris.MapReview
         private bool primaryLoaded;
         private bool tacticalSoldierLoaded;
         private bool realisticSoldierLoaded;
+        private bool mocapLocomotionLoaded;
         private bool CalibratedSoldierLoaded =>
             tacticalSoldierLoaded || realisticSoldierLoaded;
 
@@ -533,6 +535,46 @@ namespace Aaris.MapReview
             return fallback;
         }
 
+        private static AnimationClip FindMocapClip(AnimationClip[] clips,
+            string token)
+        {
+            if (clips == null || string.IsNullOrEmpty(token)) return null;
+            for (int i = 0; i < clips.Length; i++)
+            {
+                AnimationClip clip = clips[i];
+                if (clip == null || clip.legacy || !clip.humanMotion ||
+                    clip.length < 0.02f) continue;
+                if (clip.name.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0)
+                    return clip;
+            }
+            return null;
+        }
+
+        private bool TryUseMocapLocomotion()
+        {
+            AnimationClip[] mocap = Resources.LoadAll<AnimationClip>(MocapLocomotion);
+            AnimationClip mocapWalk = FindMocapClip(mocap, "mocap_walk");
+            AnimationClip mocapJog = FindMocapClip(mocap, "mocap_jog");
+            AnimationClip mocapRun = FindMocapClip(mocap, "mocap_run");
+            AnimationClip mocapCrouch = FindMocapClip(mocap, "mocap_crouch");
+            // Standing locomotion is all-or-nothing. Mixing one new retargeted
+            // cycle with two unrelated fallback cycles creates phase pops at
+            // walk/run/sprint thresholds. Missing/corrupt mocap therefore
+            // leaves the already-reviewed local animation set untouched.
+            if (mocapWalk == null || mocapJog == null || mocapRun == null)
+                return false;
+
+            walkClip = mocapWalk;
+            runClip = mocapJog;
+            sprintClip = mocapRun;
+            if (mocapCrouch != null)
+                crouchWalkClip = mocapCrouch;
+            mocapLocomotionLoaded = true;
+            Debug.Log("Aaris: 100STYLE Humanoid mocap locomotion active; " +
+                "distance-driven gait, root motion disabled.");
+            return true;
+        }
+
         private void SetupAnimations()
         {
             idleClip = FindClip("idle", "idle");
@@ -544,7 +586,7 @@ namespace Aaris.MapReview
             // from its reviewed frame-zero contact. Keep only the KayKit run
             // correction; do not carry the old Running_B +1/60 offset onto the
             // different Quaternius skeleton.
-            if (primaryLoaded && walkClip != runClip)
+            if (!mocapLocomotionLoaded && primaryLoaded && walkClip != runClip)
             {
                 runPhaseOffset = -2f / 60f;
                 sprintPhaseOffset = sprintClip == runClip ? runPhaseOffset : 0f;
@@ -561,6 +603,7 @@ namespace Aaris.MapReview
             AnimationClip fall = FindClip("fall", "fall");
             crouchClip = FindClip("crouch", "crouch") ?? idleClip;
             crouchWalkClip = FindClip("crouch_walk", "crouch") ?? crouchClip;
+            TryUseMocapLocomotion();
             punchClip = FindClip("punch", "punch");
             shootClip = FindClip("shoot", "shoot");
             if (punchClip == null) punchClip = idleClip;
