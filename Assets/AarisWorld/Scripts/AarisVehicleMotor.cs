@@ -218,7 +218,7 @@ namespace Aaris.MapReview
                 {
                     foreach (var renderer in renderers)
                     {
-                        int n = Mathf.Max(1, renderer.sharedMaterials.Length);
+                        int n = AarisVehicleWorld.VisualSubmeshCount(renderer);
                         var materials = new Material[n];
                         for (int j = 0; j < n; j++) materials[j] = palette;
                         renderer.sharedMaterials = materials;
