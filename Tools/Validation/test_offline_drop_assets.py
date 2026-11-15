@@ -56,6 +56,11 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         drop = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
         move = drop.split("private void MoveAirborne(float dt)", 1)[1].split(
             "private bool TryGetDistanceToSupport(", 1)[0]
+        collision = move.split("if ((flags & CollisionFlags.Below) != 0", 1)[1].split(
+            "if (IsUnderCanopy", 1)[0]
+        self.assertRegex(
+            collision, r"if \(transform\.position\.y < SeaSurfaceHeight \+ 0\.35f\)\s+"
+                       r"RecoverFromOceanFall\(\);\s+else\s+Land\(\);")
         self.assertIn("TryNativeTerrainTouchdown(beforeMove)", move)
         self.assertIn("Physics.Raycast(probe, out RaycastHit floor", move)
         self.assertIn("floor.point.y >= SeaSurfaceHeight + 0.35f", move)
