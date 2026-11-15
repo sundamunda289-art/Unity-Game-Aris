@@ -31,7 +31,7 @@ for anchor in (0.0, 0.003, 0.5, 0.995, 1.0):
     for shift in (-2 / 60, 0.0, 1 / 60):
         phase, length = anchor + shift, 0.792
         seconds = phase * length
-        wrapped = seconds - math.floor(seconds / length) * length
+        wrapped = seconds % length
         assert 0.0 <= wrapped < length
 assert 'float phaseDirection = gaitDirection;' in visual
 assert 'phaseDirection * distance / standStride' in visual
