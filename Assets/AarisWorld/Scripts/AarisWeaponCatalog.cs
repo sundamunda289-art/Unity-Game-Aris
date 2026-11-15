@@ -14,7 +14,11 @@ namespace Aaris.MapReview
         public bool automatic;
         public int rpm, magazineSize, reserveAmmo, pellets;
         public float damage, rangeMetres, spreadDegrees, recoilPitchDegrees;
+        // "weight" is the authored LOOT SELECTION weight, not kilograms.
+        // Keep physical presentation inertia separate so changing gun feel never
+        // silently changes spawn distribution.
         public float reloadSeconds, adsFov, weight;
+        public float handlingMassKg = 3.6f;
         public Vector3 handOffset = new Vector3(0.02f, 0f, 0.02f);
         public Vector3 handRotation = new Vector3(0f, 90f, 0f);
         public float handScale = 1f;
@@ -33,7 +37,8 @@ namespace Aaris.MapReview
             recoilPitchDegrees >= 0f && recoilPitchDegrees <= 20f &&
             pellets >= 1 && pellets <= 16 && reloadSeconds >= 0.1f &&
             reloadSeconds <= 12f && adsFov >= 8f && adsFov <= 65f &&
-            weight > 0f && handScale > 0f && handScale <= 12f &&
+            weight > 0f && handlingMassKg >= 2.0f && handlingMassKg <= 8.0f &&
+            handScale > 0f && handScale <= 12f &&
             presentationLengthMetres >= 0.48f && presentationLengthMetres <= 1.4f;
     }
 
