@@ -503,9 +503,9 @@ assert 'visual.transform.localScale *= scale;' in visual
 # the imported root, including its proportions when scales differ by axis.
 for import_scale in ((0.5, 0.5, 0.5), (2.0, 2.0, 2.0), (0.9, 1.2, 1.1)):
     measured_height = 1.65 * import_scale[1]
-    correction = 1.76 / measured_height
+    correction = 1.78 / measured_height
     fitted_scale = tuple(axis * correction for axis in import_scale)
-    assert math.isclose(1.65 * fitted_scale[1], 1.76)
+    assert math.isclose(1.65 * fitted_scale[1], 1.78)
     assert math.isclose(fitted_scale[0] / fitted_scale[1],
                         import_scale[0] / import_scale[1])
 assert 'private const float RealisticSoldierProneRigLowering = 0.64f;' in visual
