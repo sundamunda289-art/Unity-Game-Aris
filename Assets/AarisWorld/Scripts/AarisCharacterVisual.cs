@@ -291,7 +291,8 @@ namespace Aaris.MapReview
 
             float feetY = Mathf.Min(leftFoot.position.y, rightFoot.position.y);
             float boneSpan = head.position.y - feetY;
-            if (!float.IsFinite(boneSpan) || boneSpan < 0.80f || boneSpan > 2.50f)
+            if (float.IsNaN(boneSpan) || float.IsInfinity(boneSpan) ||
+                boneSpan < 0.80f || boneSpan > 2.50f)
                 return false;
 
             float targetBoneSpan = TargetHeightMetres - 0.14f;
@@ -319,7 +320,8 @@ namespace Aaris.MapReview
                 if (!hasBounds) { combined = renderer.bounds; hasBounds = true; }
                 else combined.Encapsulate(renderer.bounds);
             }
-            if (!hasBounds || !float.IsFinite(combined.size.y) ||
+            if (!hasBounds || float.IsNaN(combined.size.y) ||
+                float.IsInfinity(combined.size.y) ||
                 combined.size.y < 0.01f || combined.size.y > 1000f)
                 return TryFitHumanoidBonesToController();
 
