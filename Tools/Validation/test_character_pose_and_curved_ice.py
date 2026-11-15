@@ -409,6 +409,19 @@ assert 'smoothedStrafeBank + smoothedTurnBank' in visual
 # Forward-only gait coverage is procedurally orientation-warped for combat
 # strafes. Drive from collision-resolved velocity, fade before full backpedal,
 # rotate the pelvis before foot IK, and counter-yaw the spine to preserve aim.
+assert 'float slopeLimit = controller != null ? controller.slopeLimit : 46f;' in visual
+assert 'Mathf.Clamp(slopeLimit + 3f, 0f, 89f) * Mathf.Deg2Rad' in visual
+assert 'hit.normal.y < minWalkableNormalY' in visual
+assert 'hit.normal.y < 0.55f' not in visual
+# Foot planting must never claim a steeper support face than the physical
+# CharacterController can traverse (allowing only the authored 3-degree seam tolerance).
+import math
+for slope_limit in (30.0, 46.0, 60.0, 89.0):
+    threshold = math.cos(math.radians(min(slope_limit + 3.0, 89.0)))
+    assert threshold >= 0.0
+    accepted_angle = math.degrees(math.acos(threshold))
+    assert accepted_angle <= min(slope_limit + 3.0, 89.0) + 1e-6
+
 assert 'private float smoothedOrientationWarpYaw;' in visual
 assert 'locomotionHipsBone = animator.GetBoneTransform(HumanBodyBones.Hips);' in visual
 assert 'float travelForward = Vector3.Dot(planarVelocity, transform.forward);' in visual
