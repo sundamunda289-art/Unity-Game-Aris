@@ -2,12 +2,7 @@ fileFormatVersion: 2
 guid: 740b7d252c0140f39547895a5fcc9981
 ModelImporter:
   serializedVersion: 22200
-  externalObjects:
-  - first:
-      type: UnityEngine:Material
-      assembly: UnityEngine.CoreModule
-      name: SedanSurface
-    second: {fileID: 2100000, guid: 0aac2cd1b7df4e5095245c223b5ace67, type: 2}
+  externalObjects: {}
   materials:
     materialImportMode: 1
     materialName: 0

@@ -73,8 +73,11 @@ def test():
     sedan = next(x for x in types if x["id"] == "Sedan")
     assert sedan["modelResource"] == "AarisVehicles/Models/sedan"
     assert sedan["wheelResource"] == "AarisVehicles/Models/wheel-default"
-    for key, maximum in (("authoredModelResource", 1700), ("authoredWheelResource", 300)):
-        path = ROOT / "Assets/Resources" / (sedan[key] + ".obj")
+    for key, mesh, maximum in (("authoredModelResource", "AarisCivilSedan", 1700),
+                               ("authoredWheelResource", "AarisCivilWheel", 300)):
+        prefab = ROOT / "Assets/Resources" / (sedan[key] + ".prefab")
+        assert prefab.is_file() and prefab.with_suffix(".prefab.meta").is_file()
+        path = RES / "Authored" / (mesh + ".obj")
         lines = path.read_text().splitlines()
         assert 100 < sum(line.startswith("f ") for line in lines) <= maximum
         assert [line for line in lines if line.startswith("usemtl ")] == ["usemtl SedanSurface"]
