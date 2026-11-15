@@ -758,25 +758,35 @@ namespace Aaris.MapReview
                 {
                     Vector3 localAxis = transform.InverseTransformDirection(axis.normalized);
                     float angularRate = angle / dt;
-                    float weightScale = equipped != null && equipped.Spec != null
-                        ? Mathf.Lerp(1.12f, 0.72f,
-                            Mathf.InverseLerp(2f, 8f, equipped.Spec.weight))
-                        : 1f;
+                    // Loot "weight" is spawn probability. Presentation
+                    // inertia uses its own kilogram-scale value so a rare gun
+                    // does not magically feel heavier in the player's hands.
+                    float massKg = equipped != null && equipped.Spec != null
+                        ? equipped.Spec.handlingMassKg : 3.6f;
+                    float mass01 = Mathf.InverseLerp(2.5f, 5.5f, massKg);
+                    float inertiaScale = Mathf.Lerp(1.12f, 0.72f, mass01);
                     float adsScale = aiming ? 0.34f : 1f;
                     targetSway.x = Mathf.Clamp(-localAxis.x * angularRate * 0.010f,
-                        -1.8f, 1.8f) * weightScale * adsScale;
+                        -1.8f, 1.8f) * inertiaScale * adsScale;
                     targetSway.y = Mathf.Clamp(-localAxis.y * angularRate * 0.012f,
-                        -2.2f, 2.2f) * weightScale * adsScale;
+                        -2.2f, 2.2f) * inertiaScale * adsScale;
                     float lateralSpeed = capsule != null
                         ? Vector3.Dot(capsule.velocity, transform.right) : 0f;
                     targetSway.z = Mathf.Clamp(-lateralSpeed * 0.32f,
-                        -1.5f, 1.5f) * weightScale * adsScale;
+                        -1.5f, 1.5f) * inertiaScale * adsScale;
                 }
             }
             previousAimRotation = currentAim;
             weaponMotionReady = true;
 
-            float swayAlpha = 1f - Mathf.Exp(-dt / (aiming ? 0.055f : 0.080f));
+            // Heavier firearms resist rapid direction changes a little longer,
+            // while ADS shoulder contact damps the same mass more aggressively.
+            float responseMassKg = equipped != null && equipped.Spec != null
+                ? equipped.Spec.handlingMassKg : 3.6f;
+            float responseMass01 = Mathf.InverseLerp(2.5f, 5.5f, responseMassKg);
+            float swayTime = Mathf.Lerp(0.065f, 0.095f, responseMass01);
+            if (aiming) swayTime *= 0.68f;
+            float swayAlpha = 1f - Mathf.Exp(-dt / swayTime);
             smoothedWeaponSway = Vector3.Lerp(
                 smoothedWeaponSway, targetSway, swayAlpha);
 
