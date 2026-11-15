@@ -812,6 +812,14 @@ namespace Aaris.MapReview
             return 30f * Mathf.Clamp(Time.deltaTime, 0f, 0.05f);
         }
 
+        private static float GripBlendAlpha(float alphaAt30Fps)
+        {
+            // Convert a reviewed per-30Hz-frame blend to the same exponential
+            // wall-clock response at any render rate.
+            float remaining = 1f - Mathf.Clamp01(alphaAt30Fps);
+            return 1f - Mathf.Pow(remaining, GripFrameScale());
+        }
+
         // Two-bone position IK still leaves one free wrist-twist degree.
         // Derive a palm basis from actual Humanoid finger bones instead of
         // assuming any model-local hand axis. The thumb follows the barrel and
@@ -939,7 +947,7 @@ namespace Aaris.MapReview
             Quaternion grip = Quaternion.Euler(equipped.Spec.handRotation);
             Quaternion desiredWrist = weaponRoot.rotation * Quaternion.Inverse(grip);
             hand.rotation = Quaternion.Slerp(hand.rotation, desiredWrist,
-                aiming ? 0.92f : 0.76f);
+                GripBlendAlpha(aiming ? 0.92f : 0.76f));
             ApplyFingerGrip(foregrip);
         }
 
