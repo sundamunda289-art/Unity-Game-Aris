@@ -640,6 +640,20 @@ assert 'tacticalSoldierLoaded || realisticSoldierLoaded' in visual
 assert 'bool uprightGroundedSoldier = CalibratedSoldierLoaded && graphReady' in visual
 assert 'Resources.LoadAll<Avatar>(resourcePath)' in visual
 assert 'visual.transform.localScale *= scale;' in visual
+# TacticalSoldier is a valid Humanoid but its source bind-space POSITION
+# accessors are pathological. The loader must reject arbitrary bad render
+# bounds while allowing a tightly-bounded Human skeleton measurement fallback.
+assert 'private bool TryFitHumanoidBonesToController()' in visual
+assert 'animator.avatar.isValid || !animator.avatar.isHuman' in visual
+assert 'animator.GetBoneTransform(HumanBodyBones.Head)' in visual
+assert 'animator.GetBoneTransform(HumanBodyBones.LeftFoot)' in visual
+assert 'animator.GetBoneTransform(HumanBodyBones.RightFoot)' in visual
+assert 'boneSpan < 0.80f || boneSpan > 2.50f' in visual
+assert 'float targetBoneSpan = TargetHeightMetres - 0.14f;' in visual
+assert 'Mathf.Clamp(targetBoneSpan / boneSpan, 0.50f, 2.00f)' in visual
+assert 'float targetFeetY = transform.position.y + UprightAnkleClearanceMetres;' in visual
+assert 'return TryFitHumanoidBonesToController();' in visual
+assert 'combined.size.y > 1000f' in visual
 # Normalizing measured height must preserve the scale already present on
 # the imported root, including its proportions when scales differ by axis.
 for import_scale in ((0.5, 0.5, 0.5), (2.0, 2.0, 2.0), (0.9, 1.2, 1.1)):
