@@ -521,6 +521,11 @@ namespace Aaris.MapReview
                 bool targetFound = FirstExternalHit(aim, spec.rangeMetres,
                     owner.transform, out RaycastHit target);
                 Vector3 destination = targetFound ? target.point : aim.GetPoint(spec.rangeMetres);
+                // Damage selection may keep the camera reticle's hit when both
+                // rays resolve to the same damageable object, but the audiovisual
+                // contact must still occur at the FIRST physical muzzle surface.
+                Vector3 impactPoint = destination;
+                Vector3 impactNormal = targetFound ? target.normal : -look;
                 Vector3 path = destination - muzzle;
                 float distance = path.magnitude;
                 if (distance > 0.025f)
@@ -528,6 +533,11 @@ namespace Aaris.MapReview
                     bool muzzleHitFound = FirstExternalHit(
                         new Ray(muzzle, path / distance), distance,
                         owner.transform, out RaycastHit muzzleHit);
+                    if (muzzleHitFound)
+                    {
+                        impactPoint = muzzleHit.point;
+                        impactNormal = muzzleHit.normal;
+                    }
                     if (muzzleHitFound &&
                         (!targetFound || !SameTarget(target.collider, muzzleHit.collider)))
                     {
@@ -545,8 +555,8 @@ namespace Aaris.MapReview
                     // not only if pellet zero happens to connect.
                     if (!impactSoundEmitted)
                     {
-                        AarisAudioDirector.BulletImpact(target.point);
-                        TriggerImpactParticles(target.point, target.normal);
+                        AarisAudioDirector.BulletImpact(impactPoint);
+                        TriggerImpactParticles(impactPoint, impactNormal);
                         impactSoundEmitted = true;
                     }
                     ApplyDamage(target.collider, spec.damage, owner);
