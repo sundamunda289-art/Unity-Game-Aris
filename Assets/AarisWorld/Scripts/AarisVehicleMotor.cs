@@ -12,7 +12,10 @@ namespace Aaris.MapReview
     public sealed class AarisVehicleMotor : MonoBehaviour
     {
         private const float WheelRadius = 0.39f;
+        private const float BaseForwardGripStiffness = 1.15f;
+        private const float BaseSideGripStiffness = 1.35f;
         private readonly WheelCollider[] wheels = new WheelCollider[4];
+        private readonly float[] surfaceGripMultipliers = new float[4];
         private readonly Transform[] visualWheels = new Transform[4];
         // Imported vehicle bodies may carry four real wheel meshes with their
         // own authored local axes. Preserve that rest orientation while the
@@ -130,15 +133,16 @@ namespace Aaris.MapReview
             forwardGrip.extremumValue = 1.2f;
             forwardGrip.asymptoteSlip = .83f;
             forwardGrip.asymptoteValue = .83f;
-            forwardGrip.stiffness = 1.15f;
+            forwardGrip.stiffness = BaseForwardGripStiffness;
             wheel.forwardFriction = forwardGrip;
             WheelFrictionCurve sideGrip = wheel.sidewaysFriction;
             sideGrip.extremumSlip = .28f;
             sideGrip.extremumValue = 1.2f;
             sideGrip.asymptoteSlip = .7f;
             sideGrip.asymptoteValue = .85f;
-            sideGrip.stiffness = 1.35f;
+            sideGrip.stiffness = BaseSideGripStiffness;
             wheel.sidewaysFriction = sideGrip;
+            surfaceGripMultipliers[index] = 1f;
             // An initially sleeping, unoccupied car still needs parking brakes.
             wheel.brakeTorque = ParkingBrakeTorque;
             wheels[index] = wheel;
@@ -477,6 +481,38 @@ namespace Aaris.MapReview
             wheels[1].steerAngle = centerAngle > 0f ? inner : -outer;
         }
 
+        // WheelCollider friction is independent from ordinary PhysicMaterial.
+        // Reuse the WheelHit samples already needed for anti-roll, so surface
+        // traction changes add no raycasts/overlaps to the 2 GB-phone hotpath.
+        // Terrain gets a modest loose-surface reduction, hard road/bridge meshes
+        // keep the authored tyre curve, and Water-layer contacts become slick.
+        private static float SurfaceGripMultiplier(Collider surface)
+        {
+            if (surface == null) return 1f;
+            if (surface.gameObject.layer == 4) return .42f; // built-in Water layer
+            if (surface is TerrainCollider) return .90f;
+            return 1f;
+        }
+
+        private void ApplySurfaceGrip(int wheelIndex, WheelCollider wheel,
+            Collider surface)
+        {
+            if (wheel == null || wheelIndex < 0 ||
+                wheelIndex >= surfaceGripMultipliers.Length) return;
+            float multiplier = SurfaceGripMultiplier(surface);
+            if (Mathf.Abs(surfaceGripMultipliers[wheelIndex] - multiplier) <= .01f)
+                return;
+            surfaceGripMultipliers[wheelIndex] = multiplier;
+
+            WheelFrictionCurve forwardGrip = wheel.forwardFriction;
+            forwardGrip.stiffness = BaseForwardGripStiffness * multiplier;
+            wheel.forwardFriction = forwardGrip;
+
+            WheelFrictionCurve sideGrip = wheel.sidewaysFriction;
+            sideGrip.stiffness = BaseSideGripStiffness * multiplier;
+            wheel.sidewaysFriction = sideGrip;
+        }
+
         private void ApplyAntiRoll(int leftIndex, int rightIndex)
         {
             var left = wheels[leftIndex];
@@ -488,6 +524,7 @@ namespace Aaris.MapReview
             float leftTravel = 1f, rightTravel = 1f;
             if (leftGrounded)
             {
+                ApplySurfaceGrip(leftIndex, left, leftHit.collider);
                 leftTravel = Mathf.Clamp01(
                     (-left.transform.InverseTransformPoint(leftHit.point).y -
                         left.radius) / Mathf.Max(.01f, left.suspensionDistance));
@@ -497,6 +534,7 @@ namespace Aaris.MapReview
             }
             if (rightGrounded)
             {
+                ApplySurfaceGrip(rightIndex, right, rightHit.collider);
                 rightTravel = Mathf.Clamp01(
                     (-right.transform.InverseTransformPoint(rightHit.point).y -
                         right.radius) / Mathf.Max(.01f, right.suspensionDistance));
