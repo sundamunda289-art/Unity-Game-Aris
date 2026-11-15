@@ -137,7 +137,7 @@ def audit():
     # LateUpdate on stripped player prefabs. Start caches present components;
     # absent/late-added ones are retried at most once per unscaled second.
     visual = (SRC / "AarisCharacterVisual.cs").read_text(encoding="utf-8")
-    startup = visual[visual.index("private void Start()"):visual.index("private bool FitVisualToController()")]
+    startup = visual[visual.index("private void Start()"):visual.index("private bool FitVisualToController(")]
     late = visual[visual.index("private void LateUpdate()"):visual.index("private void OnDestroy()")]
     # Do not dirty the native visual hierarchy every idle frame. The aerial
     # override is selected before the single final rotation setter (previously
