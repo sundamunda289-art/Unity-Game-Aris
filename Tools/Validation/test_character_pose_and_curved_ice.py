@@ -65,6 +65,14 @@ assert 'out Vector3 rightSupportNormal' in visual
 assert 'AlignFootToSupport(leftFootBone, leftSupportNormal,' in visual
 assert 'AlignFootToSupport(rightFootBone, rightSupportNormal,' in visual
 assert 'AlignFootToSupport(foot, supportNormal, finalWeight, 32f, 0.85f);' in visual
+# Grounded stance feet retain bounded X/Z world contact, then release for swing.
+assert 'UprightPlantEnterGapMetres = 0.065f' in visual
+assert 'UprightPlantReleaseGapMetres = 0.115f' in visual
+assert 'UprightPlantBreakDistanceMetres = 0.18f' in visual
+assert 'plantWorld - foot.position, transform.up' in visual
+assert 'PlantLegToTarget(thigh, shin, foot, targetFoot, transform.forward,' in visual
+assert 'leftUprightPlantLocked = false;' in visual
+assert 'rightUprightPlantLocked = false;' in visual
 assert 'ProneAnkleClearanceMetres' in visual
 # Upright walk/run contact uses the same bounded, allocation-free leg solve,
 # but only near the floor so an authored swing foot is never pinned.
@@ -92,7 +100,7 @@ assert 'if (!float.IsNaN(stanceGap) && Mathf.Abs(stanceGap) > 0.07f)' in visual
 assert 'float floor = float.NaN;' in visual
 assert 'if (foot == null) return float.NaN;' in visual
 assert 'float fallback = transform.position.y + clearance;' not in visual
-assert 'if (float.IsNaN(supportY)) return;' in visual
+assert 'if (float.IsNaN(supportY))' in visual
 assert visual.count('if (!float.IsNaN(leftAnkleY))') == 2
 assert visual.count('if (!float.IsNaN(rightAnkleY))') == 2
 import math
@@ -501,7 +509,8 @@ assert ': Mathf.Clamp01(effectiveCrouchBlend + effectiveProneBlend);' in visual
 # rig with a bounded crouch blend rather than leaving the player airborne.
 assert 'float proneLowering = primaryLoaded && proneClip != null &&' in visual
 # One two-bone solve per leg, irrespective of intermediate stance blends.
-assert visual.count('PlantCrouchLeg(') == 4  # definition + upright helper + low-stance left/right
+assert visual.count('PlantCrouchLeg(') == 3  # definition + low-stance left/right
+assert visual.count('PlantLegToTarget(') >= 3  # definition + crouch wrapper + upright 3D target
 assert 'return SupportedAnkleY(foot, clearance, out _);' in visual
 assert 'out Vector3 supportNormal' in visual
 assert 'SupportedAnkleY(stanceFoot, UprightAnkleClearanceMetres)' in visual
