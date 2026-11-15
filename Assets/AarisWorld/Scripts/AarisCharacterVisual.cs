@@ -536,6 +536,24 @@ namespace Aaris.MapReview
             return fallback;
         }
 
+        private static bool MatchesMocapClipName(string importedName,
+            string exactName)
+        {
+            if (string.IsNullOrEmpty(importedName) || string.IsNullOrEmpty(exactName))
+                return false;
+            if (string.Equals(importedName, exactName,
+                StringComparison.OrdinalIgnoreCase)) return true;
+
+            // Unity FBX imports can expose authored actions as
+            // "Armature|clip". Match only the final namespace component:
+            // broad EndsWith/Contains would accept unrelated look-alike clips.
+            int separator = importedName.LastIndexOf('|');
+            int leafLength = importedName.Length - separator - 1;
+            return separator >= 0 && leafLength == exactName.Length &&
+                string.Compare(importedName, separator + 1, exactName, 0,
+                    exactName.Length, StringComparison.OrdinalIgnoreCase) == 0;
+        }
+
         private static AnimationClip FindMocapClip(AnimationClip[] clips,
             string exactName)
         {
@@ -544,8 +562,7 @@ namespace Aaris.MapReview
             {
                 if (clip == null || clip.legacy || !clip.humanMotion ||
                     clip.length < 0.02f) continue;
-                if (string.Equals(clip.name, exactName,
-                    StringComparison.OrdinalIgnoreCase)) return clip;
+                if (MatchesMocapClipName(clip.name, exactName)) return clip;
             }
             return null;
         }
