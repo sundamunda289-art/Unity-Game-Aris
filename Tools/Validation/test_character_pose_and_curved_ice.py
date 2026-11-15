@@ -20,6 +20,19 @@ assert '? 0d : crouchClip.length * (10d / 24d)' in visual
 assert 'jumpPlayable.SetTime(jump.length * 0.39d)' in visual
 assert 'fallPlayable.SetTime(fall.length * 0.72d)' in visual
 assert 'jumpStartPlayable.SetSpeed(Mathf.Clamp' in visual
+# Authored samples keep the continuous locomotion distance phase and
+# shift only the contact points of distinct primary run and sprint clips.
+assert 'if (primaryLoaded && walkClip != runClip)' in visual
+assert 'runPhaseOffset = -2f / 60f;' in visual
+assert 'sprintPhaseOffset = sprintClip == runClip ? runPhaseOffset : 1f / 60f;' in visual
+assert 'LoopPlayable(runPlayable, runClip, locomotionPhase + runPhaseOffset);' in visual
+assert 'LoopPlayable(sprintPlayable, sprintClip, locomotionPhase + sprintPhaseOffset);' in visual
+for anchor in (0.0, 0.003, 0.5, 0.995, 1.0):
+    for shift in (-2 / 60, 0.0, 1 / 60):
+        phase, length = anchor + shift, 0.792
+        seconds = phase * length
+        wrapped = seconds - math.floor(seconds / length) * length
+        assert 0.0 <= wrapped < length
 assert 'float phaseDirection = gaitDirection;' in visual
 assert 'phaseDirection * distance / standStride' in visual
 assert 'phaseDirection * distance / 1.40f' in visual
