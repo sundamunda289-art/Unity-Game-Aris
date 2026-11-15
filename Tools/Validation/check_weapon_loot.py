@@ -606,6 +606,9 @@ def run():
     assert "private static float GripFrameScale()" in inventory
     assert "30f * Mathf.Clamp(Time.deltaTime, 0f, 0.05f)" in inventory
     assert "(aiming ? 52f : 38f) * frameScale" in inventory
+    assert "private static float GripBlendAlpha(float alphaAt30Fps)" in inventory
+    assert "Mathf.Pow(remaining, GripFrameScale())" in inventory
+    assert "GripBlendAlpha(aiming ? 0.92f : 0.76f)" in inventory
     assert "proximalDegrees * frameScale" in inventory
     assert "middleDegrees * frameScale" in inventory
     assert "weaponRoot.SetParent(transform, false);" in attach
