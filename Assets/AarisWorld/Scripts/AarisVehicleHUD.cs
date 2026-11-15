@@ -10,6 +10,7 @@ namespace Aaris.MapReview
         IPointerDownHandler, IPointerUpHandler, ICancelHandler
     {
         private readonly HashSet<int> fingers = new HashSet<int>();
+        private readonly List<int> staleFingers = new List<int>(4);
         private AarisVehicleHUD owner;
         private int direction;
         private Image ring;
@@ -21,7 +22,8 @@ namespace Aaris.MapReview
         }
         public void OnPointerDown(PointerEventData e)
         {
-            if (e == null || !fingers.Add(e.pointerId)) return;
+            if (e == null || e.button != PointerEventData.InputButton.Left ||
+                !fingers.Add(e.pointerId)) return;
             if (fingers.Count == 1) State(true);
         }
         public void OnPointerUp(PointerEventData e)
@@ -29,6 +31,37 @@ namespace Aaris.MapReview
             if (e == null || !fingers.Remove(e.pointerId)) return;
             if (fingers.Count == 0) State(false);
         }
+        // A lost PointerUp without an app focus change must not leave a car
+        // accelerating forever. Reconcile only classic uGUI pointer IDs,
+        // preserving every other physically held finger on this arrow.
+        private void LateUpdate()
+        {
+            if (fingers.Count == 0 || EventSystem.current == null ||
+                !(EventSystem.current.currentInputModule is StandaloneInputModule)) return;
+            staleFingers.Clear();
+            foreach (int pointer in fingers)
+            {
+                if (!IsPointerHeld(pointer)) staleFingers.Add(pointer);
+            }
+            for (int i = 0; i < staleFingers.Count; i++)
+                fingers.Remove(staleFingers[i]);
+            staleFingers.Clear();
+            if (fingers.Count == 0) State(false);
+        }
+
+        private static bool IsPointerHeld(int pointer)
+        {
+            if (pointer == PointerInputModule.kMouseLeftId)
+                return Input.GetMouseButton(0);
+            for (int i = 0; i < Input.touchCount; i++)
+            {
+                Touch touch = Input.GetTouch(i);
+                if (touch.fingerId == pointer && touch.phase != TouchPhase.Ended &&
+                    touch.phase != TouchPhase.Canceled) return true;
+            }
+            return false;
+        }
+
         public void OnCancel(BaseEventData e) => Reset();
         private void OnDisable() => Reset();
         private void OnApplicationPause(bool paused) { if (paused) Reset(); }
