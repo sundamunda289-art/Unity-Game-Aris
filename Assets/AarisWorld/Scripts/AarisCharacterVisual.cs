@@ -272,6 +272,42 @@ namespace Aaris.MapReview
             return false;
         }
 
+        private bool TryFitHumanoidBonesToController()
+        {
+            // Some valid skinned GLB/FBX rigs carry extremely large bind-space
+            // vertex coordinates even though their Humanoid skeleton is normal
+            // metric scale. Renderer.bounds then becomes unusable before the
+            // first Animator evaluation. For a valid Human Avatar, measure the
+            // authored skeleton itself instead of accepting an arbitrary AABB.
+            if (visual == null || animator == null || animator.avatar == null ||
+                !animator.avatar.isValid || !animator.avatar.isHuman)
+                return false;
+
+            Transform head = animator.GetBoneTransform(HumanBodyBones.Head);
+            Transform leftFoot = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
+            Transform rightFoot = animator.GetBoneTransform(HumanBodyBones.RightFoot);
+            if (head == null || leftFoot == null || rightFoot == null)
+                return false;
+
+            float feetY = Mathf.Min(leftFoot.position.y, rightFoot.position.y);
+            float boneSpan = head.position.y - feetY;
+            if (!float.IsFinite(boneSpan) || boneSpan < 0.80f || boneSpan > 2.50f)
+                return false;
+
+            float targetBoneSpan = TargetHeightMetres - 0.14f;
+            float scale = Mathf.Clamp(targetBoneSpan / boneSpan, 0.50f, 2.00f);
+            visual.transform.localScale *= scale;
+
+            // Re-sample after scaling and place the ankle joint at the same
+            // clearance used by runtime foot planting. This avoids sinking
+            // footwear into the terrain while the one-time animated-pose
+            // calibration remains free to correct a small residual offset.
+            feetY = Mathf.Min(leftFoot.position.y, rightFoot.position.y);
+            float targetFeetY = transform.position.y + UprightAnkleClearanceMetres;
+            visual.transform.position += Vector3.up * (targetFeetY - feetY);
+            return true;
+        }
+
         private bool FitVisualToController()
         {
             var renderers = visual.GetComponentsInChildren<Renderer>(true);
@@ -283,8 +319,9 @@ namespace Aaris.MapReview
                 if (!hasBounds) { combined = renderer.bounds; hasBounds = true; }
                 else combined.Encapsulate(renderer.bounds);
             }
-            if (!hasBounds || combined.size.y < 0.01f || combined.size.y > 1000f)
-                return false;
+            if (!hasBounds || !float.IsFinite(combined.size.y) ||
+                combined.size.y < 0.01f || combined.size.y > 1000f)
+                return TryFitHumanoidBonesToController();
 
             float scale = Mathf.Clamp(TargetHeightMetres / combined.size.y, 0.01f, 100f);
             // Bounds already include the imported root scale.
