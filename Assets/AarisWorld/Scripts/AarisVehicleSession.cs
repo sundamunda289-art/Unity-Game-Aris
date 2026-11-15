@@ -422,8 +422,9 @@ namespace Aaris.MapReview
             }
             float targetFov = Mathf.Lerp(62f, 70f,
                 Mathf.SmoothStep(0f, 1f, speed01));
+            float fovDelta = Mathf.Clamp(Time.deltaTime, 0f, .05f);
             followCamera.fieldOfView = Mathf.Lerp(followCamera.fieldOfView,
-                targetFov, 1f - Mathf.Exp(-5f * Time.deltaTime));
+                targetFov, 1f - Mathf.Exp(-5f * fovDelta));
         }
 
         private void OnDisable()
