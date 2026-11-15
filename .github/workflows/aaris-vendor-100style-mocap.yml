@@ -134,6 +134,40 @@ jobs:
           meta = re.sub(r"(?m)^guid: [0-9a-f]{32}$",
                         "guid: a6c2d3771ac74a3497bf79e25f0d3bc4", meta, count=1)
           meta = meta.replace("importAnimation: 0", "importAnimation: 1", 1)
+
+          # This FBX contains only the armature/actions, not the source soldier
+          # mesh hierarchy. Unity therefore imports mixamorig:Hips directly
+          # below the file root 'mocap_locomotion'. Reusing the source
+          # character HumanDescription verbatim leaves Hips parented to
+          # BamenMilitarySoldierRig and Unity rejects the Humanoid Avatar.
+          old_root = """    skeleton:
+    - name: RealisticSoldier(Clone)
+      parentName:
+      position: {x: 0, y: 0, z: 0}
+      rotation: {x: 0, y: 0, z: 0, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: BamenMilitarySoldierMesh
+      parentName: RealisticSoldier(Clone)
+      position: {x: -0, y: 0, z: 0}
+      rotation: {x: 0.00000015147315, y: 0, z: -0, w: 1}
+      scale: {x: 1, y: 0.99999976, z: 0.99999976}
+    - name: BamenMilitarySoldierRig
+      parentName: RealisticSoldier(Clone)
+      position: {x: -0, y: 0, z: 0}
+      rotation: {x: 0.00000015147313, y: 0, z: -0, w: 1}
+      scale: {x: 1, y: 0.9999999, z: 0.9999999}
+    - name: mixamorig:Hips
+      parentName: BamenMilitarySoldierRig"""
+          new_root = """    skeleton:
+    - name: mocap_locomotion
+      parentName:
+      position: {x: 0, y: 0, z: 0}
+      rotation: {x: 0, y: 0, z: 0, w: 1}
+      scale: {x: 1, y: 1, z: 1}
+    - name: mixamorig:Hips
+      parentName: mocap_locomotion"""
+          assert old_root in meta
+          meta = meta.replace(old_root, new_root, 1)
           (out / "mocap_locomotion.fbx.meta").write_text(meta)
 
           attribution = "\n".join([
