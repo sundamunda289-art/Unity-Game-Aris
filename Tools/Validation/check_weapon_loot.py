@@ -274,7 +274,7 @@ def run():
     assert "main.simulationSpace = ParticleSystemSimulationSpace.World;" in gun_cs
     assert "main.maxParticles = 12;" in gun_cs
     assert "impactParticles.Emit(spec != null && spec.pellets > 1 ? 5 : 3);" in gun_cs
-    assert "TriggerImpactParticles(target.point, target.normal);" in fire_block
+    assert "TriggerImpactParticles(impactPoint, impactNormal);" in fire_block
     assert "AddComponent<ParticleSystem>" not in fire_block
     assert "new GameObject" not in fire_block
     assert "BeginReload()" in gun_cs and "reloading" in gun_cs
