@@ -842,7 +842,7 @@ namespace Aaris.MapReview
         private static void PlantLegToTarget(Transform thigh, Transform shin,
             Transform foot, Vector3 desiredFootWorld, Vector3 forward, float weight)
         {
-            if (thigh == null || shin == null || foot == null) return;
+            if (thigh == null || shin == null || foot == null || weight <= 0f) return;
             Vector3 hip = thigh.position;
             Vector3 knee = shin.position;
             Vector3 ankle = foot.position;
@@ -857,6 +857,7 @@ namespace Aaris.MapReview
             float distance = Mathf.Clamp(actualDistance,
                 Mathf.Abs(upper - lower) + 0.005f, upper + lower - 0.005f);
             Vector3 axis = line / actualDistance;
+            targetFoot = hip + axis * distance;
             // Preserve the authored knee plane as the implicit IK hint.
             // A fixed body-forward pole makes both knees converge toward the
             // same plane during strafes, backpedal and rapid stance changes.
@@ -1363,7 +1364,9 @@ namespace Aaris.MapReview
             float totalRigWeight = crouchRigWeight + proneRigWeight;
             float ankleRigWeight = !visuallyAirborne && graphReady
                 ? Mathf.Clamp01(totalRigWeight) : 0f;
-            if (ankleRigWeight > 0.005f)
+            bool useUprightContact = !visuallyAirborne && graphReady &&
+                groundedNow && lowPose < 0.02f;
+            if (!useUprightContact && ankleRigWeight > 0.005f)
             {
                 float proneShare = proneRigWeight / Mathf.Max(totalRigWeight, 0.0001f);
                 float ankleClearance = Mathf.Lerp(PlantedAnkleMetres,
@@ -1392,10 +1395,9 @@ namespace Aaris.MapReview
             // Standing/walk/run need world-space contact too. Apply the same
             // analytic leg solve only to a near-ground stance foot; high swing
             // feet remain untouched, so stride length and cadence stay authored.
-            // Skip the transition band so crouch/prone never receive a second
-            // knee solve in the same frame.
-            if (!visuallyAirborne && graphReady && groundedNow &&
-                lowPose < 0.02f)
+            // Give upright contact priority near standing so both modes
+            // never rotate the same knee in one frame.
+            if (useUprightContact)
             {
                 float uprightContactWeight = Mathf.Clamp01(1f - lowPose * 4f);
                 PlantUprightContact(leftThigh, leftShin, leftFootBone,
