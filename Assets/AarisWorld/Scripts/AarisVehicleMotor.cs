@@ -265,8 +265,22 @@ namespace Aaris.MapReview
                     if (found[w] == null && label.Contains(tokens[w]))
                         found[w] = all[i];
             }
+            // Validate all four tyres before mutating any physics or art.
+            // Direct chassis-space mesh bounds cancel spawn yaw and slope;
+            // a world AABB can inflate the diameter of a diagonal tyre.
+            var bounds = new Bounds[4];
             for (int i = 0; i < found.Length; i++)
-                if (found[i] == null || wheels[i] == null) return false;
+            {
+                if (found[i] == null || wheels[i] == null ||
+                    !AarisVehicleWorld.TryGetVisualBoundsLocal(
+                        transform, found[i], out bounds[i])) return false;
+                Vector3 size = bounds[i].size;
+                Vector3 center = bounds[i].center;
+                if (size.x <= .001f || size.y <= .001f || size.z <= .001f ||
+                    float.IsNaN(size.sqrMagnitude) || float.IsInfinity(size.sqrMagnitude) ||
+                    float.IsNaN(center.sqrMagnitude) || float.IsInfinity(center.sqrMagnitude))
+                    return false;
+            }
 
             for (int i = 0; i < found.Length; i++)
             {
@@ -275,22 +289,11 @@ namespace Aaris.MapReview
                     wheelVisual.GetComponentsInChildren<Collider>(true))
                     obstacle.enabled = false;
 
-                Renderer[] renderers =
-                    wheelVisual.GetComponentsInChildren<Renderer>(true);
-                if (renderers.Length == 0) return false;
-                Bounds worldBounds = renderers[0].bounds;
-                for (int r = 1; r < renderers.Length; r++)
-                    worldBounds.Encapsulate(renderers[r].bounds);
-
-                // Source metadata defines local X as the roll axle. Use the
-                // world-space Y/Z footprint for physical tyre radius and clamp
-                // corrupted imports to plausible passenger-vehicle dimensions.
-                float diameter = Mathf.Max(worldBounds.size.y,
-                    worldBounds.size.z);
+                // The roll axle is chassis X. Measure the Y/Z diameter
+                // and center in that same frame used by WheelCollider.
+                float diameter = Mathf.Max(bounds[i].size.y, bounds[i].size.z);
                 wheels[i].radius = Mathf.Clamp(diameter * 0.5f, .27f, .46f);
-                Vector3 localCenter = transform.InverseTransformPoint(
-                    worldBounds.center);
-                wheels[i].transform.localPosition = localCenter;
+                wheels[i].transform.localPosition = bounds[i].center;
 
                 Quaternion restOffset =
                     Quaternion.Inverse(transform.rotation) * wheelVisual.rotation;
