@@ -14,7 +14,7 @@ assert motor.index('private void AnimateWalk(float dt)') < motor.index(
     'if (characterVisual != null && characterVisual.HasWorkingHumanoid)') < motor.index(
     'float secondsSincePunch = battle != null')
 gloo = (ROOT / 'Assets/AarisWorld/Scripts/AarisOfflineGlooWall.cs').read_text()
-assert 'crouchPlayable.SetTime(crouchClip.length * (10d / 24d));' in visual
+assert 'crouchPlayable.SetTime(naturalMocapLoaded' in visual
 assert 'pronePlayable.SetTime(proneClip != null' in visual
 assert '? 0d : crouchClip.length * (10d / 24d)' in visual
 assert 'jumpPlayable.SetTime(jump.length * 0.39d)' in visual
@@ -42,6 +42,19 @@ assert 'smoothedStrafeBank = Mathf.Lerp(smoothedStrafeBank, bankTarget, alpha)' 
 # mix it with KayKit gait clips, and never add runtime network/download work.
 assert 'private const string MocapLocomotion = "AarisMocap/mocap_locomotion";' in visual
 assert 'Resources.LoadAll<AnimationClip>(MocapLocomotion)' in visual
+assert "importedName.LastIndexOf('|')" in visual
+assert 'leafLength == exactName.Length' in visual
+assert 'string.Compare(importedName, separator + 1, exactName, 0,' in visual
+def matches_mocap_name(imported, expected):
+    if imported.lower() == expected.lower():
+        return True
+    separator = imported.rfind('|')
+    return separator >= 0 and imported[separator + 1:].lower() == expected.lower()
+assert matches_mocap_name('mocap_walk', 'mocap_walk')
+assert matches_mocap_name('BamenMilitarySoldierRig|mocap_walk', 'mocap_walk')
+assert matches_mocap_name('BamenMilitarySoldierRig|MOCAP_RUN', 'mocap_run')
+assert not matches_mocap_name('wrong_mocap_walk', 'mocap_walk')
+assert not matches_mocap_name('Rig|prefix_mocap_walk', 'mocap_walk')
 assert 'naturalMocapLoaded = naturalWalk != null && naturalJog != null &&' in visual
 assert 'naturalRun != null && naturalCrouch != null;' in visual
 assert 'runClip = naturalMocapLoaded ? naturalJog' in visual
