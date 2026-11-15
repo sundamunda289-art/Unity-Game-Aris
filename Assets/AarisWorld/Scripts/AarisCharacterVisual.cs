@@ -567,6 +567,10 @@ namespace Aaris.MapReview
             walkClip = mocapWalk;
             runClip = mocapJog;
             sprintClip = mocapRun;
+            // KayKit-specific contact offsets do not belong to the 100STYLE
+            // cycles. Sampling starts at each reviewed mocap cycle origin.
+            runPhaseOffset = 0f;
+            sprintPhaseOffset = 0f;
             if (mocapCrouch != null)
                 crouchWalkClip = mocapCrouch;
             mocapLocomotionLoaded = true;
