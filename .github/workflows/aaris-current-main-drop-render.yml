@@ -1,13 +1,8 @@
 name: Aaris current-main drop visual QA
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/aaris-current-main-drop-render.yml'
-      - 'Assets/AarisWorld/Editor/AarisOfflineDropPlayProbe.cs'
-      - 'Assets/AarisWorld/Scripts/AarisOfflineDrop*.cs'
-      - 'Assets/Resources/AarisDrop/**'
+  # Manual until UNITY_LICENSE is configured as a repository Actions secret.
+  # The licensed Codespace probe remains the authoritative automatic fallback.
   workflow_dispatch:
 
 permissions:
