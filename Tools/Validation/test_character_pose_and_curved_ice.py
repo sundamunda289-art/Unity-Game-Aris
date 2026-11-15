@@ -77,6 +77,8 @@ for humanoid_meta in (tactical_humanoid_meta, mocap_humanoid_meta):
     assert '  autoGenerateAvatarMappingIfUnspecified: 1' in humanoid_meta
     assert '  animationType: 3' in humanoid_meta
     assert '  avatarSetup: 1' in humanoid_meta
+    assert '    globalScale: 1' in humanoid_meta
+    assert '    globalScale: 0' not in humanoid_meta
 assert 'RealisticSoldier(Clone)' not in tactical_humanoid_meta
 assert 'BamenMilitarySoldierRig' not in tactical_humanoid_meta
 # Translation DoF adds a Humanoid retargeting step on mobile. The native
@@ -696,9 +698,26 @@ assert 'animator.GetBoneTransform(HumanBodyBones.RightFoot)' in visual
 assert 'boneSpan < 0.80f || boneSpan > 2.50f' in visual
 assert 'float targetBoneSpan = TargetHeightMetres - 0.14f;' in visual
 assert 'Mathf.Clamp(targetBoneSpan / boneSpan, 0.50f, 2.00f)' in visual
-assert 'float targetFeetY = transform.position.y + UprightAnkleClearanceMetres;' in visual
+assert 'DisablePrimaryImportHelpers(resourcePath);' in visual
+assert 'visual.transform.Find("Icosphere")' in visual
+assert 'helperRenderer.enabled = false;' in visual
+assert 'helper.gameObject.SetActive(false);' in visual
+assert 'Vector3 footAnchor = (leftFoot.position + rightFoot.position) * 0.5f;' in visual
+assert 'footAnchor.y = Mathf.Min(leftFoot.position.y, rightFoot.position.y);' in visual
+assert 'Vector3 targetFootAnchor = transform.position +' in visual
+assert 'visual.transform.position += targetFootAnchor - footAnchor;' in visual
+assert '!renderer.enabled ||' in visual
+assert '!renderer.gameObject.activeInHierarchy' in visual
 assert 'return TryFitHumanoidBonesToController();' in visual
 assert 'combined.size.y > 1000f' in visual
+# Native Unity renderer probe measured the licensed TacticalSoldier skinned
+# mesh around X=-3.87/Z=-46.7 with a valid metric Humanoid. Full anchor
+# correction must remove horizontal import-origin error, not only Y.
+foot_anchor = (-3.873, -2876.50, -46.706)
+target_anchor = (0.0, 0.075, 0.0)
+delta = tuple(t - f for t, f in zip(target_anchor, foot_anchor))
+aligned = tuple(f + d for f, d in zip(foot_anchor, delta))
+assert all(abs(a - t) < 1e-9 for a, t in zip(aligned, target_anchor))
 # Normalizing measured height must preserve the scale already present on
 # the imported root, including its proportions when scales differ by axis.
 for import_scale in ((0.5, 0.5, 0.5), (2.0, 2.0, 2.0), (0.9, 1.2, 1.1)):
