@@ -16,6 +16,8 @@ assert "autoGenerateAvatarMappingIfUnspecified: 1" in META
 assert "    human: []" in META
 assert "    skeleton: []" in META
 assert "    hasTranslationDoF: 0" in META
+assert "    globalScale: 1" in META
+assert "    globalScale: 0" not in META
 assert "RealisticSoldier(Clone)" not in META
 assert "BamenMilitarySoldierMesh" not in META
 assert "BamenMilitarySoldierRig\n      parentName:" not in META
