@@ -199,6 +199,11 @@ namespace Aaris.MapReview
             locomotionHipsBone = animator.GetBoneTransform(HumanBodyBones.Hips);
             animator.applyRootMotion = false;
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            // Unity's Humanoid solver can stabilize feet while Playable clips
+            // blend between gait/stance states. Our later terrain-aware analytic
+            // leg solve remains authoritative for exact floor height/slope.
+            // This closes the transition-only ankle drift without extra physics.
+            animator.stabilizeFeet = true;
             SetupAnimations();
 
             // Fail-safe player presentation: a model with missing/corrupt
