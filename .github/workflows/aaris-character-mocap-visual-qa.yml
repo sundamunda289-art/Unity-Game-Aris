@@ -1,0 +1,139 @@
+name: Aaris character mocap visual QA
+
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisCharacterVisual.cs'
+      - 'Assets/AarisWorld/Editor/AarisPoseFrames.cs'
+      - 'Assets/Resources/AarisMocap/**'
+      - 'Assets/Resources/AarisCharacters/**'
+      - 'Tools/Validation/test_audio_footstep_gait.py'
+      - '.github/workflows/aaris-character-mocap-visual-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aaris-character-mocap-visual-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render-character-mocap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GAMECI_IMAGE: unityci/editor:ubuntu-6000.3.26f1-base-3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Require configured Unity license without printing it
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          set -euo pipefail
+          [[ -n "$UNITY_LICENSE" && "$UNITY_LICENSE" == *"<"* ]] || {
+            echo 'UNITY_LICENSE_NOT_CONFIGURED_FOR_CHARACTER_MOCAP_QA'
+            exit 2
+          }
+          echo 'UNITY_LICENSE_PRESENT'
+
+      - name: Free runner storage and hydrate authoritative Unity assets
+        run: |
+          set -euo pipefail
+          bash Tools/CI/runner_storage.sh cleanup || true
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq git-lfs
+          git lfs install --local
+          git lfs pull --include="Assets/**" --exclude=""
+          if head -c 100 Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity | grep -q 'git-lfs.github.com/spec'; then
+            echo 'UNITY_SCENE_STILL_LFS_POINTER'
+            exit 3
+          fi
+          mkdir -p ci-character
+
+      - name: Render real character stances and locomotion
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          set -euo pipefail
+          docker pull "$GAMECI_IMAGE"
+          set +e
+          docker run --rm --shm-size=1g \
+            -e UNITY_LICENSE \
+            -e LIBGL_ALWAYS_SOFTWARE=1 -e GALLIUM_DRIVER=llvmpipe \
+            -v "$PWD:/project" \
+            -v "$PWD/ci-character:/tmp/aaris-codespaces/motion-frames" \
+            -w /project "$GAMECI_IMAGE" bash -lc '
+              set -euo pipefail
+              apt-get update -qq
+              apt-get install -y -qq xvfb libgl1-mesa-dri libglu1-mesa
+              mkdir -p /root/.local/share/unity3d/Unity
+              printf "%s" "$UNITY_LICENSE" > /root/.local/share/unity3d/Unity/Unity_lic.ulf
+              chmod 600 /root/.local/share/unity3d/Unity/Unity_lic.ulf
+              xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX" \
+                unity-editor -projectPath /project -batchmode -force-glcore \
+                -job-worker-count 2 \
+                -executeMethod Aaris.MapReview.Editor.AarisPoseFrames.CapturePortrait \
+                -logFile /project/ci-character/unity-editor.log
+            '
+          UNITY_RC=$?
+          set -e
+          echo "UNITY_PROCESS_RC=$UNITY_RC"
+          test "$UNITY_RC" -eq 0
+
+      - name: Verify mocap activation and portrait evidence
+        run: |
+          set -euo pipefail
+          test -s ci-character/report.txt
+          test -s ci-character/unity-editor.log
+          grep -Fq 'SUCCESS_7_ACTOR_PORTRAITS' ci-character/report.txt
+          grep -Fq 'Aaris: 100STYLE Humanoid mocap locomotion active; distance-driven gait, root motion disabled.' ci-character/unity-editor.log
+          test "$(tr -d '\r\n' < ci-character/phase.txt)" = '07_COMPLETE'
+          for image in \
+            01_Standing_f0.jpg 02_Crouch_f0.jpg 03_Prone_f0.jpg \
+            04_Walk_f0.jpg 05_Sprint_f0.jpg 06_Jump_f0.jpg 06_Jump_f1.jpg
+          do
+            test -s "ci-character/$image"
+            test "$(stat -c%s "ci-character/$image")" -ge 4000
+          done
+          ! grep -Fq 'ERROR_' ci-character/report.txt
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          report=Path('ci-character/report.txt').read_text(errors='replace')
+          rows=re.findall(
+              r'MEASURE stance=(\w+).*?footGap=([-0-9.]+).*?meshGap=([-0-9.]+)',
+              report)
+          if len(rows) < 6:
+              raise SystemExit('CHARACTER_QA_MISSING_MEASUREMENTS')
+          standing=[(float(f),float(m)) for stance,f,m in rows if stance=='Standing']
+          if not standing:
+              raise SystemExit('CHARACTER_QA_NO_STANDING_MEASUREMENT')
+          # Capsule support must remain effectively grounded. The skinned mesh
+          # may include shoe thickness/bounds padding, so only reject gross
+          # visible float/penetration here; screenshots remain the visual proof.
+          for foot_gap,mesh_gap in standing:
+              if not -0.03 <= foot_gap <= 0.09:
+                  raise SystemExit(f'CHARACTER_QA_STANDING_CAPSULE_GAP_{foot_gap}')
+              if not -0.08 <= mesh_gap <= 0.10:
+                  raise SystemExit(f'CHARACTER_QA_STANDING_MESH_GAP_{mesh_gap}')
+          print('CHARACTER_MOCAP_VISUAL_QA_PASS')
+          print(rows)
+          PY
+
+      - name: Upload character visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-character-mocap-visuals-${{ github.run_id }}
+          path: |
+            ci-character/*.jpg
+            ci-character/report.txt
+            ci-character/phase.txt
+            ci-character/unity-editor.log
+          retention-days: 3
+          if-no-files-found: warn
