@@ -488,6 +488,13 @@ def test():
     disabled = session.split("private void OnDisable()", 1)[1]
     assert "touchMove = touchSteer = 0f;" in disabled
 
+    # Traction control must reuse prior WheelHit slip instead of adding
+    # another contact query to the 2 GB-phone hotpath.
+    assert "float previousTyreSlip = tyreSlip;" in motor
+    assert "previousTyreSlip > 0.35f" in motor
+    assert "Mathf.InverseLerp(0.35f, 1.10f, previousTyreSlip)" in motor
+    assert "drive *= Mathf.Lerp(1f, 0.52f, slip01);" in motor
+
     # One owner, safe exit, collision-before-enable and no F resetting.
     assert "footMotor.enabled = false;" in session and "capsule.enabled = false;" in session
     assert "capsule.enabled = true;" in session and "footMotor.enabled = true;" in session
