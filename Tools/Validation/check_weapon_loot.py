@@ -602,6 +602,12 @@ def run():
                        inventory.index("private void AlignSupportHand()")]
     late = inventory[inventory.index("private void LateUpdate()"):]
     assert "hand.position + hand.rotation * equipped.Spec.handOffset" in attach
+    # Two-hand IK must settle in wall-clock time, not degrees per rendered frame.
+    assert "private static float GripFrameScale()" in inventory
+    assert "30f * Mathf.Clamp(Time.deltaTime, 0f, 0.05f)" in inventory
+    assert "(aiming ? 52f : 38f) * frameScale" in inventory
+    assert "proximalDegrees * frameScale" in inventory
+    assert "middleDegrees * frameScale" in inventory
     assert "weaponRoot.SetParent(transform, false);" in attach
     assert "PlaceOnBack(stowedRoot, true)" in attach
     # Fists AND full-speed armed sprint must carry the physical gun on
