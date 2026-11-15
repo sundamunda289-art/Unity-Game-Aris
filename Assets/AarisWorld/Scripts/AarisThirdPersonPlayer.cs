@@ -528,10 +528,13 @@ namespace Aaris.MapReview
             // A grounded 180-degree direction change is a braking pivot,
             // not a full-speed run through the opposite gait. Decelerate
             // before accelerating back; preserve existing air steering.
-            if (wasGrounded && desiredVelocity.sqrMagnitude > 0.001f &&
+            if (!airborneIntent && desiredVelocity.sqrMagnitude > 0.001f &&
                 Vector3.Dot(horizontalVelocity, desiredVelocity) < -0.05f)
                 response = Mathf.Max(response, horizontalBraking);
-            if (!wasGrounded)
+            // Takeoff already uses airborne intent even when the previous
+            // CharacterController.Move was grounded. Preserve launch momentum
+            // from the very first jump frame, including low-FPS touch release.
+            if (airborneIntent)
             {
                 // Ground braking is intentionally strong for precise mobile
                 // controls, but applying it in mid-air erases a sprint-jump's
