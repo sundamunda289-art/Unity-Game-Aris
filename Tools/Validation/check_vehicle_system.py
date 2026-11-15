@@ -383,6 +383,23 @@ def test():
     assert "new WheelCollider[4]" in motor
     assert "WheelCollider" in motor and "JointSpring" in motor
     assert "wheel.forwardFriction" in motor and "wheel.sidewaysFriction" in motor
+    # WheelCollider ignores ordinary PhysicMaterial friction. Reuse the same
+    # anti-roll WheelHit contact to vary tyre stiffness without extra queries:
+    # hard road/bridge = 1.0, TerrainCollider = 0.90, Water layer = 0.42.
+    assert "BaseForwardGripStiffness = 1.15f" in motor
+    assert "BaseSideGripStiffness = 1.35f" in motor
+    assert "private static float SurfaceGripMultiplier(Collider surface)" in motor
+    assert "surface.gameObject.layer == 4" in motor
+    assert "surface is TerrainCollider" in motor
+    assert "ApplySurfaceGrip(leftIndex, left, leftHit.collider);" in motor
+    assert "ApplySurfaceGrip(rightIndex, right, rightHit.collider);" in motor
+    assert "BaseForwardGripStiffness * multiplier" in motor
+    assert "BaseSideGripStiffness * multiplier" in motor
+    assert motor.count("GetGroundHit(out WheelHit") == 2
+    for multiplier in (1.0, 0.90, 0.42):
+        assert 0.40 <= multiplier <= 1.0
+        assert 0.45 <= 1.15 * multiplier <= 1.15
+        assert 0.55 <= 1.35 * multiplier <= 1.35
     assert "wheels[i].motorTorque" in motor and "wheels[i].brakeTorque" in motor
     assert "Mathf.Lerp(32f, 10f" in motor
     assert "body.AddForce(-transform.up" in motor
