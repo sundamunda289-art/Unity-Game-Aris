@@ -443,7 +443,13 @@ namespace Aaris.MapReview
             CollisionFlags flags = capsule.Move(movement);
             if ((flags & CollisionFlags.Below) != 0 && downwardSpeed < -0.1f)
             {
-                Land();
+                // A collider can belong to water or the submerged terrain.
+                // Walking resumes only above the same shoreline clearance used
+                // by the floor probe and native terrain touchdown.
+                if (transform.position.y < SeaSurfaceHeight + 0.35f)
+                    RecoverFromOceanFall();
+                else
+                    Land();
                 return;
             }
             if (IsUnderCanopy && downwardSpeed < -0.1f && Time.time >= nextContactSample)
