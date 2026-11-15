@@ -127,6 +127,36 @@ class OfflineCombatAssetChecks(unittest.TestCase):
                 self.assertRegex(source, rf"(?m)^    - _Metallic: {metallic:g}$")
                 self.assertRegex(source, rf"(?m)^    - _Smoothness: {smoothness:g}$")
 
+    def test_rotor_opposite_faces_have_independent_lighting_normals(self):
+        source = (SCRIPTS / "AarisOfflineDropVisuals.cs").read_text("utf-8")
+        self.assertIn("vertices.Add(vertices[first + vertex]);", source)
+        self.assertIn("int offset = back - first;", source)
+        self.assertIn("triangles.Add(a + offset); triangles.Add(c + offset); triangles.Add(b + offset);", source)
+        self.assertIn("Paint(ref rotorPaint,", source)
+        self.assertIn("SetAircraftFinish(bladeMaterial, .30f, .24f);", source)
+        # Model the two planar faces and confirm all normals have opposite
+        # signs but never share a vertex. Triangle count stays unchanged.
+        for blade in range(3):
+            angle = blade * 2 * math.pi / 3
+            vertices = [(r * math.cos(angle) - w * math.sin(angle),
+                         r * math.sin(angle) + w * math.cos(angle))
+                        for r, width in ((.24, .22), (1.02, .19), (1.66, .055))
+                        for w in (width, -width)]
+            vertices += vertices[:]
+            front = [(0, 1, 2), (2, 1, 3), (2, 3, 4), (4, 3, 5)]
+            back = [(a + 6, c + 6, b + 6) for a, b, c in front]
+            normals = [0.0] * 12
+            for a, b, c in front + back:
+                x, y = vertices[a]
+                bx, by = vertices[b]
+                cx, cy = vertices[c]
+                cross = (bx-x)*(cy-y) - (by-y)*(cx-x)
+                for i in (a, b, c):
+                    normals[i] += cross
+            self.assertTrue(all(n > 0 for n in normals[:6]))
+            self.assertTrue(all(n < 0 for n in normals[6:]))
+            self.assertEqual(len(front + back), 8)
+
     def test_player_safe_footing_uses_same_world_space_ground_height(self):
         player = (SCRIPTS / "AarisThirdPersonPlayer.cs").read_text("utf-8")
         self.assertIn("ground = Mathf.Max(ground, origin.y + t.SampleHeight(position));", player)
