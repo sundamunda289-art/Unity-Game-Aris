@@ -140,58 +140,11 @@ namespace Aaris.MapReview
 
         private void Start()
         {
-            var source = Resources.Load<GameObject>(PrimaryModel);
-            if (source == null)
-                source = Resources.Load<GameObject>(PreviousPrimaryModel);
-            primaryLoaded = source != null;
-            realisticSoldierLoaded = source != null && source.name == "RealisticSoldier";
-            if (source == null)
-                source = Resources.Load<GameObject>(FallbackModel);
-            if (source == null)
+            if (!TryInstantiateCharacter(PrimaryModel) &&
+                !TryInstantiateCharacter(PreviousPrimaryModel) &&
+                !TryInstantiateCharacter(FallbackModel))
             {
-                Debug.LogWarning("Aaris: no imported 3D character yet. Existing humanoid remains visible. Install the CC0 character pack.");
-                enabled = false;
-                return;
-            }
-
-            visual = Instantiate(source, transform, false);
-            visual.name = "AarisRiggedCharacterVisual";
-            visual.transform.localPosition = Vector3.zero;
-            visual.transform.localRotation = Quaternion.Euler(0f, modelYawOffset, 0f);
-            SetLayerRecursively(visual.transform, gameObject.layer);
-
-            animator = visual.GetComponentInChildren<Animator>(true);
-            if (animator == null)
-                animator = visual.AddComponent<Animator>();
-
-            if (animator.avatar == null)
-            {
-                Avatar[] avatars = Resources.LoadAll<Avatar>(
-                    source.name == "RealisticSoldier" ? PrimaryModel :
-                    source.name == "Player" ? PreviousPrimaryModel : FallbackModel);
-                for (int i = 0; i < avatars.Length; i++)
-                {
-                    if (avatars[i] != null && avatars[i].isValid && avatars[i].isHuman)
-                    {
-                        animator.avatar = avatars[i];
-                        break;
-                    }
-                }
-            }
-            if (animator.avatar == null || !animator.avatar.isValid || !animator.avatar.isHuman)
-            {
-                Debug.LogWarning("Aaris: imported model has no valid Humanoid Avatar; keeping the original player visible.");
-                Destroy(visual);
-                visual = null;
-                enabled = false;
-                return;
-            }
-
-            if (!FitVisualToController())
-            {
-                Debug.LogWarning("Aaris: imported character has no usable render bounds; keeping original model.");
-                Destroy(visual);
-                visual = null;
+                Debug.LogWarning("Aaris: no usable imported humanoid. Keeping original player visible.");
                 enabled = false;
                 return;
             }
@@ -250,6 +203,47 @@ namespace Aaris.MapReview
                 renderer.gameObject.name.StartsWith("AarisPlayer_", StringComparison.Ordinal);
         }
 
+        private bool TryInstantiateCharacter(string resourcePath)
+        {
+            var source = Resources.Load<GameObject>(resourcePath);
+            if (source == null) return false;
+
+            visual = Instantiate(source, transform, false);
+            visual.name = "AarisRiggedCharacterVisual";
+            visual.transform.localPosition = Vector3.zero;
+            visual.transform.localRotation = Quaternion.Euler(0f, modelYawOffset, 0f);
+            SetLayerRecursively(visual.transform, gameObject.layer);
+
+            animator = visual.GetComponentInChildren<Animator>(true);
+            if (animator == null)
+                animator = visual.AddComponent<Animator>();
+
+            if (animator.avatar == null || !animator.avatar.isValid || !animator.avatar.isHuman)
+            {
+                Avatar[] avatars = Resources.LoadAll<Avatar>(resourcePath);
+                for (int i = 0; i < avatars.Length; i++)
+                {
+                    if (avatars[i] != null && avatars[i].isValid && avatars[i].isHuman)
+                    {
+                        animator.avatar = avatars[i];
+                        break;
+                    }
+                }
+            }
+            if (animator.avatar != null && animator.avatar.isValid && animator.avatar.isHuman &&
+                FitVisualToController())
+            {
+                primaryLoaded = resourcePath != FallbackModel;
+                realisticSoldierLoaded = resourcePath == PrimaryModel;
+                return true;
+            }
+            visual.SetActive(false);
+            Destroy(visual);
+            visual = null;
+            animator = null;
+            return false;
+        }
+
         private bool FitVisualToController()
         {
             var renderers = visual.GetComponentsInChildren<Renderer>(true);
@@ -265,7 +259,8 @@ namespace Aaris.MapReview
                 return false;
 
             float scale = Mathf.Clamp(TargetHeightMetres / combined.size.y, 0.01f, 100f);
-            visual.transform.localScale = Vector3.one * scale;
+            // Bounds already include the imported root scale.
+            visual.transform.localScale *= scale;
             // FBX pivots vary between packages. Align the bottom of the mesh with
             // the CharacterController's ground point, without moving the collider.
             // Renderer bounds follow the visual Transform directly; no physics
