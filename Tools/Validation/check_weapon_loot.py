@@ -82,6 +82,12 @@ def run():
     assert lengths == {"SMG": 0.65, "AssaultRifle": 0.91,
                        "BattleRifle": 1.02, "Sniper": 1.23, "Shotgun": 1.03}
     assert lengths["SMG"] < lengths["AssaultRifle"] < lengths["Sniper"]
+    handling_masses = {gun["id"]: gun["handlingMassKg"] for gun in catalog["weapons"]}
+    assert handling_masses == {"SMG": 4.1, "AssaultRifle": 3.4,
+                               "BattleRifle": 4.4, "Sniper": 5.1, "Shotgun": 3.6}
+    assert all(2.0 <= mass <= 8.0 for mass in handling_masses.values())
+    # Loot probability remains authored separately; firearm inertia must never
+    # consume these selection weights (42/27/15/8/8) as if they were kilograms.
     for gun in catalog["weapons"]:
         name = gun["id"]
         expected_resource = (PBR_RESOURCES[name][2]
@@ -646,6 +652,15 @@ def run():
     assert trigger_fit(0.50, 0.55) == 0.0
     assert abs(trigger_fit(0.61, 0.55) - 0.06) < 1e-12
     assert trigger_fit(0.90, 0.55) == 0.12
+
+    assert "equipped.Spec.handlingMassKg" in inventory
+    assert "Mathf.InverseLerp(2.5f, 5.5f, massKg)" in inventory
+    assert "float swayTime = Mathf.Lerp(0.065f, 0.095f, responseMass01);" in inventory
+    assert "if (aiming) swayTime *= 0.68f;" in inventory
+    assert "equipped.Spec.weight" not in inventory[inventory.index(
+        "private void ApplyProceduralWeaponMotion()"):inventory.index(
+        "private static float GripFrameScale()")]
+    assert "handlingMassKg >= 2.0f" in catalog_cs
 
     # The normal landing pickup remains physical; only after failed
     # floor/visibility checks may the existing inventory grant one starter.
