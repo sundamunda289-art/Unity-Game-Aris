@@ -423,6 +423,12 @@ for slope_limit in (30.0, 46.0, 60.0, 89.0):
     assert accepted_angle <= min(slope_limit + 3.0, 89.0) + 1e-6
 
 assert 'private float smoothedOrientationWarpYaw;' in visual
+# Unity 6 Humanoid blend stabilization runs before our terrain-aware
+# LateUpdate leg solve. It adds no gameplay physics queries and reduces ankle
+# drift specifically while walk/run/stance clips cross-fade.
+assert 'animator.stabilizeFeet = true;' in visual
+assert visual.index('animator.stabilizeFeet = true;') < visual.index('SetupAnimations();')
+
 assert 'locomotionHipsBone = animator.GetBoneTransform(HumanBodyBones.Hips);' in visual
 assert 'float travelForward = Vector3.Dot(planarVelocity, transform.forward);' in visual
 assert 'float travelSide = Vector3.Dot(planarVelocity, transform.right);' in visual
