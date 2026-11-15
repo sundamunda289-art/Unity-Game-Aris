@@ -243,6 +243,7 @@ namespace Aaris.MapReview
             visual.transform.localPosition = Vector3.zero;
             visual.transform.localRotation = Quaternion.Euler(0f, modelYawOffset, 0f);
             SetLayerRecursively(visual.transform, gameObject.layer);
+            DisablePrimaryImportHelpers(resourcePath);
 
             animator = visual.GetComponentInChildren<Animator>(true);
             if (animator == null)
@@ -275,6 +276,22 @@ namespace Aaris.MapReview
             return false;
         }
 
+        private void DisablePrimaryImportHelpers(string resourcePath)
+        {
+            if (resourcePath != PrimaryModel || visual == null) return;
+
+            // The licensed TacticalSoldier FBX contains a root-level Icosphere
+            // import helper that is not part of the skinned Humanoid. Keeping it
+            // active stretches presentation bounds between the prefab origin and
+            // the real skinned mesh thousands of bind-space units away.
+            Transform helper = visual.transform.Find("Icosphere");
+            if (helper == null) return;
+
+            Renderer helperRenderer = helper.GetComponent<Renderer>();
+            if (helperRenderer != null) helperRenderer.enabled = false;
+            helper.gameObject.SetActive(false);
+        }
+
         private bool TryFitHumanoidBonesToController()
         {
             // Some valid skinned GLB/FBX rigs carry extreme bind-space vertex
@@ -302,9 +319,15 @@ namespace Aaris.MapReview
             float scale = Mathf.Clamp(targetBoneSpan / boneSpan, 0.50f, 2.00f);
             visual.transform.localScale *= scale;
 
-            feetY = Mathf.Min(leftFoot.position.y, rightFoot.position.y);
-            float targetFeetY = transform.position.y + UprightAnkleClearanceMetres;
-            visual.transform.position += Vector3.up * (targetFeetY - feetY);
+            // Re-evaluate after scaling and align the full foot anchor. The
+            // TacticalSoldier's Humanoid bones are metric, but its authored
+            // skinned root is also offset in X/Z. Vertical-only correction can
+            // leave the visible actor tens of metres beside/behind the capsule.
+            Vector3 footAnchor = (leftFoot.position + rightFoot.position) * 0.5f;
+            footAnchor.y = Mathf.Min(leftFoot.position.y, rightFoot.position.y);
+            Vector3 targetFootAnchor = transform.position +
+                Vector3.up * UprightAnkleClearanceMetres;
+            visual.transform.position += targetFootAnchor - footAnchor;
             return true;
         }
 
@@ -315,7 +338,8 @@ namespace Aaris.MapReview
             bool hasBounds = false;
             foreach (var renderer in renderers)
             {
-                if (renderer == null) continue;
+                if (renderer == null || !renderer.enabled ||
+                    !renderer.gameObject.activeInHierarchy) continue;
                 if (!hasBounds) { combined = renderer.bounds; hasBounds = true; }
                 else combined.Encapsulate(renderer.bounds);
             }
@@ -335,7 +359,8 @@ namespace Aaris.MapReview
             hasBounds = false;
             foreach (var renderer in renderers)
             {
-                if (renderer == null) continue;
+                if (renderer == null || !renderer.enabled ||
+                    !renderer.gameObject.activeInHierarchy) continue;
                 if (!hasBounds) { combined = renderer.bounds; hasBounds = true; }
                 else combined.Encapsulate(renderer.bounds);
             }
