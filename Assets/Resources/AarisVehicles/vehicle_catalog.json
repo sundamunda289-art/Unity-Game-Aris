@@ -3,6 +3,8 @@
     {
       "id": "Sedan",
       "modelResource": "AarisVehicles/Models/sedan",
+      "authoredModelResource": "AarisVehicles/Authored/AarisCivilSedan",
+      "authoredWheelResource": "AarisVehicles/Authored/AarisCivilWheel",
       "weight": 6,
       "maxSpeedMetres": 25.5,
       "massKg": 1250,

@@ -22,6 +22,7 @@ namespace Aaris.MapReview
     internal sealed class AarisVehicleType
     {
         public string id, modelResource, wheelResource;
+        public string authoredModelResource, authoredWheelResource;
         public int weight;
         public float maxSpeedMetres, massKg;
         // Opt-in for imported car AND wheel prefabs with valid URP Lit PBR materials.
@@ -206,6 +207,23 @@ namespace Aaris.MapReview
                     item.maxSpeedMetres > 28f) continue;
                 prefabs[i] = Resources.Load<GameObject>(item.modelResource);
                 wheelPrefabs[i] = Resources.Load<GameObject>(item.wheelResource);
+                // Select the body and wheels as one compatible pair. The
+                // original models remain available if an authored import fails.
+                if (!string.IsNullOrEmpty(item.authoredModelResource) &&
+                    !string.IsNullOrEmpty(item.authoredWheelResource))
+                {
+                    var authoredBody = Resources.Load<GameObject>(item.authoredModelResource);
+                    var authoredWheel = Resources.Load<GameObject>(item.authoredWheelResource);
+                    if (HasCompatibleUrpMaterials(authoredBody) &&
+                        HasCompatibleUrpMaterials(authoredWheel))
+                    {
+                        prefabs[i] = authoredBody;
+                        wheelPrefabs[i] = authoredWheel;
+                        item.preserveAuthoredUrpMaterials = true;
+                    }
+                    else
+                        Debug.LogWarning("Aaris vehicles: using legacy art for " + item.id);
+                }
                 // A valid GameObject without a usable mesh is not a drivable
                 // 3D model. Remove both references so weighted selection
                 // cannot plan an invisible car for an entire map sector.
@@ -529,7 +547,8 @@ namespace Aaris.MapReview
             root.transform.SetParent(transform, false);
             root.transform.SetPositionAndRotation(pos, record.rotation);
             var mesh = Instantiate(source, root.transform, false);
-            mesh.name = "Local CC0 Car Model";
+            mesh.name = record.type.preserveAuthoredUrpMaterials
+                ? "Authored Vehicle Body" : "Local CC0 Car Model";
             foreach (var collider in mesh.GetComponentsInChildren<Collider>(true))
                 collider.enabled = false;
             var renderers = mesh.GetComponentsInChildren<Renderer>(true);
