@@ -117,6 +117,21 @@ namespace Aaris.MapReview
         // rotates with road heading). A 90-degree parked sedan must not be
         // interpreted as a sideways FBX and rotated a second time.
         // Evaluated once when a model spawns; never on the frame hot path.
+        // Palette-only vehicle paths do not need to deserialize source
+        // materials just to discover how many renderer slots exist. Reading
+        // Renderer.sharedMaterials can force Unity to hydrate a damaged/stale
+        // material reference and has crashed the Linux Editor natively. Mesh
+        // topology is the authoritative slot count and is safe to query here.
+        internal static int VisualSubmeshCount(Renderer renderer)
+        {
+            if (renderer == null) return 1;
+            if (renderer is SkinnedMeshRenderer skinned && skinned.sharedMesh != null)
+                return Mathf.Max(1, skinned.sharedMesh.subMeshCount);
+            MeshFilter filter = renderer.GetComponent<MeshFilter>();
+            return filter != null && filter.sharedMesh != null
+                ? Mathf.Max(1, filter.sharedMesh.subMeshCount) : 1;
+        }
+
         internal static bool TryGetVisualBoundsLocal(Transform localSpace, out Bounds combined)
         {
             combined = new Bounds();
@@ -866,7 +881,7 @@ namespace Aaris.MapReview
             {
                 foreach (var renderer in renderers)
                 {
-                    int submeshes = Mathf.Max(1, renderer.sharedMaterials.Length);
+                    int submeshes = VisualSubmeshCount(renderer);
                     Material[] materials = new Material[submeshes];
                     for (int i = 0; i < submeshes; i++) materials[i] = paletteMaterial;
                     renderer.sharedMaterials = materials;
