@@ -10,7 +10,7 @@ namespace Aaris.MapReview
     /// </summary>
     internal static class AarisOfflineDropVisuals
     {
-        private static Material hull, dark, wingPanels, engineDark, safetyAccent,
+        private static Material hull, dark, wingPanels, engineDark, safetyAccent, rotorPaint,
             canopyBlue, canopyWhite, canopyOrange, rope;
         private static Mesh cachedPropellerMesh;
 
@@ -90,8 +90,8 @@ namespace Aaris.MapReview
         private static Mesh BuildPropellerMesh()
         {
             if (cachedPropellerMesh != null) return cachedPropellerMesh;
-            var vertices = new List<Vector3>(36);
-            var triangles = new List<int>(72);
+            var vertices = new List<Vector3>(49);
+            var triangles = new List<int>(108);
             for (int blade = 0; blade < 3; blade++)
             {
                 float theta = blade * (Mathf.PI * 2f / 3f);
@@ -108,6 +108,11 @@ namespace Aaris.MapReview
                     vertices.Add(new Vector3(left.x, left.y, .027f));
                     vertices.Add(new Vector3(right.x, right.y, .027f));
                 }
+                // Duplicate the back-face vertices so opposite winding does not
+                // cancel the front-facing lighting normals during recalculation.
+                int back = vertices.Count;
+                for (int vertex = 0; vertex < radii.Length * 2; vertex++)
+                    vertices.Add(vertices[first + vertex]);
                 for (int row = 0; row < radii.Length - 1; row++)
                 {
                     int a = first + row * 2;
@@ -116,8 +121,9 @@ namespace Aaris.MapReview
                     int d = c + 1;
                     triangles.Add(a); triangles.Add(b); triangles.Add(c);
                     triangles.Add(c); triangles.Add(b); triangles.Add(d);
-                    triangles.Add(a); triangles.Add(c); triangles.Add(b);
-                    triangles.Add(c); triangles.Add(d); triangles.Add(b);
+                    int offset = back - first;
+                    triangles.Add(a + offset); triangles.Add(c + offset); triangles.Add(b + offset);
+                    triangles.Add(c + offset); triangles.Add(d + offset); triangles.Add(b + offset);
                 }
             }
             // The rotor cap is part of the same mesh, not another draw call.
@@ -235,7 +241,10 @@ namespace Aaris.MapReview
             // A shared mesh and four pivots replace eight rectangular cube blades.
             float[] offsets = { -8.65f, -4.55f, 4.55f, 8.65f };
             propellers = new Transform[offsets.Length];
-            Material bladeMaterial = Paint(ref dark, new Color(.055f, .08f, .085f));
+            // Propeller blades are not cockpit glass; give them an independent
+            // cached satin finish even when the aircraft uses fallback materials.
+            Material bladeMaterial = Paint(ref rotorPaint, new Color(.055f, .08f, .085f));
+            SetAircraftFinish(bladeMaterial, .30f, .24f);
             Mesh rotor = BuildPropellerMesh();
             for (int i = 0; i < offsets.Length; i++)
             {
