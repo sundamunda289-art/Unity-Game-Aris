@@ -680,7 +680,9 @@ for import_scale in ((0.5, 0.5, 0.5), (2.0, 2.0, 2.0), (0.9, 1.2, 1.1)):
 assert 'private const float RealisticSoldierProneRigLowering = 0.64f;' in visual
 assert 'private const float RealisticSoldierCrouchRigLowering = 0.73f;' in visual
 assert 'realisticSoldierLoaded ? RealisticSoldierProneRigLowering : ProneRigLowering' in visual
-assert 'realisticSoldierLoaded ? RealisticSoldierCrouchRigLowering : CrouchRigLowering' in visual
+assert 'float crouchLowering = naturalMocapLoaded ? 0f :' in visual
+assert 'realisticSoldierLoaded ? RealisticSoldierCrouchRigLowering :' in visual
+assert 'CrouchRigLowering) * crouchRigWeight;' in visual
 assert 'public static void CapturePortrait()' in pose_probe
 assert 'ACTOR_HEAD_PENETRATES_CEILING_' in pose_probe
 assert 'SUCCESS_7_ACTOR_PORTRAITS' in pose_probe
