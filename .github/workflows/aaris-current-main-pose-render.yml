@@ -2,9 +2,12 @@ name: Aaris current-main landed pose QA
 
 on:
   push:
-    branches: [main]
+    branches: [main, upgrade/100style-natural-locomotion-20261115]
     paths:
       - '.github/workflows/aaris-current-main-pose-render.yml'
+      - 'Assets/AarisWorld/Scripts/AarisCharacterVisual.cs'
+      - 'Assets/Resources/AarisMocap/**'
+      - 'Assets/Resources/AarisCharacters/Primary/Animations/**'
   workflow_dispatch:
 
 permissions:
