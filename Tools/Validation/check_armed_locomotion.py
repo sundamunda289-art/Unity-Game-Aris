@@ -162,7 +162,8 @@ def audit():
     assert "part == AvatarMaskBodyPart.RightArm" in visual
     assert "layered.SetLayerMaskFromAvatarMask(1, upperBodyMask);" in visual
     assert "float baseWeight = 1f - primary;" in visual
-    assert "crouchPlayable.SetTime(crouchClip.length * (10d / 24d));" in visual
+    assert "crouchPlayable.SetTime(naturalMocapLoaded" in visual
+    assert "? 0d : crouchClip.length * (10d / 24d));" in visual
     assert "pronePlayable.SetTime(proneClip != null" in visual
     source_clips = json.loads((ROOT / "Assets/Resources/AarisCharacters/Primary/Animations"
                                / "kaykit-clip-sources.json").read_text(encoding="utf-8"))["clips"]
