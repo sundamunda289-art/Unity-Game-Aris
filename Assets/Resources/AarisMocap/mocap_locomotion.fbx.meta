@@ -501,23 +501,13 @@ ModelImporter:
         length: 0
         modified: 0
     skeleton:
-    - name: RealisticSoldier(Clone)
+    - name: mocap_locomotion
       parentName:
       position: {x: 0, y: 0, z: 0}
       rotation: {x: 0, y: 0, z: 0, w: 1}
       scale: {x: 1, y: 1, z: 1}
-    - name: BamenMilitarySoldierMesh
-      parentName: RealisticSoldier(Clone)
-      position: {x: -0, y: 0, z: 0}
-      rotation: {x: 0.00000015147315, y: 0, z: -0, w: 1}
-      scale: {x: 1, y: 0.99999976, z: 0.99999976}
-    - name: BamenMilitarySoldierRig
-      parentName: RealisticSoldier(Clone)
-      position: {x: -0, y: 0, z: 0}
-      rotation: {x: 0.00000015147313, y: 0, z: -0, w: 1}
-      scale: {x: 1, y: 0.9999999, z: 0.9999999}
     - name: mixamorig:Hips
-      parentName: BamenMilitarySoldierRig
+      parentName: mocap_locomotion
       position: {x: 0.000000011175871, y: 1.2290825, z: -0.0009762793}
       rotation: {x: -0.000000046566115, y: 0.0000000072759585, z: 0.000000016007109, w: 1}
       scale: {x: 0.9999998, y: 0.99999994, z: 0.99999994}
