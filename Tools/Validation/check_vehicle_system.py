@@ -380,6 +380,14 @@ def test():
     assert "authoredMaterialCache" in world and "AuthoredUrpMaterial(" in world
     assert 'label.Contains("glass") || label.Contains("window")' in world
     assert "renderer.sharedMaterials = converted;" in world
+    # Palette replacement must never deserialize imported source materials just
+    # to count slots; a corrupt/stale material reference can native-crash Unity.
+    assert "internal static int VisualSubmeshCount(Renderer renderer)" in world
+    assert "skinned.sharedMesh.subMeshCount" in world
+    assert "filter.sharedMesh.subMeshCount" in world
+    assert "int submeshes = VisualSubmeshCount(renderer);" in world
+    assert "int n = AarisVehicleWorld.VisualSubmeshCount(renderer);" in motor
+    assert "renderer.sharedMaterials.Length" not in build
     assert "new WheelCollider[4]" in motor
     assert "WheelCollider" in motor and "JointSpring" in motor
     assert "wheel.forwardFriction" in motor and "wheel.sidewaysFriction" in motor
