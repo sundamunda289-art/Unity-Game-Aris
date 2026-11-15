@@ -21,6 +21,7 @@ namespace Aaris.MapReview
         private const string FallbackModel = "AarisCharacters/Kenney/characterMedium";
         private const string KenneyClips = "AarisCharacters/Kenney/";
         private const string PrimaryClips = "AarisCharacters/Primary/Animations/";
+        private const string MocapLocomotion = "AarisMocap/mocap_locomotion";
         private const float TargetHeightMetres = 1.78f;
 
         [SerializeField, Range(-180f, 180f)] private float modelYawOffset;
@@ -135,6 +136,8 @@ namespace Aaris.MapReview
         private bool primaryLoaded;
         private bool tacticalSoldierLoaded;
         private bool realisticSoldierLoaded;
+        private bool naturalMocapLoaded;
+        internal bool UsingNaturalMocap => naturalMocapLoaded;
         private bool CalibratedSoldierLoaded =>
             tacticalSoldierLoaded || realisticSoldierLoaded;
 
@@ -533,18 +536,65 @@ namespace Aaris.MapReview
             return fallback;
         }
 
+        private static bool MatchesMocapClipName(string importedName,
+            string exactName)
+        {
+            if (string.IsNullOrEmpty(importedName) || string.IsNullOrEmpty(exactName))
+                return false;
+            if (string.Equals(importedName, exactName,
+                StringComparison.OrdinalIgnoreCase)) return true;
+
+            // Unity FBX imports can expose authored actions as
+            // "Armature|clip". Match only the final namespace component:
+            // broad EndsWith/Contains would accept unrelated look-alike clips.
+            int separator = importedName.LastIndexOf('|');
+            int leafLength = importedName.Length - separator - 1;
+            return separator >= 0 && leafLength == exactName.Length &&
+                string.Compare(importedName, separator + 1, exactName, 0,
+                    exactName.Length, StringComparison.OrdinalIgnoreCase) == 0;
+        }
+
+        private static AnimationClip FindMocapClip(AnimationClip[] clips,
+            string exactName)
+        {
+            if (clips == null || clips.Length == 0) return null;
+            foreach (var clip in clips)
+            {
+                if (clip == null || clip.legacy || !clip.humanMotion ||
+                    clip.length < 0.02f) continue;
+                if (MatchesMocapClipName(clip.name, exactName)) return clip;
+            }
+            return null;
+        }
+
         private void SetupAnimations()
         {
             idleClip = FindClip("idle", "idle");
-            runClip = FindClip("run", "run");
-            walkClip = FindClip("walk", "walk") ?? runClip;
-            sprintClip = FindClip("sprint", "sprint") ?? runClip;
-            // KayKit Running_A starts two preview samples later than walk,
-            // while the restored Quaternius Sprint_Loop was authored/exported
-            // from its reviewed frame-zero contact. Keep only the KayKit run
-            // correction; do not carry the old Running_B +1/60 offset onto the
-            // different Quaternius skeleton.
-            if (primaryLoaded && walkClip != runClip)
+
+            // Use the single local 100STYLE container only as a complete
+            // locomotion set. Mixing one or two mocap clips with older KayKit
+            // gait clips produces mismatched contacts/arm cadence, so any
+            // missing or invalid Humanoid clip falls back to the reviewed set.
+            AnimationClip[] naturalClips = CalibratedSoldierLoaded
+                ? Resources.LoadAll<AnimationClip>(MocapLocomotion)
+                : Array.Empty<AnimationClip>();
+            AnimationClip naturalWalk = FindMocapClip(naturalClips, "mocap_walk");
+            AnimationClip naturalJog = FindMocapClip(naturalClips, "mocap_jog");
+            AnimationClip naturalRun = FindMocapClip(naturalClips, "mocap_run");
+            AnimationClip naturalCrouch = FindMocapClip(naturalClips, "mocap_crouch");
+            naturalMocapLoaded = naturalWalk != null && naturalJog != null &&
+                naturalRun != null && naturalCrouch != null;
+
+            runPhaseOffset = sprintPhaseOffset = 0f;
+            runClip = naturalMocapLoaded ? naturalJog : FindClip("run", "run");
+            walkClip = naturalMocapLoaded ? naturalWalk :
+                (FindClip("walk", "walk") ?? runClip);
+            sprintClip = naturalMocapLoaded ? naturalRun :
+                (FindClip("sprint", "sprint") ?? runClip);
+            // KayKit Running_A starts two preview samples later than walk.
+            // The 100STYLE actions share one authored dataset/container, so
+            // they must not inherit this source-specific phase correction.
+            if (!naturalMocapLoaded && primaryLoaded && walkClip != runClip)
             {
                 runPhaseOffset = -2f / 60f;
                 sprintPhaseOffset = sprintClip == runClip ? runPhaseOffset : 0f;
@@ -559,8 +609,10 @@ namespace Aaris.MapReview
             AnimationClip jumpStart = FindClip("jump_start", "jump") ?? jump;
             AnimationClip jumpLand = FindClip("jump_land", "jump") ?? jump;
             AnimationClip fall = FindClip("fall", "fall");
-            crouchClip = FindClip("crouch", "crouch") ?? idleClip;
-            crouchWalkClip = FindClip("crouch_walk", "crouch") ?? crouchClip;
+            crouchClip = naturalMocapLoaded ? naturalCrouch :
+                (FindClip("crouch", "crouch") ?? idleClip);
+            crouchWalkClip = naturalMocapLoaded ? naturalCrouch :
+                (FindClip("crouch_walk", "crouch") ?? crouchClip);
             punchClip = FindClip("punch", "punch");
             shootClip = FindClip("shoot", "shoot");
             if (punchClip == null) punchClip = idleClip;
@@ -609,10 +661,11 @@ namespace Aaris.MapReview
             // Stance FBX clips are transitions into a pose, not continuous gaits.
             // Freeze on the settled position: frame zero can still be standing.
             crouchPlayable.SetSpeed(0d);
-            // KayKit source manifest marks frame 10 of the 24-frame Crouching
-            // action as the settled pose. Sampling 87% held a later motion
-            // frame instead, leaving an unnatural crouch at rest.
-            crouchPlayable.SetTime(crouchClip.length * (10d / 24d));
+            // 100STYLE crouch is an actual crouched locomotion cycle, so its
+            // cycle boundary is a valid feet-down hold instead of KayKit's
+            // kneeling transition frame. Legacy clips keep their reviewed hold.
+            crouchPlayable.SetTime(naturalMocapLoaded
+                ? 0d : crouchClip.length * (10d / 24d));
             // The 24-frame KayKit Crawling source uses frame 0 as its prone
             // hold. Do not freeze a mid-crawl pose as the player's prone idle.
             // Only the missing-clip crouch fallback uses the crouch hold frame.
@@ -1145,7 +1198,13 @@ namespace Aaris.MapReview
             float crouchRigWeight = authoredProne
                 ? effectiveCrouchBlend * (1f - effectiveProneBlend)
                 : Mathf.Clamp01(effectiveCrouchBlend + effectiveProneBlend);
-            float crouchLowering = (realisticSoldierLoaded ? RealisticSoldierCrouchRigLowering : CrouchRigLowering) * crouchRigWeight;
+            // Legacy clips needed a large visual root drop because their
+            // retargeted crouch stayed too tall. The natural mocap is already
+            // physically crouched; applying that legacy drop would bury the
+            // hips. Capsule headroom + real foot support remain authoritative.
+            float crouchLowering = naturalMocapLoaded ? 0f :
+                (realisticSoldierLoaded ? RealisticSoldierCrouchRigLowering :
+                    CrouchRigLowering) * crouchRigWeight;
             // Source crawling hips/ankles float above the floor by about 22 cm.
             float proneLowering = primaryLoaded && proneClip != null &&
                 crawlClip != null ?
