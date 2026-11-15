@@ -104,7 +104,9 @@ assert 'Physics.RaycastNonAlloc(ray,' in visual
 assert 'hit.collider.transform.IsChildOf(transform)' in visual
 assert 'PlantCrouchLeg(leftThigh, leftShin, leftFootBone,' in visual
 assert 'Vector3 currentKnee = knee - hip;' in visual
-assert 'axis * Vector3.Dot(currentKnee, axis)' in visual
+assert 'Vector3.ProjectOnPlane(currentKnee, animatedAxis)' in visual
+assert 'Quaternion.FromToRotation(animatedAxis, axis) * bend' in visual
+assert 'Vector3.Dot(bend, forwardBend) < 0f' in visual
 # Crouch/prone must reuse each existing foot support ray's normal so shoes
 # follow sloped roads/bridges without adding another pair of Physics queries.
 assert 'out Vector3 leftSupportNormal' in visual

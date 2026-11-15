@@ -3,7 +3,37 @@ guid: 8cf0c99d7a934ae1b24937c60ccf6f21
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mil_Suit_R5_Head
+    second: {fileID: 2100000, guid: e0f5a751dc4d9669a1cd24322a807a87, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mil_Suit_Pads__R5
+    second: {fileID: 2100000, guid: c774b5b2c9d0aa0702a6ba2ea15b8b32, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mil_Suit_R5_Puches
+    second: {fileID: 2100000, guid: 384fe1e612487a3a59b252a4c449897d, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mil_Suit_R5__Plate
+    second: {fileID: 2100000, guid: e691f425ed68031ffd8bbe3585760f7e, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mil_Suit_R5
+    second: {fileID: 2100000, guid: 73ab6af5abc1e0a22ef826898cc4c849, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: GreenCap
+    second: {fileID: 2100000, guid: 4e0bd21de58719a58f02481aa3fdf426, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

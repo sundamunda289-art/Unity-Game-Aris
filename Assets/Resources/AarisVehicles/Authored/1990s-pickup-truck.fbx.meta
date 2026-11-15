@@ -1,6 +1,32 @@
 fileFormatVersion: 2
 guid: 60dd6047a58e4ea6bb9ed5c347e29531
 ModelImporter:
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1990s-pickup-truck_body_pbr
+    second: {fileID: 2100000, guid: a4aa09288417306d71bcd8f8f3ff3837, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1990s-pickup-truck_tire_x
+    second: {fileID: 2100000, guid: c059a786e91866165c5893e1c31a1fdd, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1990s-pickup-truck_tire_x.001
+    second: {fileID: 2100000, guid: c059a786e91866165c5893e1c31a1fdd, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1990s-pickup-truck_tire_x.002
+    second: {fileID: 2100000, guid: c059a786e91866165c5893e1c31a1fdd, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1990s-pickup-truck_tire_x.003
+    second: {fileID: 2100000, guid: c059a786e91866165c5893e1c31a1fdd, type: 2}
   serializedVersion: 22200
   globalScale: 1
   useFileScale: 1

@@ -1,6 +1,32 @@
 fileFormatVersion: 2
 guid: 6d8c8debc79549f8a9ff3fa4a8b71990
 ModelImporter:
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1990s-hatchback_body_pbr
+    second: {fileID: 2100000, guid: 32c6c083fd547f61f05dc00b5e8372bc, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1990s-hatchback_tire_x
+    second: {fileID: 2100000, guid: badbdf80962ea36f92e2b0acca8a3c89, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1990s-hatchback_tire_x.001
+    second: {fileID: 2100000, guid: badbdf80962ea36f92e2b0acca8a3c89, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1990s-hatchback_tire_x.002
+    second: {fileID: 2100000, guid: badbdf80962ea36f92e2b0acca8a3c89, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1990s-hatchback_tire_x.003
+    second: {fileID: 2100000, guid: badbdf80962ea36f92e2b0acca8a3c89, type: 2}
   serializedVersion: 22200
   globalScale: 1
   useFileScale: 1

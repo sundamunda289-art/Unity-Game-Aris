@@ -1,6 +1,32 @@
 fileFormatVersion: 2
 guid: d11144ae097f4927a53a0e3ab2189bc9
 ModelImporter:
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1980s-van_body_pbr
+    second: {fileID: 2100000, guid: 26c0aa58407ad02f8a888db8acf6a818, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1980s-van_tire_x
+    second: {fileID: 2100000, guid: 310d9d0e86b5ac3c3cb3ae13ba2aee71, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1980s-van_tire_x.001
+    second: {fileID: 2100000, guid: 310d9d0e86b5ac3c3cb3ae13ba2aee71, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1980s-van_tire_x.002
+    second: {fileID: 2100000, guid: 310d9d0e86b5ac3c3cb3ae13ba2aee71, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1980s-van_tire_x.003
+    second: {fileID: 2100000, guid: 310d9d0e86b5ac3c3cb3ae13ba2aee71, type: 2}
   serializedVersion: 22200
   globalScale: 1
   useFileScale: 1

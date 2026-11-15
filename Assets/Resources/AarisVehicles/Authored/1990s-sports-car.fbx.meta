@@ -1,6 +1,32 @@
 fileFormatVersion: 2
 guid: 1980ec56c79f4670b012d04a8c052235
 ModelImporter:
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1990s-sports-car_body_pbr
+    second: {fileID: 2100000, guid: d6baa8633e32516617a0948d65c2c097, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1990s-sports-car_tire_x
+    second: {fileID: 2100000, guid: 5b8b9e95584d7c1f51c648090d30f89f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1990s-sports-car_tire_x.001
+    second: {fileID: 2100000, guid: 5b8b9e95584d7c1f51c648090d30f89f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1990s-sports-car_tire_x.002
+    second: {fileID: 2100000, guid: 5b8b9e95584d7c1f51c648090d30f89f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: 1990s-sports-car_tire_x.003
+    second: {fileID: 2100000, guid: 5b8b9e95584d7c1f51c648090d30f89f, type: 2}
   serializedVersion: 22200
   globalScale: 1
   useFileScale: 1

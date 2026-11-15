@@ -842,7 +842,7 @@ namespace Aaris.MapReview
         private static void PlantLegToTarget(Transform thigh, Transform shin,
             Transform foot, Vector3 desiredFootWorld, Vector3 forward, float weight)
         {
-            if (thigh == null || shin == null || foot == null) return;
+            if (thigh == null || shin == null || foot == null || weight <= 0f) return;
             Vector3 hip = thigh.position;
             Vector3 knee = shin.position;
             Vector3 ankle = foot.position;
@@ -857,14 +857,18 @@ namespace Aaris.MapReview
             float distance = Mathf.Clamp(actualDistance,
                 Mathf.Abs(upper - lower) + 0.005f, upper + lower - 0.005f);
             Vector3 axis = line / actualDistance;
-            // Preserve the authored knee plane as the implicit IK hint.
-            // A fixed body-forward pole makes both knees converge toward the
-            // same plane during strafes, backpedal and rapid stance changes.
+            targetFoot = hip + axis * distance;
+            // Transport the animated bend plane with the ankle axis. Projecting
+            // the old knee directly onto the new axis can flip a nearly straight
+            // knee to the back when ground contact moves the ankle.
+            Vector3 animatedAxis = (ankle - hip).normalized;
             Vector3 currentKnee = knee - hip;
-            Vector3 bend = currentKnee -
-                axis * Vector3.Dot(currentKnee, axis);
-            if (bend.sqrMagnitude < 0.0001f)
-                bend = Vector3.ProjectOnPlane(forward, axis);
+            Vector3 bend = Vector3.ProjectOnPlane(currentKnee, animatedAxis);
+            bend = Quaternion.FromToRotation(animatedAxis, axis) * bend;
+            Vector3 forwardBend = Vector3.ProjectOnPlane(forward, axis);
+            if (bend.sqrMagnitude < 0.0001f ||
+                Vector3.Dot(bend, forwardBend) < 0f)
+                bend = forwardBend;
             if (bend.sqrMagnitude < 0.0001f)
                 bend = Vector3.ProjectOnPlane(Vector3.up, axis);
             if (bend.sqrMagnitude < 0.0001f) return;
@@ -888,6 +892,17 @@ namespace Aaris.MapReview
                 shin.rotation = Quaternion.FromToRotation(oldLower, newLower) *
                     shin.rotation;
             foot.rotation = footRotation;
+        }
+
+        private void CorrectReversedSwingKnee(Transform thigh, Transform shin,
+            Transform foot)
+        {
+            Vector3 axis = (foot.position - thigh.position).normalized;
+            Vector3 forwardBend = Vector3.ProjectOnPlane(transform.forward, axis);
+            if (forwardBend.sqrMagnitude < 0.01f) return;
+            Vector3 bend = Vector3.ProjectOnPlane(shin.position - thigh.position, axis);
+            if (Vector3.Dot(bend, forwardBend.normalized) < -0.015f)
+                PlantLegToTarget(thigh, shin, foot, foot.position, transform.forward, 1f);
         }
 
         private static void PlantCrouchLeg(Transform thigh, Transform shin,
@@ -975,6 +990,7 @@ namespace Aaris.MapReview
             if (float.IsNaN(supportY))
             {
                 plantLocked = false;
+                CorrectReversedSwingKnee(thigh, shin, foot);
                 return;
             }
 
@@ -985,6 +1001,7 @@ namespace Aaris.MapReview
             if (contactWeight <= 0.001f)
             {
                 plantLocked = false;
+                CorrectReversedSwingKnee(thigh, shin, foot);
                 return;
             }
 
@@ -1363,21 +1380,24 @@ namespace Aaris.MapReview
             float totalRigWeight = crouchRigWeight + proneRigWeight;
             float ankleRigWeight = !visuallyAirborne && graphReady
                 ? Mathf.Clamp01(totalRigWeight) : 0f;
-            if (ankleRigWeight > 0.005f)
+            bool useUprightContact = !visuallyAirborne && graphReady &&
+                groundedNow && lowPose < 0.02f;
+            if (!useUprightContact && ankleRigWeight > 0.005f)
             {
                 float proneShare = proneRigWeight / Mathf.Max(totalRigWeight, 0.0001f);
                 float ankleClearance = Mathf.Lerp(PlantedAnkleMetres,
                     ProneAnkleClearanceMetres, proneShare);
+                Vector3 kneeForward = proneShare < 0.5f ? transform.forward : Vector3.zero;
                 float leftAnkleY = SupportedAnkleY(leftFootBone,
                     ankleClearance, out Vector3 leftSupportNormal);
                 float rightAnkleY = SupportedAnkleY(rightFootBone,
                     ankleClearance, out Vector3 rightSupportNormal);
                 if (!float.IsNaN(leftAnkleY))
                     PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
-                        leftAnkleY, transform.forward, ankleRigWeight);
+                        leftAnkleY, kneeForward, ankleRigWeight);
                 if (!float.IsNaN(rightAnkleY))
                     PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
-                        rightAnkleY, transform.forward, ankleRigWeight);
+                        rightAnkleY, kneeForward, ankleRigWeight);
                 // Crouch/prone used to correct only ankle height, leaving the
                 // sole visually cutting through a sloped road or bridge deck.
                 // Reuse the exact two support normals sampled above; no extra
@@ -1392,10 +1412,9 @@ namespace Aaris.MapReview
             // Standing/walk/run need world-space contact too. Apply the same
             // analytic leg solve only to a near-ground stance foot; high swing
             // feet remain untouched, so stride length and cadence stay authored.
-            // Skip the transition band so crouch/prone never receive a second
-            // knee solve in the same frame.
-            if (!visuallyAirborne && graphReady && groundedNow &&
-                lowPose < 0.02f)
+            // Give upright contact priority near standing so both modes
+            // never rotate the same knee in one frame.
+            if (useUprightContact)
             {
                 float uprightContactWeight = Mathf.Clamp01(1f - lowPose * 4f);
                 PlantUprightContact(leftThigh, leftShin, leftFootBone,
