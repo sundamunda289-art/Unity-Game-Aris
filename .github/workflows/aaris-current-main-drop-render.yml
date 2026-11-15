@@ -1,0 +1,127 @@
+name: Aaris current-main drop visual QA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/aaris-current-main-drop-render.yml'
+      - 'Assets/AarisWorld/Editor/AarisOfflineDropPlayProbe.cs'
+      - 'Assets/AarisWorld/Scripts/AarisOfflineDrop*.cs'
+      - 'Assets/Resources/AarisDrop/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aaris-current-main-drop-visual-qa
+  cancel-in-progress: false
+
+jobs:
+  render-offline-drop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GAMECI_IMAGE: unityci/editor:ubuntu-6000.3.26f1-base-3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Require configured Unity license without printing it
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          set -euo pipefail
+          [[ -n "$UNITY_LICENSE" && "$UNITY_LICENSE" == *"<"* ]] || {
+            echo 'UNITY_LICENSE_NOT_CONFIGURED_FOR_CURRENT_MAIN_DROP_QA'
+            exit 2
+          }
+          echo 'UNITY_LICENSE_PRESENT'
+
+      - name: Free runner storage and hydrate authoritative Unity assets
+        run: |
+          set -euo pipefail
+          bash Tools/CI/runner_storage.sh cleanup || true
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq git-lfs
+          git lfs install --local
+          git lfs pull --include="Assets/**" --exclude=""
+          if head -c 100 Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity | grep -q 'git-lfs.github.com/spec'; then
+            echo 'UNITY_SCENE_STILL_LFS_POINTER'
+            exit 3
+          fi
+          mkdir -p ci-drop/frames ci-drop/shots
+
+      - name: Render real plane, freefall, canopy and landing frames
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          set -euo pipefail
+          docker pull "$GAMECI_IMAGE"
+          set +e
+          docker run --rm --shm-size=1g             -e UNITY_LICENSE             -e LIBGL_ALWAYS_SOFTWARE=1 -e GALLIUM_DRIVER=llvmpipe             -v "$PWD:/project"             -v "$PWD/ci-drop:/tmp/aaris-codespaces/offline-drop-probe"             -w /project "$GAMECI_IMAGE" bash -lc '
+              set -euo pipefail
+              apt-get update -qq
+              apt-get install -y -qq xvfb libgl1-mesa-dri libglu1-mesa
+              mkdir -p /root/.local/share/unity3d/Unity
+              printf "%s" "$UNITY_LICENSE" > /root/.local/share/unity3d/Unity/Unity_lic.ulf
+              chmod 600 /root/.local/share/unity3d/Unity/Unity_lic.ulf
+              xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX"                 unity-editor -projectPath /project -batchmode -force-glcore                 -job-worker-count 2                 -executeMethod Aaris.MapReview.Editor.AarisOfflineDropPlayProbe.Record                 -logFile /project/ci-drop/unity-editor.log
+            '
+          UNITY_RC=$?
+          set -e
+          echo "UNITY_PROCESS_RC=$UNITY_RC"
+
+      - name: Verify real drop phases and camera evidence
+        run: |
+          set -euo pipefail
+          test -s ci-drop/report.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('ci-drop')
+          report=json.loads((root/'report.json').read_text())
+          required={
+              'status':'passed',
+              'observedInPlane':True,
+              'observedFreefall':True,
+              'observedOpening':True,
+              'observedGliding':True,
+              'observedLanded':True,
+              'existingMotorRestored':True,
+              'canopyActuallyRendered':True,
+          }
+          for key,expected in required.items():
+              if report.get(key) != expected:
+                  raise SystemExit(f'DROP_QA_{key}_EXPECTED_{expected}_GOT_{report.get(key)}')
+          if int(report.get('terrainTiles',0)) != 4:
+              raise SystemExit('DROP_QA_TERRAIN_COUNT_INVALID')
+          if int(report.get('errors',-1)) != 0:
+              raise SystemExit('DROP_QA_RUNTIME_ERRORS_PRESENT')
+          if float(report.get('maxPixelVariation',0)) < 6:
+              raise SystemExit('DROP_QA_CAMERA_VARIATION_TOO_LOW')
+          frames=sorted((root/'frames').glob('frame_*.jpg'))
+          if len(frames) < 20 or any(f.stat().st_size < 3500 for f in frames):
+              raise SystemExit('DROP_QA_FRAME_EVIDENCE_INVALID')
+          for phase in ('InPlane','Freefall','Opening','Gliding','Landed'):
+              p=root/'shots'/f'{phase}.png'
+              if not p.is_file() or p.stat().st_size < 4000:
+                  raise SystemExit('DROP_QA_MISSING_'+phase.upper())
+          print('CURRENT_MAIN_REAL_DROP_VISUAL_QA_PASS')
+          print(json.dumps(report, sort_keys=True))
+          PY
+
+      - name: Upload current-main drop evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-current-main-drop-visuals-${{ github.run_id }}
+          path: |
+            ci-drop/shots/*.png
+            ci-drop/frames/*.jpg
+            ci-drop/report.json
+            ci-drop/unity-editor.log
+          retention-days: 3
+          if-no-files-found: warn
