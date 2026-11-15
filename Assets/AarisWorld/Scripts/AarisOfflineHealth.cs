@@ -43,9 +43,12 @@ namespace Aaris.MapReview
             current = Mathf.Max(0f, current - (amount - absorbed));
             // Publish fatality before notifying HUD/AI health observers:
             // a zero-HP notification must already report IsDead = true.
-            if (current <= 0f) dead = true;
+            // Capture this call's transition before synchronous observers can
+            // apply another hit. Only the fatal hit may publish Died.
+            bool becameDead = current <= 0f;
+            if (becameDead) dead = true;
             HealthChanged?.Invoke(this);
-            if (!dead) return;
+            if (!becameDead) return;
             Died?.Invoke(this);
             Debug.Log("Aaris offline combat: combatant defeated, awaiting match state transition.");
         }
