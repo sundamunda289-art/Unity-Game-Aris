@@ -160,9 +160,18 @@ namespace Aaris.MapReview
                 return;
             }
             Vector3 toGun = closest.transform.position - playerPosition;
-            float side = Vector3.Dot(nearbyGunOwner.right, toGun.normalized);
-            string directionLabel = side > .30f ? "RIGHT" :
-                side < -.30f ? "LEFT" : "AHEAD";
+            // Classify the horizontal bearing in the player's yaw frame.
+            // A rear pickup must not be reported as ahead; elevation must not
+            // change the compass sector of an otherwise identical pickup.
+            toGun.y = 0f;
+            Vector3 forward = nearbyGunOwner.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude < .0001f) forward = Vector3.forward;
+            float front = Vector3.Dot(forward, toGun);
+            float side = Vector3.Dot(Vector3.Cross(Vector3.up, forward), toGun);
+            string directionLabel = toGun.sqrMagnitude < .01f ? "HERE" :
+                Mathf.Abs(side) > Mathf.Abs(front) ? (side > 0f ? "RIGHT" : "LEFT") :
+                (front >= 0f ? "AHEAD" : "BEHIND");
             // Proximity only; a solid wall can still obstruct pickup.
             nearbyGunHint.text = "GUN NEARBY  " + closest.Spec.displayName +
                 "  " + Mathf.RoundToInt(Mathf.Sqrt(closestSquare)) + "m  " + directionLabel;
