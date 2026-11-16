@@ -10,6 +10,7 @@ namespace Aaris.MapReview
         IPointerDownHandler, IPointerUpHandler, ICancelHandler
     {
         private readonly HashSet<int> fingers = new HashSet<int>();
+        private readonly List<int> lostFingers = new List<int>(4);
         private AarisVehicleHUD owner;
         private int direction;
         private Image ring;
@@ -21,13 +22,34 @@ namespace Aaris.MapReview
         }
         public void OnPointerDown(PointerEventData e)
         {
-            if (e == null || !fingers.Add(e.pointerId)) return;
+            if (e == null || e.button != PointerEventData.InputButton.Left ||
+                !fingers.Add(e.pointerId)) return;
             if (fingers.Count == 1) State(true);
         }
         public void OnPointerUp(PointerEventData e)
         {
             if (e == null || !fingers.Remove(e.pointerId)) return;
             if (fingers.Count == 0) State(false);
+        }
+        // Recover missing PointerUp without releasing another still-held thumb.
+        // Only the classic input module uses this physical finger-ID mapping.
+        private void LateUpdate()
+        {
+            if (fingers.Count == 0) return;
+            if (EventSystem.current == null || EventSystem.current.currentInputModule == null)
+            {
+                Reset();
+                return;
+            }
+            if (!(EventSystem.current.currentInputModule is StandaloneInputModule)) return;
+            lostFingers.Clear();
+            foreach (int pointerId in fingers)
+                if (!AarisHudButton.IsPointerPhysicallyHeld(pointerId))
+                    lostFingers.Add(pointerId);
+            for (int i = 0; i < lostFingers.Count; i++)
+                fingers.Remove(lostFingers[i]);
+            if (fingers.Count == 0) State(false);
+            lostFingers.Clear();
         }
         public void OnCancel(BaseEventData e) => Reset();
         private void OnDisable() => Reset();
