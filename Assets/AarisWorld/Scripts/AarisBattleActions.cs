@@ -90,6 +90,13 @@ namespace Aaris.MapReview
 
         public void SetFireHeld(bool held)
         {
+            // A stale uGUI callback may arrive after flight, driving or defeat
+            // disabled this component. Do not buffer a future shot in that state.
+            if (!isActiveAndEnabled || Time.timeScale <= 0f)
+            {
+                CancelPendingCombatInput();
+                return;
+            }
             // Unity's EventSystem can process both Down and Up between combat
             // Updates on 10-20 FPS phones. Fire immediately on the new press:
             // otherwise a quick tap is discarded before Update can see it.
@@ -311,6 +318,7 @@ namespace Aaris.MapReview
 
         private void Update()
         {
+            if (Time.timeScale <= 0f) { CancelPendingCombatInput(); return; }
             if (punchContactTime >= 0f && Time.time >= punchContactTime)
             {
                 punchContactTime = -1f;
