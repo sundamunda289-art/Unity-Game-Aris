@@ -117,7 +117,7 @@ namespace Aaris.MapReview
         // Pre-stream world meshes during the last part of the descent, but
         // leave all inventory transactions with the on-foot gameplay owner.
         private bool CanInteractWithLoot => isActiveAndEnabled && inventory != null && inventory.isActiveAndEnabled &&
-            (drop == null || !drop.isActiveAndEnabled || drop.HasLanded);
+            Time.timeScale > 0f && (drop == null || !drop.isActiveAndEnabled || drop.HasLanded);
 
         /// <summary>Explicit pickup replaces the single carried gun.</summary>
         public void RequestPickup()
@@ -804,6 +804,13 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (player == null || inventory == null || candidates == null) return;
+            if (Time.timeScale <= 0f)
+            {
+                requestPickupUntil = 0f;
+                HasPickupInRange = false;
+                nextRefresh = 0f;
+                return;
+            }
             if (!CanInteractWithLoot)
             {
                 HasPickupInRange = false;
@@ -1090,6 +1097,16 @@ namespace Aaris.MapReview
             requestPickupUntil = 0f;
             HasPickupInRange = false;
             nextRefresh = 0f;
+        }
+
+        private void OnApplicationPause(bool paused)
+        {
+            if (paused) requestPickupUntil = 0f;
+        }
+
+        private void OnApplicationFocus(bool focused)
+        {
+            if (!focused) requestPickupUntil = 0f;
         }
 
         private bool IsCurrentlyActive(int candidateIndex)
