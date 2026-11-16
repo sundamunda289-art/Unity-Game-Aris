@@ -122,7 +122,8 @@ def assert_regression() -> None:
     assert "CanAdvanceProne(candidate, horizontalVelocity)" in MOTOR
 
     # No melee through cover; no hitscan overflow or behind-cover damage.
-    assert "Physics.Raycast(origin, delta.normalized" in ACTION
+    assert "Physics.RaycastNonAlloc(ray, punchSightHits, length," in ACTION
+    assert "HasPunchLineOfSight(origin, nearest, receiver, mask)" in ACTION
     assert "if (count >= rayHits.Length)" in GUN
     assert "candidates = Physics.RaycastAll(ray, range," in GUN
     assert "count = candidates.Length;" in GUN
