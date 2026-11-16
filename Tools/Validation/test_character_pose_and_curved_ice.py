@@ -704,6 +704,15 @@ load_order = [visual.index(f'TryInstantiateCharacter({name})')
               for name in ('PrimaryModel', 'PreviousPrimaryModel',
                            'LegacyPrimaryModel', 'FallbackModel')]
 assert load_order == sorted(load_order)
+candidate = visual[visual.index("private bool TryInstantiateCharacter("):
+                   visual.index("private bool ConfigureDrawableSkin(")]
+assert candidate.index("if (TryPrepareAnimatedBody()) return true;") < candidate.index("ReleaseAnimationGraph();")
+assert candidate.index("graph.Evaluate(0f);") < candidate.index("bodySkin.BakeMesh(posed);")
+assert "(meshCentre - actorCentre).sqrMagnitude <= 4f" in candidate
+assert "maxExtent >= 0.03f && maxExtent <= 2.5f" in candidate
+assert "bodySkin.bounds.Intersects(" in candidate
+assert "Destroy(posed);" in candidate
+assert "skin.forceRenderingOff" in visual
 assert 'tacticalSoldierLoaded = resourcePath == PrimaryModel;' in visual
 assert 'realisticSoldierLoaded = resourcePath == PreviousPrimaryModel;' in visual
 assert 'tacticalSoldierLoaded || realisticSoldierLoaded' in visual

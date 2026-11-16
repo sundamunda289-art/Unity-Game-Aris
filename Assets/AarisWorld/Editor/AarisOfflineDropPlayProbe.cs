@@ -234,8 +234,9 @@ namespace Aaris.MapReview.Editor
                     if (drop.Phase == AarisOfflineDrop.DropPhase.InPlane &&
                         UnityEngine.Object.FindFirstObjectByType<AarisWeaponPickup>() != null)
                         throw new InvalidOperationException("GROUND_WEAPON_LOADED_DURING_AIRCRAFT");
-                    if (newlySeen && (drop.IsFreefall || drop.Phase == AarisOfflineDrop.DropPhase.Gliding))
-                        VerifyAerialPlayerVisibility(drop, cam);
+                    if (newlySeen && (drop.IsFreefall ||
+                        drop.Phase == AarisOfflineDrop.DropPhase.Gliding || drop.HasLanded))
+                        VerifyPlayerVisibility(drop, cam);
                     int frame = SessionState.GetInt(FrameCount, 0);
                     if (frame >= MaxFrames) throw new InvalidOperationException("VIDEO_FRAME_LIMIT");
                     float dev = Render(cam, frame, newlySeen ? name : null);
@@ -304,22 +305,27 @@ namespace Aaris.MapReview.Editor
             }
         }
 
-        private static void VerifyAerialPlayerVisibility(AarisOfflineDrop drop, Camera camera)
+        private static void VerifyPlayerVisibility(AarisOfflineDrop drop, Camera camera)
         {
             var player = drop.GetComponent<AarisCharacterVisual>();
             if (player == null || !player.HasWorkingHumanoid)
-                throw new InvalidOperationException("AERIAL_PLAYER_HUMANOID_MISSING");
+                throw new InvalidOperationException("PLAYER_HUMANOID_MISSING_" + drop.Phase);
 
-            Bounds pose = new Bounds(drop.transform.position + Vector3.up * 0.9f, Vector3.one * 3f);
-            Plane[] frustum = GeometryUtility.CalculateFrustumPlanes(camera);
+            Vector3 actorCentre = drop.transform.position + Vector3.up * 0.9f;
+            Bounds pose = new Bounds(actorCentre, Vector3.one * 3f);
+            bool requireCamera = !drop.HasLanded ||
+                (camera.transform.position - actorCentre).sqrMagnitude > 4f;
+            Plane[] frustum = requireCamera ? GeometryUtility.CalculateFrustumPlanes(camera) : null;
             var baked = new Mesh();
             try
             {
                 foreach (var skin in player.GetComponentsInChildren<SkinnedMeshRenderer>())
                 {
-                    if (!skin.enabled || skin.sharedMesh == null ||
-                        (camera.cullingMask & (1 << skin.gameObject.layer)) == 0 ||
-                        !GeometryUtility.TestPlanesAABB(frustum, skin.bounds))
+                    if (!skin.enabled || skin.forceRenderingOff || skin.sharedMesh == null)
+                        continue;
+                    if (requireCamera &&
+                        ((camera.cullingMask & (1 << skin.gameObject.layer)) == 0 ||
+                         !GeometryUtility.TestPlanesAABB(frustum, skin.bounds)))
                         continue;
 
                     // Confirm the evaluated vertices are near the capsule too.
@@ -334,7 +340,7 @@ namespace Aaris.MapReview.Editor
             {
                 UnityEngine.Object.Destroy(baked);
             }
-            throw new InvalidOperationException("AERIAL_PLAYER_MESH_OUTSIDE_CAMERA_BOUNDS");
+            throw new InvalidOperationException("PLAYER_MESH_OUTSIDE_CAMERA_BOUNDS_" + drop.Phase);
         }
 
         private static float Render(Camera cam, int frame, string firstPhase)

@@ -196,6 +196,10 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("if (presentationPaused || visual == null || controller == null) return;", rig)
         self.assertIn("FitVisualToController(resourcePath) && ConfigureDrawableSkin(resourcePath)", rig)
         self.assertIn("skin.localBounds = poseBounds;", rig)
+        self.assertIn("bodySkin.BakeMesh(posed);", rig)
+        probe = (ROOT / "Assets/AarisWorld/Editor/AarisOfflineDropPlayProbe.cs").read_text("utf-8")
+        self.assertIn("DropPhase.Gliding || drop.HasLanded", probe)
+        self.assertIn("VerifyPlayerVisibility(drop, cam);", probe)
 
     def test_missing_android_touch_ended_event_does_not_lock_camera_or_joystick(self):
         # Unity may omit Ended after a system gesture while another finger

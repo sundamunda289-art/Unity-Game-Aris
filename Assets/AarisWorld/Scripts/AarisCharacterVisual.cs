@@ -197,30 +197,9 @@ namespace Aaris.MapReview
             proneHeadBone = animator.GetBoneTransform(HumanBodyBones.Head);
             balanceSpineBone = animator.GetBoneTransform(HumanBodyBones.Spine);
             locomotionHipsBone = animator.GetBoneTransform(HumanBodyBones.Hips);
-            animator.applyRootMotion = false;
-            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-            // Unity's Humanoid solver can stabilize feet while Playable clips
-            // blend between gait/stance states. Our later terrain-aware analytic
-            // leg solve remains authoritative for exact floor height/slope.
-            // This closes the transition-only ankle drift without extra physics.
-            animator.stabilizeFeet = true;
-            SetupAnimations();
-
-            // Fail-safe player presentation: a model with missing/corrupt
-            // imported animation clips must NOT hide the saved primitive
-            // character and leave an unanimated T-pose on Android.
-            if (!graphReady)
-            {
-                Debug.LogError("Aaris: imported animation clips invalid. Keeping legacy player visible.");
-                Destroy(visual);
-                visual = null;
-                enabled = false;
-                return;
-            }
-
-            // Hide legacy primitive renderers only after the full Humanoid
-            // Playables graph is proven valid. Collision, camera and saved
-            // hierarchy are left untouched.
+            // Hide the saved player only after a candidate has a usable
+            // animation graph and its evaluated body is beside the capsule.
+            // Collision and camera ownership stay with the original player.
             placeholderRenderers = GetComponentsInChildren<MeshRenderer>(true);
             for (int i = 0; i < placeholderRenderers.Length; i++)
                 if (IsLegacyPlaceholderRenderer(placeholderRenderers[i]) &&
@@ -272,13 +251,60 @@ namespace Aaris.MapReview
                 primaryLoaded = resourcePath != FallbackModel;
                 tacticalSoldierLoaded = resourcePath == PrimaryModel;
                 realisticSoldierLoaded = resourcePath == PreviousPrimaryModel;
-                return true;
+                try
+                {
+                    if (TryPrepareAnimatedBody()) return true;
+                    Debug.LogWarning("Aaris: unusable posed body for " + resourcePath);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning("Aaris: player rig failed initial evaluation for " +
+                        resourcePath + " (" + e.GetType().Name + ")");
+                }
             }
+            ReleaseAnimationGraph();
             visual.SetActive(false);
             Destroy(visual);
             visual = null;
             animator = null;
+            bodySkin = null;
             return false;
+        }
+
+        private bool TryPrepareAnimatedBody()
+        {
+            animator.applyRootMotion = false;
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            // Keep clip-level foot stabilization below the terrain-aware solve.
+            animator.stabilizeFeet = true;
+            SetupAnimations();
+            if (!graphReady) return false;
+            graph.Evaluate(0f);
+
+            // Import bounds can be centered correctly while the evaluated
+            // geometry is still kilometres away. Check actual vertices once
+            // per candidate, before using it to replace the saved body.
+            var posed = new Mesh();
+            try
+            {
+                bodySkin.BakeMesh(posed);
+                if (posed.vertexCount == 0) return false;
+                Transform skinTransform = bodySkin.transform;
+                Vector3 actorCentre = transform.position + Vector3.up * (TargetHeightMetres * 0.5f);
+                Vector3 meshCentre = skinTransform.TransformPoint(posed.bounds.center);
+                Vector3 extents = posed.bounds.extents;
+                float maxExtent = Mathf.Max(
+                    skinTransform.TransformVector(Vector3.right * extents.x).magnitude,
+                    Mathf.Max(skinTransform.TransformVector(Vector3.up * extents.y).magnitude,
+                        skinTransform.TransformVector(Vector3.forward * extents.z).magnitude));
+                return (meshCentre - actorCentre).sqrMagnitude <= 4f &&
+                    maxExtent >= 0.03f && maxExtent <= 2.5f &&
+                    bodySkin.bounds.Intersects(new Bounds(actorCentre, Vector3.one * 4f));
+            }
+            finally
+            {
+                Destroy(posed);
+            }
         }
 
         private bool ConfigureDrawableSkin(string resourcePath)
@@ -286,11 +312,12 @@ namespace Aaris.MapReview
             bodySkin = null;
             foreach (var skin in visual.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
-                if (!skin.enabled || !skin.gameObject.activeInHierarchy ||
+                if (!skin.enabled || skin.forceRenderingOff || !skin.gameObject.activeInHierarchy ||
                     skin.sharedMesh == null || skin.sharedMesh.vertexCount == 0)
                     continue;
 
-                if (bodySkin == null) bodySkin = skin;
+                if (bodySkin == null || skin.sharedMesh.vertexCount > bodySkin.sharedMesh.vertexCount)
+                    bodySkin = skin;
                 if (resourcePath != PrimaryModel) continue;
 
                 // TacticalSoldier imports with bounds expressed around its original
@@ -1761,10 +1788,17 @@ namespace Aaris.MapReview
             }
         }
 
-        private void OnDestroy()
+        private void ReleaseAnimationGraph()
         {
             if (graph.IsValid()) graph.Destroy();
+            graphReady = false;
             if (upperBodyMask != null) Destroy(upperBodyMask);
+            upperBodyMask = null;
+        }
+
+        private void OnDestroy()
+        {
+            ReleaseAnimationGraph();
             if (runtimeSkin != null) Destroy(runtimeSkin);
             foreach (var material in realisticSkinMaterials.Values)
                 if (material != null) Destroy(material);
