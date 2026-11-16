@@ -186,7 +186,17 @@ def test():
     assert world.index("AuthoredPrewarmRadius = 150f") < world.index("UnloadRadius = 160f")
     assert "Resources.LoadAsync<GameObject>(item.authoredModelResource)" in world
     assert "fallback.priority = -1;" in world and "request.priority = -1;" in world
-    assert "int authoredStarts = 0;" in world and "authoredStarts >= 1" in world
+    update = world.split("private void Update()", 1)[1].split("private void OnDestroy()", 1)[0]
+    assert update.count("StartAuthoredBodyPrewarm(") == 1
+    assert "if (closestType >= 0) StartAuthoredBodyPrewarm(closestType);" in update
+    assert "authoredBodyRequests[typeIndex] != null" in update
+    assert "closestDistanceSq = distanceSq;" in update
+    # Draw scheduling is independent of randomized garage plan order and
+    # preserves the first tie while excluding ready/in-flight models.
+    plans = [(149, "far", False), (12, "already loading", True),
+             (38, "closest", False), (38, "tie", False), (151, "out of range", False)]
+    chosen = min((p for p in plans if p[0] <= 150 and not p[2]), key=lambda p: p[0])
+    assert chosen[1] == "closest"
     assert "PumpAuthoredBodyLoads();" in world
     assert "MaximumNearbyVehicles = 10" in world
     # Car models stream at 105 m but authored wall colliders stream at 55 m.

@@ -963,17 +963,22 @@ namespace Aaris.MapReview
                 else active++;
             }
             PumpAuthoredBodyLoads();
-            // Start at most one new heavyweight body load per 300 ms poll.
-            // Existing requests continue in parallel through Unity's preload manager.
-            int authoredStarts = 0;
+            // Compete for a single new preload slot per poll by actual
+            // distance, not the randomized order of the match's garage plans.
+            int closestType = -1;
+            float closestDistanceSq = AuthoredPrewarmRadius * AuthoredPrewarmRadius;
             foreach (var record in plans)
             {
-                if (authoredStarts >= 1) break;
-                if ((record.position - playerPosition).sqrMagnitude >
-                    AuthoredPrewarmRadius * AuthoredPrewarmRadius) continue;
+                float distanceSq = (record.position - playerPosition).sqrMagnitude;
+                if (distanceSq > closestDistanceSq ||
+                    (distanceSq == closestDistanceSq && closestType >= 0)) continue;
                 int typeIndex = TypeIndex(record.type);
-                if (StartAuthoredBodyPrewarm(typeIndex)) authoredStarts++;
+                if (typeIndex < 0 || authoredBodyResolved[typeIndex] ||
+                    authoredBodyRequests[typeIndex] != null) continue;
+                closestType = typeIndex;
+                closestDistanceSq = distanceSq;
             }
+            if (closestType >= 0) StartAuthoredBodyPrewarm(closestType);
 
             foreach (var record in plans)
             {
@@ -984,11 +989,7 @@ namespace Aaris.MapReview
                 if ((record.position - playerPosition).sqrMagnitude > LoadRadius * LoadRadius)
                     continue;
                 int typeIndex = TypeIndex(record.type);
-                if (typeIndex >= 0 && !authoredBodyResolved[typeIndex])
-                {
-                    StartAuthoredBodyPrewarm(typeIndex);
-                    continue;
-                }
+                if (typeIndex >= 0 && !authoredBodyResolved[typeIndex]) continue;
                 spawnProbes++;
                 if (TryResolvePlanned(record, out Vector3 pos) && Build(record, pos))
                 {

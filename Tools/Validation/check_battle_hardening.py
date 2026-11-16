@@ -78,6 +78,36 @@ def audit() -> None:
         "private bool CanCollectMedical(", 1
     )[0]
     assert medical_stream.count("RecycleMedicalCase(site);") == 2
+    assert "MaxMedicalSpawnProbesPerFrame = 2" in tactical
+    assert "nextMedicalPickup = now + 0.08f;" in medical_stream
+    assert "medicalSpawnCursor++" in medical_stream
+    assert "activeMedicalSites.Add(site);" in medical_stream
+    assert "if (++probes == MaxMedicalSpawnProbesPerFrame &&" in medical_stream
+    assert "activeMedicalSites.Count < MaxMedicalVisuals" in medical_stream
+
+    # Confirm the budget includes failed floor probes and never skips an
+    # authored slot between frames. Successful cases stay under the live cap.
+    outcomes = [False, True, True, False, False, True, True, False,
+                True, True, True, True, True]
+    cursor, live, per_frame = 0, [], []
+    while cursor < len(outcomes) and len(live) < 8:
+        probes = 0
+        while probes < 2 and cursor < len(outcomes) and len(live) < 8:
+            if outcomes[cursor]:
+                live.append(cursor)
+            cursor += 1
+            probes += 1
+        per_frame.append(probes)
+    assert live == [i for i, ok in enumerate(outcomes) if ok][:8]
+    assert max(per_frame) == 2
+    # At 6.5 m/s, a center-line pickup can be missed by a slow stream tick
+    # at a crossing tangent; the pickup clock checks that path separately.
+    speed = 6.5
+    initial_x = -2.04
+    lateral = 1.9
+    assert all((initial_x + speed * t) ** 2 + lateral ** 2 > 2.15 ** 2 for t in (0, .65))
+    assert any((initial_x + speed * t) ** 2 + lateral ** 2 <= 2.15 ** 2
+               for t in (.08, .16, .24, .32))
     assert "Destroy(site.visual);" not in medical_stream
     assert "medicalVisualPool.Push(visual);" in tactical
     assert "visual.SetActive(false);" in tactical

@@ -18,6 +18,19 @@ namespace Aaris.MapReview
     {
         public int schema, sizeMetres;
         public AarisLootCandidate[] candidates;
+
+        private static AarisLootDocument cached;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetCache() => cached = null;
+
+        internal static AarisLootDocument Load()
+        {
+            if (cached != null) return cached;
+            TextAsset source = Resources.Load<TextAsset>("AarisWeapons/loot_candidates");
+            if (source != null) cached = JsonUtility.FromJson<AarisLootDocument>(source.text);
+            return cached;
+        }
     }
 
     /// <summary>
@@ -154,15 +167,8 @@ namespace Aaris.MapReview
                 enabled = false;
                 return;
             }
-            TextAsset text = Resources.Load<TextAsset>("AarisWeapons/loot_candidates");
-            if (text == null)
-            {
-                Debug.LogError("Aaris: no embedded offline authored loot locations.");
-                enabled = false;
-                return;
-            }
             AarisLootDocument doc;
-            try { doc = JsonUtility.FromJson<AarisLootDocument>(text.text); }
+            try { doc = AarisLootDocument.Load(); }
             catch (Exception e)
             {
                 Debug.LogError("Aaris: invalid loot JSON: " + e.Message);

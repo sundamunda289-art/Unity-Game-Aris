@@ -19,6 +19,7 @@ namespace Aaris.MapReview
         [SerializeField, Range(1, 5)] private int maxMedkits = 5;
         [SerializeField, Range(25f, 100f)] private float medicalHealing = 75f;
         private const int MaxMedicalVisuals = 8;
+        private const int MaxMedicalSpawnProbesPerFrame = 2;
         private sealed class MedicalSite
         {
             public Vector3 position;
@@ -28,6 +29,10 @@ namespace Aaris.MapReview
             public float retry;
         }
         private readonly List<MedicalSite> medicalSites = new List<MedicalSite>(80);
+        private readonly List<MedicalSite> activeMedicalSites = new List<MedicalSite>(MaxMedicalVisuals);
+        private bool medicalSitesLoaded;
+        private int medicalSpawnCursor = -1;
+        private float nextMedicalPickup;
         // Recycle at most eight case hierarchies; avoid per-cell GameObject churn.
         private readonly Stack<GameObject> medicalVisualPool =
             new Stack<GameObject>(MaxMedicalVisuals);
@@ -96,7 +101,6 @@ namespace Aaris.MapReview
             medicalTerrains = Terrain.activeTerrains;
             medicalNearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
             if (motor == null || gloo == null) { enabled = false; return; }
-            LoadMedicalSites();
             Build();
             initialized = true;
         }
@@ -325,11 +329,9 @@ namespace Aaris.MapReview
 
         private void LoadMedicalSites()
         {
-            TextAsset json = Resources.Load<TextAsset>("AarisWeapons/loot_candidates");
-            if (json == null) return;
             try
             {
-                var doc = JsonUtility.FromJson<AarisLootDocument>(json.text);
+                var doc = AarisLootDocument.Load();
                 if (doc == null || doc.schema != 1 || doc.sizeMetres != 2000 ||
                     doc.candidates == null) return;
                 for (int i = 0; i < doc.candidates.Length; i++)
@@ -397,51 +399,82 @@ namespace Aaris.MapReview
 
         private void StreamMedicalSites()
         {
-            if (Time.unscaledTime < nextMedicalScan ||
-                medicalSites.Count == 0) return;
-            nextMedicalScan = Time.unscaledTime + 0.65f;
-            Vector3 playerPosition = transform.position;
-            int live = 0;
-            for (int i = 0; i < medicalSites.Count; i++)
+            if (!medicalSitesLoaded)
             {
-                var site = medicalSites[i];
-                if (site.visual == null) continue;
-                float dx = site.position.x - playerPosition.x;
-                float dz = site.position.z - playerPosition.z;
-                float distanceSq = dx * dx + dz * dz;
-                if (distanceSq <= 2.15f * 2.15f &&
-                    Mathf.Abs(site.visual.transform.position.y - playerPosition.y) < 1.25f &&
-                    CanCollectMedical(site))
+                medicalSitesLoaded = true;
+                LoadMedicalSites();
+            }
+            if (medicalSites.Count == 0) return;
+
+            float now = Time.unscaledTime;
+            bool refresh = medicalSpawnCursor < 0 && now >= nextMedicalScan;
+            bool checkPickup = activeMedicalSites.Count > 0 && now >= nextMedicalPickup;
+            if (!refresh && !checkPickup && medicalSpawnCursor < 0) return;
+            Vector3 playerPosition = transform.position;
+            if (refresh)
+            {
+                nextMedicalScan = now + 0.65f;
+                medicalSpawnCursor = 0;
+            }
+            if (checkPickup) nextMedicalPickup = now + 0.08f;
+
+            // Pickup follows nearby live cases only. At sprint speed a player
+            // can cross several metres between the slower streaming scans.
+            if (refresh || checkPickup)
+            {
+                for (int i = 0; i < activeMedicalSites.Count;)
                 {
-                    bool collected = site.isHelmet
-                        ? medicalHealth != null && medicalHealth.TryEquipHelmet()
-                        : medkits < maxMedkits;
-                    if (collected)
+                    var site = activeMedicalSites[i];
+                    if (site.visual == null)
                     {
-                        site.taken = true;
-                        if (!site.isHelmet) medkits++;
-                        RecycleMedicalCase(site);
+                        activeMedicalSites.RemoveAt(i);
                         continue;
                     }
+                    float dx = site.position.x - playerPosition.x;
+                    float dz = site.position.z - playerPosition.z;
+                    float distanceSq = dx * dx + dz * dz;
+                    if (checkPickup && distanceSq <= 2.15f * 2.15f &&
+                        Mathf.Abs(site.visual.transform.position.y - playerPosition.y) < 1.25f &&
+                        (site.isHelmet || medkits < maxMedkits) && CanCollectMedical(site))
+                    {
+                        bool collected = !site.isHelmet ||
+                            (medicalHealth != null && medicalHealth.TryEquipHelmet());
+                        if (collected)
+                        {
+                            site.taken = true;
+                            if (!site.isHelmet) medkits++;
+                            RecycleMedicalCase(site);
+                            activeMedicalSites.RemoveAt(i);
+                            continue;
+                        }
+                    }
+                    if (refresh && distanceSq > 56f * 56f)
+                    {
+                        RecycleMedicalCase(site);
+                        activeMedicalSites.RemoveAt(i);
+                    }
+                    else i++;
                 }
-                if (distanceSq > 56f * 56f)
-                {
-                    RecycleMedicalCase(site);
-                }
-                else live++;
             }
-            if (live >= MaxMedicalVisuals) return;
-            for (int i = 0; i < medicalSites.Count && live < MaxMedicalVisuals; i++)
+
+            if (medicalSpawnCursor < 0) return;
+            int probes = 0;
+            while (medicalSpawnCursor < medicalSites.Count && activeMedicalSites.Count < MaxMedicalVisuals)
             {
-                var site = medicalSites[i];
-                if (site.taken || site.visual != null ||
-                    Time.unscaledTime < site.retry) continue;
+                var site = medicalSites[medicalSpawnCursor++];
+                if (site.taken || site.visual != null || now < site.retry) continue;
                 float dx = site.position.x - playerPosition.x;
                 float dz = site.position.z - playerPosition.z;
                 if (dx * dx + dz * dz > 42f * 42f) continue;
-                if (TrySpawnMedicalCase(site)) live++;
-                else site.retry = Time.unscaledTime + 5f;
+                if (TrySpawnMedicalCase(site)) activeMedicalSites.Add(site);
+                else site.retry = now + 5f;
+                // Spread floor/overlap queries and new hierarchies across
+                // rendered frames. Resume at the same authored slot order.
+                if (++probes == MaxMedicalSpawnProbesPerFrame &&
+                    medicalSpawnCursor < medicalSites.Count && activeMedicalSites.Count < MaxMedicalVisuals)
+                    return;
             }
+            medicalSpawnCursor = -1;
         }
 
         private void RecycleMedicalCase(MedicalSite site)

@@ -90,7 +90,12 @@ class OpenCombatHouseContracts(unittest.TestCase):
         self.assertIn("leaf.transform,leaf.GetComponent<BoxCollider>(),player,true,85f,root);", front)
         self.assertIn("private const float NearRadius = 3.2f;", panel)
         self.assertIn("transform.localRotation = Quaternion.Euler(0f, currentAngle, 0f);", panel)
-        self.assertIn("if (!shouldOpen && Mathf.Abs(currentAngle) > .01f && ClosingBlocked())", panel)
+        self.assertIn("if (!shouldOpen && Mathf.Abs(currentAngle) > .01f)", panel)
+        self.assertIn("if (now < nextBlockedDoorCheck) shouldOpen = true;", panel)
+        self.assertIn("else if (ClosingBlocked())", panel)
+        self.assertIn("nextBlockedDoorCheck = now + 0.125f;", panel)
+        self.assertLess(panel.index("else if (ClosingBlocked())"),
+                        panel.index("nextBlockedDoorCheck = now + 0.125f;"))
         self.assertIn("if (solid != null) solid.enabled = false;", panel)
         # Closed-leaf center must determine BOTH proximity and safe closing.
         # The hinge's X offset must not shift the activation volume.

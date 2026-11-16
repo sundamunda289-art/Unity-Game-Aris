@@ -676,8 +676,9 @@ def audit():
     assert "Resources.LoadAsync<GameObject>(item.authoredModelResource)" in vehicle
     assert "request.priority = -1;" in vehicle
     assert "fallback.priority = -1;" in vehicle
-    assert "int authoredStarts = 0;" in stream
-    assert "if (authoredStarts >= 1) break;" in stream
+    assert "int closestType = -1;" in stream
+    assert stream.count("StartAuthoredBodyPrewarm(") == 1
+    assert "closestDistanceSq = AuthoredPrewarmRadius * AuthoredPrewarmRadius" in stream
     assert "PumpAuthoredBodyLoads();" in stream
     assert "new List<" not in stream
 

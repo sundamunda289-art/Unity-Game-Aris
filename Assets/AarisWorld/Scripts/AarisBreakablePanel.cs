@@ -16,7 +16,7 @@ namespace Aaris.MapReview
         private Transform leaf, player, house;
         private Collider solid;
         private Vector3 doorwayCenter, worldDoorwayCenter;
-        private float nextFarCheck;
+        private float nextFarCheck, nextBlockedDoorCheck;
         private float health, lastNear = -999f, currentAngle, openDirection = 1f;
         private bool isDoor, destroyed;
         private int lastSwingDirection;
@@ -83,8 +83,18 @@ namespace Aaris.MapReview
             bool shouldOpen = near || Time.time - lastNear < 1.5f;
             // Never shut a moving solid door across a player, car or other
             // interactive collider. Saturated queries also fail open.
-            if (!shouldOpen && Mathf.Abs(currentAngle) > .01f && ClosingBlocked())
-                shouldOpen = true;
+            if (!shouldOpen && Mathf.Abs(currentAngle) > .01f)
+            {
+                float now = Time.time;
+                if (now < nextBlockedDoorCheck) shouldOpen = true;
+                else if (ClosingBlocked())
+                {
+                    // Recheck a known blocker at 8 Hz while holding the door
+                    // open. Continue checking every frame once it can close.
+                    nextBlockedDoorCheck = now + 0.125f;
+                    shouldOpen = true;
+                }
+            }
             float targetAngle = shouldOpen ? OpenAngle * openDirection : 0f;
             float next = Mathf.MoveTowards(currentAngle, targetAngle,
                 OpenSpeed * Time.deltaTime);
