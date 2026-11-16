@@ -31,6 +31,7 @@ namespace Aaris.MapReview
         private Vector3 standingCenter;
         private float standingHeight, standingStepOffset, nextAttack;
         private readonly Collider[] nearHits = new Collider[32];
+        private readonly RaycastHit[] punchSightHits = new RaycastHit[32];
         // A second reusable buffer handles dense forests/settlements without
         // allocating a Collider[] on every prone movement frame.
         private readonly Collider[] crowdedHits = new Collider[128];
@@ -90,6 +91,12 @@ namespace Aaris.MapReview
 
         public void SetFireHeld(bool held)
         {
+            // Late EventSystem callbacks must not re-arm disabled combat.
+            if (held && (!isActiveAndEnabled || Time.timeScale <= 0f))
+            {
+                CancelPendingCombatInput();
+                return;
+            }
             // Unity's EventSystem can process both Down and Up between combat
             // Updates on 10-20 FPS phones. Fire immediately on the new press:
             // otherwise a quick tap is discarded before Update can see it.
@@ -419,7 +426,9 @@ namespace Aaris.MapReview
                 // Non-damageable vegetation or cover must not absorb a punch.
                 // The separate raycast still prevents hitting through cover.
                 float candidateDistance = candidateOffset.sqrMagnitude;
-                if (candidateDistance < distance && FindPunchReceiver(collider) != null)
+                if (candidateDistance >= distance) continue;
+                IAarisDamageable receiver = FindPunchReceiver(collider);
+                if (receiver != null && HasPunchLineOfSight(origin, nearest, receiver, mask))
                 {
                     distance = candidateDistance;
                     best = i;
@@ -428,21 +437,35 @@ namespace Aaris.MapReview
             if (best < 0) return;
             Collider victim = punchHits[best];
             Vector3 point = victim.ClosestPoint(origin);
-            Vector3 delta = point - origin;
-            // A fist cannot hit a player through a wall or a solid rock.
-            if (delta.sqrMagnitude > 0.0025f &&
-                Physics.Raycast(origin, delta.normalized, out RaycastHit obstruction,
-                    delta.magnitude, mask, QueryTriggerInteraction.Ignore) &&
-                obstruction.collider != victim &&
-                !obstruction.collider.transform.IsChildOf(victim.transform) &&
-                // A skinned enemy may have sibling limb colliders. A same-
-                // receiver collider is not a wall between fist and target.
-                FindPunchReceiver(obstruction.collider) != FindPunchReceiver(victim))
-                return;
             // An impact sound is not a swing sound: trigger it only if the
             // punch actually passed overlap, reach and wall-occlusion tests.
             AarisAudioDirector.Punch(point);
             AarisEquippedGun.ApplyDamage(victim, punchDamage, gameObject);
+        }
+
+        private bool HasPunchLineOfSight(Vector3 origin, Vector3 point,
+            IAarisDamageable receiver, int mask)
+        {
+            Vector3 delta = point - origin;
+            float length = delta.magnitude;
+            if (length <= 0.05f) return true;
+            Ray ray = new Ray(origin, delta / length);
+            int count = Physics.RaycastNonAlloc(ray, punchSightHits, length,
+                mask, QueryTriggerInteraction.Ignore);
+            RaycastHit[] hits = punchSightHits;
+            if (count >= punchSightHits.Length)
+            {
+                hits = Physics.RaycastAll(ray, length, mask, QueryTriggerInteraction.Ignore);
+                count = hits.Length;
+            }
+            for (int i = 0; i < count; i++)
+            {
+                Collider c = hits[i].collider;
+                if (c == null || c.transform.IsChildOf(transform) ||
+                    FindPunchReceiver(c) == receiver) continue;
+                if (hits[i].distance < length - 0.002f) return false;
+            }
+            return true;
         }
 
         private void CancelPendingCombatInput()
