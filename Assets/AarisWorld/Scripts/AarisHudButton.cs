@@ -138,7 +138,7 @@ namespace Aaris.MapReview
             stalePointers.Clear();
         }
 
-        private static bool IsPointerPhysicallyHeld(int pointerId)
+        internal static bool IsPointerPhysicallyHeld(int pointerId)
         {
             if (pointerId == PointerInputModule.kMouseLeftId)
                 return Input.GetMouseButton(0);
