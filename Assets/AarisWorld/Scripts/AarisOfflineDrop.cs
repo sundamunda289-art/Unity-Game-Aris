@@ -503,9 +503,7 @@ namespace Aaris.MapReview
                     // ALT 0 over water is not a collider contact. Do not inject
                     // another 0.5 m downward unless a real walkable floor exists.
                     Ray probe = new Ray(transform.position + Vector3.up * 0.75f, Vector3.down);
-                    if (Physics.Raycast(probe, out RaycastHit floor, 1.60f,
-                            Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) &&
-                        floor.collider != null && !floor.collider.transform.IsChildOf(transform) &&
+                    if (TryFirstExternalLandingHit(probe, 1.60f, out RaycastHit floor) &&
                         floor.point.y >= SeaSurfaceHeight + 0.35f &&
                         floor.normal.y >= Mathf.Cos(capsule.slopeLimit * Mathf.Deg2Rad) &&
                         (capsule.Move(Vector3.down * 0.50f) & CollisionFlags.Below) != 0)
@@ -529,6 +527,30 @@ namespace Aaris.MapReview
             // below the ocean with a shore-clamped aerial camera.
             if (transform.position.y < SeaSurfaceHeight - 2f)
                 RecoverFromOceanFall();
+        }
+
+        private bool TryFirstExternalLandingHit(Ray ray, float distance, out RaycastHit floor)
+        {
+            floor = default;
+            int count = Physics.RaycastNonAlloc(ray, groundHits, distance,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            RaycastHit[] hits = groundHits;
+            if (count >= groundHits.Length)
+            {
+                hits = Physics.RaycastAll(ray, distance, Physics.DefaultRaycastLayers,
+                    QueryTriggerInteraction.Ignore);
+                count = hits.Length;
+            }
+            float nearest = float.PositiveInfinity;
+            for (int i = 0; i < count; i++)
+            {
+                Collider c = hits[i].collider;
+                if (c == null || c.transform.IsChildOf(transform) ||
+                    hits[i].distance >= nearest) continue;
+                nearest = hits[i].distance;
+                floor = hits[i];
+            }
+            return floor.collider != null;
         }
 
         private bool TryNativeTerrainTouchdown(Vector3 beforeMove)
