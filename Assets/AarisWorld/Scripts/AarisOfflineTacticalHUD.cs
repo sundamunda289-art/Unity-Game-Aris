@@ -44,6 +44,7 @@ namespace Aaris.MapReview
         private int medkits, shownMedkits = -1, shownSeconds = -1;
         private int shownHelmetDurability = -1;
         private bool healing;
+        private int healStartAttackSequence;
         private float healEnd, healthAtHealStart, nextMedicalScan;
         private static Material medcasePaint, medcrossPaint, helmetShellPaint, helmetTrimPaint;
         private AarisThirdPersonPlayer motor;
@@ -185,7 +186,8 @@ namespace Aaris.MapReview
 
         public void ThrowFrag()
         {
-            if (!enabled || fragGrenades <= 0 || motor == null || motor.AimCamera == null ||
+            if (!isActiveAndEnabled || !initialized || Time.timeScale <= 0f ||
+                (medicalHealth != null && medicalHealth.IsDead) || fragGrenades <= 0 || motor == null || motor.AimCamera == null ||
                 Time.time < nextThrow) return;
             // A throw is rare and irreversible: re-read late-added vehicle/drop
             // before consuming ammunition even inside the one-second poll window.
@@ -354,7 +356,8 @@ namespace Aaris.MapReview
         private void StartHealing()
         {
             RefreshOptionalComponents(true);
-            if (healing || medkits <= 0 || medicalHealth == null ||
+            if (!isActiveAndEnabled || !initialized || Time.timeScale <= 0f ||
+                healing || medkits <= 0 || medicalHealth == null ||
                 medicalHealth.IsDead || medicalHealth.CurrentHealth >=
                 medicalHealth.MaximumHealth - 0.5f ||
                 (drop != null && !drop.HasLanded) ||
@@ -362,6 +365,7 @@ namespace Aaris.MapReview
             healing = true;
             healEnd = Time.time + 3f;
             healthAtHealStart = medicalHealth.CurrentHealth;
+            healStartAttackSequence = medicalBattle != null ? medicalBattle.AttackSequence : 0;
             shownSeconds = -1;
         }
 
@@ -380,7 +384,8 @@ namespace Aaris.MapReview
             if (medicalHealth == null || medicalHealth.IsDead ||
                 medicalHealth.CurrentHealth + 0.001f < healthAtHealStart ||
                 new Vector2(velocity.x, velocity.z).sqrMagnitude > 0.04f ||
-                (medicalBattle != null && medicalBattle.FireHeld) ||
+                (medicalBattle != null && (medicalBattle.FireHeld ||
+                    medicalBattle.AttackSequence != healStartAttackSequence)) ||
                 (motor != null && motor.IsInAir))
             {
                 StopHealing();
@@ -654,10 +659,24 @@ namespace Aaris.MapReview
 
         private void LateUpdate() => RefreshSafeArea();
 
+        // End an interrupted channel without spending the medkit; Android
+        // may send either lifecycle callback when Home/notification UI opens.
+        private void OnApplicationPause(bool paused)
+        {
+            if (paused) StopHealing();
+        }
+
+        private void OnApplicationFocus(bool focused)
+        {
+            if (!focused) StopHealing();
+        }
+
         private void OnDisable()
         {
             StopHealing();
             if (wallTouch != null) wallTouch.CancelHold();
+            if (canvas != null) canvas.enabled = false;
+            if (raycaster != null) raycaster.enabled = false;
         }
 
         private void OnDestroy()
