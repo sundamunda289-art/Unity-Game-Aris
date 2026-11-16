@@ -222,7 +222,23 @@ def audit():
     assert "QualitySettings.streamingMipmapsMemoryBudget" in quality
     assert "memoryMB <= 2304 ? 160f : 224f" in quality
     assert "originalRenderScale = androidPipeline.renderScale;" in quality
-    # Map clarity must depend on physical display pixel load: a 720p phone
+    # Current product policy never lowers the authored URP render target.
+    # The legacy scaler remains compiled for a future explicit opt-in, while
+    # low-RAM shadow/foliage/mip controls stay active.
+    assert "private const bool PreserveNativeRenderScale = true;" in quality
+    quality_setup = quality[quality.index("private void ConfigureAndroidQuality()"):
+                            quality.index("private void TuneAndroidResolution(")]
+    native_guard = "if (!PreserveNativeRenderScale && adaptiveAndroidResolution)"
+    assert native_guard in quality_setup
+    assert quality_setup.index(native_guard) < quality_setup.index(
+        "androidPipeline.renderScale = Mathf.Min(originalRenderScale, initialScale);")
+    assert "if (!adaptiveAndroidResolution) return;" not in quality_setup
+    assert "lastAppliedRenderScale = originalRenderScale;" in quality_setup
+    assert "QualitySettings.streamingMipmapsMemoryBudget" in quality_setup
+    assert "androidPipeline.shadowDistance = appliedShadowDistance;" in quality_setup
+    assert "ConfigureLowMemoryVegetation();" in quality_setup
+    # Map clarity must depend on physical display pixel load only in the dormant
+    # legacy scaler, never in the active native-resolution policy: a 720p phone
     # needs fewer pixels than a 1080p phone, even with the same 2 GB RAM.
     assert "(long)Screen.width * Screen.height <= 1280L * 720L" in quality
     assert "Screen.width > 0 && Screen.height > 0" in quality
@@ -271,8 +287,6 @@ def audit():
     assert "current - 0.05f" in quality
     # A RAM-only eligibility gate misses entry GPUs even with 4 GB. However
     # unknown-RAM and stronger >3 GB devices must still skip adaptation.
-    quality_setup = quality[quality.index("private void ConfigureAndroidQuality()"):
-                            quality.index("private void TuneAndroidResolution(")]
     gate = "if (memoryMB <= 0 || (memoryMB > 3072 && !constrainedGraphics)) return;"
     assert gate in quality_setup
     assert quality_setup.index(gate) < quality_setup.index(
@@ -299,6 +313,15 @@ def audit():
     assert "Mathf.Abs(lastEffectiveTargetFps - effectiveFps) > 0.5f" in quality
     governor = quality[quality.index("private void TuneAndroidResolution("):
                        quality.index("private void Update()")]
+    assert "if (PreserveNativeRenderScale)" in governor
+    assert governor.index("if (PreserveNativeRenderScale)") < governor.index(
+        "float effectiveFps = EffectiveAndroidTargetFps(targetFps);")
+    native_short_circuit = governor[governor.index("if (PreserveNativeRenderScale)"):
+                                    governor.index("int targetFps = Application.targetFrameRate;")]
+    assert "sample.renderScale = androidPipeline.renderScale;" in native_short_circuit
+    assert "slowIntervals = steadyIntervals = 0;" in native_short_circuit
+    assert "return;" in native_short_circuit
+    assert "androidPipeline.renderScale =" not in native_short_circuit
     assert governor.index("float effectiveFps = EffectiveAndroidTargetFps(targetFps);") < governor.index(
         "Mathf.Abs(lastEffectiveTargetFps - effectiveFps) > 0.5f")
     assert governor.index("frameIndex = frameCount = 0;") < governor.index(
@@ -1014,7 +1037,7 @@ def audit():
     assert phase_writes == 31
 
     print("PASS: airborne support reuse, single motor, steady FOV writes, "
-          "bounded player/animation optional-component lookup, budgeted vehicle/loot streaming, legacy idle pose, collision-safe camera, idle-first pooled SFX, deadline-gated SFX, offscreen loot spin, audio/gloo hotpaths, refresh-aware pacing and adaptive Android quality contracts")
+          "bounded player/animation optional-component lookup, budgeted vehicle/loot streaming, legacy idle pose, collision-safe camera, idle-first pooled SFX, deadline-gated SFX, offscreen loot spin, audio/gloo hotpaths, refresh-aware pacing and native-resolution Android quality contracts")
     print("NOT TESTED: Unity compilation, live camera occlusion and device FPS.")
 
 
