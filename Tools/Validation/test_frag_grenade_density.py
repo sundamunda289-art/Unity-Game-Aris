@@ -86,6 +86,16 @@ class FragDensityContracts(unittest.TestCase):
         self.assertIn("if (hit.distance < length - 0.02f) return false;", body)
         self.assertNotIn("if (hits >= rays.Length) return false;", body)
 
+    def test_damageable_lookup_reuses_component_storage(self):
+        self.assertIn(
+            "private readonly List<MonoBehaviour> damageableScratch = new List<MonoBehaviour>(8);",
+            TEXT)
+        self.assertIn("private IAarisDamageable FindDamageable(Collider collider)", TEXT)
+        self.assertIn("damageableScratch.Clear();", TEXT)
+        self.assertIn("t.GetComponents(damageableScratch);", TEXT)
+        self.assertIn("i < damageableScratch.Count", TEXT)
+        self.assertNotIn("GetComponents<MonoBehaviour>()", TEXT)
+
     def test_single_damage_and_solid_cover_guards_preserved(self):
         self.assertIn("private readonly Dictionary<IAarisDamageable,", TEXT)
         self.assertIn("blastTargets.TryGetValue(target, out var previous)", TEXT)
