@@ -333,10 +333,20 @@ namespace Aaris.MapReview
             Vector3 center = new Vector3(site.x, y + half.y + 0.05f, site.z);
             int n = Physics.OverlapBoxNonAlloc(center, half, obstacles,
                 rotation, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            if (n >= obstacles.Length) return true;
+            Collider[] candidates = obstacles;
+            if (n >= obstacles.Length)
+            {
+                // NonAlloc saturation is not proof that a planned site is blocked:
+                // the first 96 unordered hits can all be terrain/low foundations
+                // that the filter below intentionally ignores. Expansion placement
+                // runs only during setup, so resolve the rare overflow completely.
+                candidates = Physics.OverlapBox(center, half, rotation,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                n = candidates.Length;
+            }
             for (int i = 0; i < n; i++)
             {
-                Collider collider = obstacles[i];
+                Collider collider = candidates[i];
                 if (collider == null || collider is TerrainCollider) continue;
                 // A low foundation/floor surface does not obstruct an upright house;
                 // walls, vehicles, rocks, existing structures and NPCs do.
