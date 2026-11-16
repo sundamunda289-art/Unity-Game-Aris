@@ -102,6 +102,13 @@ class OpenCombatHouseContracts(unittest.TestCase):
         self.assertIn("leaf.position : transform.position;", panel)
         self.assertIn("house.InverseTransformPoint(closedLeafCenter)", panel)
         self.assertIn("Vector3 middle = worldDoorwayCenter;", panel)
+        self.assertIn("private readonly Collider[] crowdedBlockers = new Collider[64];", panel)
+        self.assertIn("Collider[] candidates = blockers;", panel)
+        self.assertIn("candidates = crowdedBlockers;", panel)
+        self.assertIn("if (hits >= crowdedBlockers.Length)", panel)
+        self.assertIn("candidates = Physics.OverlapBox(middle, halfExtents,", panel)
+        self.assertIn("var hit = candidates[i];", panel)
+        self.assertNotIn("if (hits >= blockers.Length) return true;", panel)
 
     def test_openings_retain_walls_and_fit_player(self):
         src = MODULAR.read_text(encoding="utf-8")
