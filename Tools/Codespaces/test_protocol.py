@@ -26,15 +26,15 @@ assert 'WindZone[] mobileWindZones;' in (r/'Assets/AarisWorld/Scripts/AarisMobil
 vehicle=(r/'Assets/AarisWorld/Scripts/AarisVehicleMotor.cs').read_text()
 assert 'WheelCollider' in vehicle and 'WheelFrictionCurve' in vehicle
 combat=(r/'Assets/AarisWorld/Scripts/AarisBattleActions.cs').read_text()
-# C# CS0136: the inner per-hit loop cannot declare 'delta' when Punch()
-# later declares 'delta' for the final obstruction raycast.
+# Punch selection must check visibility before selecting the best receiver.
 assert combat.count('Vector3 candidateOffset = nearest - origin;') == 1
 assert 'Vector3 delta = nearest - origin;' not in combat
 assert 'Vector3 delta = point - origin;' in combat
 assert 'float candidateDistance = candidateOffset.sqrMagnitude;' in combat
 assert 'distance = candidateDistance;' in combat
-assert 'FindPunchReceiver(collider) != null' in combat
-assert 'Physics.Raycast(origin, delta.normalized' in combat
+assert 'receiver != null && HasPunchLineOfSight(origin, nearest, receiver, mask)' in combat
+assert 'Physics.RaycastNonAlloc(ray, punchSightHits, length,' in combat
+assert 'hits = Physics.RaycastAll(ray, length, mask, QueryTriggerInteraction.Ignore);' in combat
 assert manifest.get('com.unity.modules.physics')=='1.0.0'
 wf=(r/'.github/workflows/aaris-codespaces-control.yml').read_text()
 assert "github.event.comment.user.login == 'sundamunda289-art'" in wf
