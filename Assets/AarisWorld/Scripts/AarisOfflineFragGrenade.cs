@@ -17,6 +17,7 @@ namespace Aaris.MapReview
         private static PhysicsMaterial bounceMaterial;
         private readonly Collider[] overlaps = new Collider[96];
         private readonly RaycastHit[] rays = new RaycastHit[48];
+        private readonly List<MonoBehaviour> damageComponents = new List<MonoBehaviour>(8);
         private readonly Dictionary<IAarisDamageable, (float amount, Collider collider)> blastTargets =
             new Dictionary<IAarisDamageable, (float amount, Collider collider)>();
         private Rigidbody body;
@@ -223,15 +224,20 @@ namespace Aaris.MapReview
             return true;
         }
 
-        private static IAarisDamageable FindDamageable(Collider collider)
+        private IAarisDamageable FindDamageable(Collider collider)
         {
             for (Transform t = collider.transform; t != null; t = t.parent)
             {
-                var components = t.GetComponents<MonoBehaviour>();
-                for (int i = 0; i < components.Length; i++)
-                    if (components[i] is IAarisDamageable damageable)
+                damageComponents.Clear();
+                t.GetComponents(damageComponents);
+                for (int i = 0; i < damageComponents.Count; i++)
+                    if (damageComponents[i] is IAarisDamageable damageable)
+                    {
+                        damageComponents.Clear();
                         return damageable;
+                    }
             }
+            damageComponents.Clear();
             return null;
         }
     }
