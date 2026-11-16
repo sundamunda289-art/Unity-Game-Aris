@@ -274,6 +274,34 @@ def test():
     assert "OnApplicationPause(bool paused)" in hud
     assert "OnApplicationFocus(bool focused)" in hud
     assert "IPointerUpHandler" in hud and "IPointerDownHandler" in hud
+    # A missing PointerUp/Cancel must not leave throttle or steering latched.
+    arrow = hud.split("public sealed class AarisVehicleArrowButton", 1)[1].split(
+        "internal static class AarisVehicleGlyph", 1)[0]
+    assert "private readonly List<int> staleFingers = new List<int>(4);" in arrow
+    assert "e.button != PointerEventData.InputButton.Left" in arrow
+    assert "private void ReleasePointer(int pointerId)" in arrow
+    assert "private void LateUpdate()" in arrow
+    assert "StandaloneInputModule" in arrow
+    assert "PointerInputModule.kMouseLeftId" in arrow
+    assert "Input.touchCount" in arrow and "Input.GetTouch(i)" in arrow
+    assert "TouchPhase.Ended" in arrow and "TouchPhase.Canceled" in arrow
+    assert arrow.index("staleFingers.Add(pointerId);") < arrow.index(
+        "ReleasePointer(staleFingers[i]);")
+    assert arrow.index("ReleasePointer(staleFingers[i]);") < arrow.index(
+        "staleFingers.Clear();", arrow.index("ReleasePointer(staleFingers[i]);"))
+    # Model a disappeared finger: one live pointer remains pressed, a stale
+    # pointer is released, and the final disappeared pointer clears the axis.
+    held = {7, 11}
+    physical = {11}
+    stale = [pointer for pointer in held if pointer not in physical]
+    for pointer in stale:
+        held.remove(pointer)
+    assert held == {11}
+    physical.clear()
+    stale = [pointer for pointer in held if pointer not in physical]
+    for pointer in stale:
+        held.remove(pointer)
+    assert not held
     assert "AARIS_DRIVE_TELEMETRY" in motor
     assert "Time.time + 3f" in motor
 
