@@ -64,6 +64,15 @@ def audit() -> None:
     assert damage.index("if (current <= 0f) dead = true;") < damage.index(
         "HealthChanged?.Invoke(this);"
     ) < damage.index("Died?.Invoke(this);")
+    assert "bool fatal = current <= 0f;" in damage
+    assert damage.index("bool fatal = current <= 0f;") < damage.index("HealthChanged?.Invoke(this);")
+    assert "if (!fatal) return;" in damage
+    assert "if (!dead) return;" not in damage
+    wall_health = source("AarisOfflineGlooWall.cs").split("public sealed class AarisGlooWallHealth", 1)[1].split("internal static class AarisGlooWallVisuals", 1)[0]
+    assert "if (Time.time >= expiry) { Retire(); return; }" in wall_health
+    assert "if (health <= 0f) Retire();" in wall_health
+    retire = wall_health.split("private void Retire()", 1)[1]
+    assert retire.index("initialized = false;") < retire.index("gameObject.SetActive(false);") < retire.index("Destroy(gameObject);")
     assert "Mathf.Min(helmetDurability, amount * helmetProtection)" in health
     assert "medicalHealth.TryEquipHelmet()" in tactical
     assert "if (!site.isHelmet) medkits++;" in tactical
