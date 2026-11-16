@@ -338,7 +338,7 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (!initialized) return;
-            if (Time.time >= expiry) { Destroy(gameObject); return; }
+            if (Time.time >= expiry) { Retire(); return; }
             if (reveal < 1f)
             {
                 reveal = Mathf.Min(1f, reveal + Time.deltaTime / 0.12f);
@@ -354,7 +354,18 @@ namespace Aaris.MapReview
             // Preserve the authored ice and frost submaterials even after damage.
             // Damage shifts each existing layer independently toward cracked ice.
             AarisGlooWallVisuals.TintDamage(renderers, health / maximum);
-            if (health <= 0f) Destroy(gameObject);
+            if (health <= 0f) Retire();
+        }
+
+        private void Retire()
+        {
+            // Destroy is deferred until the end of the frame. Remove physical
+            // cover immediately, so another same-frame shot or blast does not
+            // collide with an already shattered/expired wall.
+            initialized = false;
+            health = 0f;
+            gameObject.SetActive(false);
+            Destroy(gameObject);
         }
     }
 
