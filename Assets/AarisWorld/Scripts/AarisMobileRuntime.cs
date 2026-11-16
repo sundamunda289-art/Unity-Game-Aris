@@ -18,7 +18,7 @@ namespace Aaris.MapReview
         [SerializeField] private Terrain[] terrains;
         [SerializeField] private bool releaseTerrainPaintCpuCopies = false;
         [SerializeField] private int targetFrameRate = 60;
-        [Header("Android-only: conservative URP resolution adaptation")]
+        [Header("Android runtime performance (native render resolution locked)")]
         [SerializeField] private bool adaptiveAndroidResolution = true;
         [SerializeField, Range(0.65f, 1f)] private float minimumAndroidRenderScale = 0.72f;
         private readonly float[] frameTimes = new float[180];
@@ -37,6 +37,10 @@ namespace Aaris.MapReview
 #if UNITY_ANDROID && !UNITY_EDITOR
         private long androidPssKB = -1;
         private Task<string> pendingLogWrite;
+        // Product policy: preserve the authored URP render target resolution.
+        // Keep the legacy adaptive governor compiled for diagnostics/future opt-in,
+        // but never trade image sharpness for FPS in the current battle-royale build.
+        private const bool PreserveNativeRenderScale = true;
         private UniversalRenderPipelineAsset androidPipeline;
         private float originalRenderScale = 1f;
         private float lastAppliedRenderScale = 1f;
@@ -180,7 +184,9 @@ namespace Aaris.MapReview
         // materials stay untouched; only this Android player's runtime quality changes.
         private void ConfigureAndroidQuality()
         {
-            if (!adaptiveAndroidResolution) return;
+            // Non-resolution low-RAM controls (mip residency, shadow range,
+            // foliage distance and wind) remain valuable even when dynamic
+            // render-scale adaptation is disabled by the native-quality policy.
             // RAM is not a GPU score: inexpensive Mali-G52 phones can have
             // 4 GB and still struggle with thousands of windy SpeedTrees.
             // Enable the constrained-GPU path without blurring stronger GPUs.
@@ -190,25 +196,24 @@ namespace Aaris.MapReview
             androidPipeline = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
             if (androidPipeline == null) return;
             originalRenderScale = androidPipeline.renderScale;
+            lastAppliedRenderScale = originalRenderScale;
             lastTargetFps = Application.targetFrameRate;
             lastEffectiveTargetFps = EffectiveAndroidTargetFps(lastTargetFps);
-            // Pixel cost depends on the actual display size, not RAM alone.
-            // On <=720p screens, the fixed low-RAM scale unnecessarily blurs
-            // nearby terrain, foliage and building silhouettes. Restore some
-            // native detail without raising the quality of 1080p+ devices.
-            // The existing sustained frame-time governor can still lower this
-            // scale if the GPU cannot keep up.
-            bool compactDisplay = Screen.width > 0 && Screen.height > 0 &&
-                (long)Screen.width * Screen.height <= 1280L * 720L;
-            float initialScale = constrainedGraphics
-                ? (compactDisplay ? 0.92f : 0.85f)
-                : (compactDisplay ? 0.96f : 0.92f);
-            // The configured quality floor applies from the very first frame,
-            // not just after the adaptive governor has sampled gameplay.
-            initialScale = Mathf.Max(initialScale,
-                Mathf.Clamp(minimumAndroidRenderScale, 0.65f, 1f));
-            androidPipeline.renderScale = Mathf.Min(originalRenderScale, initialScale);
-            lastAppliedRenderScale = androidPipeline.renderScale;
+            // Keep the older display-aware scaler available for a future,
+            // explicitly reviewed opt-in. The current game preserves native
+            // render resolution; GPU relief comes from less visible work below.
+            if (!PreserveNativeRenderScale && adaptiveAndroidResolution)
+            {
+                bool compactDisplay = Screen.width > 0 && Screen.height > 0 &&
+                    (long)Screen.width * Screen.height <= 1280L * 720L;
+                float initialScale = constrainedGraphics
+                    ? (compactDisplay ? 0.92f : 0.85f)
+                    : (compactDisplay ? 0.96f : 0.92f);
+                initialScale = Mathf.Max(initialScale,
+                    Mathf.Clamp(minimumAndroidRenderScale, 0.65f, 1f));
+                androidPipeline.renderScale = Mathf.Min(originalRenderScale, initialScale);
+                lastAppliedRenderScale = androidPipeline.renderScale;
+            }
             // Mipmap streaming was already enabled by the saved QualitySettings.
             // Bound its texture residency on low-RAM phones without modifying
             // the four native TerrainData control textures or their readability.
@@ -386,6 +391,14 @@ namespace Aaris.MapReview
         private void TuneAndroidResolution(Sample sample)
         {
             if (androidPipeline == null || !adaptiveAndroidResolution) return;
+            if (PreserveNativeRenderScale)
+            {
+                // Still report the real scale, but never blur a sustained GPU
+                // miss. Shadow/foliage/instancing controls carry the low-end load.
+                sample.renderScale = androidPipeline.renderScale;
+                slowIntervals = steadyIntervals = 0;
+                return;
+            }
             int targetFps = Application.targetFrameRate;
             if (targetFps <= 0) return;
             float effectiveFps = EffectiveAndroidTargetFps(targetFps);
