@@ -307,6 +307,11 @@ class ExpansionIntegrity(unittest.TestCase):
         self.assertIn("FootprintHalfExtents(site, VegetationMargin", script)
         self.assertIn("float cos = Mathf.Abs(Mathf.Cos(yaw))", script)
         self.assertIn("float sin = Mathf.Abs(Mathf.Sin(yaw))", script)
+        self.assertIn("Collider[] candidates = obstacles;", script)
+        self.assertIn("if (n >= obstacles.Length)", script)
+        self.assertIn("candidates = Physics.OverlapBox(center, half, rotation,", script)
+        self.assertIn("Collider collider = candidates[i];", script)
+        self.assertNotIn("if (n >= obstacles.Length) return true;", script)
         self.assertTrue((ROOT / "Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity").is_file())
 
 
