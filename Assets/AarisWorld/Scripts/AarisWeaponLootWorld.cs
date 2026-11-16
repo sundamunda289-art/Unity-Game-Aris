@@ -116,7 +116,7 @@ namespace Aaris.MapReview
 
         // Pre-stream world meshes during the last part of the descent, but
         // leave all inventory transactions with the on-foot gameplay owner.
-        private bool CanInteractWithLoot => inventory != null && inventory.isActiveAndEnabled &&
+        private bool CanInteractWithLoot => isActiveAndEnabled && inventory != null && inventory.isActiveAndEnabled &&
             (drop == null || !drop.isActiveAndEnabled || drop.HasLanded);
 
         /// <summary>Explicit pickup replaces the single carried gun.</summary>
