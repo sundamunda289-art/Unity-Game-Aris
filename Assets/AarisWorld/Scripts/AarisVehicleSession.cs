@@ -42,8 +42,11 @@ namespace Aaris.MapReview
         public bool IsDriving => car != null;
         // Hide DRIVE for overturned, still-moving or unsupported vehicles.
         // The final authority remains AarisVehicleMotor.TryTakeDriver.
-        public bool CanEnter => nearbyCar != null && nearbyCar.IsSafeToExit &&
-            !IsDriving && footMotor != null && footMotor.isActiveAndEnabled;
+        public bool CanEnter => isActiveAndEnabled && Time.timeScale > 0f &&
+            nearbyCar != null && nearbyCar.IsSafeToExit && !IsDriving &&
+            footMotor != null && footMotor.isActiveAndEnabled &&
+            capsule != null && capsule.enabled && capsule.isGrounded &&
+            (actions == null || actions.Stance != AarisBattleActions.PlayerStance.Prone);
         public AarisVehicleMotor DrivenCar => car;
 
         public void Configure(AarisVehicleWorld vehicleWorld, AarisThirdPersonPlayer player)
@@ -62,6 +65,7 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (world == null || footMotor == null) return;
+            if (Time.timeScale <= 0f) { ClearHeldDrivingInput(); return; }
             if (!IsDriving && !footMotor.isActiveAndEnabled)
             {
                 nearbyCar = null;
@@ -96,6 +100,7 @@ namespace Aaris.MapReview
 
         public void SetSteering(float move, float steer)
         {
+            if (!isActiveAndEnabled || Time.timeScale <= 0f || !IsDriving) return;
             // Public touch API may be called by UI or automation; never keep
             // non-finite values in a held virtual throttle/steering state.
             if (float.IsNaN(move) || float.IsInfinity(move)) move = 0f;
@@ -105,10 +110,13 @@ namespace Aaris.MapReview
             if (car != null) car.SetInput(touchMove, touchSteer);
         }
 
-        public bool TryEnterOrExit() => IsDriving ? TryExit() : TryEnter();
+        public bool TryEnterOrExit() => isActiveAndEnabled && Time.timeScale > 0f &&
+            (IsDriving ? TryExit() : TryEnter());
 
         private bool TryEnter()
         {
+            // Resolve an optional stance component before the final boarding gate.
+            if (actions == null) actions = GetComponent<AarisBattleActions>();
             if (!CanEnter || capsule == null || followCamera == null) return false;
             if ((nearbyCar.transform.position - transform.position).sqrMagnitude > 16f)
                 return false;

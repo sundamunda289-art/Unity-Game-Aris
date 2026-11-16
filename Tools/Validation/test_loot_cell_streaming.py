@@ -47,6 +47,40 @@ class LootGridRegression(unittest.TestCase):
         self.assertIn("drop != null && drop.IsRidingAircraft", colliders)
         self.assertNotIn("ShouldDeferGroundLoot", colliders)
 
+    def test_gliding_prestream_does_not_authorize_inventory_transactions(self):
+        guard = "private bool CanInteractWithLoot => isActiveAndEnabled && inventory != null && inventory.isActiveAndEnabled &&"
+        self.assertIn(guard, SOURCE)
+        self.assertIn("(drop == null || !drop.isActiveAndEnabled || drop.HasLanded);", SOURCE)
+        request_start = SOURCE.index("public void RequestPickup()")
+        request = SOURCE[request_start:SOURCE.index("[RuntimeInitializeOnLoadMethod", request_start)]
+        self.assertLess(request.index("if (!CanInteractWithLoot) return;"), request.index("requestPickupUntil ="))
+        take = SOURCE[SOURCE.index("private bool TryTake("):SOURCE.index("private void Update()")]
+        self.assertLess(take.index("!CanInteractWithLoot"), take.index("pickup.TryReserve()"))
+        drop = SOURCE[SOURCE.index("public bool TryDropEquipped()"):SOURCE.index("private bool IsBlockedDrop(")]
+        self.assertLess(drop.index("!CanInteractWithLoot"), drop.index("!TryFindDropSpot("))
+        update = SOURCE[SOURCE.index("private void Update()"):SOURCE.index("private bool RefreshPickups(")]
+        self.assertIn("requestPickupUntil = 0f;", update)
+        self.assertIn("HasPickupInRange = false;", update)
+        self.assertIn("StreamNearby(playerPosition, now)", update)
+        refresh = SOURCE[SOURCE.index("private bool RefreshPickups("):SOURCE.index("private bool StreamNearby(")]
+        self.assertIn("bool explicitPickup = canInteract && now < requestPickupUntil;", refresh)
+        self.assertIn("if (canInteract && d2 <= bestDistance", refresh)
+        starter = SOURCE[SOURCE.index("private void EnsureStarterLoot("):SOURCE.index("private void OnDisable()")]
+        self.assertIn("if (!CanInteractWithLoot || starterLootSettled", starter)
+        disable = SOURCE[SOURCE.index("private void OnDisable()"):SOURCE.index("private bool IsCurrentlyActive(")]
+        for clause in ("requestPickupUntil = 0f;", "HasPickupInRange = false;", "nextRefresh = 0f;"):
+            self.assertIn(clause, disable)
+        # State contract: a disabled drop is recoverable on foot, whereas a
+        # live plane/freefall/glide cannot acquire or drop a weapon. A disabled
+        # inventory/world (vehicle or defeat) never interacts.
+        for world_enabled in (False, True):
+            for inventory_enabled in (False, True):
+                for phase in ("no_drop", "disabled", "plane", "freefall", "glide", "landing", "landed"):
+                    active_drop = phase in ("plane", "freefall", "glide", "landing", "landed")
+                    allowed = world_enabled and inventory_enabled and (not active_drop or phase == "landed")
+                    expected = world_enabled and inventory_enabled and phase in ("no_drop", "disabled", "landed")
+                    self.assertEqual(allowed, expected)
+
     def test_far_resolved_floor_is_rejected_before_prefab_instantiation(self):
         authored = SOURCE[SOURCE.index("foreach (int i in nearbyCandidateIndices)"):
                           SOURCE.index("private void EnsureStarterLoot(")]

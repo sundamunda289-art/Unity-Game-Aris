@@ -239,8 +239,77 @@ def audit() -> None:
     assert "if (drop == null) drop = GetComponent<AarisOfflineDrop>();" in refresh_body
     assert "if (vehicle == null) vehicle = GetComponent<AarisVehicleSession>();" in refresh_body
     assert throw_body.index("RefreshOptionalComponents(true);") < throw_body.index(
-        "if ((drop != null && !drop.HasLanded)"
+        "if (!IsOnFoot) return;"
     )
+    tactical_gate = tactical.split("private bool IsOnFoot =>", 1)[1].split("private void Update()", 1)[0]
+    for clause in ("motor.isActiveAndEnabled",
+                   "drop == null || !drop.isActiveAndEnabled || drop.HasLanded",
+                   "vehicle == null || !vehicle.IsDriving"):
+        assert clause in tactical_gate
+    assert "bool onFoot = IsOnFoot;" in update_body
+    assert "if (!onFoot || Time.timeScale <= 0f)" in update_body
+    assert "if (!isActiveAndEnabled || Time.timeScale <= 0f || !IsOnFoot ||" in tactical
+    tactical_disable = tactical.split("private void OnDisable()\n", 1)[1].split("private void OnDestroy()", 1)[0]
+    assert "canvas.enabled = false" in tactical_disable and "raycaster.enabled = false" in tactical_disable
+
+    # Cycle 1: input APIs, rather than only an invisible canvas, must reject
+    # flight/vehicle/defeat/paused actions. Transactions used by scene QA
+    # remain separate from player-facing commands.
+    inventory_guard = source("AarisWeaponInventory.cs")
+    assert "private bool CanAcceptWeaponInput => isActiveAndEnabled && Time.timeScale > 0f &&" in inventory_guard
+    assert "motor != null && motor.isActiveAndEnabled;" in inventory_guard
+    for signature in ("public void RequestPickup()", "public bool DropCurrent()", "public bool Reload()",
+                      "public bool ToggleFists()", "public bool SwapWeapons()", "public void ToggleAim()",
+                      "private void Update()"):
+        method = inventory_guard.split(signature, 1)[1][:240]
+        assert "CanAcceptWeaponInput" in method, signature
+
+    # Cycle 3: revalidate control ownership before performing a release raycast;
+    # disabled optional flight components must not permanently disable cover.
+    wall_guard = source("AarisOfflineGlooWall.cs")
+    wall_can_use = wall_guard.split("public bool CanUse", 1)[1].split("private void RefreshOptionalComponents", 1)[0]
+    assert "Time.timeScale <= 0f || motor == null || !motor.isActiveAndEnabled" in wall_can_use
+    assert "drop == null || !drop.isActiveAndEnabled || drop.HasLanded" in wall_can_use
+    wall_release = wall_guard.split("public void ReleaseAndDeploy()", 1)[1].split("private int CompleteRayHits(", 1)[0]
+    assert wall_release.index("RefreshOptionalComponents(true)") < wall_release.index("if (!CanUse) { CancelAim(); return; }") < wall_release.index("UpdatePlacement();")
+
+    # Cycle 4: a jump or prone footprint is not a safe place to board a
+    # vehicle, and paused/disabled sessions cannot acquire control.
+    vehicle_guard = source("AarisVehicleSession.cs")
+    available = vehicle_guard.split("public bool CanEnter", 1)[1].split("public AarisVehicleMotor DrivenCar", 1)[0]
+    for clause in ("isActiveAndEnabled", "Time.timeScale > 0f", "capsule.enabled && capsule.isGrounded",
+                   "actions.Stance != AarisBattleActions.PlayerStance.Prone"):
+        assert clause in available
+    assert "if (!isActiveAndEnabled || Time.timeScale <= 0f || !IsDriving) return;" in vehicle_guard
+    assert "public bool TryEnterOrExit() => isActiveAndEnabled && Time.timeScale > 0f" in vehicle_guard
+
+    # Cycle 5: reject a stale Fire down before it can set a pending shot/punch.
+    combat_guard = source("AarisBattleActions.cs")
+    fire = combat_guard.split("public void SetFireHeld(bool held)", 1)[1].split("public bool ToggleCrouch()", 1)[0]
+    assert fire.index("if (!isActiveAndEnabled || Time.timeScale <= 0f)") < fire.index("fireHeld = held;")
+    assert fire.index("CancelPendingCombatInput();") < fire.index("semiShotQueued = true;")
+    assert "if (Time.timeScale <= 0f) { CancelPendingCombatInput(); return; }" in combat_guard
+
+    # Cycle 6: requests use unscaled time; invalidate them on pause/focus
+    # interruption so an old tap cannot collect a new weapon after resume.
+    loot_guard = source("AarisWeaponLootWorld.cs")
+    assert "Time.timeScale > 0f && (drop == null || !drop.isActiveAndEnabled || drop.HasLanded);" in loot_guard
+    loot_update = loot_guard.split("private void Update()", 1)[1].split("private bool RefreshPickups(", 1)[0]
+    assert loot_update.index("if (Time.timeScale <= 0f)") < loot_update.index("RefreshPickups(playerPosition")
+    assert "if (paused) requestPickupUntil = 0f;" in loot_guard
+    assert "if (!focused) requestPickupUntil = 0f;" in loot_guard
+
+    # Model all independent authority input states, including optional/failed
+    # flight and transitions. This is a static contract, not Unity PlayMode.
+    for active in (False, True):
+        for running in (False, True):
+            for motor_active in (False, True):
+                for phase in ("absent", "disabled", "plane", "freefall", "glide", "landed"):
+                    for driving in (False, True):
+                        phase_ok = phase in ("absent", "disabled", "landed")
+                        tactical_allowed = active and running and motor_active and phase_ok and not driving
+                        expected = not (not active or not running or not motor_active or driving or not phase_ok)
+                        assert tactical_allowed == expected
     assert throw_body.index("Time.time < nextThrow") < throw_body.index(
         "RefreshOptionalComponents(true);"
     )
