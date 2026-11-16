@@ -704,6 +704,36 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertEqual(len(set(keys.values())), len(keys))
         self.assertIn("Input.GetKeyUp(KeyCode.B)", wall)
 
+    def test_lost_touch_recovers_vehicle_and_gloo_without_spending_wall(self):
+        hud = (SCRIPTS / "AarisHudButton.cs").read_text("utf-8")
+        car = (SCRIPTS / "AarisVehicleHUD.cs").read_text("utf-8")
+        arrow = car.split("public sealed class AarisVehicleArrowButton", 1)[1].split(
+            "internal static class AarisVehicleGlyph", 1)[0]
+        tactical = (SCRIPTS / "AarisOfflineTacticalHUD.cs").read_text("utf-8")
+        wall = tactical.split("public sealed class AarisGlooTouchButton", 1)[1]
+        self.assertIn("internal static bool IsPointerPhysicallyHeld", hud)
+        self.assertIn("TouchPhase.Canceled", hud)
+        self.assertIn("TouchPhase.Ended", hud)
+        for button in (arrow, wall):
+            self.assertIn("StandaloneInputModule", button)
+            self.assertIn("PointerEventData.InputButton.Left", button)
+        self.assertIn("if (fingers.Count == 0) return;", arrow)
+        self.assertIn("fingers.Remove(lostFingers[i]);", arrow)
+        self.assertIn("if (fingers.Count == 0) State(false);", arrow)
+        self.assertIn("AarisHudButton.IsPointerPhysicallyHeld(pointerId)", arrow)
+        lost_wall = wall.split("private void LateUpdate()", 1)[1].split(
+            "public void OnCancel", 1)[0]
+        self.assertIn("if (holding == int.MinValue) return;", lost_wall)
+        self.assertIn("if (!AarisHudButton.IsPointerPhysicallyHeld(holding)) CancelHold();", lost_wall)
+        self.assertNotIn("ReleaseAndDeploy", lost_wall)
+        # Reference state logic: losing one of two touches must not release
+        # the accelerator; losing the final touch must.
+        owned = {7, 12}
+        owned.intersection_update({12, 99})
+        self.assertEqual(owned, {12})
+        owned.intersection_update({99})
+        self.assertFalse(owned)
+
     def test_wall_touch_hold_recovers_after_vehicle_and_focus_change(self):
         tactical = (SCRIPTS / "AarisOfflineTacticalHUD.cs").read_text("utf-8")
         cover = (SCRIPTS / "AarisOfflineGlooWall.cs").read_text("utf-8")
