@@ -935,7 +935,8 @@ def audit():
     assert refresh.index("if (unloaded >= MaximumUnloadsPerRefresh)") < refresh.index("Destroy(pickup.gameObject);")
     assert "unloaded++;" in refresh
     assert refresh.count("Destroy(pickup.gameObject);") == 1
-    assert "if (d2 <= bestDistance && !IsBlockedDrop(pickup)" in refresh
+    assert "if (canInteract && d2 <= bestDistance && !IsBlockedDrop(pickup)" in refresh
+    assert "bool canInteract = CanInteractWithLoot;" in refresh
     assert "if (record.visible != null) continue;" in loot
     for fps in (15, 20, 30, 60, 90, 120):
         remaining, next_poll, maximum_burst = 40, 0.0, 0
