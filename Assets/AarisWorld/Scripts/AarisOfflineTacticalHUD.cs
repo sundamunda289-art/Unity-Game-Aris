@@ -115,24 +115,24 @@ namespace Aaris.MapReview
             if (vehicle == null) vehicle = GetComponent<AarisVehicleSession>();
         }
 
+        private bool IsOnFoot => motor != null && motor.isActiveAndEnabled &&
+            (drop == null || !drop.isActiveAndEnabled || drop.HasLanded) &&
+            (vehicle == null || !vehicle.IsDriving);
+
         private void Update()
         {
             if (!initialized) return;
             RefreshOptionalComponents();
-            bool onFoot = (drop == null || drop.HasLanded) &&
-                (vehicle == null || !vehicle.IsDriving);
-            if (canvas != null && canvas.enabled != onFoot)
-            {
-                canvas.enabled = onFoot;
-                raycaster.enabled = onFoot;
-            }
-            if (!onFoot)
+            bool onFoot = IsOnFoot;
+            if (canvas != null && canvas.enabled != onFoot) canvas.enabled = onFoot;
+            if (raycaster != null && raycaster.enabled != onFoot) raycaster.enabled = onFoot;
+            if (!onFoot || Time.timeScale <= 0f)
             {
                 StopHealing();
                 // Canvas.enabled=false does not invoke the touch button's OnDisable.
                 // Clear its pointer ID so re-entering on-foot mode never locks WALL.
                 if (wallTouch != null) wallTouch.CancelHold();
-                else if (gloo.Aiming) gloo.CancelAim();
+                else if (gloo != null && gloo.Aiming) gloo.CancelAim();
                 return;
             }
             if (Input.GetKeyDown(KeyCode.Q)) ThrowFrag();
@@ -189,13 +189,12 @@ namespace Aaris.MapReview
 
         public void ThrowFrag()
         {
-            if (!enabled || fragGrenades <= 0 || motor == null || motor.AimCamera == null ||
+            if (!isActiveAndEnabled || Time.timeScale <= 0f || fragGrenades <= 0 || motor == null || motor.AimCamera == null ||
                 Time.time < nextThrow) return;
             // A throw is rare and irreversible: re-read late-added vehicle/drop
             // before consuming ammunition even inside the one-second poll window.
             RefreshOptionalComponents(true);
-            if ((drop != null && !drop.HasLanded) ||
-                (vehicle != null && vehicle.IsDriving)) return;
+            if (!IsOnFoot) return;
             Camera aim = motor.AimCamera;
             Vector3 forward = aim.transform.forward.normalized;
             Vector3 flat = Vector3.ProjectOnPlane(forward, Vector3.up).normalized;
@@ -356,11 +355,10 @@ namespace Aaris.MapReview
         private void StartHealing()
         {
             RefreshOptionalComponents(true);
-            if (healing || medkits <= 0 || medicalHealth == null ||
+            if (!isActiveAndEnabled || Time.timeScale <= 0f || !IsOnFoot ||
+                healing || medkits <= 0 || medicalHealth == null ||
                 medicalHealth.IsDead || medicalHealth.CurrentHealth >=
-                medicalHealth.MaximumHealth - 0.5f ||
-                (drop != null && !drop.HasLanded) ||
-                (vehicle != null && vehicle.IsDriving)) return;
+                medicalHealth.MaximumHealth - 0.5f) return;
             healing = true;
             healEnd = Time.time + 3f;
             healthAtHealStart = medicalHealth.CurrentHealth;
@@ -691,6 +689,8 @@ namespace Aaris.MapReview
         {
             StopHealing();
             if (wallTouch != null) wallTouch.CancelHold();
+            if (canvas != null) canvas.enabled = false;
+            if (raycaster != null) raycaster.enabled = false;
         }
 
         private void OnDestroy()
