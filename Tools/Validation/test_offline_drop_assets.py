@@ -550,7 +550,12 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("if (!shouldOpen && Mathf.Abs(currentAngle) > .01f)", door)
         self.assertIn("else if (ClosingBlocked())", door)
         self.assertIn("Physics.OverlapBoxNonAlloc", door)
-        self.assertIn("if (hits >= blockers.Length) return true;", door)
+        self.assertIn("if (hits >= blockers.Length)", door)
+        self.assertIn("candidates = crowdedBlockers;", door)
+        self.assertIn("if (hits >= crowdedBlockers.Length)", door)
+        self.assertIn("candidates = Physics.OverlapBox(middle, halfExtents,", door)
+        self.assertIn("var hit = candidates[i];", door)
+        self.assertNotIn("if (hits >= blockers.Length) return true;", door)
         self.assertIn("QueryTriggerInteraction.Ignore", door)
 
     def test_saved_loot_and_car_resources_have_full_map_coverage(self):
