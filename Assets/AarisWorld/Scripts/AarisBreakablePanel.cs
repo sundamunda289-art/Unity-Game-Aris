@@ -21,6 +21,7 @@ namespace Aaris.MapReview
         private bool isDoor, destroyed;
         private int lastSwingDirection;
         private readonly Collider[] blockers = new Collider[16];
+        private readonly Collider[] crowdedBlockers = new Collider[64];
 
         public bool IsBroken => destroyed;
         public bool IsOpen => isDoor && (destroyed || Mathf.Abs(currentAngle) > 80f);
@@ -120,13 +121,33 @@ namespace Aaris.MapReview
             // Check the exact doorway that triggered the swing. The panel
             // collider still rotates with its hinge and is never disabled.
             Vector3 middle = worldDoorwayCenter;
-            int hits = Physics.OverlapBoxNonAlloc(middle, new Vector3(.9f, 1.20f, .95f),
+            Vector3 halfExtents = new Vector3(.9f, 1.20f, .95f);
+            int hits = Physics.OverlapBoxNonAlloc(middle, halfExtents,
                 blockers, house.rotation, Physics.DefaultRaycastLayers,
                 QueryTriggerInteraction.Ignore);
-            if (hits >= blockers.Length) return true;
+            Collider[] candidates = blockers;
+            if (hits >= blockers.Length)
+            {
+                // A full NonAlloc buffer is unordered and incomplete. Dense
+                // foliage/house colliders must not keep a clear door open forever
+                // merely because harmless terrain/self contacts filled 16 slots.
+                candidates = crowdedBlockers;
+                hits = Physics.OverlapBoxNonAlloc(middle, halfExtents,
+                    crowdedBlockers, house.rotation, Physics.DefaultRaycastLayers,
+                    QueryTriggerInteraction.Ignore);
+                if (hits >= crowdedBlockers.Length)
+                {
+                    // Closing safety is an infrequent 8 Hz query. On extreme
+                    // saturation, inspect the complete set before deciding.
+                    candidates = Physics.OverlapBox(middle, halfExtents,
+                        house.rotation, Physics.DefaultRaycastLayers,
+                        QueryTriggerInteraction.Ignore);
+                    hits = candidates.Length;
+                }
+            }
             for (int i = 0; i < hits; i++)
             {
-                var hit = blockers[i];
+                var hit = candidates[i];
                 if (hit == null || hit is TerrainCollider || hit.transform.IsChildOf(house))
                     continue;
                 return true;
