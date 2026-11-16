@@ -19,6 +19,7 @@ namespace Aaris.MapReview
         private readonly RaycastHit[] rays = new RaycastHit[48];
         private readonly Dictionary<IAarisDamageable, (float amount, Collider collider)> blastTargets =
             new Dictionary<IAarisDamageable, (float amount, Collider collider)>();
+        private readonly List<MonoBehaviour> damageableScratch = new List<MonoBehaviour>(8);
         private Rigidbody body;
         private GameObject owner;
         private float detonateAt, lastBounceAudio = -10f;
@@ -223,13 +224,17 @@ namespace Aaris.MapReview
             return true;
         }
 
-        private static IAarisDamageable FindDamageable(Collider collider)
+        private IAarisDamageable FindDamageable(Collider collider)
         {
             for (Transform t = collider.transform; t != null; t = t.parent)
             {
-                var components = t.GetComponents<MonoBehaviour>();
-                for (int i = 0; i < components.Length; i++)
-                    if (components[i] is IAarisDamageable damageable)
+                // Detonation can inspect dozens of overlapping colliders. Reuse
+                // one list instead of allocating a MonoBehaviour[] per hierarchy
+                // level, keeping the rare explosion path GC-stable on mobile.
+                damageableScratch.Clear();
+                t.GetComponents(damageableScratch);
+                for (int i = 0; i < damageableScratch.Count; i++)
+                    if (damageableScratch[i] is IAarisDamageable damageable)
                         return damageable;
             }
             return null;
