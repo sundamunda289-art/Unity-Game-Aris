@@ -100,6 +100,7 @@ namespace Aaris.MapReview
         // two blocked positions for the whole match.
         private byte[] alternateProbeSweep;
         private AarisWeaponInventory inventory;
+        private AarisThirdPersonPlayer footMotor;
         private Transform player;
         private AarisOfflineDrop drop;
         private float nextRefresh, requestPickupUntil, nextStarterRetryAt;
@@ -113,10 +114,26 @@ namespace Aaris.MapReview
         private bool starterLootSettled;
         private uint rng, matchSeed;
         public bool HasPickupInRange { get; private set; }
+        private bool CanInteract
+        {
+            get
+            {
+                if (footMotor == null && player != null)
+                    footMotor = player.GetComponent<AarisThirdPersonPlayer>();
+                return footMotor != null && footMotor.isActiveAndEnabled &&
+                    inventory != null && inventory.isActiveAndEnabled &&
+                    Time.timeScale > 0f &&
+                    (drop == null || !drop.isActiveAndEnabled || drop.HasLanded);
+            }
+        }
+
+        private bool IsAutoPickupEligible(AarisWeaponPickup pickup) =>
+            pickup.CandidateIndex >= 0 || pickup.CandidateIndex == starterLootId;
 
         /// <summary>Explicit pickup replaces the single carried gun.</summary>
         public void RequestPickup()
         {
+            if (!CanInteract) { requestPickupUntil = 0f; return; }
             // A deliberate tap must not wait for the normal 330 ms refresh:
             // on a low-FPS phone the next routine poll may arrive too late.
             // Defer physics to the next Update, retaining all LOS/range checks.
@@ -138,6 +155,7 @@ namespace Aaris.MapReview
             var root = new GameObject("Aaris Match Weapon Loot (offline, streamed)");
             var world = root.AddComponent<AarisWeaponLootWorld>();
             world.player = motor.transform;
+            world.footMotor = motor;
             world.inventory = inventory;
 #if UNITY_ANDROID && !UNITY_EDITOR
             world.StartCoroutine(world.InitializeAndroid());
@@ -751,7 +769,7 @@ namespace Aaris.MapReview
 
         private bool TryTake(AarisWeaponPickup pickup)
         {
-            if (pickup == null || pickup.State == null || inventory == null ||
+            if (!CanInteract || pickup == null || pickup.State == null || inventory == null ||
                 IsBlockedDrop(pickup) || !pickup.TryReserve()) return false;
 
             // Reserve the previous gun at the location already proven to be
@@ -798,6 +816,11 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (player == null || inventory == null || candidates == null) return;
+            if (!CanInteract)
+            {
+                requestPickupUntil = 0f;
+                HasPickupInRange = false;
+            }
             if (drop != null && drop.ShouldDeferGroundLoot)
             {
                 nextRefresh = 0f; // Resume the normal budget on the first near-ground frame.
@@ -835,9 +858,12 @@ namespace Aaris.MapReview
         {
             float releaseSquared = ReleaseMetres * ReleaseMetres;
             float pickupSquared = PickupDistance * PickupDistance;
-            bool explicitPickup = now <= requestPickupUntil;
-            AarisWeaponPickup bestPickup = null;
-            float bestDistance = pickupSquared;
+            bool canInteract = CanInteract;
+            bool explicitPickup = canInteract && now <= requestPickupUntil;
+            bool autoPickup = canInteract && !explicitPickup &&
+                !inventory.HasAnyGun && allowInitialAutoPickup;
+            AarisWeaponPickup bestPickup = null, bestAutoPickup = null;
+            float bestDistance = pickupSquared, bestAutoDistance = pickupSquared;
             int unloaded = 0;
 
             // Unload far visuals, never their planned match state.
@@ -865,18 +891,27 @@ namespace Aaris.MapReview
                     unloaded++;
                     continue;
                 }
-                if (d2 <= bestDistance && !IsBlockedDrop(pickup) &&
-                    CanReachPickup(pickup))
+                bool eligibleAuto = autoPickup && d2 <= bestAutoDistance &&
+                    IsAutoPickupEligible(pickup);
+                if (canInteract && (d2 <= bestDistance || eligibleAuto) &&
+                    !IsBlockedDrop(pickup) && CanReachPickup(pickup))
                 {
-                    bestPickup = pickup;
-                    bestDistance = d2;
+                    if (d2 <= bestDistance)
+                    {
+                        bestPickup = pickup;
+                        bestDistance = d2;
+                    }
+                    if (eligibleAuto)
+                    {
+                        bestAutoPickup = pickup;
+                        bestAutoDistance = d2;
+                    }
                 }
             }
             HasPickupInRange = bestPickup != null;
-            return bestPickup != null &&
-                (explicitPickup || (!inventory.HasAnyGun && allowInitialAutoPickup &&
-                    (bestPickup.CandidateIndex >= 0 ||
-                     bestPickup.CandidateIndex == starterLootId))) && TryTake(bestPickup);
+            // A closer player-dropped gun must not mask eligible authored loot.
+            AarisWeaponPickup chosen = explicitPickup ? bestPickup : bestAutoPickup;
+            return chosen != null && TryTake(chosen);
         }
 
         private bool StreamNearby(Vector3 playerPosition, float now)
@@ -973,7 +1008,7 @@ namespace Aaris.MapReview
 
         private void EnsureStarterLoot(Vector3 playerPosition)
         {
-            if (starterLootSettled || !allowInitialAutoPickup)
+            if (!CanInteract || starterLootSettled || !allowInitialAutoPickup)
                 return;
             // Fist mode hides the hand weapon but leaves owned guns in the
             // inventory. Never create an emergency third gun for a fist user.
@@ -998,7 +1033,7 @@ namespace Aaris.MapReview
             for (int i = 0; i < active.Count; i++)
             {
                 var pickup = active[i];
-                if (pickup == null || IsBlockedDrop(pickup) ||
+                if (pickup == null || !IsAutoPickupEligible(pickup) || IsBlockedDrop(pickup) ||
                     (pickup.transform.position - playerPosition).sqrMagnitude > PickupDistance * PickupDistance ||
                     !CanReachPickup(pickup))
                     continue;
