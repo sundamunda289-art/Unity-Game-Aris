@@ -53,6 +53,23 @@ def read_obj(path):
 
 
 class OfflineCombatAssetChecks(unittest.TestCase):
+    def test_ground_loot_prestream_does_not_allow_airborne_pickup(self):
+        loot = (SCRIPTS / "AarisWeaponLootWorld.cs").read_text("utf-8")
+        self.assertIn("drop == null || !drop.isActiveAndEnabled || drop.HasLanded", loot)
+        request = loot.split("public void RequestPickup()", 1)[1]
+        self.assertRegex(request, r"^\s*\{\s*if \(!PickupAllowed\) return;")
+        take = loot.split("private bool TryTake(AarisWeaponPickup pickup)", 1)[1]
+        self.assertRegex(take, r"^\s*\{\s*if \(!PickupAllowed \|\|")
+        update = loot.split("private void Update()", 1)[1].split(
+            "private bool RefreshPickups(", 1)[0]
+        self.assertRegex(update, r"if \(!PickupAllowed\)\s*\{[^}]*"
+                                  r"requestPickupUntil = 0f;\s*HasPickupInRange = false;")
+        self.assertIn("drop.ShouldDeferGroundLoot", update)
+        self.assertIn("StreamNearby(playerPosition, now)", update)
+        refresh = loot.split("private bool RefreshPickups(", 1)[1].split(
+            "private bool StreamNearby(", 1)[0]
+        self.assertIn("if (PickupAllowed && d2 <= bestDistance", refresh)
+
     def test_ocean_glide_requires_solid_contact_or_safe_recovery(self):
         drop = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
         move = drop.split("private void MoveAirborne(float dt)", 1)[1].split(
