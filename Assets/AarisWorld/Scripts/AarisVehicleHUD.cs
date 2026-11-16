@@ -10,6 +10,8 @@ namespace Aaris.MapReview
         IPointerDownHandler, IPointerUpHandler, ICancelHandler
     {
         private readonly HashSet<int> fingers = new HashSet<int>();
+        // Reused only while an arrow is held; no per-frame allocation.
+        private readonly List<int> staleFingers = new List<int>(4);
         private AarisVehicleHUD owner;
         private int direction;
         private Image ring;
@@ -21,14 +23,63 @@ namespace Aaris.MapReview
         }
         public void OnPointerDown(PointerEventData e)
         {
-            if (e == null || !fingers.Add(e.pointerId)) return;
+            // Touch and the primary mouse button are valid drive inputs.
+            // A secondary mouse click must never latch throttle/steering.
+            if (e == null || e.button != PointerEventData.InputButton.Left ||
+                !fingers.Add(e.pointerId)) return;
             if (fingers.Count == 1) State(true);
         }
         public void OnPointerUp(PointerEventData e)
         {
-            if (e == null || !fingers.Remove(e.pointerId)) return;
+            if (e != null) ReleasePointer(e.pointerId);
+        }
+
+        private void ReleasePointer(int pointerId)
+        {
+            if (!fingers.Remove(pointerId)) return;
             if (fingers.Count == 0) State(false);
         }
+
+        // Android can drop PointerUp/Cancel while the app remains focused
+        // (system gesture, touch snapshot loss, device/input interruption).
+        // Reconcile classic StandaloneInputModule pointer ownership after its
+        // EventSystem.Update so a lost finger cannot leave a car accelerating
+        // or steering forever. The scratch list is reused and GetTouch is
+        // allocation-free; other input modules keep their own pointer IDs.
+        private void LateUpdate()
+        {
+            if (fingers.Count == 0) return;
+            if (EventSystem.current == null ||
+                !(EventSystem.current.currentInputModule is StandaloneInputModule)) return;
+
+            staleFingers.Clear();
+            foreach (int pointerId in fingers)
+            {
+                if (!IsPointerPhysicallyHeld(pointerId))
+                    staleFingers.Add(pointerId);
+            }
+            for (int i = 0; i < staleFingers.Count; i++)
+                ReleasePointer(staleFingers[i]);
+            staleFingers.Clear();
+        }
+
+        private static bool IsPointerPhysicallyHeld(int pointerId)
+        {
+            if (pointerId == PointerInputModule.kMouseLeftId)
+                return Input.GetMouseButton(0);
+
+            int count = Input.touchCount;
+            for (int i = 0; i < count; i++)
+            {
+                Touch touch = Input.GetTouch(i);
+                if (touch.fingerId == pointerId &&
+                    touch.phase != TouchPhase.Ended &&
+                    touch.phase != TouchPhase.Canceled)
+                    return true;
+            }
+            return false;
+        }
+
         public void OnCancel(BaseEventData e) => Reset();
         private void OnDisable() => Reset();
         private void OnApplicationPause(bool paused) { if (paused) Reset(); }
