@@ -689,13 +689,14 @@ namespace Aaris.MapReview
         public void Bind(AarisOfflineGlooWall value) => wall = value;
         public void OnPointerDown(PointerEventData data)
         {
-            if (wall == null || holding != int.MinValue) return;
+            if (wall == null || data == null || data.button != PointerEventData.InputButton.Left ||
+                holding != int.MinValue) return;
             holding = data.pointerId;
             wall.BeginAim();
         }
         public void OnPointerUp(PointerEventData data)
         {
-            if (holding != data.pointerId) return;
+            if (data == null || holding != data.pointerId) return;
             holding = int.MinValue;
             if (wall == null) return;
             for (int i = 0; i < Input.touchCount; i++)
@@ -706,6 +707,19 @@ namespace Aaris.MapReview
                 return;
             }
             wall.ReleaseAndDeploy();
+        }
+        // A missing or canceled touch is not a deliberate release. Clear the
+        // preview and pointer ownership, never spend a wall on lost input.
+        private void LateUpdate()
+        {
+            if (holding == int.MinValue) return;
+            if (EventSystem.current == null || EventSystem.current.currentInputModule == null)
+            {
+                CancelHold();
+                return;
+            }
+            if (!(EventSystem.current.currentInputModule is StandaloneInputModule)) return;
+            if (!AarisHudButton.IsPointerPhysicallyHeld(holding)) CancelHold();
         }
         public void OnCancel(BaseEventData data) => CancelHold();
 
