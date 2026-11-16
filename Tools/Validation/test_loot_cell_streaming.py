@@ -51,7 +51,8 @@ class LootGridRegression(unittest.TestCase):
         guard = "private bool CanInteractWithLoot => isActiveAndEnabled && inventory != null && inventory.isActiveAndEnabled &&"
         self.assertIn(guard, SOURCE)
         self.assertIn("(drop == null || !drop.isActiveAndEnabled || drop.HasLanded);", SOURCE)
-        request = SOURCE[SOURCE.index("public void RequestPickup()"):SOURCE.index("[RuntimeInitializeOnLoadMethod")]
+        request_start = SOURCE.index("public void RequestPickup()")
+        request = SOURCE[request_start:SOURCE.index("[RuntimeInitializeOnLoadMethod", request_start)]
         self.assertLess(request.index("if (!CanInteractWithLoot) return;"), request.index("requestPickupUntil ="))
         take = SOURCE[SOURCE.index("private bool TryTake("):SOURCE.index("private void Update()")]
         self.assertLess(take.index("!CanInteractWithLoot"), take.index("pickup.TryReserve()"))
