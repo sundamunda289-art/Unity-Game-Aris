@@ -59,6 +59,8 @@ namespace Aaris.MapReview
         private Terrain[] mobileFoliageTiles;
         private float[] originalDetailDistances, appliedDetailDistances;
         private float[] originalBillboardDistances, appliedBillboardDistances;
+        private int[] originalFullLodTreeCounts;
+        private const int LowMemoryFullLodTreeLimit = 50;
         private TerrainData[] mobileWindData;
         private float[] originalGrassWindStrength;
         private WindZone[] mobileWindZones;
@@ -310,6 +312,7 @@ namespace Aaris.MapReview
             appliedDetailDistances = new float[count];
             originalBillboardDistances = new float[count];
             appliedBillboardDistances = new float[count];
+            originalFullLodTreeCounts = new int[count];
             mobileWindData = new TerrainData[count];
             originalGrassWindStrength = new float[count];
             for (int i = 0; i < count; i++)
@@ -318,6 +321,7 @@ namespace Aaris.MapReview
                 if (tile == null) continue;
                 originalDetailDistances[i] = tile.detailObjectDistance;
                 originalBillboardDistances[i] = tile.treeBillboardDistance;
+                originalFullLodTreeCounts[i] = tile.treeMaximumFullLODCount;
                 // Keep all grass within 80 m, but avoid processing small
                 // vegetation on the outer 80-100 m ring of each camera view.
                 appliedDetailDistances[i] = Mathf.Min(originalDetailDistances[i], 80f);
@@ -326,6 +330,10 @@ namespace Aaris.MapReview
                     tile.detailObjectDistance = appliedDetailDistances[i];
                 if (appliedBillboardDistances[i] < originalBillboardDistances[i])
                     tile.treeBillboardDistance = appliedBillboardDistances[i];
+                // Keep authored tree coverage and the near billboard transition,
+                // while capping full-detail meshes in dense groves on weak GPUs.
+                if (originalFullLodTreeCounts[i] > LowMemoryFullLodTreeLimit)
+                    tile.treeMaximumFullLODCount = LowMemoryFullLodTreeLimit;
                 TerrainData data = tile.terrainData;
                 if (data == null) continue;
                 mobileWindData[i] = data;
@@ -367,7 +375,8 @@ namespace Aaris.MapReview
                       SystemInfo.graphicsDeviceName + " tiles=" + count +
                       " grass_wind_disabled=" + suppressedGrassTiles +
                       " wind_zones_disabled=" + suppressedWindZones +
-                      " details_max_m=80 tree_billboards_m=85" +
+                      " details_max_m=80 tree_billboards_m=85 tree_full_lod_cap=" +
+                      LowMemoryFullLodTreeLimit +
                       " shadow_max_m=" + appliedShadowDistance +
                       " cascades=" + appliedShadowCascades);
         }
@@ -582,6 +591,9 @@ namespace Aaris.MapReview
                     if (appliedBillboardDistances[i] < originalBillboardDistances[i] &&
                         Mathf.Approximately(tile.treeBillboardDistance, appliedBillboardDistances[i]))
                         tile.treeBillboardDistance = originalBillboardDistances[i];
+                    if (originalFullLodTreeCounts[i] > LowMemoryFullLodTreeLimit &&
+                        tile.treeMaximumFullLODCount == LowMemoryFullLodTreeLimit)
+                        tile.treeMaximumFullLODCount = originalFullLodTreeCounts[i];
                     if (mobileWindData[i] != null && originalGrassWindStrength[i] > 0f &&
                         Mathf.Approximately(mobileWindData[i].wavingGrassStrength, 0f))
                         mobileWindData[i].wavingGrassStrength = originalGrassWindStrength[i];

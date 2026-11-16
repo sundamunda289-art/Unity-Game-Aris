@@ -231,6 +231,8 @@ namespace Aaris.MapReview.Editor
                 {
                     Camera cam = Camera.main;
                     if (cam == null) throw new InvalidOperationException("PLAY_CAMERA_MISSING");
+                    if (newlySeen && (drop.IsFreefall || drop.Phase == AarisOfflineDrop.DropPhase.Gliding))
+                        VerifyAerialPlayerVisibility(drop, cam);
                     int frame = SessionState.GetInt(FrameCount, 0);
                     if (frame >= MaxFrames) throw new InvalidOperationException("VIDEO_FRAME_LIMIT");
                     float dev = Render(cam, frame, newlySeen ? name : null);
@@ -297,6 +299,39 @@ namespace Aaris.MapReview.Editor
                 Save(result);
                 Finish(completed, result.reason, false);
             }
+        }
+
+        private static void VerifyAerialPlayerVisibility(AarisOfflineDrop drop, Camera camera)
+        {
+            var player = drop.GetComponent<AarisCharacterVisual>();
+            if (player == null || !player.HasWorkingHumanoid)
+                throw new InvalidOperationException("AERIAL_PLAYER_HUMANOID_MISSING");
+
+            Bounds pose = new Bounds(drop.transform.position + Vector3.up * 0.9f, Vector3.one * 3f);
+            Plane[] frustum = GeometryUtility.CalculateFrustumPlanes(camera);
+            var baked = new Mesh();
+            try
+            {
+                foreach (var skin in player.GetComponentsInChildren<SkinnedMeshRenderer>())
+                {
+                    if (!skin.enabled || skin.sharedMesh == null ||
+                        (camera.cullingMask & (1 << skin.gameObject.layer)) == 0 ||
+                        !GeometryUtility.TestPlanesAABB(frustum, skin.bounds))
+                        continue;
+
+                    // Confirm the evaluated vertices are near the capsule too.
+                    // Valid culling bounds alone do not rule out an offset rig.
+                    skin.BakeMesh(baked);
+                    if (baked.vertexCount > 0 && pose.Contains(
+                        skin.transform.TransformPoint(baked.bounds.center)))
+                        return;
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.Destroy(baked);
+            }
+            throw new InvalidOperationException("AERIAL_PLAYER_MESH_OUTSIDE_CAMERA_BOUNDS");
         }
 
         private static float Render(Camera cam, int frame, string firstPhase)

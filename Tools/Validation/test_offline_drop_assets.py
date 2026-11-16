@@ -184,6 +184,19 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertLess(start.index("vehicle = GetComponent<AarisVehicleSession>();"),
                         start.index("if (vehicle != null && vehicle.IsDriving)"))
 
+    def test_aircraft_suspends_and_restores_player_presentation(self):
+        drop = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
+        rig = (SCRIPTS / "AarisCharacterVisual.cs").read_text("utf-8")
+        hide = drop.split("private void HidePlayer()", 1)[1].split("private void ShowPlayer()", 1)[0]
+        show = drop.split("private void ShowPlayer()", 1)[1].split("private void GetPlaneCameraPose", 1)[0]
+        self.assertIn("SetPresentationPaused(true)", hide)
+        self.assertIn("SetPresentationPaused(false)", show)
+        self.assertIn("if (paused) graph.Stop();", rig)
+        self.assertIn("else graph.Play();", rig)
+        self.assertIn("if (presentationPaused || visual == null || controller == null) return;", rig)
+        self.assertIn("FitVisualToController(resourcePath) && ConfigureDrawableSkin(resourcePath)", rig)
+        self.assertIn("skin.localBounds = poseBounds;", rig)
+
     def test_missing_android_touch_ended_event_does_not_lock_camera_or_joystick(self):
         # Unity may omit Ended after a system gesture while another finger
         # remains on screen. Prove both controllers reconcile ownership

@@ -470,6 +470,16 @@ def audit():
     assert "data.wavingGrassStrength = 0f;" in quality_setup
     assert "Mathf.Min(originalDetailDistances[i], 80f)" in quality_setup
     assert "Mathf.Min(originalBillboardDistances[i], 85f)" in quality_setup
+    assert "private const int LowMemoryFullLodTreeLimit = 50;" in quality
+    assert "tile.treeMaximumFullLODCount = LowMemoryFullLodTreeLimit;" in quality_setup
+    assert "tile.treeMaximumFullLODCount = originalFullLodTreeCounts[i];" in teardown
+    texture_root = ROOT / "Assets/Resources/AarisVehicles/Authored"
+    vehicle_textures = sorted(texture_root.glob("PBR_*/*.jpg.meta"))
+    vehicle_textures += sorted(texture_root.glob("PBR_*/*.png.meta"))
+    assert vehicle_textures, "No authored vehicle PBR textures found"
+    for metadata in vehicle_textures:
+        source = metadata.read_text(encoding="utf-8")
+        assert "enableMipMap: 1" in source and "streamingMipmaps: 1" in source, metadata
     assert "zone.windMain = originalWindMain[i];" in teardown
     assert "mobileWindData[i].wavingGrassStrength = originalGrassWindStrength[i];" in teardown
     assert "androidPipeline.shadowCascadeCount = originalShadowCascades;" in teardown

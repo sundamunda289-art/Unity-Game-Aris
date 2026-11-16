@@ -50,6 +50,7 @@ namespace Aaris.MapReview
         private AarisWeaponInventory weaponInventory;
         private float readyPoseBlend;
         private bool graphReady;
+        private bool presentationPaused;
         public bool HasWorkingHumanoid => graphReady && visual != null && animator != null;
         private float runBlend;
         private float airborneBlend;
@@ -177,7 +178,6 @@ namespace Aaris.MapReview
             }
 
             TryApplySkin();
-            bodySkin = visual.GetComponentInChildren<SkinnedMeshRenderer>(true);
             actions = GetComponent<AarisBattleActions>();
             playerMotor = GetComponent<AarisThirdPersonPlayer>();
             if (playerMotor != null)
@@ -267,7 +267,7 @@ namespace Aaris.MapReview
                 }
             }
             if (animator.avatar != null && animator.avatar.isValid && animator.avatar.isHuman &&
-                FitVisualToController(resourcePath))
+                FitVisualToController(resourcePath) && ConfigureDrawableSkin(resourcePath))
             {
                 primaryLoaded = resourcePath != FallbackModel;
                 tacticalSoldierLoaded = resourcePath == PrimaryModel;
@@ -279,6 +279,39 @@ namespace Aaris.MapReview
             visual = null;
             animator = null;
             return false;
+        }
+
+        private bool ConfigureDrawableSkin(string resourcePath)
+        {
+            bodySkin = null;
+            foreach (var skin in visual.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (!skin.enabled || !skin.gameObject.activeInHierarchy ||
+                    skin.sharedMesh == null || skin.sharedMesh.vertexCount == 0)
+                    continue;
+
+                if (bodySkin == null) bodySkin = skin;
+                if (resourcePath != PrimaryModel) continue;
+
+                // TacticalSoldier imports with bounds expressed around its original
+                // bind-space origin. Use the fitted player's envelope in the skin's
+                // root-bone space so culling follows the actor through every pose.
+                Transform boundsRoot = skin.rootBone != null ? skin.rootBone : skin.transform;
+                Vector3 centre = transform.position + Vector3.up * (TargetHeightMetres * 0.5f);
+                const float poseExtent = 2f;
+                Bounds poseBounds = new Bounds(boundsRoot.InverseTransformPoint(centre), Vector3.zero);
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 offset = new Vector3(
+                        (corner & 1) == 0 ? -poseExtent : poseExtent,
+                        (corner & 2) == 0 ? -poseExtent : poseExtent,
+                        (corner & 4) == 0 ? -poseExtent : poseExtent);
+                    poseBounds.Encapsulate(boundsRoot.InverseTransformPoint(centre + offset));
+                }
+                skin.updateWhenOffscreen = false;
+                skin.localBounds = poseBounds;
+            }
+            return bodySkin != null;
         }
 
         private void DisablePrimaryImportHelpers(string resourcePath)
@@ -406,6 +439,9 @@ namespace Aaris.MapReview
             Texture emissionMap = source.HasProperty("_EmissionMap")
                 ? source.GetTexture("_EmissionMap") : null;
             bool hasAuthoredBase = baseMap != null && baseMap != Texture2D.whiteTexture;
+            // The model importer already remaps these slots to saved URP materials.
+            // Use their original shader keywords and pass state in the Android player.
+            if (hasAuthoredBase && source.shader == shader) return source;
 
             string label = source.name ?? string.Empty;
             Color colour = sourceColor;
@@ -1071,9 +1107,18 @@ namespace Aaris.MapReview
             playable.SetTime(seconds - Math.Floor(seconds / clip.length) * clip.length);
         }
 
+        internal void SetPresentationPaused(bool paused)
+        {
+            if (presentationPaused == paused || !graphReady) return;
+            presentationPaused = paused;
+            motionHistoryReady = false;
+            if (paused) graph.Stop();
+            else graph.Play();
+        }
+
         private void LateUpdate()
         {
-            if (visual == null || controller == null) return;
+            if (presentationPaused || visual == null || controller == null) return;
             // Missing optional components are retried at most once per second,
             // instead of issuing native GetComponent calls at 60/120 Hz.
             if ((actions == null || aerialDrop == null ||

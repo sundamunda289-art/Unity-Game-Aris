@@ -691,6 +691,7 @@ namespace Aaris.MapReview
 
         private void HidePlayer()
         {
+            if (characterVisual != null) characterVisual.SetPresentationPaused(true);
             if (initialPlayerRenderers == null) return;
             for (int i = 0; i < initialPlayerRenderers.Length; i++)
                 if (initialPlayerRenderers[i] != null) initialPlayerRenderers[i].enabled = false;
@@ -698,6 +699,7 @@ namespace Aaris.MapReview
 
         private void ShowPlayer()
         {
+            if (characterVisual != null) characterVisual.SetPresentationPaused(false);
             if (initialPlayerRenderers == null) return;
             for (int i = 0; i < initialPlayerRenderers.Length; i++)
                 if (initialPlayerRenderers[i] != null) initialPlayerRenderers[i].enabled = previousRendererStates[i];
