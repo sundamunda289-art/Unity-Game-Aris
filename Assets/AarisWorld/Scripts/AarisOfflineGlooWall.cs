@@ -47,6 +47,8 @@ namespace Aaris.MapReview
             get
             {
                 if (!isActiveAndEnabled || carriedWalls <= 0) return false;
+                if (Time.timeScale <= 0f || motor == null || !motor.isActiveAndEnabled)
+                    return false;
                 RefreshOptionalComponents();
                 return (drop == null || drop.HasLanded) &&
                     (vehicle == null || !vehicle.IsDriving);
@@ -109,6 +111,7 @@ namespace Aaris.MapReview
         {
             if (!aiming) return;
             RefreshOptionalComponents(true); // Newly attached vehicle/drop state must veto deployment.
+            if (!CanUse) { CancelAim(); return; }
             // Do not trust the prior frame's preview: player and vehicles can move.
             UpdatePlacement();
             bool allowed = CanUse && placementValid && Time.time >= nextDeployment;
