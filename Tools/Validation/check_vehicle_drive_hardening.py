@@ -134,7 +134,31 @@ def test():
     assert "if (speed < -.55f) brake = ServiceBrakeTorque * throttle;" in motor
     assert "if (speed > .55f) brake = ServiceBrakeTorque * -throttle;" in motor
     assert "driver == null ? ParkingBrakeTorque : 155f" in motor
-    assert "wheels[i].brakeTorque = ParkingBrakeTorque;" in motor
+    assert motor.count("ApplyWheelForces(0f, ParkingBrakeTorque);") == 2
+    wheel_forces = motor.split("private void ApplyWheelForces(", 1)[1].split(
+        "private void FixedUpdate()", 1)[0]
+    assert wheel_forces.index("if (!driveChanged && !brakeChanged) return;") < (
+        wheel_forces.index("wheels[i].motorTorque"))
+    assert "if (brakeChanged) wheels[i].brakeTorque = brake;" in wheel_forces
+
+    def wheel_properties(command):
+        drive, brake = command
+        return [0.0, 0.0, drive * 0.5, drive * 0.5], [brake] * 4
+
+    sequence = (
+        [(0.0, 3600.0)] * 20 + [(0.0, 155.0)] * 10 + [(1500.0, 0.0)] * 20 +
+        [(0.0, 3200.0)] * 6 + [(-720.0, 0.0)] * 10 + [(0.0, 3600.0)] * 20
+    )
+    applied = (None, None)
+    values = (None, None)
+    writes = 0
+    for command in sequence:
+        desired = wheel_properties(command)
+        values = tuple(desired[i] if command[i] != applied[i] else values[i] for i in range(2))
+        writes += 4 * sum(command[i] != applied[i] for i in range(2))
+        applied = command
+        assert values == desired
+    assert writes < len(sequence)
     assert "wheel.brakeTorque = ParkingBrakeTorque;" in motor
     assert "linearVelocity =" not in motor
     assert "MoveRotation(" not in motor
@@ -158,7 +182,14 @@ def test():
     assert "if (parkedSleeping && sleepingWheelPoseCurrent) return;" in late_update
     assert late_update.index("SyncVisibleWheels();") < (
         late_update.index("sleepingWheelPoseCurrent = parkedSleeping;"))
-    assert "private void OnEnable() => sleepingWheelPoseCurrent = false;" in late_update
+    assert "private void OnEnable()" in late_update
+    assert "sleepingWheelPoseCurrent = false;" in late_update
+    assert "appliedDriveTorque = appliedBrakeTorque = appliedSteeringAngle = float.NaN;" in late_update
+    assert "ApplyWheelForces(drive, brake);" in fixed_update
+    steering = motor.split("private void ApplyAckermannSteering(", 1)[1]
+    assert steering.index("if (centerAngle == appliedSteeringAngle) return;") < (
+        steering.index("wheels[0].steerAngle"))
+    assert motor.count("ResetSprungMasses();\n            appliedSteeringAngle = float.NaN;") == 2
     for occupied in (False, True):
         for sleeping in (False, True):
             skip_physics = not occupied and sleeping
@@ -243,6 +274,8 @@ def test():
     assert follow.index("Physics.SphereCastNonAlloc(") < (
         follow.index("followCamera.transform.position = next;"))
     assert "cameraVelocity = Vector3.zero;" in follow
+    assert follow.index("if (fovError > 0.001f)") < follow.index("followCamera.fieldOfView =")
+    assert "followCamera.fieldOfView = fovError <= 0.1f" in follow
 
     # Preserve a normal vehicle chase lens across an ADS-to-drive handoff,
     # and never clear the scope on a rejected (unsafe/out-of-range) entry.
@@ -253,6 +286,11 @@ def test():
         entry.index("footMotor.PrepareVehicleCameraHandoff();"))
     assert entry.index("footMotor.PrepareVehicleCameraHandoff();") < (
         entry.index("footMotor.enabled = false;"))
+    assert entry.index("if (!nearbyCar.TryTakeDriver(this)) return false;") < (
+        entry.index("characterVisual.SetPresentationPaused(true);"))
+    exit_path = session.split("private bool TryExit()", 1)[1].split("private void FollowCarCamera()", 1)[0]
+    assert exit_path.index("playerRenderers[i].enabled = wasRendererEnabled[i];") < (
+        exit_path.index("characterVisual.SetPresentationPaused(false);"))
     handoff = foot.split("public void PrepareVehicleCameraHandoff()", 1)[1].split(
         "public void ResetCameraAfterVehicle()", 1)[0]
     assert "weaponAimFov = -1f;" in handoff

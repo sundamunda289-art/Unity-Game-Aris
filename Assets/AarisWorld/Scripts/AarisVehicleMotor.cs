@@ -26,6 +26,8 @@ namespace Aaris.MapReview
         private AarisVehicleSession driver;
         private float forward, steering, smoothSteer;
         private float topSpeed, tyreSlip;
+        private float appliedDriveTorque = float.NaN, appliedBrakeTorque = float.NaN;
+        private float appliedSteeringAngle = float.NaN;
         private const float ServiceBrakeTorque = 3200f;
         private const float ParkingBrakeTorque = 3600f;
         private const float AntiRollStrength = 4800f;
@@ -99,6 +101,7 @@ namespace Aaris.MapReview
             CreateWheel(1, .84f, 1.38f);
             CreateWheel(2, -.84f, -1.38f);
             CreateWheel(3, .84f, -1.38f);
+            appliedDriveTorque = appliedBrakeTorque = appliedSteeringAngle = float.NaN;
             // Two/three PhysX vehicle substeps stabilize tyre/suspension forces
             // without reducing the project's global fixed timestep. Sleeping
             // parked cars remain asleep, so the mobile cost stays bounded.
@@ -190,6 +193,7 @@ namespace Aaris.MapReview
             // spacing so hatchbacks, sedans and longer bodies do not inherit
             // the generic sedan's old front/rear load split.
             if (wheels[0] != null) wheels[0].ResetSprungMasses();
+            appliedSteeringAngle = float.NaN;
         }
 
         /// <summary>
@@ -302,6 +306,7 @@ namespace Aaris.MapReview
                 visualWheelRotationOffsets[i] = restOffset;
             }
             if (wheels[0] != null) wheels[0].ResetSprungMasses();
+            appliedSteeringAngle = float.NaN;
             SyncVisibleWheels();
             return true;
         }
@@ -330,7 +335,11 @@ namespace Aaris.MapReview
             sleepingWheelPoseCurrent = parkedSleeping;
         }
 
-        private void OnEnable() => sleepingWheelPoseCurrent = false;
+        private void OnEnable()
+        {
+            sleepingWheelPoseCurrent = false;
+            appliedDriveTorque = appliedBrakeTorque = appliedSteeringAngle = float.NaN;
+        }
 
         public bool TryTakeDriver(AarisVehicleSession session)
         {
@@ -360,12 +369,22 @@ namespace Aaris.MapReview
             if (session != driver) return;
             driver = null;
             forward = steering = 0f;
+            ApplyWheelForces(0f, ParkingBrakeTorque);
+        }
+
+        private void ApplyWheelForces(float drive, float brake)
+        {
+            bool driveChanged = drive != appliedDriveTorque;
+            bool brakeChanged = brake != appliedBrakeTorque;
+            if (!driveChanged && !brakeChanged) return;
             for (int i = 0; i < wheels.Length; i++)
-                if (wheels[i] != null)
-                {
-                    wheels[i].motorTorque = 0f;
-                    wheels[i].brakeTorque = ParkingBrakeTorque;
-                }
+            {
+                if (wheels[i] == null) continue;
+                if (driveChanged) wheels[i].motorTorque = i >= 2 ? drive * .5f : 0f;
+                if (brakeChanged) wheels[i].brakeTorque = brake;
+            }
+            appliedDriveTorque = drive;
+            appliedBrakeTorque = brake;
         }
 
         private void FixedUpdate()
@@ -416,11 +435,7 @@ namespace Aaris.MapReview
             // overwriting velocity, which would ignore collision impulses.
             if (speed > topSpeed + .6f || speed < -8f)
                 brake = Mathf.Max(brake, 1100f);
-            for (int i = 0; i < wheels.Length; i++)
-            {
-                wheels[i].motorTorque = i >= 2 ? drive * .5f : 0f;
-                wheels[i].brakeTorque = brake;
-            }
+            ApplyWheelForces(drive, brake);
             // Gradually reduce steering angle at speed so 100km/h inputs
             // cannot instantaneously rotate a multi-ton vehicle by 70°/s.
             // A sideways skid can have near-zero forward speed even at
@@ -473,6 +488,10 @@ namespace Aaris.MapReview
         // keeps correct steering geometry without new per-frame allocations.
         private void ApplyAckermannSteering(float centerAngle)
         {
+            // Unchanged wheel angles already hold in PhysX. Invalidate this
+            // cache when the model fit changes the actual axle positions.
+            if (centerAngle == appliedSteeringAngle) return;
+            appliedSteeringAngle = centerAngle;
             if (Mathf.Abs(centerAngle) < .01f)
             {
                 wheels[0].steerAngle = wheels[1].steerAngle = centerAngle;
@@ -568,12 +587,7 @@ namespace Aaris.MapReview
         private void OnDisable()
         {
             forward = steering = 0f;
-            foreach (var wheel in wheels)
-            {
-                if (wheel == null) continue;
-                wheel.motorTorque = 0f;
-                wheel.brakeTorque = ParkingBrakeTorque;
-            }
+            ApplyWheelForces(0f, ParkingBrakeTorque);
         }
     }
 }

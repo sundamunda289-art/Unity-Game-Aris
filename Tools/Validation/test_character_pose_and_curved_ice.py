@@ -98,7 +98,7 @@ assert 'Mathf.Min(leftFootBone.position.y,' in visual
 # knee solver then replants feet at the real floor under each foot.
 assert 'float capsuleTop = transform.TransformPoint(controller.center +' in visual
 assert 'Mathf.Min(excess, 0.45f) * lowPose' in visual
-assert 'private float SupportedAnkleY(Transform foot, float clearance)' in visual
+assert 'private float SupportedAnkleY(Transform foot, float clearance,' in visual
 assert 'Ray ray = new Ray(origin, Vector3.down);' in visual
 assert 'Physics.RaycastNonAlloc(ray,' in visual
 assert 'hit.collider.transform.IsChildOf(transform)' in visual
@@ -127,7 +127,9 @@ assert 'ProneAnkleClearanceMetres' in visual
 # but only near the floor so an authored swing foot is never pinned.
 assert 'private void PlantUprightContact(' in visual
 assert 'private const float UprightAnkleClearanceMetres = 0.075f;' in visual
-assert 'float supportY = SupportedAnkleY(foot,' in visual
+assert 'float supportY = coarseSupport.foot == foot &&' in visual
+assert 'coarseSupport.footPosition.Equals(foot.position)' in visual
+assert ': SupportedAnkleY(foot, UprightAnkleClearanceMetres, out supportNormal);' in visual
 assert 'UprightAnkleClearanceMetres, out Vector3 supportNormal);' in visual
 assert 'supportNormal' in visual
 assert 'Mathf.InverseLerp(0.025f, 0.14f, gap)' in visual
@@ -140,7 +142,8 @@ assert visual.count('PlantUprightContact(') == 3
 assert 'bool uprightGroundedSoldier = CalibratedSoldierLoaded && graphReady' in visual
 assert 'bool stableSoldier = uprightGroundedSoldier && planar < 0.15f;' in visual
 assert 'Transform stanceFoot = leftFootBone.position.y <= rightFootBone.position.y' in visual
-assert 'float supportY = SupportedAnkleY(stanceFoot, UprightAnkleClearanceMetres);' in visual
+assert 'float supportY = SupportedAnkleY(stanceFoot,' in visual
+assert 'height = supportY, normal = supportNormal' in visual
 assert 'float stanceGap = stanceFoot.position.y - supportY;' in visual
 assert 'if (!float.IsNaN(stanceGap) && Mathf.Abs(stanceGap) > 0.07f)' in visual
 # A missing support hit must not fabricate a ground plane at the motor origin.
@@ -579,9 +582,8 @@ assert 'float proneLowering = primaryLoaded && proneClip != null &&' in visual
 # One two-bone solve per leg, irrespective of intermediate stance blends.
 assert visual.count('PlantCrouchLeg(') == 3  # definition + low-stance left/right
 assert visual.count('PlantLegToTarget(') >= 3  # definition + crouch wrapper + upright 3D target
-assert 'return SupportedAnkleY(foot, clearance, out _);' in visual
 assert 'out Vector3 supportNormal' in visual
-assert 'SupportedAnkleY(stanceFoot, UprightAnkleClearanceMetres)' in visual
+assert 'foot = stanceFoot, footPosition = stanceFoot.position' in visual
 assert 'float totalRigWeight = crouchRigWeight + proneRigWeight;' in visual
 assert 'float ankleRigWeight = !visuallyAirborne && graphReady' in visual
 assert 'Mathf.Clamp01(totalRigWeight) : 0f;' in visual

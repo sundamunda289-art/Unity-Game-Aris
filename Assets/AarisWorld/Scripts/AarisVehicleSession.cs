@@ -21,6 +21,7 @@ namespace Aaris.MapReview
         private readonly RaycastHit[] crowdedCameraObstacles = new RaycastHit[128];
         private AarisVehicleWorld world;
         private AarisThirdPersonPlayer footMotor;
+        private AarisCharacterVisual characterVisual;
         private CharacterController capsule;
         private AarisBattleActions actions;
         private AarisWeaponInventory inventory;
@@ -149,6 +150,8 @@ namespace Aaris.MapReview
             // Do not leave a walking physics motor enabled inside the car.
             footMotor.enabled = false;
             capsule.enabled = false;
+            if (characterVisual == null) characterVisual = GetComponent<AarisCharacterVisual>();
+            if (characterVisual != null) characterVisual.SetPresentationPaused(true);
             playerRenderers = GetComponentsInChildren<Renderer>(true);
             wasRendererEnabled = new bool[playerRenderers.Length];
             for (int i = 0; i < playerRenderers.Length; i++)
@@ -336,6 +339,7 @@ namespace Aaris.MapReview
             if (actions != null) actions.enabled = previousBattleActive;
             if (inventory != null) inventory.enabled = previousInventoryActive;
             if (lootWorld != null) lootWorld.enabled = previousLootActive;
+            if (characterVisual != null) characterVisual.SetPresentationPaused(false);
             footMotor.ResetCameraAfterVehicle();
             SetFootHudVisible(true);
             nextVehicleSearch = 0f;
@@ -431,9 +435,15 @@ namespace Aaris.MapReview
             }
             float targetFov = Mathf.Lerp(62f, 70f,
                 Mathf.SmoothStep(0f, 1f, speed01));
-            float fovDelta = Mathf.Clamp(Time.deltaTime, 0f, .05f);
-            followCamera.fieldOfView = Mathf.Lerp(followCamera.fieldOfView,
-                targetFov, 1f - Mathf.Exp(-5f * fovDelta));
+            float currentFov = followCamera.fieldOfView;
+            float fovError = Mathf.Abs(targetFov - currentFov);
+            if (fovError > 0.001f)
+            {
+                float fovDelta = Mathf.Clamp(Time.deltaTime, 0f, .05f);
+                followCamera.fieldOfView = fovError <= 0.1f
+                    ? targetFov
+                    : Mathf.Lerp(currentFov, targetFov, 1f - Mathf.Exp(-5f * fovDelta));
+            }
         }
 
         // VehicleSession is the authoritative held-input owner. UI buttons

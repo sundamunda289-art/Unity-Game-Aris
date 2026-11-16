@@ -952,11 +952,6 @@ namespace Aaris.MapReview
 
         // One non-allocating ground sample per foot on low stances; unlike
         // motor-bottom height this works on bridge and sloped terrain.
-        private float SupportedAnkleY(Transform foot, float clearance)
-        {
-            return SupportedAnkleY(foot, clearance, out _);
-        }
-
         private float SupportedAnkleY(Transform foot, float clearance,
             out Vector3 supportNormal)
         {
@@ -1008,9 +1003,16 @@ namespace Aaris.MapReview
         // bounded world-space stance-foot lock near real support so the planted
         // boot does not skate while the root advances; release for swing/teleport.
         // Existing support hits are reused, so this adds no new physics queries.
+        private struct AnkleSupportSample
+        {
+            public Transform foot;
+            public Vector3 footPosition, normal;
+            public float height;
+        }
+
         private void PlantUprightContact(Transform thigh, Transform shin,
             Transform foot, float planarSpeed, float uprightWeight,
-            ref bool plantLocked, ref Vector3 plantWorld)
+            AnkleSupportSample coarseSupport, ref bool plantLocked, ref Vector3 plantWorld)
         {
             if (thigh == null || shin == null || foot == null ||
                 uprightWeight <= 0.001f)
@@ -1019,8 +1021,14 @@ namespace Aaris.MapReview
                 return;
             }
 
-            float supportY = SupportedAnkleY(foot,
-                UprightAnkleClearanceMetres, out Vector3 supportNormal);
+            // The whole-rig correction already sampled the lower boot on
+            // this frame. Reuse it only while the exact ray origin still
+            // matches, including after pelvis warping or a root correction.
+            Vector3 supportNormal = coarseSupport.normal;
+            float supportY = coarseSupport.foot == foot &&
+                coarseSupport.footPosition.Equals(foot.position)
+                ? coarseSupport.height
+                : SupportedAnkleY(foot, UprightAnkleClearanceMetres, out supportNormal);
             // Never invent a floor at ledges/gaps. An unsupported foot keeps
             // authored motion and any stale world lock is discarded immediately.
             if (float.IsNaN(supportY))
@@ -1362,6 +1370,7 @@ namespace Aaris.MapReview
                     proneLowering + standingShoeOffset * uprightWeight, 0f);
             if (visualRoot.localPosition != desiredPosition)
                 visualRoot.localPosition = desiredPosition;
+            AnkleSupportSample coarseSupport = default;
             if (uprightGroundedSoldier &&
                 leftFootBone != null && rightFootBone != null)
             {
@@ -1372,7 +1381,13 @@ namespace Aaris.MapReview
                 // it, and only move the whole rig for a clearly global error.
                 Transform stanceFoot = leftFootBone.position.y <= rightFootBone.position.y
                     ? leftFootBone : rightFootBone;
-                float supportY = SupportedAnkleY(stanceFoot, UprightAnkleClearanceMetres);
+                float supportY = SupportedAnkleY(stanceFoot,
+                    UprightAnkleClearanceMetres, out Vector3 supportNormal);
+                coarseSupport = new AnkleSupportSample
+                {
+                    foot = stanceFoot, footPosition = stanceFoot.position,
+                    height = supportY, normal = supportNormal
+                };
                 float stanceGap = stanceFoot.position.y - supportY;
                 if (!float.IsNaN(stanceGap) && Mathf.Abs(stanceGap) > 0.07f)
                 {
@@ -1463,10 +1478,10 @@ namespace Aaris.MapReview
             {
                 float uprightContactWeight = Mathf.Clamp01(1f - lowPose * 4f);
                 PlantUprightContact(leftThigh, leftShin, leftFootBone,
-                    planar, uprightContactWeight, ref leftUprightPlantLocked,
+                    planar, uprightContactWeight, coarseSupport, ref leftUprightPlantLocked,
                     ref leftUprightPlantWorld);
                 PlantUprightContact(rightThigh, rightShin, rightFootBone,
-                    planar, uprightContactWeight, ref rightUprightPlantLocked,
+                    planar, uprightContactWeight, coarseSupport, ref rightUprightPlantLocked,
                     ref rightUprightPlantWorld);
             }
             else
