@@ -115,8 +115,11 @@ namespace Aaris.MapReview
         public bool HasPickupInRange { get; private set; }
 
         /// <summary>Explicit pickup replaces the single carried gun.</summary>
+        private bool PickupAllowed => drop == null || !drop.isActiveAndEnabled || drop.HasLanded;
+
         public void RequestPickup()
         {
+            if (!PickupAllowed) return;
             // A deliberate tap must not wait for the normal 330 ms refresh:
             // on a low-FPS phone the next routine poll may arrive too late.
             // Defer physics to the next Update, retaining all LOS/range checks.
@@ -751,7 +754,7 @@ namespace Aaris.MapReview
 
         private bool TryTake(AarisWeaponPickup pickup)
         {
-            if (pickup == null || pickup.State == null || inventory == null ||
+            if (!PickupAllowed || pickup == null || pickup.State == null || inventory == null ||
                 IsBlockedDrop(pickup) || !pickup.TryReserve()) return false;
 
             // Reserve the previous gun at the location already proven to be
@@ -798,6 +801,13 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (player == null || inventory == null || candidates == null) return;
+            if (!PickupAllowed)
+            {
+                // Keep final-glide prestreaming, but discard ground interaction
+                // requests and hints until control is handed back on touchdown.
+                requestPickupUntil = 0f;
+                HasPickupInRange = false;
+            }
             if (drop != null && drop.ShouldDeferGroundLoot)
             {
                 nextRefresh = 0f; // Resume the normal budget on the first near-ground frame.
@@ -865,7 +875,7 @@ namespace Aaris.MapReview
                     unloaded++;
                     continue;
                 }
-                if (d2 <= bestDistance && !IsBlockedDrop(pickup) &&
+                if (PickupAllowed && d2 <= bestDistance && !IsBlockedDrop(pickup) &&
                     CanReachPickup(pickup))
                 {
                     bestPickup = pickup;
