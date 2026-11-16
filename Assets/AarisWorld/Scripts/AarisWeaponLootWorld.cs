@@ -114,9 +114,15 @@ namespace Aaris.MapReview
         private uint rng, matchSeed;
         public bool HasPickupInRange { get; private set; }
 
+        // Pre-stream world meshes during the last part of the descent, but
+        // leave all inventory transactions with the on-foot gameplay owner.
+        private bool CanInteractWithLoot => inventory != null && inventory.isActiveAndEnabled &&
+            (drop == null || !drop.isActiveAndEnabled || drop.HasLanded);
+
         /// <summary>Explicit pickup replaces the single carried gun.</summary>
         public void RequestPickup()
         {
+            if (!CanInteractWithLoot) return;
             // A deliberate tap must not wait for the normal 330 ms refresh:
             // on a low-FPS phone the next routine poll may arrive too late.
             // Defer physics to the next Update, retaining all LOS/range checks.
@@ -724,7 +730,7 @@ namespace Aaris.MapReview
         {
             // Refuse the action before its physics checks when the visual
             // budget is full. The held gun remains owned by the player.
-            if (inventory == null || !inventory.HasGun ||
+            if (!CanInteractWithLoot || !inventory.HasGun ||
                 active.Count >= MaximumActiveLoot ||
                 !TryFindDropSpot(out Vector3 point)) return false;
             var state = inventory.Current.CaptureState();
@@ -751,7 +757,7 @@ namespace Aaris.MapReview
 
         private bool TryTake(AarisWeaponPickup pickup)
         {
-            if (pickup == null || pickup.State == null || inventory == null ||
+            if (!CanInteractWithLoot || pickup == null || pickup.State == null ||
                 IsBlockedDrop(pickup) || !pickup.TryReserve()) return false;
 
             // Reserve the previous gun at the location already proven to be
@@ -798,6 +804,11 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (player == null || inventory == null || candidates == null) return;
+            if (!CanInteractWithLoot)
+            {
+                HasPickupInRange = false;
+                requestPickupUntil = 0f;
+            }
             if (drop != null && drop.ShouldDeferGroundLoot)
             {
                 nextRefresh = 0f; // Resume the normal budget on the first near-ground frame.
@@ -835,7 +846,8 @@ namespace Aaris.MapReview
         {
             float releaseSquared = ReleaseMetres * ReleaseMetres;
             float pickupSquared = PickupDistance * PickupDistance;
-            bool explicitPickup = now <= requestPickupUntil;
+            bool canInteract = CanInteractWithLoot;
+            bool explicitPickup = canInteract && now < requestPickupUntil;
             AarisWeaponPickup bestPickup = null;
             float bestDistance = pickupSquared;
             int unloaded = 0;
@@ -865,7 +877,7 @@ namespace Aaris.MapReview
                     unloaded++;
                     continue;
                 }
-                if (d2 <= bestDistance && !IsBlockedDrop(pickup) &&
+                if (canInteract && d2 <= bestDistance && !IsBlockedDrop(pickup) &&
                     CanReachPickup(pickup))
                 {
                     bestPickup = pickup;
@@ -973,7 +985,7 @@ namespace Aaris.MapReview
 
         private void EnsureStarterLoot(Vector3 playerPosition)
         {
-            if (starterLootSettled || !allowInitialAutoPickup)
+            if (!CanInteractWithLoot || starterLootSettled || !allowInitialAutoPickup)
                 return;
             // Fist mode hides the hand weapon but leaves owned guns in the
             // inventory. Never create an emergency third gun for a fist user.
@@ -1069,6 +1081,15 @@ namespace Aaris.MapReview
             if (!inventory.TryPickup(state, out AarisWeaponState previous)) return;
             starterLootSettled = true;
             Debug.LogWarning("Aaris: emergency starter equipped after no reachable ground pickup; check local floor collider streaming.");
+        }
+
+        private void OnDisable()
+        {
+            // Do not carry a pending pickup tap or visible pickup prompt
+            // through a vehicle/session handoff.
+            requestPickupUntil = 0f;
+            HasPickupInRange = false;
+            nextRefresh = 0f;
         }
 
         private bool IsCurrentlyActive(int candidateIndex)
