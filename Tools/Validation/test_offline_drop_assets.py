@@ -63,7 +63,8 @@ class OfflineCombatAssetChecks(unittest.TestCase):
             collision, r"if \(transform\.position\.y < SeaSurfaceHeight \+ 0\.35f\)\s+"
                        r"RecoverFromOceanFall\(\);\s+else\s+Land\(\);")
         self.assertIn("TryNativeTerrainTouchdown(beforeMove)", move)
-        self.assertIn("Physics.Raycast(probe, out RaycastHit floor", move)
+        self.assertIn("TryFirstExternalLandingHit(probe, 1.60f, out RaycastHit floor)", move)
+        self.assertIn("hits = Physics.RaycastAll(ray, distance, Physics.DefaultRaycastLayers,", move)
         self.assertIn("floor.point.y >= SeaSurfaceHeight + 0.35f", move)
         self.assertIn("floor.normal.y >= Mathf.Cos(capsule.slopeLimit", move)
         self.assertIn("if (transform.position.y < SeaSurfaceHeight - 2f)", move)
