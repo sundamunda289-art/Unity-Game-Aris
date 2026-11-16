@@ -40,6 +40,7 @@ namespace Aaris.MapReview
         private bool battleRaycasterWasEnabled, weaponRaycasterWasEnabled, controlsSuspended;
         private bool canopyRequested;
         private float nextHeightSample, nextContactSample;
+        private float sampledGroundClearance = float.PositiveInfinity;
         private float noGroundContactSince = -1f;
         private GameObject plane, canopy;
         private Transform[] propellers;
@@ -69,6 +70,11 @@ namespace Aaris.MapReview
         public DropPhase Phase => phase;
         public bool HasLanded => phase == DropPhase.Landed;
         public bool IsFreefall => phase == DropPhase.Freefall;
+        internal bool IsRidingAircraft => controlsSuspended && phase == DropPhase.InPlane;
+        // Existing altitude telemetry doubles as the ground-loot prestream signal.
+        // Start early enough to fill the nearby area during the final glide.
+        internal bool ShouldDeferGroundLoot => controlsSuspended &&
+            (IsRidingAircraft || sampledGroundClearance > 70f) && !HasLanded;
         public bool IsUnderCanopy => phase == DropPhase.Opening || phase == DropPhase.Gliding;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -239,7 +245,11 @@ namespace Aaris.MapReview
                     ? Time.time >= nextHeightSample : hud != null && hud.TelemetryDue;
                 float height = 0f;
                 bool reliableHeight = !sampleHeight || TryGetDistanceToSupport(out height, 1600f);
-                if (sampleHeight) nextHeightSample = Time.time + 0.10f;
+                if (sampleHeight)
+                {
+                    nextHeightSample = Time.time + 0.10f;
+                    sampledGroundClearance = reliableHeight ? height : float.PositiveInfinity;
+                }
                 if (Input.GetKeyDown(KeyCode.Space) && phase == DropPhase.Freefall) canopyRequested = true;
                 if (phase == DropPhase.Freefall)
                 {

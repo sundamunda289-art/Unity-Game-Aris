@@ -218,6 +218,11 @@ def audit():
     # contracts are not real device GPU/CPU profiling.
     quality = (SRC / "AarisMobileRuntime.cs").read_text(encoding="utf-8")
     assert "ConfigureAndroidQuality();" in quality
+    start = quality[quality.index("private IEnumerator Start()"):
+                    quality.index("private void ConfigureTerrainInstanceRenderer()")]
+    assert start.index("ConfigureAndroidQuality();") < start.index("yield return null;")
+    assert "startupSampleIndex < 3" in quality
+    assert "Record(\"startup\");" in quality
     assert "#if UNITY_ANDROID && !UNITY_EDITOR" in quality
     assert "QualitySettings.streamingMipmapsMemoryBudget" in quality
     assert "memoryMB <= 2304 ? 160f : 224f" in quality

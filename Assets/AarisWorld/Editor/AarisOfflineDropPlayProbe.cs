@@ -231,6 +231,9 @@ namespace Aaris.MapReview.Editor
                 {
                     Camera cam = Camera.main;
                     if (cam == null) throw new InvalidOperationException("PLAY_CAMERA_MISSING");
+                    if (drop.Phase == AarisOfflineDrop.DropPhase.InPlane &&
+                        UnityEngine.Object.FindFirstObjectByType<AarisWeaponPickup>() != null)
+                        throw new InvalidOperationException("GROUND_WEAPON_LOADED_DURING_AIRCRAFT");
                     if (newlySeen && (drop.IsFreefall || drop.Phase == AarisOfflineDrop.DropPhase.Gliding))
                         VerifyAerialPlayerVisibility(drop, cam);
                     int frame = SessionState.GetInt(FrameCount, 0);

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -112,24 +113,19 @@ namespace Aaris.MapReview
             }
         }
 
-        public static bool TryLoad()
+        private static AarisWeaponSpec[] ReadDefinitions()
         {
-            if (Ready) return true;
             TextAsset asset = Resources.Load<TextAsset>("AarisWeapons/weapon_catalog");
             if (asset == null)
             {
                 Debug.LogError("Aaris: missing embedded AarisWeapons/weapon_catalog.json.");
-                return false;
+                return null;
             }
             try
             {
                 var doc = JsonUtility.FromJson<AarisWeaponCatalogDocument>(asset.text);
                 if (doc == null || doc.weapons == null || doc.weapons.Length == 0)
                     throw new FormatException("Empty weapon catalog.");
-                // A single failed Android FBX import must not disable all
-                // working guns and the entire offline loot world. Keep strict
-                // catalog validation, but select only locally usable models.
-                var available = new List<AarisWeaponSpec>(doc.weapons.Length);
                 for (int i = 0; i < doc.weapons.Length; i++)
                 {
                     if (doc.weapons[i] == null || !doc.weapons[i].Valid)
@@ -137,39 +133,80 @@ namespace Aaris.MapReview
                     for (int j = 0; j < i; j++)
                         if (doc.weapons[i].id == doc.weapons[j].id)
                             throw new FormatException("Duplicate weapon identifier.");
-                    string modelPath = doc.weapons[i].modelResource;
-                    if (!modelCache.TryGetValue(modelPath, out GameObject prefab) || prefab == null)
-                    {
-                        prefab = Resources.Load<GameObject>(modelPath);
-                        if (prefab == null)
-                        {
-                            Debug.LogWarning("Aaris: unavailable local weapon model; skipping " +
-                                doc.weapons[i].id);
-                            continue;
-                        }
-                        TuneFlatWeaponSurfaces(prefab);
-                        modelCache[modelPath] = prefab;
-                    }
-                    // A nominally imported FBX with no renderer is also
-                    // unusable as a floor pickup or held weapon on Android.
-                    if (prefab.GetComponentInChildren<Renderer>(true) == null)
-                    {
-                        Debug.LogWarning("Aaris: weapon model has no renderer; skipping " +
-                            doc.weapons[i].id);
-                        continue;
-                    }
-                    available.Add(doc.weapons[i]);
                 }
-                if (available.Count == 0)
-                    throw new FormatException("No usable local weapon models.");
-                specs = available.ToArray();
-                return true;
+                return doc.weapons;
             }
             catch (Exception e)
             {
                 Debug.LogError("Aaris: invalid local weapon catalog: " + e.Message);
+                return null;
+            }
+        }
+
+        private static void AddUsableModel(AarisWeaponSpec spec, GameObject prefab,
+            List<AarisWeaponSpec> available)
+        {
+            // A bad import removes only its own type from the weighted catalog.
+            if (prefab == null || prefab.GetComponentInChildren<Renderer>(true) == null)
+            {
+                Debug.LogWarning("Aaris: unavailable local weapon model; skipping " + spec.id);
+                return;
+            }
+            if (!modelCache.TryGetValue(spec.modelResource, out GameObject cached) || cached == null)
+            {
+                TuneFlatWeaponSurfaces(prefab);
+                modelCache[spec.modelResource] = prefab;
+            }
+            available.Add(spec);
+        }
+
+        private static bool CommitModels(List<AarisWeaponSpec> available)
+        {
+            if (available.Count == 0)
+            {
+                Debug.LogError("Aaris: no usable local weapon models.");
                 return false;
             }
+            specs = available.ToArray();
+            return true;
+        }
+
+        public static bool TryLoad()
+        {
+            if (Ready) return true;
+            var definitions = ReadDefinitions();
+            if (definitions == null) return false;
+            var available = new List<AarisWeaponSpec>(definitions.Length);
+            foreach (var spec in definitions)
+            {
+                if (!modelCache.TryGetValue(spec.modelResource, out GameObject prefab) || prefab == null)
+                    prefab = Resources.Load<GameObject>(spec.modelResource);
+                AddUsableModel(spec, prefab, available);
+            }
+            return CommitModels(available);
+        }
+
+        internal static IEnumerator LoadForMatchAsync()
+        {
+            if (Ready) yield break;
+            var definitions = ReadDefinitions();
+            if (definitions == null) yield break;
+            var available = new List<AarisWeaponSpec>(definitions.Length);
+            foreach (var spec in definitions)
+            {
+                if (!modelCache.TryGetValue(spec.modelResource, out GameObject prefab) || prefab == null)
+                {
+                    ResourceRequest request = Resources.LoadAsync<GameObject>(spec.modelResource);
+                    yield return request;
+                    if (Ready) yield break; // A synchronous caller completed the same catalog.
+                    prefab = request.asset as GameObject;
+                }
+                AddUsableModel(spec, prefab, available);
+                // Give Unity a frame before integrating the next model.
+                yield return null;
+                if (Ready) yield break;
+            }
+            CommitModels(available);
         }
 
         public static GameObject ModelFor(AarisWeaponSpec spec)

@@ -224,16 +224,23 @@ def run():
     hud = (SCRIPTS / "AarisWeaponHUD.cs").read_text()
     assert "JsonUtility.FromJson<AarisWeaponCatalogDocument>" in catalog_cs
     assert "public static GameObject ModelFor(AarisWeaponSpec spec)" in catalog_cs
-    assert "Resources.Load<GameObject>(modelPath)" in catalog_cs
-    assert "modelCache[modelPath] = prefab;" in catalog_cs
-    # One missing or renderer-less Android gun FBX must not disable all
-    # other imported weapons. Invalid catalog data still fails closed.
-    assert "var available = new List<AarisWeaponSpec>(doc.weapons.Length);" in catalog_cs
+    assert "Resources.Load<GameObject>(spec.modelResource)" in catalog_cs
+    assert "Resources.LoadAsync<GameObject>(spec.modelResource)" in catalog_cs
+    assert "modelCache[spec.modelResource] = prefab;" in catalog_cs
+    # Both catalog loaders share the same acceptance and weighting order.
+    assert catalog_cs.count("AddUsableModel(spec, prefab, available);") == 2
     assert "GetComponentInChildren<Renderer>(true) == null" in catalog_cs
     assert 'Debug.LogWarning("Aaris: unavailable local weapon model; skipping "' in catalog_cs
-    assert 'Debug.LogWarning("Aaris: weapon model has no renderer; skipping "' in catalog_cs
     assert "if (available.Count == 0)" in catalog_cs
     assert "specs = available.ToArray();" in catalog_cs
+    startup = world[world.index("private IEnumerator InitializeAndroid()"):
+                    world.index("private void Initialize()")]
+    assert startup.index("yield return null;") < startup.index("LoadForMatchAsync()")
+    assert startup.index("LoadForMatchAsync()") < startup.index("Initialize();")
+    android_catalog = catalog_cs[catalog_cs.index("internal static IEnumerator LoadForMatchAsync()"):
+                                 catalog_cs.index("public static GameObject ModelFor(")]
+    assert android_catalog.index("yield return request;") < android_catalog.index("AddUsableModel(")
+    assert android_catalog.index("AddUsableModel(") < android_catalog.index("CommitModels(available);")
     assert 'throw new FormatException("Invalid weapon entry at " + i)' in catalog_cs
     assert 'throw new FormatException("Duplicate weapon identifier.")' in catalog_cs
     assert "TryFirstOtherHit" not in gun_cs # renamed and rewritten, not a second weapon motor

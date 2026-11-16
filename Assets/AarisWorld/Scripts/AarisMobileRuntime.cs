@@ -36,6 +36,9 @@ namespace Aaris.MapReview
         private const float ReportInterval = 15f;
 #if UNITY_ANDROID && !UNITY_EDITOR
         private long androidPssKB = -1;
+        private AarisOfflineDrop startupDrop;
+        private float startupTime;
+        private int startupSampleIndex;
         private Task<string> pendingLogWrite;
         // Product policy: preserve the authored URP render target resolution.
         // Keep the legacy adaptive governor compiled for diagnostics/future opt-in,
@@ -81,6 +84,7 @@ namespace Aaris.MapReview
         {
             Application.targetFrameRate = targetFrameRate;
 #if UNITY_ANDROID && !UNITY_EDITOR
+            startupTime = Time.unscaledTime;
             previousInfoLogStackTrace = Application.GetStackTraceLogType(LogType.Log);
             if (previousInfoLogStackTrace != StackTraceLogType.None)
             {
@@ -112,10 +116,15 @@ namespace Aaris.MapReview
             // serialized flag might still be true in older projects; ignore it
             // rather than changing the four native TerrainData assets or
             // forcing a platform-specific renderer/material substitution.
-            yield return null; // Let URP initialize its first terrain frame.
+            // Choose the saved device policy before submitting the first
+            // world frame so startup does not build two different render states.
             ConfigureTerrainInstanceRenderer();
 #if UNITY_ANDROID && !UNITY_EDITOR
             ConfigureAndroidQuality();
+#endif
+            yield return null; // Audit after URP has drawn the first terrain frame.
+#if UNITY_ANDROID && !UNITY_EDITOR
+            startupDrop = FindFirstObjectByType<AarisOfflineDrop>();
 #endif
             if (releaseTerrainPaintCpuCopies)
                 Debug.LogWarning("AARIS_TERRAIN_PAINT_RELEASE_DISABLED: preserve original alphamap GPU uploads.");
@@ -505,6 +514,20 @@ namespace Aaris.MapReview
                     unloadAfter = Time.unscaledTime + 30;
                 }
             }
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // The regular 15-second ring no longer contains the opening frames.
+            // Keep three bounded snapshots for comparing cold and warm launches.
+            if (startupSampleIndex < 3)
+            {
+                float seconds = Time.unscaledTime - startupTime;
+                float threshold = startupSampleIndex == 0 ? 1f : startupSampleIndex == 1 ? 3f : 8f;
+                if (seconds >= threshold)
+                {
+                    startupSampleIndex++;
+                    Record("startup");
+                }
+            }
+#endif
             if (Time.unscaledTime >= sampleAt)
             {
                 Record("sample");
@@ -612,7 +635,10 @@ namespace Aaris.MapReview
         private sealed class Sample
         {
             public string reason, utc, version, device, gpu, api, lastError;
-            public int systemRamMB, targetFps, warningCount, framesOver50Ms;
+            public int systemRamMB, targetFps, warningCount, framesOver50Ms, frameSamples;
+            public string dropPhase;
+            public bool weaponCatalogReady;
+            public float processSeconds, maxFrameMs;
             public float effectiveTargetFps;
             public int gpuTimingSamples, gpuLimitedSamples, cpuLimitedSamples;
             public float meanGpuFrameMs, meanCpuMainMs, meanCpuRenderMs;
@@ -648,7 +674,10 @@ namespace Aaris.MapReview
                 p75FrameMs = frameCount > 0 ? sortedTimes[Mathf.CeilToInt(frameCount * .75f) - 1] * 1000 : 0,
                 p95FrameMs = frameCount > 0 ? sortedTimes[Mathf.Clamp(Mathf.CeilToInt(frameCount * .95f) - 1, 0, frameCount - 1)] * 1000 : 0,
                 p99FrameMs = frameCount > 0 ? sortedTimes[Mathf.CeilToInt(frameCount * .99f) - 1] * 1000 : 0,
-                framesOver50Ms = framesOver50Ms,
+                framesOver50Ms = framesOver50Ms, frameSamples = frameCount,
+                processSeconds = Time.realtimeSinceStartup,
+                maxFrameMs = frameCount > 0 ? sortedTimes[frameCount - 1] * 1000 : 0,
+                weaponCatalogReady = AarisWeaponCatalog.Ready,
                 unityAllocatedBytes = Profiler.GetTotalAllocatedMemoryLong(), unityReservedBytes = Profiler.GetTotalReservedMemoryLong(),
                 managedBytes = GC.GetTotalMemory(false), textureBytes = Texture.currentTextureMemory,
                 desiredTextureBytes = Texture.desiredTextureMemory, terrainCpuPaintBytesReleased = releasedPaintBytes,
@@ -666,6 +695,7 @@ namespace Aaris.MapReview
                 catch (Exception e) { Debug.LogWarning("Android PSS unavailable: " + e.GetType().Name); }
             }
             s.androidPssKB = androidPssKB;
+            if (startupDrop != null) s.dropPhase = startupDrop.Phase.ToString();
             s.lowMemoryWindZonesDisabled = suppressedWindZones;
             s.lowMemoryGrassTilesDisabled = suppressedGrassTiles;
             s.lowMemoryShadowDistance = appliedShadowDistance;

@@ -23,6 +23,7 @@ namespace Aaris.MapReview
         private int query, probeQuery;
         private Vector3 lastPosition;
         private float nextCheck;
+        private AarisOfflineDrop drop;
         // Keep an already-live collider for a few extra metres so tiny player
         // movements at the activation boundary do not churn physics broadphase.
         // Never use this margin to enable a previously unloaded collider early.
@@ -78,9 +79,14 @@ namespace Aaris.MapReview
         }
         private int Cell(float value) => Mathf.FloorToInt(value / cellSize);
         private static long Key(int x, int z) => ((long)x << 32) ^ (uint)z;
+        private void Start()
+        {
+            if (target != null) drop = target.GetComponent<AarisOfflineDrop>();
+        }
+
         private void Update()
         {
-            if (target == null) return;
+            if (target == null || (drop != null && drop.IsRidingAircraft)) return;
             // Refresh after three metres of movement (and at least every second).
             // Geometry stays active 55m away; 3m travel cannot leave a
             // player without nearby solid walls. Teleports call RefreshNow().

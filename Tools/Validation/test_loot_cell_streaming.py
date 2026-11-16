@@ -34,6 +34,46 @@ class LootGridRegression(unittest.TestCase):
         ):
             self.assertIn(clause, SOURCE)
 
+    def test_aircraft_defers_ground_work_and_resumes_on_approach(self):
+        scripts = ROOT / "Assets/AarisWorld/Scripts"
+        drop = (scripts / "AarisOfflineDrop.cs").read_text(encoding="utf-8")
+        colliders = (scripts / "AarisNearbyColliders.cs").read_text(encoding="utf-8")
+        update = SOURCE[SOURCE.index("private void Update()"):SOURCE.index("private bool RefreshPickups(")]
+        self.assertLess(update.index("drop.ShouldDeferGroundLoot"), update.index("RefreshPickups(playerPosition"))
+        self.assertIn("nextRefresh = 0f;", update)
+        self.assertIn("controlsSuspended && phase == DropPhase.InPlane", drop)
+        self.assertIn("(IsRidingAircraft || sampledGroundClearance > 70f) && !HasLanded", drop)
+        self.assertIn("sampledGroundClearance = reliableHeight ? height : float.PositiveInfinity;", drop)
+        self.assertIn("drop != null && drop.IsRidingAircraft", colliders)
+        self.assertNotIn("ShouldDeferGroundLoot", colliders)
+
+    def test_far_resolved_floor_is_rejected_before_prefab_instantiation(self):
+        authored = SOURCE[SOURCE.index("foreach (int i in nearbyCandidateIndices)"):
+                          SOURCE.index("private void EnsureStarterLoot(")]
+        check = "(spot - playerPosition).sqrMagnitude > ReleaseMetres * ReleaseMetres"
+        self.assertLess(authored.index("TryResolveNearCandidate("), authored.index(check))
+        self.assertLess(authored.index(check), authored.index('new GameObject("Loot "'))
+
+    def test_tree_spacing_subsets_keep_the_same_acceptance_order(self):
+        self.assertIn("foreach (var point in treePoints)", SOURCE)
+        self.assertIn("treePoints.Add(new Vector2(x, z));", SOURCE)
+        rng = random.Random(0xAA15)
+        starts = [(rng.uniform(-200, 200), rng.uniform(-200, 200), i % 29 == 0)
+                  for i in range(1500)]
+        samples = [(rng.uniform(-200, 200), rng.uniform(-200, 200)) for _ in range(960)]
+
+        def accepted(filter_tree_only):
+            points = [p for p in starts if p[2]] if filter_tree_only else list(starts)
+            accepted_points = []
+            for x, z in samples:
+                if any(tree and (px - x) ** 2 + (pz - z) ** 2 < 32 ** 2 for px, pz, tree in points):
+                    continue
+                points.append((x, z, True))
+                accepted_points.append((x, z))
+            return accepted_points
+
+        self.assertEqual(accepted(False), accepted(True))
+
     def test_immutable_cell_index_cache_rebuilds_only_at_bounds_change(self):
         # Cache never touches final 50m distance filtering, priority order,
         # candidate selection, live mesh cap, or pickup collision checks.

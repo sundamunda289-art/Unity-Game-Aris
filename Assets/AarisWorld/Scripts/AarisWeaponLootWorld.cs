@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -87,6 +88,7 @@ namespace Aaris.MapReview
         private byte[] alternateProbeSweep;
         private AarisWeaponInventory inventory;
         private Transform player;
+        private AarisOfflineDrop drop;
         private float nextRefresh, requestPickupUntil, nextStarterRetryAt;
         private float starterUnarmedSince = -1f;
         private int streamFramesRemaining;
@@ -124,13 +126,30 @@ namespace Aaris.MapReview
             var world = root.AddComponent<AarisWeaponLootWorld>();
             world.player = motor.transform;
             world.inventory = inventory;
-            world.Initialize();
+#if UNITY_ANDROID && !UNITY_EDITOR
+            world.StartCoroutine(world.InitializeAndroid());
+#else
+            if (AarisWeaponCatalog.TryLoad()) world.Initialize();
+            else world.enabled = false;
+#endif
             if (world.enabled) inventory.BindLootWorld(world);
+        }
+
+        private void Start()
+        {
+            if (player != null) drop = player.GetComponent<AarisOfflineDrop>();
+        }
+
+        private IEnumerator InitializeAndroid()
+        {
+            yield return null; // Render the aircraft before loading ground-only models.
+            yield return AarisWeaponCatalog.LoadForMatchAsync();
+            Initialize();
         }
 
         private void Initialize()
         {
-            if (!AarisWeaponCatalog.TryLoad())
+            if (!AarisWeaponCatalog.Ready)
             {
                 enabled = false;
                 return;
@@ -258,6 +277,13 @@ namespace Aaris.MapReview
 
         private void AppendNativeTreeCover(List<AarisLootCandidate> result)
         {
+            // Only tree slots participate in the spacing rule. Keep the same
+            // sampled order and seed without rescanning every building/road slot.
+            var treePoints = new List<Vector2>(192);
+            foreach (var candidate in result)
+                if (candidate != null && candidate.kind == "tree")
+                    treePoints.Add(new Vector2(candidate.x, candidate.z));
+
             foreach (var terrain in Terrain.activeTerrains)
             {
                 if (terrain == null || terrain.terrainData == null) continue;
@@ -281,10 +307,9 @@ namespace Aaris.MapReview
                     float z = tree.z + Mathf.Sin(angle) * distance;
                     if (x < -955f || x > 955f || z < -955f || z > 955f) continue;
                     bool nearExistingTreeCandidate = false;
-                    foreach (var c in result)
+                    foreach (var point in treePoints)
                     {
-                        if (c.kind != "tree") continue;
-                        float dx = c.x - x, dz = c.z - z;
+                        float dx = point.x - x, dz = point.y - z;
                         if (dx * dx + dz * dz < 32f * 32f)
                         {
                             nearExistingTreeCandidate = true;
@@ -297,6 +322,7 @@ namespace Aaris.MapReview
                         kind = "tree", x = x, y = 0f, z = z,
                         origin = "native Terrain tree", slot = idx
                     });
+                    treePoints.Add(new Vector2(x, z));
                     accepted++;
                 }
             }
@@ -766,6 +792,11 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (player == null || inventory == null || candidates == null) return;
+            if (drop != null && drop.ShouldDeferGroundLoot)
+            {
+                nextRefresh = 0f; // Resume the normal budget on the first near-ground frame.
+                return;
+            }
             float now = Time.unscaledTime;
             Vector3 playerPosition = player.position;
             if (now >= nextRefresh)
@@ -887,11 +918,11 @@ namespace Aaris.MapReview
             foreach (int i in nearbyCandidateIndices)
             {
                 if (active.Count >= streamLimit) return false;
-                if (choices[i] == null || consumed[i] || IsCurrentlyActive(i)) continue;
+                if (choices[i] == null || consumed[i] || now < nextCandidateProbeAt[i]) continue;
                 var c = candidates[i];
                 float dx = c.x - playerPosition.x, dz = c.z - playerPosition.z;
                 if (dx * dx + dz * dz >= loadSquared) continue;
-                if (now < nextCandidateProbeAt[i]) continue;
+                if (IsCurrentlyActive(i)) continue;
                 if (buildAttempts == MaximumBuildAttemptsPerFrame ||
                     probes == MaximumCandidateProbesPerFrame) return true;
 
@@ -901,6 +932,13 @@ namespace Aaris.MapReview
                     ref alternateProbeBudget, out Vector3 spot))
                 {
                     nextCandidateProbeAt[i] = now + RetryDelaySeconds;
+                    continue;
+                }
+                // Skip a resolved floor that RefreshPickups would immediately
+                // unload again, including tall cliffs and low-altitude fly-bys.
+                if ((spot - playerPosition).sqrMagnitude > ReleaseMetres * ReleaseMetres)
+                {
+                    nextCandidateProbeAt[i] = now + 0.33f;
                     continue;
                 }
                 buildAttempts++;
