@@ -344,12 +344,25 @@ namespace Aaris.MapReview
                  normalizedGpu.IndexOf(" MC2", StringComparison.OrdinalIgnoreCase) >= 0 ||
                  normalizedGpu.IndexOf(" MP1", StringComparison.OrdinalIgnoreCase) >= 0 ||
                  normalizedGpu.IndexOf(" MP2", StringComparison.OrdinalIgnoreCase) >= 0);
-            return smallG57 ||
-                   gpu.IndexOf("Mali-G52", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   gpu.IndexOf("Mali-G51", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   gpu.IndexOf("Mali-G31", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            // GPU vendors report equivalent chips with dashes, spaces and
+            // underscores. Reuse the normalized name for the older Mali line
+            // as well; otherwise "Mali G52" misses the same budget as
+            // "Mali-G52" (likewise "Mali-G51" and "Mali-G31").
+            bool legacyMali = normalizedGpu.IndexOf("Mali G52",
+                StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalizedGpu.IndexOf("Mali G51",
+                StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalizedGpu.IndexOf("Mali G31",
+                StringComparison.OrdinalIgnoreCase) >= 0;
+            // Android's trademark suffix can appear between Adreno and 610.
+            // Keep these exact low-end matches, not a blanket Adreno rule.
+            bool smallAdreno610 =
+                gpu.IndexOf("Adreno 610", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                gpu.IndexOf("Adreno (TM) 610", StringComparison.OrdinalIgnoreCase) >= 0;
+            return smallG57 || legacyMali ||
                    gpu.IndexOf("PowerVR GE8320", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   gpu.IndexOf("Adreno 610", StringComparison.OrdinalIgnoreCase) >= 0;
+                   gpu.IndexOf("PowerVR Rogue GE8320", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   smallAdreno610;
         }
 
         // One-time, Android-only vegetation work: static wind is much cheaper
