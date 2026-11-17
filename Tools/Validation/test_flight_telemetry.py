@@ -46,7 +46,7 @@ class FlightTelemetryContracts(unittest.TestCase):
         self.assertIn("Mathf.Sqrt(horizontalVelocity.sqrMagnitude +", SOURCE)
         self.assertIn("downwardSpeed * downwardSpeed) * 3.6f", SOURCE)
         self.assertAlmostEqual(76.0 * 3.6, 273.6)
-        self.assertAlmostEqual(math.hypot(34, 25) * 3.6, 151.9168194, places=5)
+        self.assertAlmostEqual(math.hypot(34, 25) * 3.6, 151.9268245, places=5)
 
     def test_world_height_and_sea_floor_boundaries(self):
         tile = [(-1000, -1000, 1000, 1000, -20.0)]
