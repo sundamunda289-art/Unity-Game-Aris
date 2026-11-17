@@ -21,8 +21,19 @@ def simulated_budget_gpu(name):
     small_g57 = "mali g57" in normalized and any(
         token in normalized for token in (" mc1", " mc2", " mp1", " mp2")
     )
+    def exact_gpu_model(model):
+        start = normalized.find(model)
+        if start < 0:
+            return False
+        end = start + len(model)
+        return (
+            (start == 0 or not normalized[start - 1].isalnum())
+            and (end == len(normalized) or not normalized[end].isalnum())
+        )
+
+    small_g57 = small_g57 and exact_gpu_model("mali g57")
     legacy_mali = any(
-        token in normalized for token in ("mali g52", "mali g51", "mali g31")
+        exact_gpu_model(token) for token in ("mali g52", "mali g51", "mali g31")
     )
     adreno_610 = "adreno 610" in name.lower() or "adreno (tm) 610" in name.lower()
     return small_g57 or legacy_mali or (
@@ -38,10 +49,12 @@ class BudgetGpuNameAliases(unittest.TestCase):
             DETECTOR,
         )
         for model in ("Mali G52", "Mali G51", "Mali G31"):
-            self.assertIn('normalizedGpu.IndexOf("' + model + '"', DETECTOR)
+            self.assertIn('HasExactGpuModel(normalizedGpu, "' + model + '")', DETECTOR)
         self.assertIn('gpu.IndexOf("Adreno (TM) 610"', DETECTOR)
         self.assertIn('gpu.IndexOf("PowerVR Rogue GE8320"', DETECTOR)
         self.assertIn("return smallG57 || legacyMali ||", DETECTOR)
+        self.assertIn('HasExactGpuModel(normalizedGpu, "Mali G57")', DETECTOR)
+        self.assertIn("!char.IsLetterOrDigit(description[end])", SOURCE)
 
     def test_equivalent_low_end_gpu_names(self):
         names = (
@@ -58,7 +71,8 @@ class BudgetGpuNameAliases(unittest.TestCase):
         names = (
             "Mali-G57 MC3", "Mali-G57 MC4", "Mali-G76 MC4",
             "Adreno 618", "Adreno 730", "Mali G610 MC6",
-            "PowerVR GE8300", "unknown", "",
+            "PowerVR GE8300", "Mali-G520 MC2", "Mali G510",
+            "Mali G570 MC2", "Mali G310", "unknown", "",
         )
         for name in names:
             with self.subTest(name=name):
