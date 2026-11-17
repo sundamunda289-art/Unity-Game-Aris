@@ -567,13 +567,86 @@ namespace Aaris.MapReview
 
         private void RecoverFromOceanFall()
         {
-            // Until swimming/death exists, safely return a submerged player
-            // to the existing validated on-foot spawn rather than softlock.
+            // Ocean is not traversable in offline mode. Prefer a nearby,
+            // walkable shore instead of teleporting across the entire island.
+            // The search runs only on ocean recovery, not every gameplay frame.
+            bool hasNearbyShore = TryFindNearbyShore(transform.position, out Vector3 shore);
             capsule.enabled = false;
-            transform.SetPositionAndRotation(preFlightGroundPosition, cachedPlayerRotation);
+            if (hasNearbyShore)
+                transform.SetPositionAndRotation(shore, cachedPlayerRotation);
+            else
+                transform.SetPositionAndRotation(preFlightGroundPosition, cachedPlayerRotation);
             capsule.enabled = true;
             Land();
-            Debug.LogWarning("AARIS_DROP_OCEAN_RECOVERY: returned to saved on-foot spawn.");
+            if (hasNearbyShore)
+                Debug.Log("AARIS_DROP_OCEAN_RECOVERY_NEAR_SHORE: safe coastal landing.");
+            else
+                Debug.LogWarning("AARIS_DROP_OCEAN_RECOVERY: returned to saved on-foot spawn.");
+        }
+
+        private bool TryFindNearbyShore(Vector3 waterPosition, out Vector3 shore)
+        {
+            shore = Vector3.zero;
+            if (flightTerrains == null || capsule == null)
+                return false;
+
+            // Deterministic bounded rings. Never choose an underwater,
+            // dangerously steep or obstructed spot, and never scan the
+            // whole map on a low-end Android frame.
+            float[] radii = { 0f, 8f, 16f, 32f, 64f, 96f, 144f, 192f };
+            const int directions = 16;
+            float minNormalY = Mathf.Cos(Mathf.Min(capsule.slopeLimit, 50f) *
+                Mathf.Deg2Rad);
+            float radius = Mathf.Max(0.05f, capsule.radius);
+            float halfSegment = Mathf.Max(0f, capsule.height * 0.5f - radius);
+            float clearance = Mathf.Max(0.18f, capsule.skinWidth + 0.12f);
+
+            for (int ring = 0; ring < radii.Length; ring++)
+            {
+                int count = ring == 0 ? 1 : directions;
+                for (int direction = 0; direction < count; direction++)
+                {
+                    float angle = direction * (Mathf.PI * 2f / directions);
+                    float x = waterPosition.x + Mathf.Cos(angle) * radii[ring];
+                    float z = waterPosition.z + Mathf.Sin(angle) * radii[ring];
+                    for (int i = 0; i < flightTerrains.Length; i++)
+                    {
+                        Terrain tile = flightTerrains[i];
+                        if (tile == null || tile.terrainData == null ||
+                            !tile.gameObject.activeInHierarchy) continue;
+
+                        Vector3 origin = tile.transform.position;
+                        Vector3 size = tile.terrainData.size;
+                        float inset = radius + 0.35f;
+                        if (x < origin.x + inset || x > origin.x + size.x - inset ||
+                            z < origin.z + inset || z > origin.z + size.z - inset)
+                            continue;
+
+                        Vector3 sample = new Vector3(x, 0f, z);
+                        float ground = origin.y + tile.SampleHeight(sample);
+                        if (ground < SeaSurfaceHeight + 1.5f)
+                            continue;
+
+                        float u = Mathf.Clamp01((x - origin.x) / size.x);
+                        float v = Mathf.Clamp01((z - origin.z) / size.z);
+                        if (tile.terrainData.GetInterpolatedNormal(u, v).y < minNormalY)
+                            continue;
+
+                        Vector3 candidate = new Vector3(x, ground + clearance, z);
+                        Vector3 center = candidate + capsule.center;
+                        // Check capsule volume before moving the actual player;
+                        // this also rejects indoor walls or other blockers.
+                        if (Physics.CheckCapsule(center - Vector3.up * halfSegment,
+                            center + Vector3.up * halfSegment, radius,
+                            Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                            continue;
+
+                        shore = candidate;
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         private bool TryGetDistanceToSupport(out float height, float rayLength)
