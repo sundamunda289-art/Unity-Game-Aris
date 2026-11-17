@@ -232,6 +232,12 @@ namespace Aaris.MapReview
                     plane.transform.position = Vector3.Lerp(pathStart, pathEnd, flightProgress);
                     ApplyPlaneVisualInertia();
                     transform.position = plane.transform.position + Vector3.down * 6f;
+                    // Show real flight telemetry instead of leaving '--' in
+                    // the HUD for the entire aircraft ride. Poll the four
+                    // native terrain tiles only when the 150 ms HUD timer is due.
+                    if (hud != null && hud.TelemetryDue)
+                        hud.SetTelemetry(SampleAircraftClearance(plane.transform.position),
+                            planeSpeed * 3.6f, phase);
                 }
                 if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.F)) OnAction();
                 if (flightProgress >= 0.95f) Eject();
@@ -261,7 +267,10 @@ namespace Aaris.MapReview
                     phase == DropPhase.Gliding)
                     SimulateAirborne(dt);
                 if (sampleHeight && reliableHeight && hud != null)
-                    hud.SetTelemetry(height, Mathf.Abs(downwardSpeed) * 3.6f, phase);
+                    // Show actual 3D motion during freefall and canopy glide,
+                    // rather than reporting only vertical descent as speed.
+                    hud.SetTelemetry(height, Mathf.Sqrt(horizontalVelocity.sqrMagnitude +
+                        downwardSpeed * downwardSpeed) * 3.6f, phase);
             }
         }
 
@@ -574,6 +583,31 @@ namespace Aaris.MapReview
             capsule.enabled = true;
             Land();
             Debug.LogWarning("AARIS_DROP_OCEAN_RECOVERY: returned to saved on-foot spawn.");
+        }
+
+        private float SampleAircraftClearance(Vector3 aircraftPosition)
+        {
+            // Aircraft telemetry is height above the visible solid ground or
+            // sea surface, never the tile-relative Y of Terrain.SampleHeight.
+            // Buildings do not require per-update physics raycasts from the sky.
+            float supportY = SeaSurfaceHeight;
+            if (flightTerrains != null)
+            {
+                for (int i = 0; i < flightTerrains.Length; i++)
+                {
+                    Terrain tile = flightTerrains[i];
+                    if (tile == null || tile.terrainData == null) continue;
+                    Vector3 origin = tile.transform.position;
+                    Vector3 size = tile.terrainData.size;
+                    if (aircraftPosition.x < origin.x ||
+                        aircraftPosition.x > origin.x + size.x ||
+                        aircraftPosition.z < origin.z ||
+                        aircraftPosition.z > origin.z + size.z) continue;
+                    supportY = Mathf.Max(supportY, origin.y +
+                        tile.SampleHeight(aircraftPosition));
+                }
+            }
+            return Mathf.Max(0f, aircraftPosition.y - supportY);
         }
 
         private bool TryGetDistanceToSupport(out float height, float rayLength)
