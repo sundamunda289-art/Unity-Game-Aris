@@ -340,6 +340,7 @@ namespace Aaris.MapReview
             string normalizedGpu = gpu.Replace('-', ' ').Replace('_', ' ');
             bool smallG57 = normalizedGpu.IndexOf("Mali G57",
                 StringComparison.OrdinalIgnoreCase) >= 0 &&
+                HasExactGpuModel(normalizedGpu, "Mali G57") &&
                 (normalizedGpu.IndexOf(" MC1", StringComparison.OrdinalIgnoreCase) >= 0 ||
                  normalizedGpu.IndexOf(" MC2", StringComparison.OrdinalIgnoreCase) >= 0 ||
                  normalizedGpu.IndexOf(" MP1", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -348,12 +349,9 @@ namespace Aaris.MapReview
             // underscores. Reuse the normalized name for the older Mali line
             // as well; otherwise "Mali G52" misses the same budget as
             // "Mali-G52" (likewise "Mali-G51" and "Mali-G31").
-            bool legacyMali = normalizedGpu.IndexOf("Mali G52",
-                StringComparison.OrdinalIgnoreCase) >= 0 ||
-                normalizedGpu.IndexOf("Mali G51",
-                StringComparison.OrdinalIgnoreCase) >= 0 ||
-                normalizedGpu.IndexOf("Mali G31",
-                StringComparison.OrdinalIgnoreCase) >= 0;
+            bool legacyMali = HasExactGpuModel(normalizedGpu, "Mali G52") ||
+                              HasExactGpuModel(normalizedGpu, "Mali G51") ||
+                              HasExactGpuModel(normalizedGpu, "Mali G31");
             // Android's trademark suffix can appear between Adreno and 610.
             // Keep these exact low-end matches, not a blanket Adreno rule.
             bool smallAdreno610 =
@@ -363,6 +361,19 @@ namespace Aaris.MapReview
                    gpu.IndexOf("PowerVR GE8320", StringComparison.OrdinalIgnoreCase) >= 0 ||
                    gpu.IndexOf("PowerVR Rogue GE8320", StringComparison.OrdinalIgnoreCase) >= 0 ||
                    smallAdreno610;
+        }
+
+        // Model prefixes are not interchangeable: Mali-G520 is not G52,
+        // and Mali-G570 MC2 is not G57 MC2. Skip accidental substring hits
+        // while accepting vendor punctuation and suffixes such as "MC2".
+        // One-time setup-only helper; never runs per rendered frame.
+        private static bool HasExactGpuModel(string description, string model)
+        {
+            int index = description.IndexOf(model, StringComparison.OrdinalIgnoreCase);
+            if (index < 0) return false;
+            int end = index + model.Length;
+            return (index == 0 || !char.IsLetterOrDigit(description[index - 1])) &&
+                   (end == description.Length || !char.IsLetterOrDigit(description[end]));
         }
 
         // One-time, Android-only vegetation work: static wind is much cheaper
