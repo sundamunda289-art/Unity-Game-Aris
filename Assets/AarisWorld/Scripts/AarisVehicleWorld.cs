@@ -87,6 +87,10 @@ namespace Aaris.MapReview
         private readonly Collider[] collisionHits = new Collider[40];
         private Transform player;
         private AarisNearbyColliders nearbyColliders;
+        // Reuse the four native terrain components across repeated five-ray
+        // vehicle support checks; re-query active terrains only on a rare miss.
+        private Terrain[] terrainCache;
+        private float nextTerrainRefresh;
         private float nextPoll;
         private uint randomState;
         private AarisVehicleType[] vehicleTypes;
@@ -156,6 +160,29 @@ namespace Aaris.MapReview
             MeshFilter filter = renderer.GetComponent<MeshFilter>();
             return filter != null && filter.sharedMesh != null
                 ? Mathf.Max(1, filter.sharedMesh.subMeshCount) : 1;
+        }
+
+        // Renderer components alone do not prove the imported car can be seen.
+        // Fail safely if its only meshes are disabled, inactive or forced off.
+        private static bool HasRenderableVehicleBody(Renderer[] renderers)
+        {
+            foreach (var renderer in renderers)
+            {
+                if (renderer == null || !renderer.enabled ||
+                    renderer.forceRenderingOff || !renderer.gameObject.activeInHierarchy)
+                    continue;
+                if (renderer is SkinnedMeshRenderer skinned &&
+                    skinned.sharedMesh != null && skinned.sharedMesh.vertexCount > 0)
+                    return true;
+                if (renderer is MeshRenderer)
+                {
+                    var filter = renderer.GetComponent<MeshFilter>();
+                    if (filter != null && filter.sharedMesh != null &&
+                        filter.sharedMesh.vertexCount > 0)
+                        return true;
+                }
+            }
+            return false;
         }
 
         internal static bool TryGetVisualBoundsLocal(Transform localSpace, out Bounds combined)
@@ -917,17 +944,31 @@ namespace Aaris.MapReview
             return true;
         }
 
-        private static Terrain TerrainAt(float x, float z)
+        private static Terrain FindTerrain(Terrain[] terrains, float x, float z)
         {
-            foreach (var terrain in Terrain.activeTerrains)
+            if (terrains == null) return null;
+            foreach (var terrain in terrains)
             {
-                if (terrain == null || terrain.terrainData == null) continue;
+                if (terrain == null || !terrain.isActiveAndEnabled ||
+                    terrain.terrainData == null) continue;
                 var p = terrain.transform.position;
                 var size = terrain.terrainData.size;
                 if (x >= p.x && x <= p.x + size.x &&
                     z >= p.z && z <= p.z + size.z) return terrain;
             }
             return null;
+        }
+
+        private Terrain TerrainAt(float x, float z)
+        {
+            if (terrainCache == null) terrainCache = Terrain.activeTerrains;
+            var terrain = FindTerrain(terrainCache, x, z);
+            if (terrain != null || Time.unscaledTime < nextTerrainRefresh)
+                return terrain;
+            // Detect late-loaded terrain only on a cache miss, never per ray.
+            nextTerrainRefresh = Time.unscaledTime + 5f;
+            terrainCache = Terrain.activeTerrains;
+            return FindTerrain(terrainCache, x, z);
         }
 
         private bool HasSupport(Vector3 center, float expected, out float y)
@@ -1206,7 +1247,7 @@ namespace Aaris.MapReview
             foreach (var collider in mesh.GetComponentsInChildren<Collider>(true))
                 collider.enabled = false;
             var renderers = mesh.GetComponentsInChildren<Renderer>(true);
-            if (renderers.Length == 0)
+            if (!HasRenderableVehicleBody(renderers))
             {
                 FallBackToVerifiedModel(typeIndex, "renderer check");
                 Destroy(root);
