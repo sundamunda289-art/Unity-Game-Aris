@@ -575,6 +575,13 @@ namespace Aaris.MapReview
         private CharacterController capsule;
         private readonly RaycastHit[] sightHits = new RaycastHit[20];
         private float nextThink, nextAttack, verticalSpeed, turnOffset, visualBlend;
+        // Outside the combat range, save mobile CPU by updating far capsules
+        // at 10 Hz. Keep near opponents at full gameplay frame rate.
+        private const float FarSimulationDistance = 90f;
+        private const float FarSimulationInterval = 0.10f;
+        // Sparse far ticks can span two frames on a 15 FPS phone; do not
+        // truncate ordinary 133 ms travel, but cap extreme app-resume hitches.
+        private float nextFarSimulation, lastSimulationTime;
         private float avoidanceHandedness;
         private bool canSee;
         private PlayableGraph graph;
@@ -593,6 +600,8 @@ namespace Aaris.MapReview
             health.Died += OnDied;
             turnOffset = UnityEngine.Random.Range(-12f, 12f);
             avoidanceHandedness = UnityEngine.Random.value < 0.5f ? 1f : -1f;
+            lastSimulationTime = Time.time;
+            nextFarSimulation = Time.time;
             BuildVisual();
         }
 
@@ -719,13 +728,20 @@ namespace Aaris.MapReview
         {
             if (owner == null || !owner.CanEngage || !IsAlive ||
                 target == null || targetHealth == null || targetHealth.IsDead) return;
-            // A 10-15 FPS phone must not make distant rivals run at half
-            // speed. Keep one CharacterController sweep per rendered frame;
-            // the 120 ms cap still bounds extreme app-resume hitches.
-            float dt = Mathf.Min(Time.deltaTime, 0.12f);
             Vector3 diff = target.position - transform.position;
             diff.y = 0f;
             float distance = diff.magnitude;
+            // Distant rivals cannot see (42m) or attack (38m) the player.
+            // Keep collision, cover avoidance and zone retreat simulated,
+            // without paying for every far-away physics query each frame.
+            bool farSimulation = distance >= FarSimulationDistance;
+            if (farSimulation && Time.time < nextFarSimulation) return;
+            float dt = farSimulation
+                ? Mathf.Clamp(Time.time - lastSimulationTime, 0f, 0.22f)
+                : Mathf.Min(Time.deltaTime, 0.12f);
+            lastSimulationTime = Time.time;
+            if (farSimulation)
+                nextFarSimulation = Time.time + FarSimulationInterval;
             Vector3 toward = distance > .01f ? diff / distance : transform.forward;
             if (Time.time >= nextThink)
             {
