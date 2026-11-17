@@ -457,7 +457,11 @@ def run():
     assert 'c.kind == "tree" ? 0.92f :' in world
     assert 'c.kind == "open" && c.slot >= 200000 ? 1f : 0.78f;' in world
     assert "FindObjectsByType<Collider>" not in world
-    assert "TreeInstance[] trees = data.treeInstances;" in world
+    # Unity 6 indexed tree access avoids copying the entire native tree
+    # population into a managed array on low-RAM Android devices.
+    assert "int treeCount = data.treeInstanceCount;" in world
+    assert "TreeInstance instance = data.GetTreeInstance(idx);" in world
+    assert "TreeInstance[] trees = data.treeInstances;" not in world
     assert "while (accepted < 48 && attempts++ < 240)" in world
     # 4 tiles x 48 accepted tree-side nodes, still strictly planning-only.
     # Existing 50m stream radius, 40 visible pickup cap and 2 builds/frame
