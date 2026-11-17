@@ -570,8 +570,9 @@ namespace Aaris.MapReview
             // Ocean is not traversable in offline mode. Prefer a nearby,
             // walkable shore instead of teleporting across the entire island.
             // The search runs only on ocean recovery, not every gameplay frame.
-            bool hasNearbyShore = TryFindNearbyShore(transform.position, out Vector3 shore);
+            Vector3 waterPosition = transform.position;
             capsule.enabled = false;
+            bool hasNearbyShore = TryFindNearbyShore(waterPosition, out Vector3 shore);
             if (hasNearbyShore)
                 transform.SetPositionAndRotation(shore, cachedPlayerRotation);
             else
@@ -614,6 +615,8 @@ namespace Aaris.MapReview
                         Terrain tile = flightTerrains[i];
                         if (tile == null || tile.terrainData == null ||
                             !tile.gameObject.activeInHierarchy) continue;
+                        TerrainCollider terrainCollider = tile.GetComponent<TerrainCollider>();
+                        if (terrainCollider == null || !terrainCollider.enabled) continue;
 
                         Vector3 origin = tile.transform.position;
                         Vector3 size = tile.terrainData.size;
