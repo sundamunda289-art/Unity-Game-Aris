@@ -736,9 +736,10 @@ namespace Aaris.MapReview
             // without paying for every far-away physics query each frame.
             bool farSimulation = distance >= FarSimulationDistance;
             if (farSimulation && Time.time < nextFarSimulation) return;
-            float dt = farSimulation
-                ? Mathf.Clamp(Time.time - lastSimulationTime, 0f, 0.22f)
-                : Mathf.Min(Time.deltaTime, 0.12f);
+            // Preserve the native-frame near response, including low-FPS pacing.
+            float dt = Mathf.Min(Time.deltaTime, 0.12f);
+            if (farSimulation)
+                dt = Mathf.Clamp(Time.time - lastSimulationTime, 0f, 0.22f);
             lastSimulationTime = Time.time;
             if (farSimulation)
                 nextFarSimulation = Time.time + FarSimulationInterval;
