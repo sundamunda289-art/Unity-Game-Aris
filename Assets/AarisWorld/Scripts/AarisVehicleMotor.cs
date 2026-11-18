@@ -55,6 +55,11 @@ namespace Aaris.MapReview
         private Material headlampGlass, headlampOn, taillampGlass, brakeLamp;
         private Light roadHeadlight;
         private int lastLampState = -1;
+        // Only the occupied car may use a real spotlight. Keep its daytime
+        // beam out of the mobile URP additional-light pass; all emissive
+        // lenses remain visible using their existing shared materials.
+        private float nextRoadBeamSampleAt;
+        private bool roadBeamNeeded = true;
         // Imported vehicle bodies may carry four real wheel meshes with their
         // own authored local axes. Preserve that rest orientation while the
         // WheelCollider supplies steering, suspension and spin.
@@ -672,6 +677,26 @@ namespace Aaris.MapReview
             roadHeadlight.enabled = false;
         }
 
+        // Sample the scene sun at most once every two seconds, never every
+        // physics or rendering frame. With no configured directional sun,
+        // retain the original beam for night/custom-lighting scenes.
+        private bool NeedsRoadBeam()
+        {
+            if (Time.unscaledTime < nextRoadBeamSampleAt)
+                return roadBeamNeeded;
+            nextRoadBeamSampleAt = Time.unscaledTime + 2f;
+            Light sun = RenderSettings.sun;
+            if (sun == null || !sun.isActiveAndEnabled ||
+                sun.type != LightType.Directional)
+            {
+                roadBeamNeeded = true;
+                return true;
+            }
+            float elevation = Vector3.Dot(-sun.transform.forward, Vector3.up);
+            roadBeamNeeded = elevation < .18f || sun.intensity < .35f;
+            return roadBeamNeeded;
+        }
+
         private void RefreshExteriorLights()
         {
             if (frontLamps[0] == null) return;
@@ -684,8 +709,10 @@ namespace Aaris.MapReview
             // moving-forward car is merely braking with the down arrow.
             bool reversing = driving && forward < -.08f &&
                 SpeedMetresPerSecond < .55f;
+            bool roadBeam = driving && NeedsRoadBeam();
             int lampState = (driving ? 1 : 0) |
-                (braking ? 2 : 0) | (reversing ? 4 : 0);
+                (braking ? 2 : 0) | (reversing ? 4 : 0) |
+                (roadBeam ? 8 : 0);
             if (lastLampState == lampState) return;
             lastLampState = lampState;
             for (int side = 0; side < 2; side++)
@@ -696,7 +723,7 @@ namespace Aaris.MapReview
                     braking ? brakeLamp : taillampGlass;
                 reversingLamps[side].enabled = reversing;
             }
-            if (roadHeadlight != null) roadHeadlight.enabled = driving;
+            if (roadHeadlight != null) roadHeadlight.enabled = roadBeam;
         }
 
         // The world has already tinted these precise PBR slots with a
@@ -1083,6 +1110,7 @@ namespace Aaris.MapReview
             appliedDriveTorque = appliedBrakeTorque = appliedSteeringAngle = float.NaN;
             appliedServiceBrakeDirection = 0;
             lastLampState = -1;
+            nextRoadBeamSampleAt = 0f;
             StopRearTyreTraces(true);
             StopExhaust(true);
             RefreshExteriorLights();
