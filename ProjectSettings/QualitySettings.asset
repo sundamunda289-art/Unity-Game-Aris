@@ -35,7 +35,7 @@ QualitySettings:
     streamingMipmapsMemoryBudget: 384
     streamingMipmapsRenderersPerFrame: 128
     streamingMipmapsMaxLevelReduction: 2
-    streamingMipmapsMaxFileIORequests: 64
+    streamingMipmapsMaxFileIORequests: 16
     particleRaycastBudget: 256
     asyncUploadTimeSlice: 2
     asyncUploadBufferSize: 16

@@ -26,6 +26,23 @@ def audit():
     for name in rock_materials:
         material = (rock_root / name).read_text(encoding="utf-8")
         assert "m_EnableInstancingVariants: 1" in material, name
+    # Cold-start memory protection for all 58 authored pine/conifer maps.
+    # Only streaming residency changes; alpha-cutout coverage and original
+    # import resolution are untouched for sharp leaves at native scale.
+    tree_metas = sorted((ROOT / "Assets/TerrainDemoScene_URP/Prefabs/Trees").rglob("*.png.meta"))
+    assert len(tree_metas) == 58, len(tree_metas)
+    preserved_alpha = 0
+    for metadata in tree_metas:
+        source = metadata.read_text(encoding="utf-8")
+        assert "enableMipMap: 1" in source and "streamingMipmaps: 1" in source, metadata
+        if "alphaIsTransparency: 1" in source:
+            assert "mipMapsPreserveCoverage: 1" in source, metadata
+            preserved_alpha += 1
+    assert preserved_alpha >= 15, preserved_alpha
+    quality_asset = (ROOT / "ProjectSettings/QualitySettings.asset").read_text(encoding="utf-8")
+    assert "streamingMipmapsActive: 1" in quality_asset
+    assert "streamingMipmapsMaxFileIORequests: 16" in quality_asset
+
     # Unity 6 Terrain.drawInstanced defaults false. Enable the native
     # instance renderer once at startup without touching TerrainData quality.
     mobile_runtime = (SRC / "AarisMobileRuntime.cs").read_text(encoding="utf-8")
