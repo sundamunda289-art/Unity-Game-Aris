@@ -15,10 +15,10 @@ MOTOR = (ROOT / "Assets/AarisWorld/Scripts/AarisVehicleMotor.cs").read_text()
 CATALOG = json.loads((ROOT / "Assets/Resources/AarisVehicles/vehicle_catalog.json").read_text())
 
 DIMENSIONS = {
-    "Sedan": (1.84, 4.42), "SUV": (1.96, 4.50),
-    "Sports": (1.91, 4.40), "GT": (1.92, 4.42),
-    "Hatchback": (1.74, 3.95), "Van": (1.97, 4.57),
-    "Utility": (1.96, 4.57), "Buggy": (1.80, 3.72),
+    "Sedan": (1.96, 4.50), "SUV": (2.10, 4.80),
+    "Sports": (1.99, 4.46), "GT": (2.08, 4.48),
+    "Hatchback": (1.81, 3.90), "Van": (2.05, 5.08),
+    "Utility": (2.10, 5.42), "Buggy": (1.90, 3.45),
 }
 
 
@@ -31,9 +31,9 @@ class RealMetreVehicleFit(unittest.TestCase):
             self.assertAlmostEqual(v["referenceLengthMetres"], length)
             self.assertGreater(width, 1.60)
             self.assertGreater(length, 3.50)
-            # Existing occupied-patch protection is 2.28 m x 4.70 m.
-            self.assertLess(width, 2.28)
-            self.assertLess(length, 4.70)
+            # Per-class road-clearance overlap follows these proportions.
+            self.assertLess(width, 2.25)
+            self.assertLess(length, 5.50)
             # The saved playable avatar measures 1.78 metres tall.
             self.assertGreater(width / 1.78, .90)
             self.assertLess(width / 1.78, 1.18)
@@ -47,8 +47,8 @@ class RealMetreVehicleFit(unittest.TestCase):
             "private void Update()", 1)[0]
         self.assertIn("referenceWidthMetres", WORLD)
         self.assertIn("referenceLengthMetres", WORLD)
-        self.assertIn("Mathf.Clamp(widthMetres, 1.65f, 2.08f)", fit)
-        self.assertIn("Mathf.Clamp(lengthMetres, 3.50f, 4.60f)", fit)
+        self.assertIn("Mathf.Clamp(widthMetres, 1.65f, 2.15f)", fit)
+        self.assertIn("Mathf.Clamp(lengthMetres, 3.35f, 5.50f)", fit)
         self.assertIn("Mathf.Min(widthMetres / bounds.size.x,", fit)
         self.assertIn("lengthMetres / bounds.size.z)", fit)
         self.assertIn("mesh.transform.localScale *= Mathf.Clamp(scale, .01f, 50f)", fit)
@@ -115,6 +115,54 @@ class RealMetreVehicleFit(unittest.TestCase):
         self.assertIn('polished.SetFloat("_Smoothness", .83f)', material)
         self.assertIn("authoredMaterialCache[source] = polished", material)
         self.assertNotIn("renderer.material", material)
+
+    def test_vendor_fbx_orientation_is_detected_before_scale(self):
+        build = WORLD.split("private bool Build(", 1)[1].split(
+            "private void Update()", 1)[0]
+        self.assertIn("bounds.size.y > 2.75f", build)
+        self.assertIn("bounds.size.x > .8f && bounds.size.z > .7f", build)
+        self.assertIn("Quaternion.Euler(-90f, 0f, 0f)", build)
+        self.assertIn('"source axis correction"', build)
+        self.assertLess(build.index("Quaternion.Euler(-90f, 0f, 0f)"),
+                        build.index("FaceEmbeddedVehicleForward("))
+        self.assertLess(build.index("FaceEmbeddedVehicleForward("),
+                        build.index("float scale = Mathf.Min("))
+        self.assertIn("Quaternion.Euler(0f, 90f, 0f) * mesh.transform.localRotation", build)
+        # A Y-up, Z-forward prefab is not rotated by this geometry test.
+        shapes = (
+            ((1.90, 4.9, 1.4), True),  # raw vendor car length on Y
+            ((1.90, 1.4, 4.9), False),  # Unity importer already Y-up
+            ((2.1, 1.8, 5.4), False),
+            ((1.0, 1.6, 2.0), False),
+        )
+        for (x, y, z), expected in shapes:
+            detected = y > 2.75 and y > max(x, z) * 1.30 and x > .8 and z > .7
+            self.assertEqual(detected, expected)
+
+    def test_map_clearance_tracks_long_pickups_not_only_sedans(self):
+        resolver = WORLD.split("private bool TryResolve(", 1)[1].split(
+            "private bool TryResolvePlanned(", 1)[0]
+        for fragment in (
+            "record.type.referenceWidthMetres",
+            "record.type.referenceLengthMetres",
+            "Mathf.Max(1.42f, lengthMetres * .305f)",
+            "Mathf.Max(.79f, widthMetres * .405f)",
+            "Mathf.Max(1.14f, widthMetres * .55f)",
+            "Mathf.Max(2.35f, lengthMetres * .55f)",
+            "tallBody ? .94f : .64f",
+            "Physics.OverlapBoxNonAlloc",
+        ):
+            self.assertIn(fragment, resolver)
+        self.assertIn("Mathf.Clamp(size.z * .94f, 2.35f, 5.20f)", MOTOR)
+        self.assertIn("Mathf.Clamp(size.z * .322f, .92f, 1.72f)", MOTOR)
+        for width, length in DIMENSIONS.values():
+            half_w = max(1.14, width * .55)
+            half_l = max(2.35, length * .55)
+            self.assertGreaterEqual(half_w * 2, width)
+            self.assertGreaterEqual(half_l * 2, length)
+            self.assertLess(half_w * 2, 2.55)
+            self.assertLess(half_l * 2, 6.0)
+        self.assertGreater(DIMENSIONS["Utility"][1], DIMENSIONS["SUV"][1])
 
 
 if __name__ == "__main__":
