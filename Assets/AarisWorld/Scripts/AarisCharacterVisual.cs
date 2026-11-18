@@ -1010,7 +1010,7 @@ namespace Aaris.MapReview
         private static void PlantCrouchLeg(Transform thigh, Transform shin,
             Transform foot, float ankleWorldY, Vector3 forward, float weight,
             float planarSpeed, float turnDegreesPerSecond,
-            Vector3 desiredFootWorld,
+            Vector3 desiredFootWorld, float kneeClearance,
             ref bool contactLocked, ref Vector3 contactWorld)
         {
             if (foot == null || float.IsNaN(ankleWorldY) || weight <= 0.005f)
@@ -1048,7 +1048,7 @@ namespace Aaris.MapReview
                 else
                     targetFoot += Vector3.ClampMagnitude(drift, 0.10f);
             }
-            float kneeFloor = ankleWorldY + 0.02f;
+            float kneeFloor = ankleWorldY + kneeClearance;
             PlantLegToTarget(thigh, shin, foot, targetFoot, forward, weight,
                 kneeFloor);
         }
@@ -1097,8 +1097,10 @@ namespace Aaris.MapReview
             Vector3 hipMid = (leftThigh.position + rightThigh.position) * 0.5f;
             Vector3 crouchLeft = hipMid - right * 0.19f - facing * 0.06f;
             Vector3 crouchRight = hipMid + right * 0.19f + facing * 0.07f;
-            Vector3 proneLeft = hipMid - facing * 0.73f - right * 0.16f;
-            Vector3 proneRight = hipMid - facing * 0.73f + right * 0.16f;
+            // Straight prone legs need a nearly full-length rear extension.
+            // The previous 0.73m goal bent the knees into a frog pose.
+            Vector3 proneLeft = hipMid - facing * 0.94f - right * 0.18f;
+            Vector3 proneRight = hipMid - facing * 0.94f + right * 0.18f;
             Vector3 requestedLeft = Vector3.Lerp(crouchLeft, proneLeft, prone);
             Vector3 requestedRight = Vector3.Lerp(crouchRight, proneRight, prone);
             // Never teleport boots: cap retargeting within one footstep and
@@ -1107,8 +1109,8 @@ namespace Aaris.MapReview
                 requestedLeft - leftGoal, Vector3.up);
             Vector3 rightDelta = Vector3.ProjectOnPlane(
                 requestedRight - rightGoal, Vector3.up);
-            leftGoal += Vector3.ClampMagnitude(leftDelta, 0.42f) * correction;
-            rightGoal += Vector3.ClampMagnitude(rightDelta, 0.42f) * correction;
+            leftGoal += Vector3.ClampMagnitude(leftDelta, 0.52f) * correction;
+            rightGoal += Vector3.ClampMagnitude(rightDelta, 0.52f) * correction;
         }
 
         // One non-allocating ground sample per foot on low stances; unlike
@@ -1679,7 +1681,10 @@ namespace Aaris.MapReview
                 float proneShare = proneRigWeight / Mathf.Max(totalRigWeight, 0.0001f);
                 float ankleClearance = Mathf.Lerp(PlantedAnkleMetres,
                     ProneAnkleClearanceMetres, proneShare);
-                Vector3 kneeForward = proneShare < 0.5f ? transform.forward : Vector3.zero;
+                // Crouch knees face forward and stay above the shoe; extended
+                // prone knees bend gently upward, not sideways into a split.
+                Vector3 kneeForward = proneShare < 0.5f ? transform.forward : Vector3.up;
+                float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);
                 PlanBalancedLowStanceFeet(proneShare, lowPose, planar,
                     out Vector3 leftFootGoal, out Vector3 rightFootGoal);
                 float leftAnkleY = SupportedAnkleY(leftFootBone,
@@ -1689,12 +1694,12 @@ namespace Aaris.MapReview
                 if (!float.IsNaN(leftAnkleY))
                     PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
                         leftAnkleY, kneeForward, ankleRigWeight, planar, yawRate,
-                        leftFootGoal, ref leftLowPlantLocked, ref leftLowPlantWorld);
+                        leftFootGoal, kneeClearance, ref leftLowPlantLocked, ref leftLowPlantWorld);
                 else leftLowPlantLocked = false;
                 if (!float.IsNaN(rightAnkleY))
                     PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
                         rightAnkleY, kneeForward, ankleRigWeight, planar, yawRate,
-                        rightFootGoal, ref rightLowPlantLocked, ref rightLowPlantWorld);
+                        rightFootGoal, kneeClearance, ref rightLowPlantLocked, ref rightLowPlantWorld);
                 else rightLowPlantLocked = false;
                 // Crouch/prone used to correct only ankle height, leaving the
                 // sole visually cutting through a sloped road or bridge deck.
