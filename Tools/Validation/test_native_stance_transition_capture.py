@@ -32,7 +32,7 @@ assert 'headroomDrop = Mathf.Min(headroomDrop, safeDown);' in visual
 assert 'if(transitioning&&(left||right))' in editor
 assert 'bool transitioningLowStance =' in visual
 assert 'turningFast || transitioningStance)' in visual
-assert visual.count('kneeClearance, transitioningLowStance,') == 2
+assert visual.count('planar, yawRate, ankleRigWeight, transitioningLowStance,') == 2
 
 # Normal settled multi-angle mode must still capture standing/crouch/prone
 # from four angles, not be accidentally replaced by this transition mode.
