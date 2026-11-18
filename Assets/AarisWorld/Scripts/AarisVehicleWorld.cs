@@ -28,6 +28,10 @@ namespace Aaris.MapReview
         public string fallbackAuthoredModelResource;
         public int weight;
         public float maxSpeedMetres, massKg;
+        // Vehicle-class size limits in real-world metres, relative to the
+        // 1.78 m player and the 4.7 m roadside parking clearance. Uniform
+        // source scaling retains each authored model's true aspect ratio.
+        public float referenceWidthMetres, referenceLengthMetres;
         // Declarative physics profiles; unconfigured values fall back safely.
         public string drivetrain;
         public float tyreGripScale, suspensionScale, steeringScale;
@@ -637,6 +641,45 @@ namespace Aaris.MapReview
                 model.localRotation *= Quaternion.Euler(0f, 180f, 0f);
         }
 
+        // Imported bodies are authored around different origins. Once the
+        // whole model is uniformly scaled, align the actual FOUR tyre bottoms
+        // to a common world-ground reference at the authored road support.
+        // Static prefab/spawn-time only: no raycasts, frame allocations or
+        // runtime correction of vehicle Rigidbody velocity.
+        private static bool AlignEmbeddedTyresToRoad(Transform chassis,
+            Transform model)
+        {
+            if (chassis == null || model == null) return false;
+            string[] names = { "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr" };
+            float totalBottom = 0f;
+            float minimumBottom = float.PositiveInfinity;
+            float maximumBottom = float.NegativeInfinity;
+            for (int i = 0; i < names.Length; i++)
+            {
+                Transform tyre = FindNamedWheel(model, names[i]);
+                if (tyre == null || !TryGetVisualBoundsLocal(
+                    chassis, tyre, out Bounds tyreBounds)) return false;
+                float diameter = Mathf.Max(tyreBounds.size.y, tyreBounds.size.z);
+                if (diameter < .40f || diameter > 1.06f) return false;
+                float bottom = tyreBounds.min.y;
+                if (float.IsNaN(bottom) || float.IsInfinity(bottom)) return false;
+                totalBottom += bottom;
+                minimumBottom = Mathf.Min(minimumBottom, bottom);
+                maximumBottom = Mathf.Max(maximumBottom, bottom);
+            }
+            // Different wheel heights indicate a tilted/broken source rig,
+            // not a value to correct by blindly moving the whole car.
+            if (maximumBottom - minimumBottom > .22f) return false;
+            // Spawn support raises the chassis root .71 m above the ground.
+            // The tyres should start with a slight 10 cm spring-compression
+            // margin, not float 60+ cm above roads before PhysX settles.
+            const float TyreBottomInChassis = -.71f + .10f;
+            float offset = TyreBottomInChassis - totalBottom * .25f;
+            if (Mathf.Abs(offset) > .95f) return false;
+            model.localPosition += Vector3.up * offset;
+            return true;
+        }
+
         private static bool HasEmbeddedWheelSet(GameObject source)
         {
             if (source == null) return false;
@@ -670,7 +713,9 @@ namespace Aaris.MapReview
                     sourceLabel.Contains("aarisciviliansurface");
                 bool mixedBodyAtlas = sourceLabel.Contains("body_pbr");
                 bool separateGlass = sourceLabel.Contains("aarisglass") ||
-                    sourceLabel.Contains("window");
+                    sourceLabel.Contains("window") ||
+                    sourceLabel.Contains("_glass") ||
+                    sourceLabel.EndsWith("glass", StringComparison.Ordinal);
                 if (!dedicatedPaint && !mixedBodyAtlas && !separateGlass)
                     return source;
                 var polished = new Material(source)
@@ -1201,14 +1246,14 @@ namespace Aaris.MapReview
         // No neon, candy hues or flat near-black cars.
         private static readonly Color[] BodyPaintColours =
         {
-            new Color(.91f, .91f, .87f, 1f), // pearl white
-            new Color(.67f, .72f, .76f, 1f), // satin silver
-            new Color(.36f, .42f, .48f, 1f), // graphite steel
-            new Color(.59f, .16f, .20f, 1f), // oxblood crimson
-            new Color(.23f, .35f, .53f, 1f), // midnight sapphire
-            new Color(.34f, .45f, .37f, 1f), // olive jade
-            new Color(.74f, .66f, .49f, 1f), // pale champagne
-            new Color(.32f, .48f, .51f, 1f)  // smoked teal
+            new Color(.88f, .87f, .83f, 1f), // ceramic pearl
+            new Color(.66f, .70f, .74f, 1f), // satin titanium
+            new Color(.31f, .36f, .42f, 1f), // graphite blue steel
+            new Color(.55f, .14f, .17f, 1f), // deep burgundy
+            new Color(.20f, .31f, .47f, 1f), // navy sapphire
+            new Color(.36f, .42f, .34f, 1f), // muted olive
+            new Color(.72f, .63f, .48f, 1f), // antique champagne
+            new Color(.28f, .44f, .45f, 1f)  // dark petrol teal
         };
 
         private static int StablePaintVariant(string pointId, string vehicleId)
@@ -1266,18 +1311,20 @@ namespace Aaris.MapReview
             switch (record.type.id)
             {
                 case "SUV":
-                    targetMetallic = .23f; targetSmoothness = .49f;
-                    paintClearCoat = .11f; break;
+                    targetMetallic = .25f; targetSmoothness = .55f;
+                    paintClearCoat = .13f; break;
                 case "Buggy":
-                    targetMetallic = .27f; targetSmoothness = .50f;
-                    paintClearCoat = .15f; break;
+                    targetMetallic = .23f; targetSmoothness = .47f;
+                    paintClearCoat = .08f; break;
                 case "Sports":
+                    targetMetallic = .40f; targetSmoothness = .68f;
+                    paintClearCoat = .36f; break;
                 case "GT":
-                    targetMetallic = .46f; targetSmoothness = .73f;
-                    paintClearCoat = .57f; break;
-                case "Hatchback": targetMetallic = .30f; targetSmoothness = .61f; break;
-                case "Van": targetMetallic = .20f; targetSmoothness = .46f; break;
-                case "Utility": targetMetallic = .18f; targetSmoothness = .43f; break;
+                    targetMetallic = .41f; targetSmoothness = .69f;
+                    paintClearCoat = .41f; break;
+                case "Hatchback": targetMetallic = .29f; targetSmoothness = .59f; break;
+                case "Van": targetMetallic = .21f; targetSmoothness = .49f; break;
+                case "Utility": targetMetallic = .21f; targetSmoothness = .50f; break;
             }
             var block = new MaterialPropertyBlock();
             foreach (var renderer in model.GetComponentsInChildren<Renderer>(true))
@@ -1407,7 +1454,25 @@ namespace Aaris.MapReview
                 Destroy(root);
                 return false;
             }
-            float scale = Mathf.Min(1.88f / bounds.size.x, 4.28f / bounds.size.z);
+            // A hatchback, GT and tall SUV must not all be treated as the
+            // same 1.88 x 4.28 m sedan. Fit each authored silhouette uniformly
+            // inside a reviewed real-metre envelope; never stretch axles,
+            // wheels, doors or UVs separately. These maximums fit the existing
+            // 2.28 x 4.70 m roadside collision-clearance box.
+            float widthMetres = record.type.referenceWidthMetres > 0f
+                ? record.type.referenceWidthMetres : 1.88f;
+            float lengthMetres = record.type.referenceLengthMetres > 0f
+                ? record.type.referenceLengthMetres : 4.28f;
+            widthMetres = Mathf.Clamp(widthMetres, 1.65f, 2.08f);
+            lengthMetres = Mathf.Clamp(lengthMetres, 3.50f, 4.60f);
+            float scale = Mathf.Min(widthMetres / bounds.size.x,
+                lengthMetres / bounds.size.z);
+            if (float.IsNaN(scale) || float.IsInfinity(scale) || scale <= 0f)
+            {
+                FallBackToVerifiedModel(typeIndex, "invalid model scale");
+                Destroy(root);
+                return false;
+            }
             mesh.transform.localScale *= Mathf.Clamp(scale, .01f, 50f);
             if (!TryGetVisualBoundsLocal(root.transform, out bounds))
             {
@@ -1415,9 +1480,18 @@ namespace Aaris.MapReview
                 Destroy(root);
                 return false;
             }
-            // Both this offset and bounds are expressed in the root's LOCAL
-            // frame: chassis collider, FBX art and WheelCollider heading agree.
+            // Keep the body centered in chassis X/Z without dropping the
+            // tyres to an arbitrary pivot height. Actual authored wheel
+            // bottoms subsequently anchor the entire body to the road plane.
             mesh.transform.localPosition += new Vector3(0f, .48f, 0f) - bounds.center;
+            if (record.type.useEmbeddedAuthoredWheels)
+                AlignEmbeddedTyresToRoad(root.transform, mesh.transform);
+            if (!TryGetVisualBoundsLocal(root.transform, out bounds))
+            {
+                FallBackToVerifiedModel(typeIndex, "aligned model bounds");
+                Destroy(root);
+                return false;
+            }
             var motor = root.AddComponent<AarisVehicleMotor>();
             motor.Configure(record.type.id, record.type.maxSpeedMetres, record.type.massKg);
             motor.ConfigureHandling(record.type.drivetrain,
@@ -1426,8 +1500,7 @@ namespace Aaris.MapReview
             // After the mesh is recentered to local Y=.48, its size remains
             // valid in chassis space at every road yaw. Align physical shell
             // and wheels to the visible type instead of a generic sedan.
-            motor.FitShellAndWheelbase(new Bounds(new Vector3(0f, .48f, 0f),
-                bounds.size));
+            motor.FitShellAndWheelbase(bounds);
             bool wheelsAttached = record.type.useEmbeddedAuthoredWheels
                 ? motor.AttachEmbeddedWheelModels(mesh.transform)
                 : motor.AttachWheelModels(wheelSource, wheelPaletteMaterial,
@@ -1446,8 +1519,7 @@ namespace Aaris.MapReview
             // Do this only after the body was reoriented, scaled, and the
             // authored wheel set passed inspection. Lamp placement is in the
             // same fitted local chassis space as the physical wheelbase.
-            Bounds lampBounds = new Bounds(
-                new Vector3(0f, .48f, 0f), bounds.size);
+            Bounds lampBounds = bounds;
             if (record.type.useEmbeddedAuthoredWheels &&
                 TryGetAuthoredLampBodyBounds(root.transform, mesh.transform,
                     lampBounds, out Bounds bodyOnly))
@@ -1457,8 +1529,7 @@ namespace Aaris.MapReview
                 taillampGlassMaterial, brakeLampMaterial,
                 reverseLampMaterial, sharedLampLensMesh, lampBezelMaterial);
             motor.ConfigureRearTyreTraces(skidMarkMaterial);
-            motor.ConfigureExhaust(exhaustMaterial,
-                new Bounds(new Vector3(0f, .48f, 0f), bounds.size));
+            motor.ConfigureExhaust(exhaustMaterial, bounds);
             motor.RestoreStreamedDamage(record.damage01);
             motor.ConfigureBodyWear(mesh.transform, BodyPaintColours[
                 StablePaintVariant(record.point.id, record.type.id)]);
