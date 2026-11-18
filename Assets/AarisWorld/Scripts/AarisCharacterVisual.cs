@@ -1074,8 +1074,9 @@ namespace Aaris.MapReview
         }
 
         private void PlantUprightContact(Transform thigh, Transform shin,
-            Transform foot, float planarSpeed, float uprightWeight,
-            AnkleSupportSample coarseSupport, ref bool plantLocked, ref Vector3 plantWorld)
+            Transform foot, float planarSpeed, float turnDegreesPerSecond,
+            float uprightWeight, AnkleSupportSample coarseSupport,
+            ref bool plantLocked, ref Vector3 plantWorld)
         {
             if (thigh == null || shin == null || foot == null ||
                 uprightWeight <= 0.001f)
@@ -1118,9 +1119,16 @@ namespace Aaris.MapReview
             float finalWeight = contactWeight * solveWeight *
                 Mathf.Clamp01(uprightWeight);
 
-            if (gap > UprightPlantReleaseGapMetres || finalWeight < 0.16f)
+            // An in-place 180-degree turn must pivot the shoes, not keep
+            // pulling them toward a world lock from the old facing. Release
+            // both locks during a fast turn and allow reacquisition only after
+            // the turn slows. This is visual-only, with no extra raycasts.
+            bool turningFast = Mathf.Abs(turnDegreesPerSecond) > 140f;
+            if (turningFast || gap > UprightPlantReleaseGapMetres ||
+                finalWeight < 0.16f)
                 plantLocked = false;
-            if (!plantLocked && gap <= UprightPlantEnterGapMetres &&
+            if (!turningFast && !plantLocked &&
+                gap <= UprightPlantEnterGapMetres &&
                 finalWeight >= 0.58f)
             {
                 plantWorld = foot.position;
@@ -1580,10 +1588,10 @@ namespace Aaris.MapReview
             {
                 float uprightContactWeight = Mathf.Clamp01(1f - lowPose * 4f);
                 PlantUprightContact(leftThigh, leftShin, leftFootBone,
-                    planar, uprightContactWeight, coarseSupport, ref leftUprightPlantLocked,
+                    planar, yawRate, uprightContactWeight, coarseSupport, ref leftUprightPlantLocked,
                     ref leftUprightPlantWorld);
                 PlantUprightContact(rightThigh, rightShin, rightFootBone,
-                    planar, uprightContactWeight, coarseSupport, ref rightUprightPlantLocked,
+                    planar, yawRate, uprightContactWeight, coarseSupport, ref rightUprightPlantLocked,
                     ref rightUprightPlantWorld);
             }
             else
