@@ -60,6 +60,11 @@ namespace Aaris.MapReview
         // WheelCollider supplies steering, suspension and spin.
         private readonly Quaternion[] visualWheelRotationOffsets =
             new Quaternion[4];
+        // Some authentic 3D tyres have meshes offset from their Transform
+        // origins (Road GT: ~9 cm at the front and ~12 cm at the rear).
+        // Store this offset in wheel-pivot orientation, in WORLD metres,
+        // once at attachment; WheelCollider wheel centres stay authoritative.
+        private readonly Vector3[] visualWheelCenterOffsets = new Vector3[4];
         private Rigidbody body;
         private AarisVehicleSession driver;
         private float forward, steering, smoothSteer;
@@ -306,6 +311,7 @@ namespace Aaris.MapReview
             wheel.brakeTorque = ParkingBrakeTorque;
             wheels[index] = wheel;
             visualWheelRotationOffsets[index] = Quaternion.identity;
+            visualWheelCenterOffsets[index] = Vector3.zero;
         }
 
         /// <summary>
@@ -403,6 +409,14 @@ namespace Aaris.MapReview
                 }
                 instance.transform.localScale *=
                     Mathf.Clamp(2f * WheelRadius / maxDimension, .01f, 30f);
+                // Imported prefab pivots need not coincide with the rendered
+                // tyre centre. The measurement is in wheel-local orientation
+                // AFTER sizing, so steering/spin rotate it without drifting.
+                Vector3 visualCentreWorld =
+                    instance.transform.TransformPoint(combined.center);
+                visualWheelCenterOffsets[i] =
+                    Quaternion.Inverse(instance.transform.rotation) *
+                    (visualCentreWorld - instance.transform.position);
                 visualWheels[i] = instance.transform;
                 visualWheelRotationOffsets[i] = Quaternion.identity;
             }
@@ -463,9 +477,19 @@ namespace Aaris.MapReview
 
                 Quaternion restOffset =
                     Quaternion.Inverse(transform.rotation) * wheelVisual.rotation;
+                // Compute BEFORE detaching the wheel from its authored body.
+                // Mesh.bounds centre may be 9-12 cm inward from the FBX/OBJ
+                // Transform pivot. If we place that pivot on the WheelCollider
+                // pose, the visible tyre shifts inward a second time.
+                Vector3 visualCentreWorld =
+                    transform.TransformPoint(bounds[i].center);
+                Vector3 centreOffset =
+                    Quaternion.Inverse(wheelVisual.rotation) *
+                    (visualCentreWorld - wheelVisual.position);
                 wheelVisual.SetParent(transform, true);
                 visualWheels[i] = wheelVisual;
                 visualWheelRotationOffsets[i] = restOffset;
+                visualWheelCenterOffsets[i] = centreOffset;
             }
             if (wheels[0] != null) wheels[0].ResetSprungMasses();
             appliedSteeringAngle = float.NaN;
@@ -957,8 +981,15 @@ namespace Aaris.MapReview
                 if (wheels[i] == null || visualWheels[i] == null) continue;
                 wheels[i].GetWorldPose(out Vector3 worldPosition,
                     out Quaternion worldRotation);
-                visualWheels[i].SetPositionAndRotation(worldPosition,
-                    worldRotation * visualWheelRotationOffsets[i]);
+                Quaternion visualRotation =
+                    worldRotation * visualWheelRotationOffsets[i];
+                // Preserve the visible mesh CENTRE at the real WheelCollider
+                // pose, including during steering, suspension and tyre spin.
+                // Cached float vectors: no per-frame mesh bounds or allocations.
+                Vector3 visualCentreOffsetWorld =
+                    visualRotation * visualWheelCenterOffsets[i];
+                visualWheels[i].SetPositionAndRotation(
+                    worldPosition - visualCentreOffsetWorld, visualRotation);
             }
         }
 
