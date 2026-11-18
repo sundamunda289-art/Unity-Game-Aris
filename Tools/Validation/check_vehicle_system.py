@@ -314,7 +314,9 @@ def test():
         "private void Update()", 1)[0]
     assert "TryGetVisualBoundsLocal(root.transform, out Bounds bounds)" in build
     # After real-wheel positioning, remeasure again in chassis coordinates.
-    assert build.count("TryGetVisualBoundsLocal(root.transform, out bounds)") == 3
+    # Extra source-axis correction must remeasure visible bounds before fit.
+    assert build.count("TryGetVisualBoundsLocal(root.transform, out bounds)") == 4
+    assert "Quaternion.Euler(-90f, 0f, 0f)" in build
     assert "renderer.bounds" not in build
     assert "mesh.transform.localPosition += new Vector3(0f, .48f, 0f) - bounds.center;" in build
     assert "localSpace.worldToLocalMatrix" in world
