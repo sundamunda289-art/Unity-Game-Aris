@@ -119,6 +119,13 @@ def audit():
     # camera still checks the interpolated position for obstructions.
     assert not (0.0 > 0.00000001)
     assert (0.02 * 0.02) > 0.00000001
+    # A suspended Android game can return with a multi-second frame hitch.
+    # Bound camera spring integration while keeping explicit instant resets.
+    assert ("0.07f, Mathf.Infinity, Mathf.Clamp(Time.deltaTime, 0f, 0.15f));"
+            in camera)
+    assert "Vector3 next = instant ? wanted" in camera
+    for delta in (0.0, 1 / 120, 1 / 60, 1 / 30, 0.1, 0.5, 3.0):
+        assert 0.0 <= min(max(delta, 0.0), 0.15) <= 0.15
 
     # Simplified/stripped player prefabs may omit battle or inventory;
     # checking missing components on every 60/120 Hz frame burns CPU.
@@ -137,6 +144,19 @@ def audit():
     # LateUpdate on stripped player prefabs. Start caches present components;
     # absent/late-added ones are retried at most once per unscaled second.
     visual = (SRC / "AarisCharacterVisual.cs").read_text(encoding="utf-8")
+    # High-speed in-place turns release shoe anchors before solving the
+    # next frame. Reacquire only when rotation slows: avoids sticky feet
+    # with zero added Physics queries or allocations.
+    foot_solver = visual[visual.index("private void PlantUprightContact("):
+                         visual.index("private void AlignFootToSupport(")]
+    assert "float turnDegreesPerSecond," in foot_solver
+    assert "bool turningFast = Mathf.Abs(turnDegreesPerSecond) > 140f;" in foot_solver
+    assert "if (turningFast || gap > UprightPlantReleaseGapMetres ||" in foot_solver
+    assert "if (!turningFast && !plantLocked &&" in foot_solver
+    assert visual.count("planar, yawRate, uprightContactWeight, coarseSupport") == 2
+    for yaw_rate, rapid in ((0, False), (100, False), (140, False),
+                            (141, True), (-141, True), (500, True)):
+        assert (abs(yaw_rate) > 140) == rapid
     startup = visual[visual.index("private void Start()"):visual.index("private bool FitVisualToController(")]
     late = visual[visual.index("private void LateUpdate()"):visual.index("private void OnDestroy()")]
     # Do not dirty the native visual hierarchy every idle frame. The aerial
