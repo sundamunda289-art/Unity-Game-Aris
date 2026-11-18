@@ -1,0 +1,72 @@
+# Exact CC0 flat texture colours collapsed into GPU-cheap URP palette.
+newmtl AarisRoadGT_Black
+Kd 0.094118 0.113725 0.133333
+Ks .15 .15 .15
+Ns 270.4
+illum 2
+
+newmtl AarisPaint_RoadGT
+Kd 0.666667 0.113725 0.141176
+Ks .15 .15 .15
+Ns 577.6
+illum 2
+
+newmtl AarisRoadGT_Accent
+Kd 0.768627 0.152941 0.098039
+Ks .15 .15 .15
+Ns 490.0
+illum 2
+
+newmtl AarisRoadGT_Glass
+Kd 0.737255 0.796078 0.819608
+Ks .15 .15 .15
+Ns 874.2
+illum 2
+
+newmtl AarisRoadGT_Chrome
+Kd 0.807843 0.847059 0.874510
+Ks .15 .15 .15
+Ns 688.9
+illum 2
+
+newmtl AarisRoadGT_Tyre
+Kd 0.117647 0.133333 0.149020
+Ks .15 .15 .15
+Ns 48.4
+illum 2
+
+newmtl AarisRoadGT_Steel
+Kd 0.486275 0.537255 0.564706
+Ks .15 .15 .15
+Ns 462.4
+illum 2
+
+newmtl AarisRoadGT_RedLens
+Kd 0.666667 0.062745 0.117647
+Ks .15 .15 .15
+Ns 739.6
+illum 2
+
+newmtl AarisRoadGT_Interior
+Kd 0.215686 0.239216 0.258824
+Ks .15 .15 .15
+Ns 62.5
+illum 2
+
+newmtl AarisRoadGT_Seat
+Kd 0.380392 0.364706 0.349020
+Ks .15 .15 .15
+Ns 19.6
+illum 2
+
+newmtl AarisRoadGT_White
+Kd 0.886275 0.901961 0.905882
+Ks .15 .15 .15
+Ns 490.0
+illum 2
+
+newmtl AarisRoadGT_ClearLens
+Kd 0.952941 0.972549 0.988235
+Ks .15 .15 .15
+Ns 883.6
+illum 2

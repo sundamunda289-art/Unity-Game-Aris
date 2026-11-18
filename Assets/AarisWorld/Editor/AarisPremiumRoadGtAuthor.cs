@@ -11,7 +11,7 @@ namespace Aaris.MapReview.Editor
 {
     /// <summary>
     /// One-time offline CC0 Premium Road GT authoring. Never runs in Android.
-    /// Takes five verified low-poly-profile OBJ sources and builds a Unity
+    /// Takes five verified optimized OBJ sources and builds a Unity
     /// prefab with independent, physics-compatible tyre pivots and URP paint.
     /// </summary>
     public static class AarisPremiumRoadGtAuthor
@@ -74,11 +74,10 @@ namespace Aaris.MapReview.Editor
                     smoothness = .83f;
                 }
                 if (name.IndexOf("Chrome", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    name.IndexOf("Aluminium", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    name.IndexOf("Chrome", StringComparison.OrdinalIgnoreCase) >= 0)
+                    name.IndexOf("Aluminium", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    metallic = .85f;
-                    smoothness = .59f;
+                    metallic = .38f;
+                    smoothness = .46f;
                 }
                 if (name.IndexOf("Tyre", StringComparison.OrdinalIgnoreCase) >= 0 ||
                     name.IndexOf("Sidewall", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -127,7 +126,7 @@ namespace Aaris.MapReview.Editor
                     var imported = AssetDatabase.LoadAssetAtPath<GameObject>(source);
                     if (imported == null)
                         throw new InvalidOperationException("Unity failed native OBJ import: " + source);
-                    var pivot = new GameObject(i == 0 ? "Spectral_GT_Body" : group);
+                    var pivot = new GameObject(i == 0 ? "RoadGT_Body" : group);
                     pivot.transform.SetParent(root.transform, false);
                     if (i > 0) pivot.transform.localPosition = WheelCentres[i - 1];
                     var model = UnityEngine.Object.Instantiate(imported, pivot.transform, false);

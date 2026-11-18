@@ -59,7 +59,7 @@ namespace Aaris.MapReview.Editor
 
             Camera cam = new GameObject("Temporary GT photo camera").AddComponent<Camera>();
             cam.enabled = false;
-            cam.fieldOfView = 48f;
+            cam.fieldOfView = 44f;
             cam.nearClipPlane = .05f;
             cam.farClipPlane = 60f;
             cam.allowHDR = false;
@@ -107,9 +107,9 @@ namespace Aaris.MapReview.Editor
                 Vector3 center = bounds.center + Vector3.up * .11f;
                 var cameras = new[]
                 {
-                    new { label = "front-quarter", offset = new Vector3(4.8f, 2.7f, 7.5f) },
-                    new { label = "side-profile", offset = new Vector3(8.1f, 1.9f, 1.4f) },
-                    new { label = "rear-quarter", offset = new Vector3(-4.8f, 2.7f, -7.5f) }
+                    new { label = "front-quarter", offset = new Vector3(3.45f, 1.78f, 5.28f) },
+                    new { label = "side-profile", offset = new Vector3(5.60f, 1.46f, .72f) },
+                    new { label = "rear-quarter", offset = new Vector3(-3.45f, 1.78f, -5.28f) }
                 };
                 foreach (var viewpoint in cameras)
                 {

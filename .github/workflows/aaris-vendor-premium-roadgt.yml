@@ -1,0 +1,91 @@
+name: Vendor pinned CC0 Premium Road GT body
+on:
+  push:
+    branches:
+      - feat/aaris-premium-closed-gt-20261118
+    paths:
+      - .github/workflows/aaris-vendor-premium-roadgt.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aaris-roadgt-body-vendor
+  cancel-in-progress: false
+
+jobs:
+  vendor-premium-body:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download exact CC0 original and verify SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,urllib.request,pathlib
+          url='https://www.innerscene.com/api/library/generic-mid-engine-supercar-73f252c5/download'
+          sha='ad0fd94845edb9af474407fe08fb379b624c56ec4d4b4ad6b47822b65c6f8903'
+          req=urllib.request.Request(url,headers={'User-Agent':'Aaris-CC0-GT-Vendor/1.0'})
+          with urllib.request.urlopen(req,timeout=90) as f: raw=f.read(8_000_000)
+          if hashlib.sha256(raw).hexdigest()!=sha:raise SystemExit('PINNED_CC0_GLTF_SHA256_MISMATCH')
+          pathlib.Path('/tmp/aaris-pinned-roadgt.glb').write_bytes(raw)
+          print('AARIS_PREMIUM_GT_CC0_SHA256_PASS',len(raw))
+          PY
+      - name: Produce validated mobile geometry (no internet in game)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Tools/MapBuild/convert_innerscene_road_gt.py /tmp/aaris-pinned-roadgt.glb /tmp/aaris-premium-roadgt-obj
+          python3 - <<'PY'
+          import hashlib,json,pathlib
+          root=pathlib.Path('Assets/Resources/AarisVehicles/PremiumRoadGT')
+          src=pathlib.Path('/tmp/aaris-premium-roadgt-obj')
+          report=json.loads((src/'geometry-report.json').read_text())
+          assert report['mobileVariantTriangles']==67598,report
+          assert report['proceduralAlloySpokeTriangles']==288,report
+          sha={
+           'body':'5f01f3107489efb7f0c37ec037e935c7a33656f1',
+           'wheel_fl':'3e406e721aa4d1d567110142e3a0d6c824a3e9f1',
+           'wheel_fr':'5791c7470fe56ad8088ec40f5392c687411b96d2',
+           'wheel_rl':'db9918b41abf34ba76f08477922439ab4856ff63',
+           'wheel_rr':'2eea752bb3c2494496aa6983c489779db8876236'}
+          for name,expected in sha.items():
+           p=src/('AarisRoadGT_'+name+'.obj')
+           data=p.read_bytes()
+           gitsha=hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+           if gitsha!=expected:raise SystemExit('ROADGT_MESH_HASH_MISMATCH '+name+' '+gitsha)
+           if name=='body':(root/p.name).write_bytes(data)
+           elif (root/p.name).read_bytes()!=data:
+            raise SystemExit('SAVED_WHEEL_BLOB_DIFFERENT '+name)
+          if (src/'AarisRoadGT.mtl').read_text().strip()!=(root/'AarisRoadGT.mtl').read_text().strip():
+           raise SystemExit('SAVED_GT_MATERIAL_PALETTE_DIFFERENT')
+          print('AARIS_PREMIUM_GT_GEOMETRY_VERIFIED 67598 triangles 4 wheels')
+          PY
+      - name: Commit verified only missing GT body OBJ
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Aaris CC0 Vehicle Vendor"
+          git config user.email "actions@users.noreply.github.com"
+          git add Assets/Resources/AarisVehicles/PremiumRoadGT/AarisRoadGT_body.obj
+          if git diff --cached --quiet; then
+            echo AARIS_PREMIUM_GT_BODY_ALREADY_PRESENT
+            exit 0
+          fi
+          git commit -m "feat(vehicle): vendor checksum-verified CC0 premium GT body"
+          for attempt in 1 2 3; do
+            git fetch origin feat/aaris-premium-closed-gt-20261118
+            git rebase origin/feat/aaris-premium-closed-gt-20261118
+            if git push origin HEAD:refs/heads/feat/aaris-premium-closed-gt-20261118; then
+              echo AARIS_PREMIUM_GT_VENDOR_PUSHED
+              exit 0
+            fi
+            sleep 2
+          done
+          echo AARIS_PREMIUM_GT_VENDOR_PUSH_FAILED >&2
+          exit 1

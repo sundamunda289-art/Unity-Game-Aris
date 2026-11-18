@@ -15,6 +15,8 @@ class PremiumVehicleFleet(unittest.TestCase):
         self.assertEqual(len(vehicles), 8)
         gt = vehicles['GT']
         self.assertEqual(gt['authoredModelResource'],
+                         'AarisVehicles/PremiumRoadGT/AarisRoadGT')
+        self.assertEqual(gt['fallbackAuthoredModelResource'],
                          'AarisVehicles/Authored/QuaterniusSports')
         self.assertEqual(gt['modelResource'], 'AarisVehicles/Models/sedan-sports')
         self.assertEqual(gt['wheelResource'], 'AarisVehicles/Models/wheel-racing')
@@ -24,6 +26,16 @@ class PremiumVehicleFleet(unittest.TestCase):
         self.assertTrue(asset.exists())
         self.assertTrue(Path(str(asset)+'.meta').exists())
         self.assertIn('usemtl AarisPaint', asset.read_text())
+        premium = ROOT / 'Assets/Resources/AarisVehicles/PremiumRoadGT'
+        prefab = premium / 'AarisRoadGT.prefab'
+        self.assertTrue(prefab.exists())
+        self.assertTrue(Path(str(prefab)+'.meta').exists())
+        for component in ['body','wheel_fl','wheel_fr','wheel_rl','wheel_rr']:
+            part=premium / ('AarisRoadGT_'+component+'.obj')
+            self.assertTrue(part.exists(),part)
+            self.assertTrue(Path(str(part)+'.meta').exists())
+        self.assertIn('AarisPaint_RoadGT',
+                      (premium / 'AarisRoadGT.mtl').read_text())
         self.assertGreaterEqual(gt['weight'] + vehicles['Sports']['weight'], 8)
         self.assertLess(vehicles['Sedan']['weight'],
                         gt['weight'] + vehicles['Sports']['weight'])
