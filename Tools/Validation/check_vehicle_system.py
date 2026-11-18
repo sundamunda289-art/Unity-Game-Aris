@@ -343,7 +343,7 @@ def test():
     assert "motor.FitShellAndWheelbase(new Bounds(new Vector3(0f, .48f, 0f)," in build
     assert "public void FitShellAndWheelbase(Bounds visualBounds)" in motor
     assert "Mathf.Clamp(size.x * .94f, 1.35f, 2.25f)" in motor
-    assert "Mathf.Clamp(size.z * .94f, 2.35f, 4.30f)" in motor
+    assert "Mathf.Clamp(size.z * .94f, 2.35f, 5.20f)" in motor
     assert "Mathf.Clamp(size.z * .322f, .92f, 1.43f)" in motor
     assert "wheels[i].transform.localPosition = new Vector3(" in motor
     assert "float.IsNaN(size.x)" in motor and "float.IsInfinity(size.z)" in motor
