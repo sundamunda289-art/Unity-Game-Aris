@@ -38,7 +38,7 @@ WHEEL = re.compile(
     re.I)
 MATS = (
     ("AarisRoadGT_Black",    (24, 29, 34), .05, .52),
-    ("AarisRoadGT_Paint",    (170,29, 36), .65, .76),
+    ("AarisPaint_RoadGT",   (170,29, 36), .65, .76),
     ("AarisRoadGT_Accent",   (196,39, 25), .30, .70),
     ("AarisRoadGT_Glass",    (188,203,209), .0, .935),
     ("AarisRoadGT_Chrome",   (206,216,223), .96, .83),
