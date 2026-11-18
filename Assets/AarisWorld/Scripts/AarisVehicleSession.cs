@@ -42,6 +42,11 @@ namespace Aaris.MapReview
         private float touchMove, touchSteer;
         private AarisVehicleMotor nearbyCar;
         private Vector3 cameraVelocity;
+        // Car-to-car camera framing is measured ONCE at successful entry.
+        // The fitted BoxCollider already agrees with the visible authored
+        // body; no renderer/bounds queries in the 60/120 FPS camera path.
+        private float chaseBodyLength = 4.20f;
+        private float chaseAimHeight = 1.28f;
         // Cached horizontal chase heading survives steep pitch/airborne flips.
         // On a hill, following the car's full 3D forward vector would shove
         // the camera through the road by chaseDistance * sin(pitch).
@@ -154,6 +159,27 @@ namespace Aaris.MapReview
             if (lootWorld == null) lootWorld = FindFirstObjectByType<AarisWeaponLootWorld>();
             car = nearbyCar;
             nearbyCar = null;
+            // Use the physical bounds that were already fitted to the real
+            // chassis and authored tyres at spawn, not a sedan-size camera.
+            // Once per entry avoids a collider lookup every render frame.
+            BoxCollider shell = car.GetComponent<BoxCollider>();
+            if (shell != null &&
+                shell.size.y > .45f && shell.size.z > 2.0f &&
+                !float.IsNaN(shell.size.sqrMagnitude) &&
+                !float.IsInfinity(shell.size.sqrMagnitude))
+            {
+                chaseBodyLength = Mathf.Clamp(shell.size.z, 3.0f, 5.3f);
+                float roof = shell.center.y + shell.size.y * .5f;
+                chaseAimHeight = Mathf.Clamp(
+                    shell.center.y + shell.size.y * .62f,
+                    .68f, Mathf.Max(.78f, roof + .12f));
+                chaseAimHeight = Mathf.Clamp(chaseAimHeight, .68f, 1.65f);
+            }
+            else
+            {
+                chaseBodyLength = 4.20f;
+                chaseAimHeight = 1.28f;
+            }
             touchMove = touchSteer = 0f;
             if (actions != null) actions.SetFireHeld(false);
             // Pause the other on-foot input authorities, not merely their
@@ -455,10 +481,22 @@ namespace Aaris.MapReview
             // A fixed chase rig makes a 90 km/h car read like a slow toy.
             // Open the framing gradually with real Rigidbody speed only;
             // collision handling below still owns the final camera position.
-            float chaseDistance = Mathf.Lerp(6.25f, 7.40f, speed01);
-            float chaseHeight = Mathf.Lerp(2.95f, 3.25f, speed01);
+            // Long vans/pickups need more framing room, while a 3.4 m
+            // buggy should not look distant and tiny. All sizes are cached
+            // from the real fitted shell once at vehicle entry.
+            float lengthFraming = Mathf.Clamp(
+                (chaseBodyLength - 4.20f) * .26f, -.24f, .36f);
+            float chaseDistance = Mathf.Lerp(6.25f, 7.40f, speed01) +
+                lengthFraming;
+            // Aim near the actual roof/upper cabin. The old 1.58-1.74 m
+            // fixed target looked ABOVE the 1.15 m coupe, shrinking it.
+            // The bounded offset remains world-up on slopes and rollovers.
+            float heightFraming = Mathf.Clamp(
+                (chaseAimHeight - 1.30f) * .25f, -.15f, .10f);
+            float chaseHeight = Mathf.Lerp(2.75f, 3.05f, speed01) +
+                heightFraming;
             Vector3 aim = vehicle.position + Vector3.up *
-                Mathf.Lerp(1.58f, 1.74f, speed01);
+                (chaseAimHeight + .12f * speed01);
             // Small velocity-based horizon preview makes fast turns easier
             // to read. The existing single collision sweep and smoothing
             // still own the final camera position; never teleport the rig.
