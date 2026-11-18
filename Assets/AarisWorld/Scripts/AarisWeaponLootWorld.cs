@@ -121,6 +121,11 @@ namespace Aaris.MapReview
         /// <summary>Explicit pickup replaces the single carried gun.</summary>
         public void RequestPickup()
         {
+            // UI callbacks can arrive while the game is paused or the
+            // on-foot inventory is disabled by a vehicle transition.
+            if (!isActiveAndEnabled || Time.timeScale <= 0f ||
+                inventory == null || !inventory.isActiveAndEnabled)
+                return;
             // A deliberate tap must not wait for the normal 330 ms refresh:
             // on a low-FPS phone the next routine poll may arrive too late.
             // Defer physics to the next Update, retaining all LOS/range checks.
@@ -756,6 +761,12 @@ namespace Aaris.MapReview
         /// </summary>
         public bool TryDropEquipped()
         {
+            // Reject pause, suspended inventory and aircraft transitions
+            // before any floor raycast or mutation of the held weapon.
+            if (!isActiveAndEnabled || Time.timeScale <= 0f ||
+                inventory == null || !inventory.isActiveAndEnabled ||
+                player == null || (drop != null && drop.ShouldDeferGroundLoot))
+                return false;
             // Refuse the action before its physics checks when the visual
             // budget is full. The held gun remains owned by the player.
             if (inventory == null || !inventory.HasGun ||
@@ -832,9 +843,23 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (player == null || inventory == null || candidates == null) return;
+            // Streamed loot uses unscaled time, so a game pause otherwise still
+            // completes pickup/drop transactions while the character is frozen.
+            // Clear latched taps and force one fresh range/LOS poll on resume.
+            if (Time.timeScale <= 0f || !inventory.isActiveAndEnabled)
+            {
+                requestPickupUntil = 0f;
+                HasPickupInRange = false;
+                nextRefresh = 0f;
+                streamFramesRemaining = 0;
+                return;
+            }
             if (drop != null && drop.ShouldDeferGroundLoot)
             {
+                requestPickupUntil = 0f;
+                HasPickupInRange = false;
                 nextRefresh = 0f; // Resume the normal budget on the first near-ground frame.
+                streamFramesRemaining = 0;
                 return;
             }
             float now = Time.unscaledTime;
