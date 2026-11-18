@@ -1682,8 +1682,8 @@ namespace Aaris.MapReview
                 float ankleClearance = Mathf.Lerp(PlantedAnkleMetres,
                     ProneAnkleClearanceMetres, proneShare);
                 // Crouch knees face forward and stay above the shoe; extended
-                // prone knees bend gently upward, not sideways into a split.
-                Vector3 kneeForward = proneShare < 0.5f ? transform.forward : Vector3.up;
+                // prone retains the authored near-ground knee plane once feet align.
+                Vector3 kneeForward = proneShare < 0.5f ? transform.forward : Vector3.zero;
                 float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);
                 PlanBalancedLowStanceFeet(proneShare, lowPose, planar,
                     out Vector3 leftFootGoal, out Vector3 rightFootGoal);
