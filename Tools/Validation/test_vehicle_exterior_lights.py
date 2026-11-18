@@ -23,7 +23,10 @@ class VehicleExteriorLighting(unittest.TestCase):
                         builder.index("motor.ConfigureExteriorLights("))
         self.assertLess(builder.index("if (!wheelsAttached)"),
                         builder.index("motor.ConfigureExteriorLights("))
-        self.assertIn("new Bounds(new Vector3(0f, .48f, 0f), bounds.size)", builder)
+        self.assertIn("motor.FitShellAndWheelbase(bounds);", builder)
+        self.assertIn("Bounds lampBounds = bounds;", builder)
+        self.assertLess(builder.index("AlignEmbeddedTyresToRoad("),
+                        builder.index("Bounds lampBounds = bounds;"))
         lights = MOTOR.split("public void ConfigureExteriorLights(", 1)[1].split(
             "private void RefreshExteriorLights()", 1)[0]
         self.assertIn("float width = fittedBounds.size.x;", lights)
