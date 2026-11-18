@@ -13,6 +13,10 @@ namespace Aaris.MapReview
         private static Material hull, dark, wingPanels, engineDark, safetyAccent, rotorPaint,
             propellerBlur, navRed, navGreen, navWhite,
             canopyBlue, canopyWhite, canopyOrange, rope;
+        // Unity 6 may normalize _EMISSION out of the serialized URP .mat on import.
+        // Never mutate the shared Resources asset: two one-time runtime copies
+        // keep the small shadow-side fill active in Editor and Android builds.
+        private static Material runtimeDaylightHull, runtimeDaylightWing;
         private static Mesh cachedPropellerMesh, cachedPropellerBlurMesh;
 
         private static Material Paint(ref Material cached, Color color)
@@ -89,7 +93,25 @@ namespace Aaris.MapReview
             Material saved = Resources.Load<Material>("AarisDrop/Materials/" + materialName);
             if (saved != null && saved.shader != null &&
                 saved.shader.name.StartsWith("Universal Render Pipeline/", StringComparison.Ordinal))
-                return saved;
+            {
+                // MTL importers and Unity's own serialization normalizer can
+                // remove the source material's _EMISSION keyword. Enable it on
+                // cached play-only copies; never dirty the saved .mat asset.
+                bool isHull = materialName == "CargoPlane-HulledMetal";
+                bool isWing = materialName == "CargoPlane-WingPanels";
+                if (!isHull && !isWing) return saved;
+                Material live = isHull ? runtimeDaylightHull : runtimeDaylightWing;
+                if (live != null) return live;
+                live = new Material(saved)
+                {
+                    name = "Aaris Cached Daylight " + materialName,
+                    enableInstancing = true
+                };
+                live.EnableKeyword("_EMISSION");
+                if (isHull) runtimeDaylightHull = live;
+                else runtimeDaylightWing = live;
+                return live;
+            }
             Material material = Paint(ref fallback, fallbackColor);
             SetAircraftFinish(material, metallic, smoothness);
             return material;
