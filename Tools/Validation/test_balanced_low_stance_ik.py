@@ -58,7 +58,7 @@ assert "targetFoot.z = desiredFootWorld.z;" in crouch
 assert "targetFoot.y = ankleWorldY;" in crouch
 assert "float kneeFloor = ankleWorldY + kneeClearance;" in crouch
 assert "float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);" in visual
-assert "Vector3 kneeForward = proneShare < 0.5f ? transform.forward : Vector3.up;" in visual
+assert "Vector3 kneeForward = proneShare < 0.5f ? transform.forward : Vector3.zero;" in visual
 assert "bool turningFast = Mathf.Abs(turnDegreesPerSecond) > 110f;" in crouch
 assert "Vector3.Lerp(bend, forwardBend.normalized, 0.90f)" in visual
 assert visual.count("ankleRigWeight, planar, yawRate,") == 2
