@@ -914,7 +914,13 @@ namespace Aaris.MapReview
             Quaternion orbit = Quaternion.Euler(cameraPitch, cameraYaw, 0f);
             Vector3 wanted = pivot - orbit * Vector3.forward * followDistance + orbit * Vector3.right * 0.30f;
             wanted = ObstructionSafe(pivot, wanted);
-            Vector3 next = instant ? wanted : Vector3.SmoothDamp(followCamera.transform.position, wanted, ref cameraVelocity, 0.07f);
+            // The follow spring must not integrate a whole multi-second Android
+            // app hitch in one rendered frame. Use the same bounded delta as
+            // stance/character presentation; instant camera handoffs still
+            // bypass smoothing and snap to their verified location.
+            Vector3 next = instant ? wanted : Vector3.SmoothDamp(
+                followCamera.transform.position, wanted, ref cameraVelocity,
+                0.07f, Mathf.Infinity, Mathf.Clamp(Time.deltaTime, 0f, 0.15f));
             // The target has already passed the first collision sweep. On a
             // settled camera (or instant reset), casting the same segment again
             // is redundant. Keep the second sweep during camera interpolation
