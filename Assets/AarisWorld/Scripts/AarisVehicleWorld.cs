@@ -1282,7 +1282,7 @@ namespace Aaris.MapReview
         // Premium paint stays readable in low-end Android lighting.
         // No neon, candy hues or flat near-black cars.
         // The deep blue, olive-bronze and teal shades are separated from
-        // neutral graphite by at least 0.24 in normalized RGB distance.
+        // neutral graphite by at least 0.25 in normalized RGB distance.
         // Muted automotive colours stay legible in the same flat daylight
         // rather than collapsing into four nearly identical grey-blue cars.
         private static readonly Color[] BodyPaintColours =
@@ -1291,10 +1291,10 @@ namespace Aaris.MapReview
             new Color(.66f, .70f, .74f, 1f), // satin titanium
             new Color(.31f, .36f, .42f, 1f), // graphite blue steel
             new Color(.55f, .14f, .17f, 1f), // deep burgundy
-            new Color(.12f, .20f, .47f, 1f), // midnight sapphire blue
-            new Color(.49f, .48f, .25f, 1f), // refined olive bronze
+            new Color(.12f, .20f, .47f, 1f), // navy sapphire (midnight finish)
+            new Color(.49f, .48f, .25f, 1f), // muted olive (bronze finish)
             new Color(.72f, .63f, .48f, 1f), // antique champagne
-            new Color(.10f, .45f, .50f, 1f)  // deep petrol teal
+            new Color(.11f, .48f, .53f, 1f)  // dark petrol teal (deep marine finish)
         };
 
         private static int StablePaintVariant(string pointId, string vehicleId)
