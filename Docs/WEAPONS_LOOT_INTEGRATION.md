@@ -85,6 +85,16 @@ per-match state). A brief pickup grace period prevents instantly
 recollecting a dropped gun. Surrounding native world colliders are already
 enabled out to 55m by the existing `AarisNearbyColliders` system.
 
+**Ground presentation (2026-11-18):** After a verified floor hit, authored and
+player-dropped pickups now raise their transform **4 cm** and the lowest mesh
+point another **2.5 cm** (6.5 cm total instead of 21 cm). Both classes still
+share the exact locally imported PBR model and are visible in the world; no
+extra realtime lights or physics are added. When the gameplay camera is
+unavailable, loot beacons are disabled until a camera is ready, avoiding
+unnecessary transparent draws during transitions. Source-level CI checks
+these invariants; this is **not** a claim of native Play-mode screenshots or
+measured Android FPS.
+
 **Placement QA detail:** Baked building X/Z positions are only candidates.
 At runtime, `TryResolve` chooses a floor hit near the authored elevation
 from a bounded downward raycast. This prevents a low house roof from
