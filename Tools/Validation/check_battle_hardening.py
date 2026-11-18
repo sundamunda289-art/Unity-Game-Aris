@@ -51,6 +51,27 @@ def audit() -> None:
     assert "!(c is TerrainCollider)" in medical_spawn
     assert "if (count >= medicalHits.Length) return false;" not in medical_spawn
 
+    # A short accepted Fire tap can start and end inside one frame. A
+    # medkit must still cancel, and losing Android focus never spends a kit.
+    heal_start = tactical.split("private void StartHealing()", 1)[1].split(
+        "private void StopHealing()", 1
+    )[0]
+    heal_update = tactical.split("private void UpdateHealing()", 1)[1].split(
+        "private void StreamMedicalSites()", 1
+    )[0]
+    assert "!isActiveAndEnabled" in heal_start
+    assert "Time.timeScale <= 0f" in heal_start
+    assert "healStartAttackSequence = medicalBattle != null ? medicalBattle.AttackSequence : 0;" in heal_start
+    assert "medicalBattle.AttackSequence != healStartAttackSequence" in heal_update
+    assert heal_update.index("StopHealing();") < heal_update.index("medkits--;")
+    assert "if (paused) StopHealing();" in tactical
+    assert "if (!focused) StopHealing();" in tactical
+    disable = tactical.split("private void OnDisable()", 1)[1].split(
+        "private void OnDestroy()", 1
+    )[0]
+    assert "canvas.enabled = false;" in disable
+    assert "raycaster.enabled = false;" in disable
+
     health = source("AarisOfflineHealth.cs")
     # Helmets share the bounded authored medical loot budget, mitigate only
     # available durability and are never incorrectly counted as medkits.
