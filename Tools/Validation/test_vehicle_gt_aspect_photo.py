@@ -46,7 +46,7 @@ class BalancedGtAndFleet(unittest.TestCase):
         self.assertLess(source_y * min(lateral,rolling), 1.05)
 
     def test_native_photo_review_tracks_catalogue_not_old_hardcoded_sedan_scale(self):
-        self.assertIn("JsonUtility.FromJson<AarisVehicleTypesFile>", PHOTO)
+        self.assertIn("JsonUtility.FromJson<AarisVehicleStudioCatalog>", PHOTO)
         self.assertIn("type.referenceWidthMetres", PHOTO)
         self.assertIn("type.referenceLengthMetres", PHOTO)
         self.assertIn("new Vector3(transverse, wheelPlane, wheelPlane)", PHOTO)
