@@ -127,7 +127,7 @@ assert 'turningFast || transitioningStance)' in visual
 assert 'bool transitioningLowStance =' in visual
 assert '(crouchRigWeight > 0.03f && crouchRigWeight < 0.96f)' in visual
 assert '(proneRigWeight > 0.03f && proneRigWeight < 0.96f)' in visual
-assert visual.count('kneeClearance);') == 2
+assert visual.count('kneeClearance, kneePoleStrength);') == 2
 assert visual.count('planar, yawRate, ankleRigWeight, transitioningLowStance,') == 2
 for yaw_rate, moving, weight, crouch_weight, prone_weight, should_release in (
     (0.0, 0.0, 1.0, 1.0, 0.0, False),
