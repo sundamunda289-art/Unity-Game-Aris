@@ -46,5 +46,16 @@ class GunPbrImport(unittest.TestCase):
   self.assertIn("AarisWeaponMeshBounds.TryMeasure(root.transform,",inventory)
   self.assertIn("AarisWeaponMeshBounds.TryMeasure(transform,",pickup)
 
+ def test_unity_editor_checks_real_imported_model_scale(self):
+  editor=(R/"Assets/AarisWorld/Editor/AarisWeaponImportValidation.cs").read_text("utf-8")
+  self.assertIn("ValidateVisibleScale(spec, model);", editor)
+  self.assertIn("renderer.transform.TransformPoint(local)", editor)
+  self.assertIn("renderer.forceRenderingOff", editor)
+  self.assertIn("float groundLength = longest * scale;", editor)
+  self.assertIn("float heldLength = groundLength * spec.handScale;", editor)
+  self.assertIn("AARIS_WEAPON_SCALE_PASS:", editor)
+  self.assertIn("UnityEngine.Object.DestroyImmediate(auditRoot);", editor)
+  self.assertNotIn("renderer.bounds;", editor)
+
 if __name__=="__main__":
  unittest.main()
