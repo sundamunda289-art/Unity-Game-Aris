@@ -154,6 +154,43 @@ Log("PORTRAIT_HEADROOM stance="+b.Stance+
  " excessMetres="+excess.ToString("F3"));
 if(excess>.055f)throw new InvalidOperationException("ACTOR_HEAD_PENETRATES_CEILING_"+b.Stance);
 }
+// Make the visual screenshot suite fail for genuinely sideways crouch knees
+// or a prone silhouette that frog-splays. The check exists only in the Unity
+// Editor QA harness; there is no runtime physics, rigging or frame cost.
+if(SessionState.GetBool("pose.multiangle",false)&&
+ (b.Stance==AarisBattleActions.PlayerStance.Crouching||
+  b.Stance==AarisBattleActions.PlayerStance.Prone)){
+var leftUpper=animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
+var rightUpper=animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
+var leftKnee=animator.GetBoneTransform(HumanBodyBones.LeftLowerLeg);
+var rightKnee=animator.GetBoneTransform(HumanBodyBones.RightLowerLeg);
+var leftFoot=animator.GetBoneTransform(HumanBodyBones.LeftFoot);
+var rightFoot=animator.GetBoneTransform(HumanBodyBones.RightFoot);
+if(leftUpper==null||rightUpper==null||leftKnee==null||rightKnee==null||
+ leftFoot==null||rightFoot==null)
+throw new InvalidOperationException("LOW_STANCE_LEG_BONE_MISSING");
+float spread=Vector3.ProjectOnPlane(leftFoot.position-rightFoot.position,
+ Vector3.up).magnitude;
+if(spread>0.62f)throw new InvalidOperationException("LOW_STANCE_FOOT_SPLAY");
+Log("LOW_STANCE_SPREAD stance="+b.Stance+" metres="+spread.ToString("F3"));
+if(b.Stance==AarisBattleActions.PlayerStance.Crouching){
+Vector3 hipRight=Vector3.ProjectOnPlane(
+ rightUpper.position-leftUpper.position,Vector3.up);
+if(hipRight.sqrMagnitude<0.02f)
+throw new InvalidOperationException("CROUCH_HIP_AXIS_INVALID");
+hipRight.Normalize();
+float leftLateral=Vector3.Dot(Vector3.ProjectOnPlane(
+ leftKnee.position-leftUpper.position,Vector3.up),hipRight);
+float rightLateral=Vector3.Dot(Vector3.ProjectOnPlane(
+ rightKnee.position-rightUpper.position,Vector3.up),hipRight);
+float kneeHeightDelta=Mathf.Abs(leftKnee.position.y-rightKnee.position.y);
+Log("CROUCH_KNEE_ALIGNMENT leftLateral="+leftLateral.ToString("F3")+
+" rightLateral="+rightLateral.ToString("F3")+
+" kneeHeightDelta="+kneeHeightDelta.ToString("F3"));
+if(Mathf.Abs(leftLateral)>0.25f||Mathf.Abs(rightLateral)>0.25f||
+ kneeHeightDelta>0.12f)
+throw new InvalidOperationException("CROUCH_KNEE_SIDEWAYS_OR_MISALIGNED");
+}}
 HumanBodyBones[] bones={HumanBodyBones.Hips,HumanBodyBones.Chest,
 HumanBodyBones.Head,HumanBodyBones.LeftFoot,HumanBodyBones.RightFoot,
 HumanBodyBones.LeftHand,HumanBodyBones.RightHand,
