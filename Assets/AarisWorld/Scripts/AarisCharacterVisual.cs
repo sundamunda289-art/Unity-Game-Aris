@@ -913,7 +913,7 @@ namespace Aaris.MapReview
         // bounded world-space stance-foot locking. No collision queries or heap allocation.
         private static void PlantLegToTarget(Transform thigh, Transform shin,
             Transform foot, Vector3 desiredFootWorld, Vector3 forward, float weight,
-            float minimumKneeWorldY = -10000f)
+            float minimumKneeWorldY = -10000f, float kneePoleStrength = 0.90f)
         {
             if (thigh == null || shin == null || foot == null || weight <= 0f) return;
             Vector3 hip = thigh.position;
@@ -940,18 +940,21 @@ namespace Aaris.MapReview
             bend = Quaternion.FromToRotation(animatedAxis, axis) * bend;
             Vector3 forwardBend = Vector3.ProjectOnPlane(forward, axis);
             if (bend.sqrMagnitude < 0.0001f ||
-                Vector3.Dot(bend, forwardBend) < 0f)
+                (kneePoleStrength >= 0.89f &&
+                 Vector3.Dot(bend, forwardBend) < 0f))
                 bend = forwardBend;
             if (bend.sqrMagnitude < 0.0001f)
                 bend = Vector3.ProjectOnPlane(Vector3.up, axis);
             if (bend.sqrMagnitude < 0.0001f) return;
             bend.Normalize();
-            // Retargeted crouch samples can turn knees sideways despite a
-            // supported foot. Bias only the grounded crouch bend toward
-            // the existing forward hint; prone passes a zero hint.
+            // Keep the existing 90% crouch pole, but allow a smooth, stronger
+            // upward prone pole only once the character has settled.
+            // A transient crawl/turn keeps its authored animated knee plane.
             if (minimumKneeWorldY > -1000f &&
-                forwardBend.sqrMagnitude > 0.0001f)
-                bend = Vector3.Lerp(bend, forwardBend.normalized, 0.90f).normalized;
+                forwardBend.sqrMagnitude > 0.0001f &&
+                kneePoleStrength > 0.001f)
+                bend = Vector3.Lerp(bend, forwardBend.normalized,
+                    Mathf.Clamp01(kneePoleStrength)).normalized;
             float along = (upper * upper - lower * lower + distance * distance) /
                 (2f * distance);
             float across = Mathf.Sqrt(Mathf.Max(
@@ -1044,7 +1047,8 @@ namespace Aaris.MapReview
 
         private static void PlantCrouchLeg(Transform thigh, Transform shin,
             Transform foot, float ankleWorldY, Vector3 forward, float weight,
-            Vector3 resolvedFootWorld, float kneeClearance)
+            Vector3 resolvedFootWorld, float kneeClearance,
+            float kneePoleStrength)
         {
             if (foot == null || float.IsNaN(ankleWorldY) || weight <= 0.005f)
                 return;
@@ -1054,7 +1058,7 @@ namespace Aaris.MapReview
             targetFoot.y = ankleWorldY;
             float kneeFloor = ankleWorldY + kneeClearance;
             PlantLegToTarget(thigh, shin, foot, targetFoot, forward, weight,
-                kneeFloor);
+                kneeFloor, kneePoleStrength);
         }
 
         // Crouching should keep feet within a compact, balanced footprint;
@@ -1745,8 +1749,26 @@ namespace Aaris.MapReview
                 PlanBalancedLowStanceFeet(proneShare, lowPose, planar,
                     out Vector3 leftFootGoal, out Vector3 rightFootGoal,
                     out Vector3 crouchKneeForward);
-                Vector3 kneeForward = proneShare < 0.5f ?
-                    crouchKneeForward : Vector3.zero;
+                // The old <0.5 binary knee pole snapped from forward to none
+                // during crouch->prone. Fade the crouch hint away, then
+                // introduce an upward, sagittal-plane prone bend ONLY when
+                // the actual prone clip is settled and the player is still.
+                // Yaw fades it out for pivots, avoiding a rigid knee twist.
+                float proneKneeShare = Mathf.SmoothStep(0f, 1f,
+                    Mathf.InverseLerp(0.35f, 0.85f, proneShare));
+                float proneKneeSettle = Mathf.SmoothStep(0f, 1f,
+                    Mathf.InverseLerp(0.78f, 0.98f, effectiveProneBlend));
+                float kneeStillness = 1f - Mathf.SmoothStep(0f, 1f,
+                    Mathf.InverseLerp(0.07f, 0.38f, planar));
+                float kneeTurnStability = 1f - Mathf.SmoothStep(0f, 1f,
+                    Mathf.InverseLerp(65f, 140f, Mathf.Abs(yawRate)));
+                float crouchPoleStrength = (1f - proneKneeShare) * 0.90f;
+                float pronePoleStrength = proneKneeShare * proneKneeSettle *
+                    kneeStillness * kneeTurnStability;
+                Vector3 kneeForward = crouchKneeForward * crouchPoleStrength +
+                    Vector3.up * pronePoleStrength;
+                float kneePoleStrength = Mathf.Clamp01(
+                    crouchPoleStrength + pronePoleStrength);
                 // Resolve X/Z BEFORE sampling Y. This keeps the one existing
                 // Physics query per foot on the actual locked point, rather
                 // than on a different goal across a ramp or stair lip.
@@ -1763,12 +1785,12 @@ namespace Aaris.MapReview
                 if (!float.IsNaN(leftAnkleY))
                     PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
                         leftAnkleY, kneeForward, ankleRigWeight,
-                        leftFootGoal, kneeClearance);
+                        leftFootGoal, kneeClearance, kneePoleStrength);
                 else leftLowPlantLocked = false;
                 if (!float.IsNaN(rightAnkleY))
                     PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
                         rightAnkleY, kneeForward, ankleRigWeight,
-                        rightFootGoal, kneeClearance);
+                        rightFootGoal, kneeClearance, kneePoleStrength);
                 else rightLowPlantLocked = false;
                 // Crouch/prone used to correct only ankle height, leaving the
                 // sole visually cutting through a sloped road or bridge deck.
