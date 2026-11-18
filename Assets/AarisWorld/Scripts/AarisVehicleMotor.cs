@@ -550,6 +550,21 @@ namespace Aaris.MapReview
             if (frontTrack < 1.02f || frontTrack > 2.40f ||
                 rearTrack < 1.02f || rearTrack > 2.40f ||
                 wheelbase < 1.55f || wheelbase > 4.65f) return false;
+            // Reject an importer that distorts one tyre of a matched axle:
+            // broad wheel-diameter limits and axle spacing alone can still
+            // admit a cartoonishly oversized left/right tyre. Verify once
+            // before detaching meshes or changing the WheelColliders.
+            float frontLeftDiameter = Mathf.Max(tyres[0].size.y, tyres[0].size.z);
+            float frontRightDiameter = Mathf.Max(tyres[1].size.y, tyres[1].size.z);
+            float rearLeftDiameter = Mathf.Max(tyres[2].size.y, tyres[2].size.z);
+            float rearRightDiameter = Mathf.Max(tyres[3].size.y, tyres[3].size.z);
+            float frontTolerance = Mathf.Max(.07f,
+                Mathf.Max(frontLeftDiameter, frontRightDiameter) * .12f);
+            float rearTolerance = Mathf.Max(.07f,
+                Mathf.Max(rearLeftDiameter, rearRightDiameter) * .12f);
+            if (Mathf.Abs(frontLeftDiameter - frontRightDiameter) > frontTolerance ||
+                Mathf.Abs(rearLeftDiameter - rearRightDiameter) > rearTolerance)
+                return false;
             // A flat imported car cannot have a lopsided wheel pair or
             // grossly different wheelbase on its left and right sides.
             if (Mathf.Abs(fl.z - fr.z) > .30f ||
