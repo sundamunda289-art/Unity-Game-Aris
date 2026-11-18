@@ -635,8 +635,8 @@ assert 'float proneShare = proneRigWeight / Mathf.Max(totalRigWeight, 0.0001f);'
 assert 'Mathf.Lerp(PlantedAnkleMetres,' in visual
 assert 'float leftAnkleY = SupportedAnkleY(leftFootBone,' in visual
 assert 'float rightAnkleY = SupportedAnkleY(rightFootBone,' in visual
-assert 'ankleClearance, out Vector3 leftSupportNormal);' in visual
-assert 'ankleClearance, out Vector3 rightSupportNormal);' in visual
+assert 'ankleClearance, out Vector3 leftSupportNormal, leftFootGoal);' in visual
+assert 'ankleClearance, out Vector3 rightSupportNormal, rightFootGoal);' in visual
 for authored in (False, True):
     for i in range(11):
         for j in range(11):
