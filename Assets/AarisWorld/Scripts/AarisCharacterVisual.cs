@@ -994,6 +994,15 @@ namespace Aaris.MapReview
                 shin.rotation = Quaternion.FromToRotation(oldLower, newLower) *
                     shin.rotation;
             foot.rotation = footRotation;
+#if UNITY_EDITOR
+            if (minimumKneeWorldY > -1000f && Time.frameCount % 10 == 0)
+                Debug.Log("AARIS_IK_SOLVE frame="+Time.frameCount+
+                    " thigh="+thigh.position.ToString("F3")+
+                    " requestedKnee="+kneeGoal.ToString("F3")+
+                    " actualKnee="+shin.position.ToString("F3")+
+                    " targetFoot="+targetFoot.ToString("F3")+
+                    " actualFoot="+foot.position.ToString("F3"));
+#endif
         }
 
         private void CorrectReversedSwingKnee(Transform thigh, Transform shin,
@@ -1701,6 +1710,18 @@ namespace Aaris.MapReview
                         rightAnkleY, kneeForward, ankleRigWeight, planar, yawRate,
                         rightFootGoal, kneeClearance, ref rightLowPlantLocked, ref rightLowPlantWorld);
                 else rightLowPlantLocked = false;
+#if UNITY_EDITOR
+                if (Time.frameCount % 10 == 0)
+                    Debug.Log("AARIS_IK_SUPPORT frame="+Time.frameCount+
+                        " crouchBlend="+effectiveCrouchBlend.ToString("F2")+
+                        " proneBlend="+effectiveProneBlend.ToString("F2")+
+                        " leftSupport="+leftAnkleY.ToString("F3")+
+                        " rightSupport="+rightAnkleY.ToString("F3")+
+                        " weight="+ankleRigWeight.ToString("F2")+
+                        " moving="+planar.ToString("F3")+
+                        " leftKnee="+leftShin.position.ToString("F3")+
+                        " rightKnee="+rightShin.position.ToString("F3"));
+#endif
                 // Crouch/prone used to correct only ankle height, leaving the
                 // sole visually cutting through a sloped road or bridge deck.
                 // Reuse the exact two support normals sampled above; no extra
