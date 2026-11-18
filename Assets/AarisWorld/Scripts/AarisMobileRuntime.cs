@@ -44,6 +44,9 @@ namespace Aaris.MapReview
         private float startupTime;
         private int startupSampleIndex;
         private Task<string> pendingLogWrite;
+        // Limit main-thread async asset integration on budget Android GPUs.
+        private UnityEngine.ThreadPriority originalBackgroundLoadPriority;
+        private bool modifiedBackgroundLoadPriority;
         // Begin at native sharpness and adapt only after sustained FPS misses.
         private UniversalRenderPipelineAsset androidPipeline;
         private float originalRenderScale = 1f;
@@ -89,6 +92,14 @@ namespace Aaris.MapReview
             Application.targetFrameRate = targetFrameRate;
 #if UNITY_ANDROID && !UNITY_EDITOR
             startupTime = Time.unscaledTime;
+            originalBackgroundLoadPriority = Application.backgroundLoadingPriority;
+            if (IsBudgetAndroidGpu() &&
+                originalBackgroundLoadPriority != UnityEngine.ThreadPriority.Low)
+            {
+                // Async asset integration is frame-budgeted; preserve texture and mesh quality.
+                Application.backgroundLoadingPriority = UnityEngine.ThreadPriority.Low;
+                modifiedBackgroundLoadPriority = true;
+            }
             previousInfoLogStackTrace = Application.GetStackTraceLogType(LogType.Log);
             if (previousInfoLogStackTrace != StackTraceLogType.None)
             {
@@ -673,6 +684,9 @@ namespace Aaris.MapReview
             if (infoLogStackTraceOverridden &&
                 Application.GetStackTraceLogType(LogType.Log) == StackTraceLogType.None)
                 Application.SetStackTraceLogType(LogType.Log, previousInfoLogStackTrace);
+            if (modifiedBackgroundLoadPriority &&
+                Application.backgroundLoadingPriority == UnityEngine.ThreadPriority.Low)
+                Application.backgroundLoadingPriority = originalBackgroundLoadPriority;
             // URP pipeline assets and QualitySettings survive scene reloads.
             // Restore only values still owned by this instance; avoid undoing
             // a deliberate change made by another quality controller.
