@@ -62,7 +62,8 @@ class AutomotiveRefinement(unittest.TestCase):
         self.assertEqual(antiroll.count("groundedWheelCount++;"), 2)
         self.assertEqual(antiroll.count("GetGroundHit(out WheelHit"), 2)
         self.assertIn("effectiveAntiRoll = AntiRollStrength * antiRollMassScale", antiroll)
-        self.assertIn("if (planarSpeed > 6f && groundedWheelCount >= 2)", step)
+        self.assertIn("if (planarSpeed > 6f && groundedWheelCount >= 2 &&", step)
+        self.assertIn("groundedAxleMask == 3", step)
         self.assertNotIn("Physics.Raycast(", step)
         for mass in (850, 1050, 1250, 1650, 1950, 2300):
             factor = max(.85, min(1.24, math.sqrt(mass / 1250)))
@@ -164,7 +165,8 @@ class AutomotiveRefinement(unittest.TestCase):
             "private void ApplyAckermannSteering(", 1)[0]
         dynamics = MOTOR.split("private void SampleBodyDynamics()", 1)[1].split(
             "private void UpdateVisualBodyDynamics()", 1)[0]
-        self.assertIn("if (planarSpeed > 6f && groundedWheelCount >= 2)", step)
+        self.assertIn("if (planarSpeed > 6f && groundedWheelCount >= 2 &&", step)
+        self.assertIn("groundedAxleMask == 3", step)
         self.assertIn("body.mass *", step)
         self.assertIn("Mathf.Min(3.5f, .007f * planarSpeed * planarSpeed)", step)
         self.assertIn("int grounded = groundedWheelCount;", dynamics)
