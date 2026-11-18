@@ -1011,6 +1011,7 @@ namespace Aaris.MapReview
             Transform foot, float ankleWorldY, Vector3 forward, float weight,
             float planarSpeed, float turnDegreesPerSecond,
             Vector3 desiredFootWorld, float kneeClearance,
+            bool transitioningStance,
             ref bool contactLocked, ref Vector3 contactWorld)
         {
             if (foot == null || float.IsNaN(ankleWorldY) || weight <= 0.005f)
@@ -1030,7 +1031,12 @@ namespace Aaris.MapReview
             // fast turn instead of twisting planted knees against the new pose.
             // Reacquire contact once the turn slows, with no extra raycasts.
             bool turningFast = Mathf.Abs(turnDegreesPerSecond) > 110f;
-            if (planarSpeed >= 0.18f || weight < 0.30f || turningFast)
+            // A crouch/prone/stand blend moves hip and knee targets even
+            // while the motor stays stationary. Release any old shoe lock
+            // until the new pose settles; otherwise the previous contact
+            // point drags an ankle across the ground during the transition.
+            if (planarSpeed >= 0.18f || weight < 0.30f ||
+                turningFast || transitioningStance)
             {
                 contactLocked = false;
             }
@@ -1692,6 +1698,12 @@ namespace Aaris.MapReview
             float totalRigWeight = crouchRigWeight + proneRigWeight;
             float ankleRigWeight = !visuallyAirborne && graphReady
                 ? Mathf.Clamp01(totalRigWeight) : 0f;
+            // Each low-stance animation has a continuous human-scale blend.
+            // Do not inherit world-space foot anchors across a changing
+            // crouch/prone capsule pose (including interrupted transitions).
+            bool transitioningLowStance =
+                (crouchRigWeight > 0.03f && crouchRigWeight < 0.96f) ||
+                (proneRigWeight > 0.03f && proneRigWeight < 0.96f);
             bool useUprightContact = !visuallyAirborne && graphReady &&
                 groundedNow && lowPose < 0.02f;
             if (!useUprightContact && ankleRigWeight > 0.005f)
@@ -1714,12 +1726,14 @@ namespace Aaris.MapReview
                 if (!float.IsNaN(leftAnkleY))
                     PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
                         leftAnkleY, kneeForward, ankleRigWeight, planar, yawRate,
-                        leftFootGoal, kneeClearance, ref leftLowPlantLocked, ref leftLowPlantWorld);
+                        leftFootGoal, kneeClearance, transitioningLowStance,
+                        ref leftLowPlantLocked, ref leftLowPlantWorld);
                 else leftLowPlantLocked = false;
                 if (!float.IsNaN(rightAnkleY))
                     PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
                         rightAnkleY, kneeForward, ankleRigWeight, planar, yawRate,
-                        rightFootGoal, kneeClearance, ref rightLowPlantLocked, ref rightLowPlantWorld);
+                        rightFootGoal, kneeClearance, transitioningLowStance,
+                        ref rightLowPlantLocked, ref rightLowPlantWorld);
                 else rightLowPlantLocked = false;
                 // Crouch/prone used to correct only ankle height, leaving the
                 // sole visually cutting through a sloped road or bridge deck.
