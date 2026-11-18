@@ -215,14 +215,25 @@ namespace Aaris.MapReview
             foreach (var filter in subtree.GetComponentsInChildren<MeshFilter>(true))
             {
                 if (filter == null || filter.sharedMesh == null ||
-                    filter.GetComponent<MeshRenderer>() == null) continue;
+                    filter.sharedMesh.vertexCount == 0) continue;
+                // Imported FBXs can contain disabled helper/LOD meshes that
+                // are much larger than the visible shell. Fitting collider,
+                // lamps and wheels to those hidden bounds makes cars tiny or
+                // apparently float. Measure only actual rendered geometry.
+                var renderer = filter.GetComponent<MeshRenderer>();
+                if (renderer == null || !renderer.enabled ||
+                    renderer.forceRenderingOff ||
+                    !renderer.gameObject.activeInHierarchy) continue;
                 AccumulateLocalBounds(filter.sharedMesh.bounds,
                     toLocal * filter.transform.localToWorldMatrix,
                     ref combined, ref found);
             }
             foreach (var skinned in subtree.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
-                if (skinned == null || skinned.sharedMesh == null) continue;
+                if (skinned == null || skinned.sharedMesh == null ||
+                    skinned.sharedMesh.vertexCount == 0 || !skinned.enabled ||
+                    skinned.forceRenderingOff ||
+                    !skinned.gameObject.activeInHierarchy) continue;
                 AccumulateLocalBounds(skinned.localBounds,
                     toLocal * skinned.transform.localToWorldMatrix,
                     ref combined, ref found);
