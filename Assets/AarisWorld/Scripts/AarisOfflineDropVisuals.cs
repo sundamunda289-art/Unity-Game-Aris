@@ -285,14 +285,16 @@ namespace Aaris.MapReview
                             slots[i] = enginePaint;
                         else if (label.IndexOf("SafetyAccent", StringComparison.OrdinalIgnoreCase) >= 0)
                             slots[i] = safetyPaint;
-                        // Some mobile OBJ import paths discard the MTL names but
-                        // retain the five source submesh slots in OBJ declaration
-                        // order. Preserve their contrast even in this case.
+                        // A stripped OBJ import can discard MTL slot names. The
+                        // CC0 CargoPlaneRealistic.obj declares its first five
+                        // materials in THIS order: WingPanels, EngineDark,
+                        // HulledMetal, DarkCockpit, SafetyAccent. Keep the
+                        // broad wing from turning engine-black on Android.
                         else if (slots.Length == 5)
-                            slots[i] = i == 1 ? cockpitPaint :
-                                i == 2 ? wingPaint :
-                                i == 3 ? enginePaint :
-                                i == 4 ? safetyPaint : hullPaint;
+                            slots[i] = i == 0 ? wingPaint :
+                                i == 1 ? enginePaint :
+                                i == 2 ? hullPaint :
+                                i == 3 ? cockpitPaint : safetyPaint;
                         else slots[i] = hullPaint;
                     }
                     renderer.sharedMaterials = slots;
