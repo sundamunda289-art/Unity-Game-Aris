@@ -33,6 +33,13 @@ public static void CapturePortrait(){
 SessionState.SetBool("pose.portrait",true);
 CaptureBatch();
 }
+// Opt-in real Unity Play Mode photo QA. Four directions for the standing,
+// crouch and prone poses, without changing their gameplay controller or
+// replacing the established seven-frame front-only capture workflow.
+public static void CaptureMultiAnglePortrait(){
+SessionState.SetBool("pose.multiangle",true);
+CapturePortrait();
+}
 public static void CaptureBatch(){
 if(!Application.isBatchMode)throw new InvalidOperationException("BATCHMODE_REQUIRED");
 try{
@@ -176,10 +183,12 @@ int code=(reason=="SUCCESS_18_REAL_FRAMES"||
  reason=="SUCCESS_PRONE_DIAGNOSTIC"||
  reason=="SUCCESS_PRONE_GEOMETRY_ONLY"||
  reason=="SUCCESS_STANCE_JUMP_MOTOR"||
- reason=="SUCCESS_7_ACTOR_PORTRAITS")?0:2;
+ reason=="SUCCESS_7_ACTOR_PORTRAITS"||
+ reason=="SUCCESS_16_ACTOR_MULTIANGLE_PORTRAITS")?0:2;
 SessionState.EraseBool("pose.geometryOnly");
 SessionState.EraseBool("pose.stanceJump");
 SessionState.EraseBool("pose.portrait");
+SessionState.EraseBool("pose.multiangle");
 EditorApplication.delayCall+=()=>EditorApplication.Exit(code);
 }
 }
@@ -273,8 +282,14 @@ return;
 bool fastProbe=SessionState.GetBool("pose.diag",false) ||
 SessionState.GetBool("pose.geometryOnly",false);
 bool portrait=SessionState.GetBool("pose.portrait",false);
-int needed=portrait?(n==5?2:1):fastProbe?(n==2?1:0):3;
-if(count<needed&&age>(portrait?(n==5?(count==0?.30:1.15):.52):.25+count*.30)){
+bool multiangle=portrait&&SessionState.GetBool("pose.multiangle",false);
+bool orbitStance=multiangle&&n<=2;
+int needed=portrait?(n==5?2:orbitStance?4:1):fastProbe?(n==2?1:0):3;
+// Each orbit frame gets its own measured Play Mode pose/readback. The
+// existing seven front-view frames retain their original timings.
+double readyAge=portrait?(n==5?(count==0?.30:1.15):
+ orbitStance?.52+count*.22:.52):.25+count*.30;
+if(count<needed&&age>readyAge){
 try{
 Camera cam=Camera.main;if(cam==null)throw new InvalidOperationException("CAMERA_MISSING");
 int imageWidth=portrait?640:SessionState.GetBool("pose.diag",false)?640:960;
@@ -297,7 +312,10 @@ try{
 float eye=b.Stance==AarisBattleActions.PlayerStance.Prone ? 0.42f :
  b.Stance==AarisBattleActions.PlayerStance.Crouching ? 0.85f : 1.18f;
 Vector3 target=p.transform.position+Vector3.up*eye;
-Vector3 photoPosition=target+p.transform.forward*3.0f+Vector3.up*0.42f;
+Vector3 viewDirection=orbitStance
+ ?Quaternion.AngleAxis(90f*count,Vector3.up)*p.transform.forward
+ :p.transform.forward;
+Vector3 photoPosition=target+viewDirection*3.0f+Vector3.up*0.42f;
 cam.transform.position=photoPosition;
 cam.transform.rotation=Quaternion.LookRotation(target-photoPosition,Vector3.up);
 if(portrait){cam.cullingMask=1 << p.gameObject.layer;
@@ -335,15 +353,19 @@ cam.targetTexture=old;RenderTexture.active=active;
 UnityEngine.Object.DestroyImmediate(image);RenderTexture.ReleaseTemporary(rt);}
 SessionState.SetInt("pose.count",count+1);
 Log("FRAME "+Names[n]+" "+count+" stance="+b.Stance+
+" viewDegrees="+(orbitStance?90*count:0)+
 " air="+p.IsInAir+" pos="+p.transform.position.ToString("F2"));
 if(count==0)LogPhysicalHeight(p,b);
 }catch(Exception ex){Finish("ERROR_"+ex.GetType().Name+"_"+ex.Message);return;}
 }
-if(age>(portrait?(n==5?1.35:.70):fastProbe?.38:1.3)&&
+if(age>(portrait?(n==5?1.35:orbitStance?1.40:.70):
+ fastProbe?.38:1.3)&&
  SessionState.GetInt("pose.count",0)>=needed){
 if(SessionState.GetBool("pose.diag",false)&&n>=2){
 p.CancelAutoSprint();Finish("SUCCESS_PRONE_DIAGNOSTIC");
-}else if(n+1>=Names.Length){p.CancelAutoSprint();Finish(portrait?"SUCCESS_7_ACTOR_PORTRAITS":"SUCCESS_18_REAL_FRAMES");}
+}else if(n+1>=Names.Length){p.CancelAutoSprint();
+Finish(portrait?(multiangle?"SUCCESS_16_ACTOR_MULTIANGLE_PORTRAITS":
+"SUCCESS_7_ACTOR_PORTRAITS"):"SUCCESS_18_REAL_FRAMES");}
 else Stage(n+1,p,b);}
 }
 }
