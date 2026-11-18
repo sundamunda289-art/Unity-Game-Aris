@@ -30,11 +30,15 @@ combat=(r/'Assets/AarisWorld/Scripts/AarisBattleActions.cs').read_text()
 # later declares 'delta' for the final obstruction raycast.
 assert combat.count('Vector3 candidateOffset = nearest - origin;') == 1
 assert 'Vector3 delta = nearest - origin;' not in combat
-assert 'Vector3 delta = point - origin;' in combat
+assert 'Vector3 delta = destination - origin;' in combat
 assert 'float candidateDistance = candidateOffset.sqrMagnitude;' in combat
 assert 'distance = candidateDistance;' in combat
-assert 'FindPunchReceiver(collider) != null' in combat
-assert 'Physics.Raycast(origin, delta.normalized' in combat
+assert 'IAarisDamageable receiver = FindPunchReceiver(collider);' in combat
+assert 'receiver != null && HasPunchLineOfSight(origin, nearest, receiver, mask)' in combat
+assert 'Physics.RaycastNonAlloc(origin, delta / length' in combat
+assert 'if (count >= punchRayHits.Length)' in combat
+assert 'hits = Physics.RaycastAll(origin, delta / length, length,' in combat
+assert 'FindPunchReceiver(obstacle) == receiver' in combat
 assert manifest.get('com.unity.modules.physics')=='1.0.0'
 wf=(r/'.github/workflows/aaris-codespaces-control.yml').read_text()
 assert "github.event.comment.user.login == 'sundamunda289-art'" in wf
