@@ -413,7 +413,7 @@ for candidates, requested, expected in (
 # The convenience default is allowed only for exactly one eligible Ubuntu
 # instance; if both old and new exist the user must select by exact name.
 default_line=next(line for line in direct.splitlines()
-                  if 'jq -r ' in line and 'select(.displayName' in line)
+                  if 'jq -r ' in line and '.displayName == "aaris-ai-ubuntu-minimal"' in line)
 default_selector=default_line.rsplit(chr(39),2)[1]
 for candidates, expected in (([old],"old-fallback"),([new],"new-clean-ubuntu"),
                              ([old,new],""),([], ""),([stopped],""),
