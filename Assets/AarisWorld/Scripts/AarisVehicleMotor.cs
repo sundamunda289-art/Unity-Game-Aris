@@ -139,6 +139,15 @@ namespace Aaris.MapReview
             }
         }
 
+        // A rolled car may rest motionless on its roof with zero grounded
+        // wheels. Allow a deliberate low-speed EXIT attempt in that case;
+        // VehicleSession still requires a supported, empty landing capsule
+        // and a clear walking route before restoring the player motor.
+        // Never use this relaxed condition for boarding a moving/rolled car.
+        public bool CanEvacuateStoppedVehicle =>
+            body != null && TotalSpeedMetresPerSecond < .65f &&
+            body.angularVelocity.magnitude < .25f;
+
         private void OnCollisionEnter(Collision collision)
         {
             if (driver == null || collision == null) return;
