@@ -190,8 +190,12 @@ namespace Aaris.MapReview
                     }
                 }
             float distance = FindOpenDistance(player, ahead, desired);
-            // The curved, highlighted face must look back toward its owner.
-            proposedRotation = Quaternion.LookRotation(-ahead, Vector3.up);
+            // The authored OBJ bows toward local +Z (centre +0.26m,
+            // outer edges -0.19m), so its OPEN/concave side is local -Z.
+            // The fallback segments use that same convention. Point +Z
+            // AWAY from the player: the open side then faces the player.
+            // Preview and deployed cover must share this exact rotation.
+            proposedRotation = Quaternion.LookRotation(ahead, Vector3.up);
             proposedPoint = player + ahead * Mathf.Max(minimumDistance, distance);
 
             if (TryFindSupport(proposedPoint, player.y, out float centerY))
