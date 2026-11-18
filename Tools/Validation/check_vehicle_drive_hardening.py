@@ -145,18 +145,28 @@ def test():
         "private void FixedUpdate()", 1)[0]
     assert wheel_forces.index("if (!driveChanged && !brakeChanged) return;") < (
         wheel_forces.index("wheels[i].motorTorque"))
-    # Dynamic service braking now shifts a modest 56/44 load to the front.
-    # Parking/pause/exit must stay four-wheel balanced and the cached bias
-    # needs to invalidate wheel writes even with unchanged brake input.
-    assert "wheels[i].brakeTorque = brake *" in wheel_forces
-    assert "frontBiased ? (i < 2 ? 1.12f : .88f) : 1f" in wheel_forces
+    # Dynamic service braking shifts a modest 56/44 load toward the
+    # direction of travel: forward/front, reversing/rear. A sideways
+    # skid, near-zero longitudinal speed and parking stay balanced.
+    # The three-state cache must invalidate wheel writes even with
+    # unchanged brake input when direction flips.
+    assert "wheels[i].brakeTorque = brake * bias;" in wheel_forces
+    assert "(i < 2) == (brakeDirection > 0) ? 1.12f : .88f" in wheel_forces
     assert "brake < ParkingBrakeTorque" in wheel_forces
-    assert "body.linearVelocity.sqrMagnitude > 4f" in wheel_forces
-    assert "frontBiased != appliedServiceBrakeBias" in wheel_forces
+    assert "float longitudinalSpeed = SpeedMetresPerSecond;" in wheel_forces
+    assert "if (longitudinalSpeed > 2f) brakeDirection = 1;" in wheel_forces
+    assert "else if (longitudinalSpeed < -2f) brakeDirection = -1;" in wheel_forces
+    assert "brakeDirection != appliedServiceBrakeDirection;" in wheel_forces
+    assert "appliedServiceBrakeDirection = brakeDirection;" in wheel_forces
+    assert "body.linearVelocity.sqrMagnitude > 4f" not in wheel_forces
     for strength in (500.0, 1200.0, 3200.0):
-        front, rear = strength * 1.12, strength * .88
-        assert front > rear
-        assert abs((front + rear) - (2.0 * strength)) < 1e-6
+        for direction in (-1, 0, 1):
+            biases = [
+                1.0 if direction == 0 else
+                (1.12 if (i < 2) == (direction > 0) else .88)
+                for i in range(4)
+            ]
+            assert abs(sum(strength * b for b in biases) - 4 * strength) < 1e-6
 
 
     def wheel_properties(command):
