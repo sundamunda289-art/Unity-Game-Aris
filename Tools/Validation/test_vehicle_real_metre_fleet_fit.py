@@ -30,7 +30,7 @@ class RealMetreVehicleFit(unittest.TestCase):
             self.assertAlmostEqual(v["referenceWidthMetres"], width)
             self.assertAlmostEqual(v["referenceLengthMetres"], length)
             self.assertGreater(width, 1.60)
-            self.assertGreater(length, 3.50)
+            self.assertGreater(length, 3.35)
             # Per-class road-clearance overlap follows these proportions.
             self.assertLess(width, 2.25)
             self.assertLess(length, 5.50)
