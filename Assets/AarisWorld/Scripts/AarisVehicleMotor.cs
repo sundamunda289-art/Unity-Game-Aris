@@ -462,6 +462,12 @@ namespace Aaris.MapReview
                     return false;
             }
 
+            // Reject a wrongly-imported or misnamed four-wheel source BEFORE
+            // modifying any WheelCollider, Transform, renderer, or Rigidbody.
+            // Otherwise a single inverted axle can make the entire car
+            // visually drive backwards despite a correctly-fitted shell.
+            if (!AreAuthoredWheelAxlesPlausible(bounds)) return false;
+
             for (int i = 0; i < found.Length; i++)
             {
                 Transform wheelVisual = found[i];
@@ -494,6 +500,42 @@ namespace Aaris.MapReview
             if (wheels[0] != null) wheels[0].ResetSprungMasses();
             appliedSteeringAngle = float.NaN;
             SyncVisibleWheels();
+            return true;
+        }
+
+        /// <summary>
+        /// Validate actual wheel-mesh centres in chassis space, before we
+        /// detach imported wheels. FL/FR must form the forward axle; RL/RR
+        /// must form the rear axle with positive track and parallel heights.
+        /// Broad tolerances preserve genuinely different SUV/van/buggy shapes.
+        /// This is a one-time source-art check, not a driving-frame query.
+        /// </summary>
+        private static bool AreAuthoredWheelAxlesPlausible(Bounds[] tyres)
+        {
+            if (tyres == null || tyres.Length != 4) return false;
+            Vector3 fl = tyres[0].center;
+            Vector3 fr = tyres[1].center;
+            Vector3 rl = tyres[2].center;
+            Vector3 rr = tyres[3].center;
+            float frontTrack = fr.x - fl.x;
+            float rearTrack = rr.x - rl.x;
+            float frontZ = (fl.z + fr.z) * .5f;
+            float rearZ = (rl.z + rr.z) * .5f;
+            float wheelbase = frontZ - rearZ;
+            // The source names must agree with the steering/front axle.
+            if (frontTrack < 1.02f || frontTrack > 2.40f ||
+                rearTrack < 1.02f || rearTrack > 2.40f ||
+                wheelbase < 1.55f || wheelbase > 4.65f) return false;
+            // A flat imported car cannot have a lopsided wheel pair or
+            // grossly different wheelbase on its left and right sides.
+            if (Mathf.Abs(fl.z - fr.z) > .30f ||
+                Mathf.Abs(rl.z - rr.z) > .30f ||
+                Mathf.Abs(fl.y - fr.y) > .22f ||
+                Mathf.Abs(rl.y - rr.y) > .22f ||
+                Mathf.Abs((fl.z - rl.z) - (fr.z - rr.z)) > .42f ||
+                Mathf.Abs((fl.x + fr.x) * .5f) > .60f ||
+                Mathf.Abs((rl.x + rr.x) * .5f) > .60f)
+                return false;
             return true;
         }
 
