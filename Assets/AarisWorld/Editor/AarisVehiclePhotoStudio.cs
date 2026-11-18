@@ -17,17 +17,23 @@ namespace Aaris.MapReview.Editor
         private static readonly string[] Names =
         {
             "sedan", "suv", "sports", "premium-gt",
-            "hatchback", "pickup", "van"
+            "hatchback", "pickup", "van", "buggy"
+        };
+        private static readonly string[] VehicleIds =
+        {
+            "Sedan", "SUV", "Sports", "GT",
+            "Hatchback", "Utility", "Van", "Buggy"
         };
         private static readonly string[] Paths =
         {
             "Assets/Resources/AarisVehicles/Authored/CivilianSedan.prefab",
             "Assets/Resources/AarisVehicles/Authored/1990s-suv.fbx",
             "Assets/Resources/AarisVehicles/Authored/1990s-sports-car.fbx",
-            "Assets/Resources/AarisVehicles/Authored/QuaterniusSports.obj",
+            "Assets/Resources/AarisVehicles/PremiumRoadGT/AarisRoadGT.prefab",
             "Assets/Resources/AarisVehicles/Authored/1990s-hatchback.fbx",
             "Assets/Resources/AarisVehicles/Authored/1990s-pickup-truck.fbx",
-            "Assets/Resources/AarisVehicles/Authored/1980s-van.fbx"
+            "Assets/Resources/AarisVehicles/Authored/1980s-van.fbx",
+            "Assets/Resources/AarisVehicles/Authored/AarisBuggy.obj"
         };
 
         [MenuItem("Aaris/CI/Capture genuine imported vehicle previews")]
@@ -58,7 +64,8 @@ namespace Aaris.MapReview.Editor
 
             var road = GameObject.CreatePrimitive(PrimitiveType.Plane);
             road.name = "Temporary neutral vehicle floor";
-            road.transform.localScale = new Vector3(2.2f, 1f, 2.2f);
+            // The local map has 7 m streets and 8 m connector roads.
+            road.transform.localScale = new Vector3(.7f, 1f, 1.8f);
             road.transform.position = new Vector3(0f, -.035f, 0f);
             var roadMaterial = new Material(shader) { name = "Temporary neutral asphalt" };
             roadMaterial.SetColor("_BaseColor", new Color(.24f, .27f, .29f));
@@ -103,15 +110,23 @@ namespace Aaris.MapReview.Editor
                     {
                         if (!VisibleBounds(instance, out Bounds bounds))
                             throw new InvalidOperationException("No visible mesh geometry in " + Paths[i]);
+                        // Photograph the EXACT game-scale visual, including
+                        // vehicles with a pre-corrected or raw Z-up FBX importer.
+                        Quaternion sourceFix =
+                            AarisVehicleVisualCalibration.CorrectSourceAxes(bounds.size);
+                        instance.transform.rotation =
+                            sourceFix * instance.transform.rotation;
+                        if (!VisibleBounds(instance, out bounds))
+                            throw new InvalidOperationException("Missing oriented geometry " + Names[i]);
                         if (bounds.size.x > bounds.size.z * 1.10f)
-                        {
-                            instance.transform.rotation = Quaternion.Euler(0f, 90f, 0f);
-                            if (!VisibleBounds(instance, out bounds))
-                                throw new InvalidOperationException("Vehicle orientation bounds missing: " + Paths[i]);
-                        }
-                        float scale = Mathf.Min(1.95f / Mathf.Max(.01f, bounds.size.x),
-                            4.45f / Mathf.Max(.01f, bounds.size.z));
-                        instance.transform.localScale *= Mathf.Clamp(scale, .01f, 30f);
+                            instance.transform.rotation =
+                                Quaternion.Euler(0f, 90f, 0f) * instance.transform.rotation;
+                        if (!VisibleBounds(instance, out bounds))
+                            throw new InvalidOperationException("Vehicle orientation bounds missing: " + Paths[i]);
+                        Vector3 fittedScale = AarisVehicleVisualCalibration.FittedScale(
+                            VehicleIds[i], bounds.size);
+                        instance.transform.localScale = Vector3.Scale(
+                            instance.transform.localScale, fittedScale);
                         if (!VisibleBounds(instance, out bounds))
                             throw new InvalidOperationException("Vehicle scale bounds missing: " + Paths[i]);
                         instance.transform.position -=
@@ -132,10 +147,12 @@ namespace Aaris.MapReview.Editor
                 File.WriteAllText(Path.Combine(directory, "README.txt"),
                     "Unity " + Application.unityVersion + " / " +
                     SystemInfo.graphicsDeviceName + Environment.NewLine +
-                    "Actual imported vehicle asset photographs under neutral studio lighting." +
+                    "Actual all-eight vehicle assets calibrated to metre-scale dimensions under neutral studio lighting; 7m road width." +
                     Environment.NewLine +
                     "These are not in-game spawn, handling, real match lighting, or Android FPS proof." +
                     Environment.NewLine + string.Join(Environment.NewLine, saved));
+                if (saved.Count != 8)
+                    throw new InvalidOperationException("Expected eight full-fleet renders.");
                 Debug.Log("AARIS_VEHICLE_STUDIO_PASS " + saved.Count + " genuine Unity photos");
             }
             finally
