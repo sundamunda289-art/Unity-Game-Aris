@@ -14,8 +14,9 @@ assert "proneHeadBone.position - locomotionHipsBone.position" in layout
 assert "rightThigh.position - leftThigh.position" in layout
 assert "Vector3 crouchLeft = hipMid - anatomicalRight * 0.19f +" in layout
 assert "Vector3 crouchRight = hipMid + anatomicalRight * 0.19f +" in layout
-assert "Vector3 proneLeft = hipMid - facing * 1.055f - right * 0.18f;" in layout
-assert "Vector3 proneRight = hipMid - facing * 1.055f + right * 0.18f;" in layout
+assert "Vector3 proneLeft = leftThigh.position - facing * 1.045f -" in layout
+assert "Vector3 proneRight = rightThigh.position - facing * 1.045f +" in layout
+assert "right * 0.035f;" in layout
 assert "leftGoal += Vector3.ClampMagnitude(leftDelta, 0.52f) * correction;" in layout
 assert "rightGoal += Vector3.ClampMagnitude(rightDelta, 0.52f) * correction;" in layout
 assert "Mathf.InverseLerp(0.07f, 0.38f, planarSpeed)" in layout
@@ -38,15 +39,21 @@ for direction in ((0.0, 1.0), (1.0, 0.0), (0.6, -0.8)):
                 -right_z * .19 + forward_z * .14)
     crouch_r = (right_x * .19 + forward_x * .22,
                 right_z * .19 + forward_z * .22)
-    prone_l = (-forward_x * .1055 - right_x * .18,
-               -forward_z * .1055 - right_z * .18)
-    prone_r = (-forward_x * .1055 + right_x * .18,
-               -forward_z * .1055 + right_z * .18)
+    # Each foot originates from its own femur, so asymmetrical imported
+    # hips do not give one knee more sideways slack than the other.
+    hip_l = (-right_x * .14, -right_z * .14)
+    hip_r = (right_x * .14, right_z * .14)
+    prone_l = (hip_l[0] - forward_x * 1.045 - right_x * .035,
+               hip_l[1] - forward_z * 1.045 - right_z * .035)
+    prone_r = (hip_r[0] - forward_x * 1.045 + right_x * .035,
+               hip_r[1] - forward_z * 1.045 + right_z * .035)
     dist = lambda a, b: sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
     assert .38 <= dist(crouch_l, crouch_r) <= .40
-    assert abs(dist(prone_l, prone_r) - .36) < .00001
-    assert abs((prone_l[0] + prone_r[0]) / 2 + forward_x * .1055) < 1e-6
-    assert abs((prone_l[1] + prone_r[1]) / 2 + forward_z * .1055) < 1e-6
+    assert abs(dist(prone_l, prone_r) - .35) < .00001
+    assert abs(dist(prone_l, hip_l) - dist(prone_r, hip_r)) < 1e-7
+    assert abs(dist(prone_l, hip_l) - sqrt(1.045**2 + .035**2)) < 1e-7
+    assert abs((prone_l[0] + prone_r[0]) / 2 + forward_x * 1.045) < 1e-6
+    assert abs((prone_l[1] + prone_r[1]) / 2 + forward_z * 1.045) < 1e-6
 
 support = visual[visual.index("private float SupportedAnkleY("):
                  visual.index("private void PlantUprightContact(")]
