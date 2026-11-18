@@ -314,11 +314,25 @@ namespace Aaris.MapReview
             float seaLevel = -38.07552f;
             // Exit candidates are computed on demand, without allocating
             // a new array or touching any driving/render quality settings.
+            // A rolled chassis's local right axis can point at the sky: using
+            // it directly would place candidate ground rays metres above or
+            // below the actual road and permanently trap an overturned driver.
+            Vector3 flatForward = Vector3.ProjectOnPlane(t.forward, Vector3.up);
+            if (flatForward.sqrMagnitude < .04f)
+            {
+                // If the nose points nearly vertical, derive a stable ground
+                // heading from the other chassis axis, not a tiny vector.
+                Vector3 flatRight = Vector3.ProjectOnPlane(t.right, Vector3.up);
+                flatForward = flatRight.sqrMagnitude > .0001f
+                    ? Vector3.Cross(flatRight, Vector3.up) : Vector3.forward;
+            }
+            flatForward.Normalize();
+            Vector3 flatRightAxis = Vector3.Cross(Vector3.up, flatForward);
             for (int side = 0; side < 4; side++)
             {
-                Vector3 option = t.position + (side == 0 ? t.right * 3.2f :
-                    side == 1 ? -t.right * 3.2f :
-                    side == 2 ? -t.forward * 3.5f : t.forward * 3.5f);
+                Vector3 option = t.position + (side == 0 ? flatRightAxis * 3.2f :
+                    side == 1 ? -flatRightAxis * 3.2f :
+                    side == 2 ? -flatForward * 3.5f : flatForward * 3.5f);
                 if (Mathf.Abs(option.x) > 973f || Mathf.Abs(option.z) > 973f) continue;
                 Ray floorRay = new Ray(option + Vector3.up * 2.5f, Vector3.down);
                 int hits = Physics.RaycastNonAlloc(floorRay, exitGround, 5f,
@@ -400,7 +414,11 @@ namespace Aaris.MapReview
 
         private bool TryExit()
         {
-            if (car == null || !car.IsSafeToExit ||
+            // Upright cars keep the existing safety gate. A stopped rollover
+            // can attempt a rescue exit, but TryFindExit still rejects an
+            // unsafe floor, occupied space or route through a wall.
+            if (car == null ||
+                (!car.IsSafeToExit && !car.CanEvacuateStoppedVehicle) ||
                 !TryFindExit(out Vector3 safeExit)) return false;
             AarisVehicleMotor previous = car;
             previous.ReleaseDriver(this);
