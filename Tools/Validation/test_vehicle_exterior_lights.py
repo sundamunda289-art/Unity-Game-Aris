@@ -79,7 +79,9 @@ class VehicleExteriorLighting(unittest.TestCase):
             "private void SyncVisibleWheels()", 1)[0]
         self.assertIn("driver != null && driver.isActiveAndEnabled &&", lights)
         self.assertIn("isActiveAndEnabled;", lights)
-        self.assertIn("roadHeadlight.enabled = driving;", lights)
+        self.assertIn("roadHeadlight.enabled = roadBeam;", lights)
+        self.assertIn("bool roadBeam = driving && NeedsRoadBeam();", lights)
+        self.assertIn("(roadBeam ? 8 : 0)", lights)
         configure = MOTOR.split("public void ConfigureExteriorLights(", 1)[1].split(
             "private void EnsureRoadHeadlight()", 1)[0]
         self.assertEqual(configure.count("AddComponent<Light>()"), 0)
@@ -93,6 +95,41 @@ class VehicleExteriorLighting(unittest.TestCase):
             "public bool TryTakeDriver(", 1)[1].split(
                 "public void SetInput(", 1)[0])
         self.assertIn("if (lastLampState == lampState) return;", lights)
+
+    def test_real_beam_uses_sunlight_sample_but_shared_lenses_remain(self):
+        segment = MOTOR.split("private bool NeedsRoadBeam()", 1)[1].split(
+            "private void RefreshExteriorLights()", 1)[0]
+        for token in (
+            "Time.unscaledTime < nextRoadBeamSampleAt",
+            "Time.unscaledTime + 2f",
+            "RenderSettings.sun",
+            "sun == null || !sun.isActiveAndEnabled",
+            "sun.type != LightType.Directional",
+            "Vector3.Dot(-sun.transform.forward, Vector3.up)",
+            "elevation < .18f || sun.intensity < .35f",
+            "roadBeamNeeded = true;",
+        ):
+            self.assertIn(token, segment)
+        for forbidden in ("Physics.", "new Material(", "Instantiate(", "GetComponent("):
+            self.assertNotIn(forbidden, segment)
+        # If there is no assigned sun, preserve the original nighttime beam.
+        self.assertLess(segment.index("sun == null"), segment.index("return true;"))
+        light = MOTOR.split("private void RefreshExteriorLights()", 1)[1].split(
+            "private void SyncVisibleWheels()", 1)[0]
+        self.assertIn("frontLamps[side].sharedMaterial =", light)
+        self.assertIn("roadHeadlight.enabled = roadBeam;", light)
+
+    def test_daylight_beam_thresholds_are_bounded(self):
+        # A mathematical contract; Unity Editor must visually confirm the beam.
+        needs_beam = lambda elevation, intensity: (
+            elevation < .18 or intensity < .35
+        )
+        for sun_height, light_strength, expected in (
+            (.80, 1.0, False), (.18, .35, False),
+            (.179, .70, True), (.65, .349, True),
+            (-.20, 1.0, True), (.9, 0.0, True),
+        ):
+            self.assertEqual(needs_beam(sun_height, light_strength), expected)
 
     def test_brake_and_reverse_follow_physics_and_clear_on_exit(self):
         lights = MOTOR.split("private void RefreshExteriorLights()", 1)[1].split(
