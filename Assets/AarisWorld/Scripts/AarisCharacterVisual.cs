@@ -946,9 +946,10 @@ namespace Aaris.MapReview
                 bend = Vector3.ProjectOnPlane(Vector3.up, axis);
             if (bend.sqrMagnitude < 0.0001f) return;
             bend.Normalize();
-            // Retargeted crouch samples can turn knees sideways despite a
-            // supported foot. Bias only the grounded crouch bend toward
-            // the existing forward hint; prone passes a zero hint.
+            // Retargeted low-stance samples can turn knees sideways even
+            // with supported feet. Bias the knee plane to the stance's
+            // anatomical hint; crouch points forward and prone points down.
+            // The knee-floor guard below prevents sinking into terrain.
             if (minimumKneeWorldY > -1000f &&
                 forwardBend.sqrMagnitude > 0.0001f)
                 bend = Vector3.Lerp(bend, forwardBend.normalized, 0.90f).normalized;
@@ -1739,14 +1740,17 @@ namespace Aaris.MapReview
                 float proneShare = proneRigWeight / Mathf.Max(totalRigWeight, 0.0001f);
                 float ankleClearance = Mathf.Lerp(PlantedAnkleMetres,
                     ProneAnkleClearanceMetres, proneShare);
-                // Crouch knees face forward and stay above the shoe; extended
-                // prone retains the authored near-ground knee plane once feet align.
+                // Crouch knees bend in the anatomical forward plane; a
+                // fully-prone knee should bend toward the surface, NOT inherit
+                // an imported sideways pole (which splayed both shins).
+                // The existing minimum-knee-floor guard keeps this hint from
+                // pushing the joints through terrain.
                 float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);
                 PlanBalancedLowStanceFeet(proneShare, lowPose, planar,
                     out Vector3 leftFootGoal, out Vector3 rightFootGoal,
                     out Vector3 crouchKneeForward);
                 Vector3 kneeForward = proneShare < 0.5f ?
-                    crouchKneeForward : Vector3.zero;
+                    crouchKneeForward : Vector3.down;
                 // Resolve X/Z BEFORE sampling Y. This keeps the one existing
                 // Physics query per foot on the actual locked point, rather
                 // than on a different goal across a ramp or stair lip.
