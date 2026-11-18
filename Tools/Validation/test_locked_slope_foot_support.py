@@ -36,7 +36,7 @@ low = source[source.index("if (!useUprightContact && ankleRigWeight > 0.005f)"):
 for shoe in ("left", "right"):
     resolver = f"{shoe}FootGoal = ResolveLowStanceFootContact({shoe}FootGoal,"
     sample = f"out Vector3 {shoe}SupportNormal, {shoe}FootGoal);"
-    solver = f"{shoe}FootGoal, kneeClearance);"
+    solver = f"{shoe}FootGoal, kneeClearance, kneePoleStrength);"
     assert resolver in low and sample in low and solver in low
     assert low.index(resolver) < low.index(sample) < low.index(solver)
     assert f"else {shoe}LowPlantLocked = false;" in low
