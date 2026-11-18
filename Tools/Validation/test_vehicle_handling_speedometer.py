@@ -42,6 +42,47 @@ class RealVehicleTelemetry(unittest.TestCase):
         self.assertIn("speedPanel.SetActive(false);", hud_pause)
         self.assertIn("if (speedPanel != null && speedPanel.activeSelf)", HUD)
 
+    def test_stationary_speed_and_condition_do_not_allocate_every_poll(self):
+        self.assertIn("private int lastRenderedKmh = -1;", HUD)
+        self.assertIn("private string lastRenderedDirection;", HUD)
+        self.assertIn("private int lastRenderedConditionPercent = -1;", HUD)
+        render = HUD.split("private void UpdateSpeedIndicator()", 1)[1].split(
+            "private void LateUpdate()", 1)[0]
+        self.assertIn("if (kmh != lastRenderedKmh || direction != lastRenderedDirection)", render)
+        self.assertLess(render.index("if (kmh != lastRenderedKmh"),
+                        render.index('string caption = kmh + " km/h   " + direction;'))
+        self.assertIn("if (percent != lastRenderedConditionPercent)", render)
+        self.assertLess(render.index("if (percent != lastRenderedConditionPercent)"),
+                        render.index('string condition = "CAR CONDITION " + percent + "%";'))
+        self.assertIn("else lastRenderedConditionPercent = -1;", render)
+        # After entering, a long stable parked car should format exactly once.
+        last_speed = -1
+        last_dir = None
+        last_condition = -1
+        formatted_speed = formatted_condition = 0
+        for speed, direction, condition in (
+            [(0, "N", 100)] * 240 +
+            [(12, "F", 98)] * 240 +
+            [(12, "F", None)] * 240 +
+            [(12, "F", 98)] * 240
+        ):
+            if (speed, direction) != (last_speed, last_dir):
+                formatted_speed += 1
+                last_speed, last_dir = speed, direction
+            if condition is None:
+                last_condition = -1
+            elif condition != last_condition:
+                formatted_condition += 1
+                last_condition = condition
+        self.assertEqual(formatted_speed, 2)
+        self.assertEqual(formatted_condition, 3)
+        toggle = HUD.split("if (speedPanel != null && speedPanel.activeSelf != driving)", 1)[1].split(
+            "if (driving) UpdateSpeedIndicator();", 1)[0]
+        for s in ("lastRenderedKmh = -1;", "lastRenderedDirection = null;",
+                  "lastRenderedConditionPercent = -1;"):
+            self.assertIn(s, toggle)
+            self.assertIn(s, HUD.split("private void OnDisable()", 1)[1])
+
     def test_mass_aware_torque_and_high_speed_steering(self):
         self.assertIn("driveTorqueScale = Mathf.Clamp(Mathf.Sqrt(body.mass / 1250f)", MOTOR)
         self.assertIn("float torque = baseTorque * driveTorqueScale;", MOTOR)
