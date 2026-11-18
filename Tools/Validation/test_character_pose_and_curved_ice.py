@@ -873,6 +873,7 @@ print('PASS: stationary crouch world-contact anchors')
 
 # Grounded two-bone solver preserves physical floor contact without touching
 # the capsule; settled prone uses its own upward hint while transitions fade.
+# The floor correction solves the analytic bend circle instead of using Slerp.
 for needle in (
     'float minimumKneeWorldY = -10000f',
     'float kneeFloor = ankleWorldY + kneeClearance;',
@@ -880,6 +881,10 @@ for needle in (
     'Mathf.Atan2(poleSin, poleCos) * Mathf.Rad2Deg;',
     'poleAngle * Mathf.Clamp01(kneePoleStrength), axis) * bend;',
     'Vector3.ProjectOnPlane(Vector3.up, axis)',
+    'float requiredY = (minimumKneeWorldY -',
+    'Vector3 tangent = bend - upwardBend * currentUp;',
+    'bend = upwardBend * requiredUp + tangent *',
+
     'Mathf.Min(pelvisShortfall, helmetRoom), 0f, 0.21f',
     'visualRoot.localPosition += Vector3.up * pelvisLift;'
 ):
