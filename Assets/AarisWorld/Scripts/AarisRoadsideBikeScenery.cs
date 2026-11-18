@@ -15,6 +15,9 @@ namespace Aaris.MapReview
         private const string ModelResource = "AarisVehicles/Authored/AarisRoadBike";
         private const int MaximumVisibleBikes = 3;
         private const float LoadRadius = 45f;
+        // Start the same authored model import before it becomes visible.
+        // This moves the expensive Resources load out of the scene boot frame.
+        private const float PrewarmRadius = 110f;
         private const float UnloadRadius = 66f;
         private readonly List<BikePlan> plans = new List<BikePlan>(18);
         private readonly RaycastHit[] supportHits = new RaycastHit[20];
@@ -26,6 +29,7 @@ namespace Aaris.MapReview
         private Transform player;
         private AarisNearbyColliders nearbyColliders;
         private GameObject bikeSource;
+        private ResourceRequest bikePrewarm;
         private float nextPoll;
 
         private sealed class BikePlan
@@ -48,11 +52,12 @@ namespace Aaris.MapReview
         private void Start()
         {
             nearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
-            bikeSource = Resources.Load<GameObject>(ModelResource);
+            // Parsing the small road plan at boot is cheap. The large mesh import
+            // is asynchronous and starts only when the player enters prewarm range.
             TextAsset data = Resources.Load<TextAsset>("AarisVehicles/vehicle_candidates");
-            if (bikeSource == null || data == null)
+            if (data == null)
             {
-                Debug.LogWarning("Aaris bikes: motorcycle model or road nodes missing.");
+                Debug.LogWarning("Aaris bikes: road nodes missing.");
                 enabled = false;
                 return;
             }
@@ -73,7 +78,6 @@ namespace Aaris.MapReview
                 // More authored roads, same maximum of three visible models.
                 if (index++ % 2 == 0) plans.Add(new BikePlan { point = point });
             }
-            SetupMaterials();
         }
 
         private void SetupMaterials()
@@ -143,11 +147,39 @@ namespace Aaris.MapReview
 
         private void Update()
         {
-            if (player == null || bikeSource == null || !enabled) return;
+            if (player == null || !enabled) return;
             float now = Time.unscaledTime;
             if (now < nextPoll) return;
             nextPoll = now + .4f;
             Vector3 position = player.position;
+            if (bikeSource == null)
+            {
+                if (bikePrewarm == null)
+                {
+                    // Do not deserialize the multi-mesh vehicle during cold boot,
+                    // or when the player is flying far above every parking bay.
+                    float warmDistanceSq = PrewarmRadius * PrewarmRadius;
+                    foreach (var plan in plans)
+                    {
+                        Vector3 bay = new Vector3(plan.point.x, plan.point.y, plan.point.z);
+                        if ((bay - position).sqrMagnitude > warmDistanceSq) continue;
+                        bikePrewarm = Resources.LoadAsync<GameObject>(ModelResource);
+                        break;
+                    }
+                    return;
+                }
+                if (!bikePrewarm.isDone) return;
+                bikeSource = bikePrewarm.asset as GameObject;
+                bikePrewarm = null;
+                if (bikeSource == null)
+                {
+                    Debug.LogWarning("Aaris bikes: motorcycle model missing.");
+                    enabled = false;
+                    return;
+                }
+                SetupMaterials();
+                if (!enabled) return;
+            }
             int visibleCount = 0, unloaded = 0;
             foreach (var plan in plans)
             {
