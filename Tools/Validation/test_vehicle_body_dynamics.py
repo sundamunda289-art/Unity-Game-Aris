@@ -50,7 +50,7 @@ class VehicleBodyDynamics(unittest.TestCase):
             "previousPhysicsVelocity = velocity;",
             "driver != null && driver.isActiveAndEnabled",
             "int grounded = groundedWheelCount;",
-            "grounded < 2",
+            "grounded < 2", "groundedAxleMask != 3",
             "Vector3.Dot(transform.up, Vector3.up) < .45f",
             "transform.InverseTransformDirection(acceleration)",
             "float.IsNaN(local.x)", "float.IsInfinity(local.x)",
