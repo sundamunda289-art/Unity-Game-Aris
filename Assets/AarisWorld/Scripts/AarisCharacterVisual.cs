@@ -1066,7 +1066,7 @@ namespace Aaris.MapReview
         // sideways. Retarget only *settled* low stances. Traversal, jumps and
         // transitions retain the authored animation. No Unity allocations.
         private void PlanBalancedLowStanceFeet(float proneShare,
-            float lowPose, float planarSpeed,
+            float lowPose, float dominantRigWeight, float planarSpeed,
             out Vector3 leftGoal, out Vector3 rightGoal,
             out Vector3 crouchKneeForward)
         {
@@ -1078,11 +1078,32 @@ namespace Aaris.MapReview
                 leftShin == null || rightShin == null ||
                 locomotionHipsBone == null) return;
 
+            // Always derive the crouch knee pole from the *current thighs*.
+            // The old early return used transform.forward on moving crouch,
+            // even though the imported FBX pelvis faces almost 90 degrees
+            // away from the capsule. This could twist knees on crawl/pivots.
+            Vector3 anatomicalRight = Vector3.ProjectOnPlane(
+                rightThigh.position - leftThigh.position, Vector3.up);
+            bool validAnatomicalRight = anatomicalRight.sqrMagnitude > 0.02f;
+            if (validAnatomicalRight)
+            {
+                anatomicalRight.Normalize();
+                crouchKneeForward = Vector3.Cross(anatomicalRight,
+                    Vector3.up).normalized;
+            }
+
             float settledPose = Mathf.SmoothStep(0f, 1f,
                 Mathf.InverseLerp(0.68f, 0.96f, lowPose));
             float stationary = 1f - Mathf.SmoothStep(0f, 1f,
                 Mathf.InverseLerp(0.07f, 0.38f, planarSpeed));
-            float correction = settledPose * stationary;
+            // A crouch->prone crossfade can have lowPose=1 with BOTH
+            // individual stance weights around 0.5. That is not settled:
+            // a full reach correction there can yank heels by 52-74cm and
+            // fold the knees. Trust the dominant individual stance weight,
+            // not the sum, and fade foot retargeting in only near completion.
+            float dominantSettled = Mathf.SmoothStep(0f, 1f,
+                Mathf.InverseLerp(0.90f, 0.995f, dominantRigWeight));
+            float correction = settledPose * stationary * dominantSettled;
             if (correction < 0.001f) return;
 
             float prone = Mathf.SmoothStep(0f, 1f,
@@ -1106,19 +1127,14 @@ namespace Aaris.MapReview
             if (Vector3.Dot(right, rightThigh.position - leftThigh.position) < 0f)
                 right = -right;
             Vector3 hipMid = (leftThigh.position + rightThigh.position) * 0.5f;
-            // The imported crouch FBX twists its pelvis almost 90 degrees
-            // relative to player root yaw. Using root.forward as a knee pole
-            // makes one leg flare sideways even though both shoes are planted.
-            // Recover the anatomical right axis directly from left/right
-            // thigh origins. Right x Up = the rig's own forward bend plane.
-            Vector3 anatomicalRight = Vector3.ProjectOnPlane(
-                rightThigh.position - leftThigh.position, Vector3.up);
-            if (anatomicalRight.sqrMagnitude > 0.02f)
-                anatomicalRight.Normalize();
-            else
+            // Keep the original skeleton-specific fallback for rigs
+            // without a reliable left/right thigh separation.
+            if (!validAnatomicalRight)
+            {
                 anatomicalRight = right;
-            crouchKneeForward = Vector3.Cross(anatomicalRight,
-                Vector3.up).normalized;
+                crouchKneeForward = Vector3.Cross(anatomicalRight,
+                    Vector3.up).normalized;
+            }
             Vector3 crouchLeft = hipMid - anatomicalRight * 0.19f +
                 crouchKneeForward * 0.14f;
             Vector3 crouchRight = hipMid + anatomicalRight * 0.19f +
@@ -1746,7 +1762,8 @@ namespace Aaris.MapReview
                 // Crouch knees face forward and stay above the shoe; extended
                 // prone retains the authored near-ground knee plane once feet align.
                 float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);
-                PlanBalancedLowStanceFeet(proneShare, lowPose, planar,
+                PlanBalancedLowStanceFeet(proneShare, lowPose,
+                    Mathf.Max(crouchRigWeight, proneRigWeight), planar,
                     out Vector3 leftFootGoal, out Vector3 rightFootGoal,
                     out Vector3 crouchKneeForward);
                 // The old <0.5 binary knee pole snapped from forward to none
