@@ -170,6 +170,11 @@ namespace Aaris.MapReview
         private Text speedCaption;
         private Text conditionCaption;
         private float nextSpeedUpdate;
+        // Reuse the existing UI text while speed and damage stay unchanged.
+        // No "km/h" or condition-string allocation at every 8 Hz HUD poll.
+        private int lastRenderedKmh = -1;
+        private string lastRenderedDirection;
+        private int lastRenderedConditionPercent = -1;
         private AarisVehicleArrowButton[] arrows = new AarisVehicleArrowButton[4];
         private readonly bool[] pressed = new bool[4];
         private Vector2 lastScreen;
@@ -372,8 +377,13 @@ namespace Aaris.MapReview
             string direction = longitudinal < -.4f ||
                 (Mathf.Abs(longitudinal) <= .4f && throttle < -.1f) ? "R" :
                 longitudinal > .4f || throttle > .1f ? "F" : "N";
-            string caption = kmh + " km/h   " + direction;
-            if (speedCaption.text != caption) speedCaption.text = caption;
+            if (kmh != lastRenderedKmh || direction != lastRenderedDirection)
+            {
+                string caption = kmh + " km/h   " + direction;
+                if (speedCaption.text != caption) speedCaption.text = caption;
+                lastRenderedKmh = kmh;
+                lastRenderedDirection = direction;
+            }
             // Brief amber cue for a strong collision. Brake indication
             // remains independent and returns after the impact cue expires.
             Color textColor = vehicle.IsRecentImpact
@@ -388,11 +398,16 @@ namespace Aaris.MapReview
                     conditionCaption.enabled = damaged;
                 if (damaged)
                 {
-                    string condition = "CAR CONDITION " +
-                        Mathf.RoundToInt((1f - vehicle.Damage01) * 100f) + "%";
-                    if (conditionCaption.text != condition)
-                        conditionCaption.text = condition;
+                    int percent = Mathf.RoundToInt((1f - vehicle.Damage01) * 100f);
+                    if (percent != lastRenderedConditionPercent)
+                    {
+                        string condition = "CAR CONDITION " + percent + "%";
+                        if (conditionCaption.text != condition)
+                            conditionCaption.text = condition;
+                        lastRenderedConditionPercent = percent;
+                    }
                 }
+                else lastRenderedConditionPercent = -1;
             }
         }
 
@@ -426,6 +441,9 @@ namespace Aaris.MapReview
             {
                 speedPanel.SetActive(driving);
                 nextSpeedUpdate = 0f;
+                lastRenderedKmh = -1;
+                lastRenderedDirection = null;
+                lastRenderedConditionPercent = -1;
             }
             if (driving) UpdateSpeedIndicator();
             bool show = driving || session.CanEnter;
@@ -455,6 +473,9 @@ namespace Aaris.MapReview
             if (arrowPanel != null) arrowPanel.SetActive(false);
             if (driveButton != null) driveButton.SetActive(false);
             if (speedPanel != null) speedPanel.SetActive(false);
+            lastRenderedKmh = -1;
+            lastRenderedDirection = null;
+            lastRenderedConditionPercent = -1;
         }
     }
 }
