@@ -264,7 +264,8 @@ def test():
     for semantic in ("headlight", "taillight", "darkTrim", "glass"):
         assert semantic in world
     assert 'result.EnableKeyword("_EMISSION");' in world
-    assert 'result.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");' in world
+    # Legacy OBJ glass with no detailed cabin stays opaque; avoid mobile overdraw.
+    assert 'result.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");' in world
     assert "new Material(shader)" in world  # cache miss only, never per frame
     assert "authoredMaterialCache[source] = result;" in world
     assert "if (validModels == 0 || availableWeight <= 0)" in world
