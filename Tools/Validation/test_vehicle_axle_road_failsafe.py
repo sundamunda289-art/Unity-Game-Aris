@@ -78,6 +78,36 @@ class AxleRoadFailClosed(unittest.TestCase):
         for forbidden in ("new GameObject", "Physics.Raycast", "new Material("):
             self.assertNotIn(forbidden, helper)
 
+    def test_unequal_tyre_diameters_fail_before_wheel_placement(self):
+        helper = MOTOR.split("private static bool AreAuthoredWheelAxlesPlausible(", 1)[1].split(
+            "// Flush chamfered lamp polygons", 1)[0]
+        for fragment in (
+            "float frontLeftDiameter = Mathf.Max(tyres[0].size.y, tyres[0].size.z);",
+            "float frontRightDiameter = Mathf.Max(tyres[1].size.y, tyres[1].size.z);",
+            "float rearLeftDiameter = Mathf.Max(tyres[2].size.y, tyres[2].size.z);",
+            "float rearRightDiameter = Mathf.Max(tyres[3].size.y, tyres[3].size.z);",
+            "Mathf.Max(frontLeftDiameter, frontRightDiameter) * .12f",
+            "Mathf.Max(rearLeftDiameter, rearRightDiameter) * .12f",
+            "Mathf.Abs(frontLeftDiameter - frontRightDiameter) > frontTolerance",
+            "Mathf.Abs(rearLeftDiameter - rearRightDiameter) > rearTolerance",
+        ):
+            self.assertIn(fragment, helper)
+
+        def matching(left, right):
+            return abs(left - right) <= max(.07, .12 * max(left, right))
+        # Genuine Premium GT's ~686 mm front and ~722 mm rear tyre pairs.
+        for size in (.686, .722):
+            self.assertTrue(matching(size, size))
+        for left, right in ((.65, .95), (.99, .60), (.41, .72), (.80, 1.04)):
+            self.assertFalse(matching(left, right))
+        for left, right in ((.68, .74), (.78, .85), (.93, 1.00)):
+            self.assertTrue(matching(left, right))
+        embedded = MOTOR.split("public bool AttachEmbeddedWheelModels(", 1)[1].split(
+            "private static bool AreAuthoredWheelAxlesPlausible(", 1)[0]
+        self.assertLess(
+            embedded.index("if (!AreAuthoredWheelAxlesPlausible(bounds)) return false;"),
+            embedded.index("wheels[i].radius ="))
+
     def test_authentic_vehicle_geometry_accepted_and_corrupt_axes_rejected(self):
         for track, span, y in (
             (1.26, 1.75, -.20),  # short buggy
