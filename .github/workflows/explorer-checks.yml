@@ -44,6 +44,7 @@ on:
       - 'Tools/MapBuild/native_assets.py'
       - 'Tools/MapBuild/surfaces.py'
       - 'Assets/AarisWorld/Surfaces/CoastalWater.shader'
+      - 'Docs/WATER_HLSL_CHECKS.json'
       - '.github/workflows/explorer-checks.yml'
 permissions:
   contents: read
