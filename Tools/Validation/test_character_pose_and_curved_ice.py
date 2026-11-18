@@ -872,11 +872,12 @@ for fps in (10,20,30,60,120):
 print('PASS: stationary crouch world-contact anchors')
 
 # Grounded two-bone solver preserves physical floor contact without touching
-# the capsule, and crouch bend bias cannot leak into prone (zero hint).
+# the capsule; settled prone uses its own upward hint while transitions fade.
 for needle in (
     'float minimumKneeWorldY = -10000f',
     'float kneeFloor = ankleWorldY + kneeClearance;',
-    'Vector3.Lerp(bend, forwardBend.normalized, 0.90f).normalized',
+    'Vector3.Lerp(bend, forwardBend.normalized,',
+    'Mathf.Clamp01(kneePoleStrength)).normalized;',
     'Vector3.ProjectOnPlane(Vector3.up, axis)',
     'Mathf.Min(pelvisShortfall, helmetRoom), 0f, 0.21f',
     'visualRoot.localPosition += Vector3.up * pelvisLift;'
