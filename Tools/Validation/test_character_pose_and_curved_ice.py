@@ -117,6 +117,23 @@ assert 'Ray ray = new Ray(origin, Vector3.down);' in visual
 assert 'Physics.RaycastNonAlloc(ray,' in visual
 assert 'hit.collider.transform.IsChildOf(transform)' in visual
 assert 'PlantCrouchLeg(leftThigh, leftShin, leftFootBone,' in visual
+# Turning on the spot in crouch/prone must release stale foot anchors, just
+# like standing pivots. Low-pose IK must reuse the sampled yaw rate and terrain
+# hits rather than adding a physics query or pinning a twisting knee.
+assert 'float planarSpeed, float turnDegreesPerSecond,' in visual
+assert 'bool turningFast = Mathf.Abs(turnDegreesPerSecond) > 110f;' in visual
+assert 'if (planarSpeed >= 0.18f || weight < 0.30f || turningFast)' in visual
+assert visual.count('ankleRigWeight, planar, yawRate,') == 2
+for yaw_rate, moving, weight, should_release in (
+    (0.0, 0.0, 1.0, False),
+    (110.0, 0.0, 1.0, False),
+    (110.1, 0.0, 1.0, True),
+    (-180.0, 0.0, 1.0, True),
+    (0.0, 0.19, 1.0, True),
+    (0.0, 0.0, 0.29, True),
+):
+    assert ((moving >= 0.18 or weight < 0.30 or abs(yaw_rate) > 110.0)
+            == should_release), (yaw_rate, moving, weight)
 assert 'Vector3 currentKnee = knee - hip;' in visual
 assert 'Vector3.ProjectOnPlane(currentKnee, animatedAxis)' in visual
 assert 'Quaternion.FromToRotation(animatedAxis, axis) * bend' in visual
