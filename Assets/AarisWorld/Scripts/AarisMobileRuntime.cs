@@ -338,13 +338,12 @@ namespace Aaris.MapReview
             // would unnecessarily downgrade stronger MC3/MC4 phones.
             // This runs only at quality setup, never on the render hotpath.
             string normalizedGpu = gpu.Replace('-', ' ').Replace('_', ' ');
-            bool smallG57 = normalizedGpu.IndexOf("Mali G57",
-                StringComparison.OrdinalIgnoreCase) >= 0 &&
-                HasExactGpuModel(normalizedGpu, "Mali G57") &&
-                (normalizedGpu.IndexOf(" MC1", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                 normalizedGpu.IndexOf(" MC2", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                 normalizedGpu.IndexOf(" MP1", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                 normalizedGpu.IndexOf(" MP2", StringComparison.OrdinalIgnoreCase) >= 0);
+            // Match GPU + core count together: MC21 or an unrelated driver
+            // token must not masquerade as a Mali-G57 MC2.
+            bool smallG57 = HasExactGpuModel(normalizedGpu, "Mali G57 MC1") ||
+                            HasExactGpuModel(normalizedGpu, "Mali G57 MC2") ||
+                            HasExactGpuModel(normalizedGpu, "Mali G57 MP1") ||
+                            HasExactGpuModel(normalizedGpu, "Mali G57 MP2");
             // GPU vendors report equivalent chips with dashes, spaces and
             // underscores. Reuse the normalized name for the older Mali line
             // as well; otherwise "Mali G52" misses the same budget as
@@ -354,13 +353,14 @@ namespace Aaris.MapReview
                               HasExactGpuModel(normalizedGpu, "Mali G31");
             // Android's trademark suffix can appear between Adreno and 610.
             // Keep these exact low-end matches, not a blanket Adreno rule.
+            // False prefix matches on newer devices needlessly lower quality.
             bool smallAdreno610 =
-                gpu.IndexOf("Adreno 610", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                gpu.IndexOf("Adreno (TM) 610", StringComparison.OrdinalIgnoreCase) >= 0;
-            return smallG57 || legacyMali ||
-                   gpu.IndexOf("PowerVR GE8320", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   gpu.IndexOf("PowerVR Rogue GE8320", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   smallAdreno610;
+                HasExactGpuModel(gpu, "Adreno 610") ||
+                HasExactGpuModel(gpu, "Adreno (TM) 610");
+            bool smallPowerVr =
+                HasExactGpuModel(gpu, "PowerVR GE8320") ||
+                HasExactGpuModel(gpu, "PowerVR Rogue GE8320");
+            return smallG57 || legacyMali || smallPowerVr || smallAdreno610;
         }
 
         // Model prefixes are not interchangeable: Mali-G520 is not G52,
@@ -369,11 +369,20 @@ namespace Aaris.MapReview
         // One-time setup-only helper; never runs per rendered frame.
         private static bool HasExactGpuModel(string description, string model)
         {
-            int index = description.IndexOf(model, StringComparison.OrdinalIgnoreCase);
-            if (index < 0) return false;
-            int end = index + model.Length;
-            return (index == 0 || !char.IsLetterOrDigit(description[index - 1])) &&
-                   (end == description.Length || !char.IsLetterOrDigit(description[end]));
+            // Driver labels can list an invalid prefix before a later exact
+            // GPU name; scan every candidate rather than only the first.
+            int start = 0;
+            while (start <= description.Length - model.Length)
+            {
+                int index = description.IndexOf(model, start, StringComparison.OrdinalIgnoreCase);
+                if (index < 0) return false;
+                int end = index + model.Length;
+                if ((index == 0 || !char.IsLetterOrDigit(description[index - 1])) &&
+                    (end == description.Length || !char.IsLetterOrDigit(description[end])))
+                    return true;
+                start = index + 1;
+            }
+            return false;
         }
 
         // One-time, Android-only vegetation work: static wind is much cheaper
