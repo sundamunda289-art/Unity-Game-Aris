@@ -14,8 +14,8 @@
       "suspensionScale": 1,
       "steeringScale": 1,
       "suspensionTravelScale": 0.96,
-      "referenceWidthMetres": 1.84,
-      "referenceLengthMetres": 4.42
+      "referenceWidthMetres": 1.96,
+      "referenceLengthMetres": 4.5
     },
     {
       "id": "SUV",
@@ -31,8 +31,8 @@
       "suspensionScale": 1.08,
       "steeringScale": 0.9,
       "suspensionTravelScale": 1.1,
-      "referenceWidthMetres": 1.96,
-      "referenceLengthMetres": 4.5
+      "referenceWidthMetres": 2.1,
+      "referenceLengthMetres": 4.8
     },
     {
       "id": "Sports",
@@ -48,8 +48,8 @@
       "suspensionScale": 1.16,
       "steeringScale": 1.12,
       "suspensionTravelScale": 0.84,
-      "referenceWidthMetres": 1.91,
-      "referenceLengthMetres": 4.4
+      "referenceWidthMetres": 1.99,
+      "referenceLengthMetres": 4.46
     },
     {
       "id": "GT",
@@ -65,8 +65,8 @@
       "steeringScale": 1.1,
       "suspensionTravelScale": 0.86,
       "fallbackAuthoredModelResource": "AarisVehicles/Authored/QuaterniusSports",
-      "referenceWidthMetres": 1.92,
-      "referenceLengthMetres": 4.42
+      "referenceWidthMetres": 2.08,
+      "referenceLengthMetres": 4.48
     },
     {
       "id": "Hatchback",
@@ -82,8 +82,8 @@
       "suspensionScale": 0.97,
       "steeringScale": 1.08,
       "suspensionTravelScale": 0.94,
-      "referenceWidthMetres": 1.74,
-      "referenceLengthMetres": 3.95
+      "referenceWidthMetres": 1.81,
+      "referenceLengthMetres": 3.9
     },
     {
       "id": "Van",
@@ -98,8 +98,8 @@
       "suspensionScale": 1.04,
       "steeringScale": 0.82,
       "suspensionTravelScale": 1.07,
-      "referenceWidthMetres": 1.97,
-      "referenceLengthMetres": 4.57
+      "referenceWidthMetres": 2.05,
+      "referenceLengthMetres": 5.08
     },
     {
       "id": "Utility",
@@ -114,8 +114,8 @@
       "suspensionScale": 1.08,
       "steeringScale": 0.88,
       "suspensionTravelScale": 1.16,
-      "referenceWidthMetres": 1.96,
-      "referenceLengthMetres": 4.57
+      "referenceWidthMetres": 2.1,
+      "referenceLengthMetres": 5.42
     },
     {
       "id": "Buggy",
@@ -130,8 +130,8 @@
       "suspensionScale": 0.94,
       "steeringScale": 1.1,
       "suspensionTravelScale": 1.24,
-      "referenceWidthMetres": 1.8,
-      "referenceLengthMetres": 3.72
+      "referenceWidthMetres": 1.9,
+      "referenceLengthMetres": 3.45
     }
   ]
 }
