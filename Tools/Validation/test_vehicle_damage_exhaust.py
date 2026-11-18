@@ -18,7 +18,11 @@ class VehicleDamageExhaust(unittest.TestCase):
     def test_damage_cooldown_and_max_condition(self):
         collision = MOTOR.split("private void OnCollisionEnter(", 1)[1].split(
             "public void Configure(", 1)[0]
-        self.assertIn("collision.relativeVelocity.magnitude", collision)
+        self.assertIn("Vector3 relativeVelocity = collision.relativeVelocity;", collision)
+        self.assertIn("collision.GetContact(i).normal;", collision)
+        self.assertIn("Vector3.Dot(relativeVelocity, normal)", collision)
+        self.assertIn("if (impactSpeed < 4f) return;", collision)
+        self.assertNotIn("collision.relativeVelocity.magnitude", collision)
         self.assertIn("if (impactSpeed >= 7f)", collision)
         self.assertIn("if (Time.time >= nextDamageAt)", collision)
         self.assertIn("nextDamageAt = Time.time + .75f;", collision)
