@@ -2006,7 +2006,17 @@ namespace Aaris.MapReview
                     // Hysteresis prevents backward feet switching on analogue noise,
                     // strafe blends and shallow wall slides.
                     float sideSpeed = Mathf.Abs(strafeSpeed);
-                    if (horizontal < 0.06f)
+                    // During a sharp sprint pivot, camera/root yaw can turn
+                    // faster than the capsule's world velocity. For a moment
+                    // that old velocity projects behind the newly facing
+                    // character: treating it as a genuine backpedal reverses
+                    // the gait clock mid-stride and visibly snaps the feet.
+                    // Real slow backpedalling still uses reverse animation.
+                    // Only high-speed sustained sprints keep the stride
+                    // phase forward; there is no extra physics or allocation.
+                    bool sustainedSprint = sprintBlend >= 0.35f &&
+                        horizontal >= Mathf.Max(2.8f, jogCeiling * 0.92f);
+                    if (horizontal < 0.06f || sustainedSprint)
                         gaitDirection = 1f;
                     else if (forwardSpeed < -0.32f &&
                              -forwardSpeed > sideSpeed * 0.75f)
