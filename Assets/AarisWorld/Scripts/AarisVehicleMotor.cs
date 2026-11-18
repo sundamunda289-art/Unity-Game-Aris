@@ -160,7 +160,20 @@ namespace Aaris.MapReview
         private void OnCollisionEnter(Collision collision)
         {
             if (driver == null || collision == null) return;
-            float impactSpeed = collision.relativeVelocity.magnitude;
+            // A fast car sliding parallel to a wall can have large total
+            // relative velocity but near-zero velocity INTO that wall.
+            // Measure impact along each actual collision-contact normal, not
+            // tangential speed. Unity GetContact avoids allocating contacts[].
+            // This runs on collision entry only, never in FixedUpdate.
+            Vector3 relativeVelocity = collision.relativeVelocity;
+            float impactSpeed = 0f;
+            for (int i = 0; i < collision.contactCount; i++)
+            {
+                Vector3 normal = collision.GetContact(i).normal;
+                float normalSpeed = Mathf.Abs(Vector3.Dot(relativeVelocity, normal));
+                impactSpeed = Mathf.Max(impactSpeed, normalSpeed);
+            }
+            if (impactSpeed < 4f) return;
             AarisAudioDirector.VehicleCrash(transform.position, impactSpeed);
             // Contact impulses are not reliable across Rigidbody mass/road
             // physics configurations; relative speed is already available.
