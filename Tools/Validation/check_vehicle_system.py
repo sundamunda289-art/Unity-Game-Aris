@@ -313,7 +313,9 @@ def test():
     build = world.split("private bool Build(AarisVehicleRecord", 1)[1].split(
         "private void Update()", 1)[0]
     assert "TryGetVisualBoundsLocal(root.transform, out Bounds bounds)" in build
-    assert build.count("TryGetVisualBoundsLocal(root.transform, out bounds)") == 2
+    assert build.count("TryGetVisualBoundsLocal(root.transform, out bounds)") == 3
+    assert "AarisVehicleVisualCalibration.CorrectSourceAxes(bounds.size)" in build
+    assert "AarisVehicleVisualCalibration.FittedScale(" in build
     assert "renderer.bounds" not in build
     assert "mesh.transform.localPosition += new Vector3(0f, .48f, 0f) - bounds.center;" in build
     assert "localSpace.worldToLocalMatrix" in world
