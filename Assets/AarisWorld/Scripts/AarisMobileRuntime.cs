@@ -24,7 +24,7 @@ namespace Aaris.MapReview
         private readonly float[] frameTimes = new float[180];
         private readonly float[] sortedTimes = new float[180];
         private int frameIndex, frameCount;
-        private float sampleAt, unloadAfter;
+        private float sampleAt, unloadAfter, nextLongFrameReport;
         private bool lowMemoryPending;
         private AsyncOperation unloading;
         private string logPath;
@@ -598,6 +598,13 @@ namespace Aaris.MapReview
                 frameTimes[frameIndex] = dt;
                 frameIndex = (frameIndex + 1) % frameTimes.Length;
                 frameCount = Mathf.Min(frameCount + 1, frameTimes.Length);
+                // Capture severe stalls when execution resumes; cap reporting
+                // to once per 30 seconds to avoid creating an I/O backlog.
+                if (dt >= 1f && Time.unscaledTime >= nextLongFrameReport)
+                {
+                    nextLongFrameReport = Time.unscaledTime + 30f;
+                    Record("long-frame");
+                }
             }
             if (lowMemoryPending)
             {
