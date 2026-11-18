@@ -69,6 +69,10 @@ namespace Aaris.MapReview
         private const float RetryDelaySeconds = 3f;
         private const int MaximumDroppedLoot = 320;
         private const float PickupDistance = 2.15f;
+        // Both authored and player-dropped guns get exactly the same rooted
+        // floor clearance. Together with pickup's 2.5 cm mesh lift, their
+        // lowest geometry rests 6.5 cm above a verified ground hit.
+        private const float LootRootFloorClearance = 0.04f;
         private const float SeaLevel = -38.07552f;
         private const float CandidateCellMetres = 64f;
 
@@ -493,7 +497,7 @@ namespace Aaris.MapReview
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
                 return false; // no inside-wall or furniture placement
 
-            spot = floor.point + Vector3.up * .13f;
+            spot = floor.point + Vector3.up * LootRootFloorClearance;
             return true;
         }
 
@@ -738,7 +742,7 @@ namespace Aaris.MapReview
                     break;
                 }
                 if (!clear) continue;
-                Vector3 candidate = hitPoint + Vector3.up * .13f;
+                Vector3 candidate = hitPoint + Vector3.up * LootRootFloorClearance;
                 if (requireReachable && !CanReachPoint(candidate)) continue;
                 position = candidate;
                 return true;
