@@ -212,7 +212,20 @@ assert geometry.count('usemtl ') >= 2
 central = [z for x,y,z in verts if abs(x) < 0.5]
 edge = [z for x,y,z in verts if abs(x) > 1.4]
 assert central and edge
-assert abs(sum(central)/len(central) - sum(edge)/len(edge)) > 0.06
+# The centre bows toward +Z, while both wings retreat toward -Z.
+# The concave OPEN side is therefore -Z, not +Z. Since placement
+# is in front of the player (+ahead), +Z must point along +ahead:
+# local -Z then faces the player. This was previously reversed.
+assert sum(central)/len(central) - sum(edge)/len(edge) > 0.06
+assert 'proposedRotation = Quaternion.LookRotation(ahead, Vector3.up);' in gloo
+assert 'Quaternion.LookRotation(-ahead, Vector3.up)' not in gloo
+assert 'proposedPoint = player + ahead * Mathf.Max(minimumDistance, distance);' in gloo
+# Placement preview and committed cover must agree on the rotation.
+assert 'ghost.transform.SetPositionAndRotation(proposedPoint, proposedRotation);' in gloo
+assert 'root.transform.SetPositionAndRotation(point, rotation);' in gloo
+assert 'rotation = proposedRotation;' in gloo
+assert 'new Vector3(-1.46f, 0f, -0.25f)' in gloo
+assert 'new Vector3(1.46f, 0f, -0.25f)' in gloo
 for name in ('GlooWall-ArcticBlue','GlooWall-FrostHighlight'):
     mat = models / 'Materials' / (name + '.mat')
     assert mat.is_file() and mat.with_suffix('.mat.meta').is_file()
