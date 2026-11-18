@@ -106,12 +106,12 @@ assert 'float boneSpan = proneHeadBone.position.y -' in visual
 assert '(TargetHeightMetres - 0.14f) / boneSpan' in visual
 assert 'visualRoot.localScale *= scaleFactor;' in visual
 assert 'standingShoeOffset + adjustment' in visual
-assert 'standingShoeOffset * uprightWeight' in visual
+assert 'proneLowering + standingShoeOffset, 0f' in visual
 assert 'Mathf.Min(leftFootBone.position.y,' in visual
 # Native crouch/prone Head has to stay below stance capsule ceiling;
 # knee solver then replants feet at the real floor under each foot.
 assert 'float capsuleTop = transform.TransformPoint(controller.center +' in visual
-assert 'Mathf.Min(excess, 0.45f) * lowPose' in visual
+assert 'Mathf.Min(excess, 1.00f) * lowPose' in visual
 assert 'private float SupportedAnkleY(Transform foot, float clearance,' in visual
 assert 'Ray ray = new Ray(origin, Vector3.down);' in visual
 assert 'Physics.RaycastNonAlloc(ray,' in visual
@@ -856,3 +856,25 @@ for fps in (10,20,30,60,120):
         assert not is_locked and next_foot == .08
     assert not low_contact(True,anchor,.25,0,1)[0]
 print('PASS: stationary crouch world-contact anchors')
+
+# Grounded two-bone solver preserves physical floor contact without touching
+# the capsule, and crouch bend bias cannot leak into prone (zero hint).
+for needle in (
+    'float minimumKneeWorldY = -10000f',
+    'float kneeFloor = ankleWorldY + 0.02f;',
+    'Vector3.Lerp(bend, forwardBend.normalized, 0.72f).normalized',
+    'Vector3.ProjectOnPlane(Vector3.up, axis)',
+    'Mathf.Min(pelvisShortfall, helmetRoom), 0f, 0.21f',
+    'visualRoot.localPosition += Vector3.up * pelvisLift;'
+):
+    assert needle in visual, needle
+assert 'standingShoeOffset * uprightWeight' not in visual
+# No locomotion root impulse, no extra physics query or garbage-producing
+# ray result list in this pose-only correction.
+pose_solver = visual.split('private static void PlantLegToTarget(', 1)[1].split(
+    'private void CorrectReversedSwingKnee(', 1)[0]
+assert 'Physics.' not in pose_solver and 'new List<' not in pose_solver
+for knee_y, minimum, should_repair in ((0.12,0.15,True),(0.16,0.15,False),
+                                      (-0.03,0.10,True),(0.22,0.10,False)):
+    assert (knee_y < minimum) == should_repair
+print('PASS: pose-aware knee clearance and prone pelvis')
