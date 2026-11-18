@@ -92,21 +92,26 @@ class AutomotiveRefinement(unittest.TestCase):
         self.assertIn("paletteMaterial.SetFloat(\"_Metallic\", .24f);", WORLD)
         self.assertIn("wheelPaletteMaterial.SetFloat(\"_Smoothness\", .18f);", WORLD)
 
-    def test_service_brakes_bias_front_only_while_rolling(self):
+    def test_service_brakes_match_direction_not_lateral_speed(self):
         apply = MOTOR.split("private void ApplyWheelForces(", 1)[1].split(
             "private static float ContinuousDriveTorque(", 1)[0]
         self.assertIn("driver != null && body != null", apply)
         self.assertIn("brake >= 500f", apply)
         self.assertIn("brake < ParkingBrakeTorque", apply)
-        self.assertIn("body.linearVelocity.sqrMagnitude > 4f", apply)
-        self.assertIn("frontBiased != appliedServiceBrakeBias", apply)
-        self.assertIn("i < 2 ? 1.12f : .88f", apply)
-        self.assertIn("appliedServiceBrakeBias = frontBiased", apply)
-        self.assertIn("frontBiased ? (i < 2 ? 1.12f : .88f) : 1f", apply)
+        self.assertIn("float longitudinalSpeed = SpeedMetresPerSecond;", apply)
+        self.assertIn("if (longitudinalSpeed > 2f) brakeDirection = 1;", apply)
+        self.assertIn("else if (longitudinalSpeed < -2f) brakeDirection = -1;", apply)
+        self.assertIn("brakeDirection != appliedServiceBrakeDirection", apply)
+        self.assertIn("appliedServiceBrakeDirection = brakeDirection;", apply)
+        self.assertIn("(i < 2) == (brakeDirection > 0) ? 1.12f : .88f", apply)
+        self.assertNotIn("body.linearVelocity.sqrMagnitude > 4f", apply)
         for brake in (500, 1200, 3200):
-            total = 2 * brake * 1.12 + 2 * brake * .88
-            self.assertAlmostEqual(total, 4 * brake)
-        self.assertIn("appliedServiceBrakeBias = false;", MOTOR)
+            for direction in (-1, 0, 1):
+                biases = [1 if direction == 0 else
+                          (1.12 if (i < 2) == (direction > 0) else .88)
+                          for i in range(4)]
+                self.assertAlmostEqual(sum(brake * b for b in biases), 4 * brake)
+        self.assertIn("appliedServiceBrakeDirection = 0;", MOTOR)
 
     def test_paint_keeps_imported_surface_tone_and_clearcoat_keyword(self):
         method = WORLD.split("private Material AuthoredUrpMaterial(", 1)[1].split(
