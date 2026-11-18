@@ -1173,8 +1173,19 @@ namespace Aaris.MapReview
             if (!HasSupport(new Vector3(x, 0f, z), expectedY, out float y))
                 return false;
             Quaternion angle = record.rotation;
-            var forward = angle * Vector3.forward * 1.42f;
-            var right = angle * Vector3.right * .79f;
+            // Use the identical real-metre envelope as visual model fitting.
+            // A 5.42 m pickup must check rear-axle support and wall clearance
+            // outside a 4.28 m sedan's parking footprint.
+            float widthMetres = Mathf.Clamp(
+                record.type.referenceWidthMetres > 0f
+                    ? record.type.referenceWidthMetres : 1.88f, 1.65f, 2.15f);
+            float lengthMetres = Mathf.Clamp(
+                record.type.referenceLengthMetres > 0f
+                    ? record.type.referenceLengthMetres : 4.28f, 3.35f, 5.50f);
+            var forward = angle * Vector3.forward *
+                Mathf.Max(1.42f, lengthMetres * .305f);
+            var right = angle * Vector3.right *
+                Mathf.Max(.79f, widthMetres * .405f);
             // Avoid allocating a new four-corner array on every streamed
             // car retry. This hot path is polled repeatedly on low-RAM phones.
             for (int corner = 0; corner < 4; corner++)
@@ -1188,7 +1199,12 @@ namespace Aaris.MapReview
             // Clearance is above the supporting ground so TerrainCollider
             // will not be counted as a vehicle-sized wall.
             Vector3 center = new Vector3(x, y + 1.15f, z);
-            Vector3 halfExtents = new Vector3(1.14f, .64f, 2.35f);
+            bool tallBody = record.type.id == "SUV" ||
+                record.type.id == "Van" || record.type.id == "Utility";
+            Vector3 halfExtents = new Vector3(
+                Mathf.Max(1.14f, widthMetres * .55f),
+                tallBody ? .94f : .64f,
+                Mathf.Max(2.35f, lengthMetres * .55f));
             // Remote 105 m car previews must not ignore house/wall colliders
             // streamed out beyond the player's 55 m activation radius.
             // Defer uncertain locations until their authored shapes are live;
@@ -1443,8 +1459,27 @@ namespace Aaris.MapReview
                 Destroy(root);
                 return false;
             }
+            // Source evidence: five CC0 FBX shells store vehicle length on
+            // their Y axis and height on Z. Some Unity FBX importers already
+            // convert those axes to Y-up; others retain the raw geometry.
+            // Decide from the actual VISIBLE mesh bounds in chassis space,
+            // never blindly rotate the sedan, GT or a corrected FBX twice.
+            if (bounds.size.y > 2.75f &&
+                bounds.size.y > Mathf.Max(bounds.size.x, bounds.size.z) * 1.30f &&
+                bounds.size.x > .8f && bounds.size.z > .7f)
+            {
+                mesh.transform.localRotation =
+                    Quaternion.Euler(-90f, 0f, 0f) * mesh.transform.localRotation;
+                if (!TryGetVisualBoundsLocal(root.transform, out bounds))
+                {
+                    FallBackToVerifiedModel(typeIndex, "source axis correction");
+                    Destroy(root);
+                    return false;
+                }
+            }
             if (bounds.size.x > bounds.size.z * 1.1f)
-                mesh.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+                mesh.transform.localRotation =
+                    Quaternion.Euler(0f, 90f, 0f) * mesh.transform.localRotation;
             if (record.type.useEmbeddedAuthoredWheels)
                 FaceEmbeddedVehicleForward(root.transform, mesh.transform);
             if (!TryGetVisualBoundsLocal(root.transform, out bounds) ||
@@ -1457,14 +1492,14 @@ namespace Aaris.MapReview
             // A hatchback, GT and tall SUV must not all be treated as the
             // same 1.88 x 4.28 m sedan. Fit each authored silhouette uniformly
             // inside a reviewed real-metre envelope; never stretch axles,
-            // wheels, doors or UVs separately. These maximums fit the existing
-            // 2.28 x 4.70 m roadside collision-clearance box.
+            // wheels, doors or UVs separately. Terrain corner probes and
+            // occupied road clearance use these SAME class-size metres.
             float widthMetres = record.type.referenceWidthMetres > 0f
                 ? record.type.referenceWidthMetres : 1.88f;
             float lengthMetres = record.type.referenceLengthMetres > 0f
                 ? record.type.referenceLengthMetres : 4.28f;
-            widthMetres = Mathf.Clamp(widthMetres, 1.65f, 2.08f);
-            lengthMetres = Mathf.Clamp(lengthMetres, 3.50f, 4.60f);
+            widthMetres = Mathf.Clamp(widthMetres, 1.65f, 2.15f);
+            lengthMetres = Mathf.Clamp(lengthMetres, 3.35f, 5.50f);
             float scale = Mathf.Min(widthMetres / bounds.size.x,
                 lengthMetres / bounds.size.z);
             if (float.IsNaN(scale) || float.IsInfinity(scale) || scale <= 0f)
