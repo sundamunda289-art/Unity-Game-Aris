@@ -332,7 +332,9 @@ namespace Aaris.MapReview
             shell.size = new Vector3(
                 Mathf.Clamp(size.x * .94f, 1.35f, 2.25f),
                 top - bottom,
-                Mathf.Clamp(size.z * .94f, 2.35f, 4.30f));
+                Mathf.Clamp(size.z * .94f, 2.35f, 5.20f));
+            // Preserve long van/pickup overhangs in the physical shell, rather
+            // than clipping visual bodies past a sedan-sized 4.3 m collider.
             // Match the wheel geometry across short hatchbacks and longer
             // vans/SUVs without introducing additional wheel GameObjects.
             float halfTrack = Mathf.Clamp(size.x * .445f, .63f, .90f);
