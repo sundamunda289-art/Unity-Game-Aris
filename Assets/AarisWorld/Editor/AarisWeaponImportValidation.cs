@@ -24,8 +24,11 @@ namespace Aaris.MapReview.Editor
                 var instance = UnityEngine.Object.Instantiate(
                     prefab, auditRoot.transform, false);
                 instance.transform.localPosition = Vector3.zero;
-                instance.transform.localRotation =
-                    AarisWeaponInventory.ImportedModelRotation(spec);
+                // Runtime import correction for today's five PBR models
+                // is 180 degrees around Y. That changes facing, not AABB
+                // dimensions, so an identity rotation measures the same size
+                // without calling an internal runtime API from Editor assembly.
+                instance.transform.localRotation = Quaternion.identity;
                 Bounds combined = default(Bounds);
                 bool found = false;
                 foreach (var renderer in instance.GetComponentsInChildren<Renderer>(true))
