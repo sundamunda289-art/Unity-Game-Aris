@@ -36,9 +36,11 @@ class CargoPlaneVisualContract(unittest.TestCase):
             material = (MATERIALS / ("CargoPlane-" + name + ".mat")).read_text()
             self.assertIn("- _EMISSION", material)
             self.assertIn("m_LightmapFlags: 0", material)
-            match = re.search(r"- _EmissionColor: \\{r: ([0-9.]+), g: ([0-9.]+), b: ([0-9.]+)", material)
-            self.assertIsNotNone(match)
-            vals = [float(v) for v in match.groups()]
+            emission_line = next(line for line in material.splitlines()
+                                 if line.strip().startswith("- _EmissionColor:"))
+            values = re.findall(r"[rgb]: ([0-9.]+)", emission_line)
+            self.assertEqual(len(values), 3)
+            vals = [float(v) for v in values]
             self.assertTrue(all(.05 < v < .15 for v in vals), vals)
         source = CS.split("internal static GameObject CreatePlane(", 1)[1].split(
             "internal static GameObject CreateElongatedCanopy(", 1)[0]
