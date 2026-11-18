@@ -83,7 +83,11 @@ class VehicleSkidAndImpact(unittest.TestCase):
     def test_collision_lamp_and_hud_pulse_expire(self):
         collision = MOTOR.split("private void OnCollisionEnter(", 1)[1].split(
             "public void Configure(", 1)[0]
-        self.assertIn("collision.relativeVelocity.magnitude;", collision)
+        self.assertIn("Vector3 relativeVelocity = collision.relativeVelocity;", collision)
+        self.assertIn("collision.GetContact(i).normal;", collision)
+        self.assertIn("Vector3.Dot(relativeVelocity, normal)", collision)
+        self.assertIn("if (impactSpeed < 4f) return;", collision)
+        self.assertNotIn("collision.contacts", collision)
         self.assertIn("AarisAudioDirector.VehicleCrash(transform.position, impactSpeed);", collision)
         self.assertIn("if (impactSpeed >= 7f)", collision)
         self.assertIn("impactFlashUntil = Time.time + .55f;", collision)
