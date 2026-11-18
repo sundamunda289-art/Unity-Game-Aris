@@ -968,8 +968,12 @@ namespace Aaris.MapReview
                 (2f * distance);
             float across = Mathf.Sqrt(Mathf.Max(
                 0f, upper * upper - along * along));
-            // Support-constrained knee bend: no new terrain query, no
-            // allocations and no change to root/controller movement.
+            // Ground-safe knee correction without a nonlinear interpolation
+            // mismatch. The previous code computed a *linear* y fraction and
+            // fed it to Vector3.Slerp. That can miss the floor and snap all
+            // the way to the upward pole on consecutive animation frames.
+            // Solve the minimum upward component directly on the knee's
+            // exact two-bone bend circle, retaining the existing side-plane.
             if (minimumKneeWorldY > -1000f && across > 0.005f)
             {
                 float kneeY = hip.y + axis.y * along + bend.y * across;
@@ -979,14 +983,27 @@ namespace Aaris.MapReview
                     if (upwardBend.sqrMagnitude > 0.0001f)
                     {
                         upwardBend.Normalize();
-                        float possible = across * (upwardBend.y - bend.y);
-                        if (possible > 0.0001f)
+                        float requiredY = (minimumKneeWorldY -
+                            hip.y - axis.y * along) / across;
+                        float requiredUp = Mathf.Clamp(
+                            requiredY / Mathf.Max(upwardBend.y, 0.0001f), -1f, 1f);
+                        float currentUp = Mathf.Clamp(
+                            Vector3.Dot(bend, upwardBend), -1f, 1f);
+                        if (requiredUp > currentUp)
                         {
-                            float correction = Mathf.Clamp01(
-                                (minimumKneeWorldY - kneeY) / possible);
-                            Vector3 corrected = Vector3.Slerp(bend, upwardBend, correction);
-                            bend = hip.y + axis.y * along + corrected.y * across >=
-                                minimumKneeWorldY ? corrected : upwardBend;
+                            Vector3 tangent = bend - upwardBend * currentUp;
+                            // At an exactly downward pole the tangent
+                            // vanishes. Use the existing animated forward
+                            // hint to choose a deterministic bend plane.
+                            if (tangent.sqrMagnitude < 0.000001f)
+                                tangent = Vector3.ProjectOnPlane(
+                                    forwardBend, upwardBend);
+                            if (tangent.sqrMagnitude < 0.000001f)
+                                tangent = Vector3.Cross(axis, upwardBend);
+                            tangent.Normalize();
+                            bend = upwardBend * requiredUp + tangent *
+                                Mathf.Sqrt(Mathf.Max(
+                                    0f, 1f - requiredUp * requiredUp));
                         }
                     }
                 }
