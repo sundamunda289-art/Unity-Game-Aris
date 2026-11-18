@@ -34,7 +34,7 @@ class AircraftBacklitMaterials(unittest.TestCase):
             with self.subTest(material=name):
                 src = (MATS / name).read_text("utf-8")
                 match = re.search(
-                    r"_EmissionColor: \\{r: ([0-9.]+), g: ([0-9.]+), b: ([0-9.]+), a: 1\\}",
+                    r"_EmissionColor: \{r: ([0-9.]+), g: ([0-9.]+), b: ([0-9.]+), a: 1\}",
                     src)
                 self.assertIsNotNone(match)
                 channels = [float(value) for value in match.groups()]
