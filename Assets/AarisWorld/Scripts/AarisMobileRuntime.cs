@@ -39,7 +39,6 @@ namespace Aaris.MapReview
         private bool originalOceanReceiving, changedOceanCasting, changedOceanReceiving;
         private const float ReportInterval = 15f;
 #if UNITY_ANDROID && !UNITY_EDITOR
-        private long androidPssKB = -1;
         private AarisOfflineDrop startupDrop;
         private float startupTime;
         private int startupSampleIndex;
@@ -829,13 +828,12 @@ namespace Aaris.MapReview
                 androidPssKB = -1, warningCount = warningCount, lastError = lastError
             };
 #if UNITY_ANDROID && !UNITY_EDITOR
-            // PSS is a synchronous kernel memory query. Keep it off the routine gameplay sample path.
-            if (reason == "terrain-render-audit" || reason == "low-memory" || reason == "pause")
-            {
-                try { using (var debug = new AndroidJavaClass("android.os.Debug")) androidPssKB = debug.CallStatic<long>("getPss"); }
-                catch (Exception e) { Debug.LogWarning("Android PSS unavailable: " + e.GetType().Name); }
-            }
-            s.androidPssKB = androidPssKB;
+            // Android Debug.getPss() synchronously walks process memory and
+            // can stall the foreground game, especially on low-memory events.
+            // Do not query it on Unity's main thread. The external Android
+            // device profiler supplies process PSS when diagnosing OOM/LMK.
+            // -1 explicitly means unavailable, not zero memory usage.
+            s.androidPssKB = -1;
             if (startupDrop != null) s.dropPhase = startupDrop.Phase.ToString();
             s.lowMemoryWindZonesDisabled = suppressedWindZones;
             s.lowMemoryGrassTilesDisabled = suppressedGrassTiles;
