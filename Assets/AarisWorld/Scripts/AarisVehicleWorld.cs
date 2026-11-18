@@ -1128,8 +1128,14 @@ namespace Aaris.MapReview
             if (!HasSupport(new Vector3(x, 0f, z), expectedY, out float y))
                 return false;
             Quaternion angle = record.rotation;
-            var forward = angle * Vector3.forward * 1.42f;
-            var right = angle * Vector3.right * .79f;
+            Vector2 footprint =
+                AarisVehicleVisualCalibration.FootprintMetres(record.type.id);
+            // Long vans/pickups need longer corner ground probes; the old
+            // generic sedan probe could let their rear overhang float.
+            var forward = angle * Vector3.forward *
+                Mathf.Max(1.42f, footprint.y * .305f);
+            var right = angle * Vector3.right *
+                Mathf.Max(.79f, footprint.x * .405f);
             // Avoid allocating a new four-corner array on every streamed
             // car retry. This hot path is polled repeatedly on low-RAM phones.
             for (int corner = 0; corner < 4; corner++)
@@ -1143,7 +1149,12 @@ namespace Aaris.MapReview
             // Clearance is above the supporting ground so TerrainCollider
             // will not be counted as a vehicle-sized wall.
             Vector3 center = new Vector3(x, y + 1.15f, z);
-            Vector3 halfExtents = new Vector3(1.14f, .64f, 2.35f);
+            bool tallBody = record.type.id == "SUV" ||
+                record.type.id == "Van" || record.type.id == "Utility";
+            Vector3 halfExtents = new Vector3(
+                Mathf.Max(1.14f, footprint.x * .55f),
+                tallBody ? .94f : .64f,
+                Mathf.Max(2.35f, footprint.y * .55f));
             // Remote 105 m car previews must not ignore house/wall colliders
             // streamed out beyond the player's 55 m activation radius.
             // Defer uncertain locations until their authored shapes are live;
@@ -1396,8 +1407,25 @@ namespace Aaris.MapReview
                 Destroy(root);
                 return false;
             }
+            // The five CC0 FBX bodies are Z-up / -Y-forward on import.
+            // Without this correction their 4-5 m LENGTH becomes HEIGHT,
+            // and the old broad yaw heuristic stretches upright cars.
+            Quaternion axisFix =
+                AarisVehicleVisualCalibration.CorrectSourceAxes(bounds.size);
+            if (axisFix != Quaternion.identity)
+            {
+                mesh.transform.localRotation =
+                    axisFix * mesh.transform.localRotation;
+                if (!TryGetVisualBoundsLocal(root.transform, out bounds))
+                {
+                    FallBackToVerifiedModel(typeIndex, "FBX axis correction");
+                    Destroy(root);
+                    return false;
+                }
+            }
             if (bounds.size.x > bounds.size.z * 1.1f)
-                mesh.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+                mesh.transform.localRotation =
+                    Quaternion.Euler(0f, 90f, 0f) * mesh.transform.localRotation;
             if (record.type.useEmbeddedAuthoredWheels)
                 FaceEmbeddedVehicleForward(root.transform, mesh.transform);
             if (!TryGetVisualBoundsLocal(root.transform, out bounds) ||
@@ -1407,8 +1435,14 @@ namespace Aaris.MapReview
                 Destroy(root);
                 return false;
             }
-            float scale = Mathf.Min(1.88f / bounds.size.x, 4.28f / bounds.size.z);
-            mesh.transform.localScale *= Mathf.Clamp(scale, .01f, 50f);
+            // Class-sized metres instead of forcing hatchbacks, SUVs,
+            // pickups and grand tourers into the same sedan envelope.
+            // The GT narrows mirror width independently while preserving
+            // isotropic Y/Z wheel radius; all others scale uniformly.
+            Vector3 scale = AarisVehicleVisualCalibration.FittedScale(
+                record.type.id, bounds.size);
+            mesh.transform.localScale =
+                Vector3.Scale(mesh.transform.localScale, scale);
             if (!TryGetVisualBoundsLocal(root.transform, out bounds))
             {
                 FallBackToVerifiedModel(typeIndex, "model scale");
