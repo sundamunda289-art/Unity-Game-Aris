@@ -95,6 +95,16 @@ assert "Vector3 targetFoot = resolvedFootWorld;" in crouch
 assert "return goal;" in resolver
 assert "targetFoot.y = ankleWorldY;" in crouch
 assert "float kneeFloor = ankleWorldY + kneeClearance;" in crouch
+# Floor-constrained knee correction must solve a bend-circle component;
+# it must not interpolate a linear height fraction using Slerp.
+solver = visual[visual.index("private static void PlantLegToTarget("):
+                visual.index("private void CorrectReversedSwingKnee(")]
+assert "float requiredY = (minimumKneeWorldY -" in solver
+assert "requiredY / Mathf.Max(upwardBend.y, 0.0001f)" in solver
+assert "Vector3 tangent = bend - upwardBend * currentUp;" in solver
+assert "bend = upwardBend * requiredUp + tangent *" in solver
+assert "Vector3.Slerp(bend, upwardBend" not in solver
+
 assert "float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);" in visual
 assert "float crouchPoleStrength = (1f - proneKneeShare) * 0.90f;" in visual
 assert "float pronePoleStrength = proneKneeShare * proneKneeSettle *" in visual
@@ -208,5 +218,27 @@ for target_angle in (0.0, .1, 1.57, 3.0, pi, -3.0, -1.2):
             assert hypot(vec[0]-desired[0],vec[1]-desired[1])<1e-10
 # Opposite knee directions used to cancel exactly at weight 0.5.
 assert abs(hypot(*pole_arc((1.0,0.0),(-1.0,0.0),.5))-1.0)<1e-10
-print("PASS: compact crouch, nondegenerate knee pole and two-foot terrain layout")
+# Analytic circle solution: retain bend direction around the knee axis,
+# never overshoot into a fully upward knee unless the floor is unreachable.
+from math import sqrt
+def repair_knee_circle(up_component, lateral_component, required_up):
+    if up_component >= required_up:
+        return up_component, lateral_component
+    target = max(-1.0, min(1.0, required_up))
+    direction = 1.0 if lateral_component >= 0.0 else -1.0
+    return target, direction * sqrt(max(0.0, 1.0-target*target))
+
+for start_angle in [-3.0,-2.5,-2.0,-1.5,-0.4,0.0,0.4,1.5,2.0,2.5,3.0]:
+    u, lateral = cos(start_angle), sin(start_angle)
+    for min_up in [-.95, -.5, -.1, .0, .3, .65, .9, 1.1]:
+        fixed_u,fixed_lateral=repair_knee_circle(u,lateral,min_up)
+        assert abs(fixed_u*fixed_u+fixed_lateral*fixed_lateral-1.0)<1e-9
+        assert fixed_u+1e-9>=min(1.0,min_up) or u>=min_up
+        if u>=min_up: assert (fixed_u,fixed_lateral)==(u,lateral)
+        elif min_up<1.0:
+            assert abs(fixed_u-min_up)<1e-9
+            # Preserve which side of the knee plane the old bend occupied.
+            assert fixed_lateral*lateral>=-1e-9
+
+print("PASS: compact crouch, analytic knee-floor clearance and bend-circle stability")
 print("NOT TESTED: Unity retargeted visuals, real collisions or Android FPS")
