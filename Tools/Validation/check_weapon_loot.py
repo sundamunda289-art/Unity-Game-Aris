@@ -349,7 +349,15 @@ def run():
     assert "visible.GetComponentInChildren<Renderer>(true)" not in pickup_cs
     assert "if (modelRenderers.Length == 0)" in pickup_cs
     assert "AarisWeaponMeshBounds.TryMeasure(transform," in pickup_cs
-    assert "0.08f - modelBounds.min.y * scale" in pickup_cs
+    assert "private const float ModelFloorClearance = 0.025f;" in pickup_cs
+    assert "ModelFloorClearance - modelBounds.min.y * scale" in pickup_cs
+    assert "ModelFloorClearance + (modelBounds.center.y - modelBounds.min.y) * scale" in pickup_cs
+    assert "private const float LootRootFloorClearance = 0.04f;" in world
+    assert "spot = floor.point + Vector3.up * LootRootFloorClearance;" in world
+    assert "Vector3 candidate = hitPoint + Vector3.up * LootRootFloorClearance;" in world
+    # Measured visual floor clearance for both authored and dropped guns.
+    # Small positive margin avoids z-fighting without 21cm arcade hovering.
+    assert 0.05 < 0.04 + 0.025 < 0.08
     assert "(modelBounds.center.y - modelBounds.min.y) * scale" in pickup_cs
     assert "model.SetParent(visualPivot.transform, true);" in pickup_cs
     assert "meshFilter.sharedMesh.bounds" in pickup_cs
