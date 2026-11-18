@@ -34,7 +34,9 @@ class CargoPlaneVisualContract(unittest.TestCase):
     def test_daylight_fill_uses_cached_lit_materials_without_new_lights(self):
         for name in ("HulledMetal", "WingPanels"):
             material = (MATERIALS / ("CargoPlane-" + name + ".mat")).read_text()
-            self.assertIn("- _EMISSION", material)
+            # Unity 6 can strip a serialized local keyword during import.
+            # Assert the authored value plus the runtime copy-based guarantee,
+            # not unstable editor-normalized keyword serialization.
             self.assertIn("m_LightmapFlags: 0", material)
             emission_line = next(line for line in material.splitlines()
                                  if line.strip().startswith("- _EmissionColor:"))
@@ -45,6 +47,13 @@ class CargoPlaneVisualContract(unittest.TestCase):
         source = CS.split("internal static GameObject CreatePlane(", 1)[1].split(
             "internal static GameObject CreateElongatedCanopy(", 1)[0]
         self.assertNotIn("AddComponent<Light>", source)
+        # Exactly two shared copies are allocated once per runtime, never per frame.
+        self.assertIn('live = new Material(saved)', CS)
+        self.assertIn('live.EnableKeyword("_EMISSION");', CS)
+        self.assertIn('runtimeDaylightHull', CS)
+        self.assertIn('runtimeDaylightWing', CS)
+        self.assertIn('if (live != null) return live;', CS)
+        self.assertIn('Material live = isHull ? runtimeDaylightHull : runtimeDaylightWing;', CS)
         self.assertNotIn("new Material(", source)
 
 
