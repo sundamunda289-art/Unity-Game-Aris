@@ -57,6 +57,15 @@ class LootVisibilityPacing(unittest.TestCase):
             "Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs"
         ).read_text()
 
+    def test_beacon_does_not_draw_without_an_active_camera(self):
+        update = SRC.split("private void Update()", 1)[1].split(
+            "private void OnEnable()", 1
+        )[0]
+        self.assertIn("if (beaconObserver == null || !beaconObserver.isActiveAndEnabled)", update)
+        self.assertIn("else if (beacon.enabled)", update)
+        self.assertIn("beacon.enabled = false;", update)
+        self.assertIn("nextBeaconVisibilityCheck = Time.unscaledTime + 0.45f;", update)
+
     def test_hidden_poll_budget_and_visible_fidelity(self):
         for fps in (15, 30, 60, 90, 120):
             with self.subTest(fps=fps):
