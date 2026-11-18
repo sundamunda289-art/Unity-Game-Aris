@@ -1455,11 +1455,12 @@ namespace Aaris.MapReview
             // Preserve calibrated standing-ground offset through takeoff:
             // switching it off in the air would instantly teleport the model
             // upwards by the original ~0.75m shoe gap.
-            float uprightWeight = 1f - Mathf.Clamp01(
-                effectiveCrouchBlend + effectiveProneBlend);
+            // Imported FBX shoe-origin calibration is a permanent rig offset,
+            // not a standing animation weight. Removing it during crouch
+            // raises the whole soldier as the capsule becomes shorter.
             Vector3 desiredPosition = restingLocalPosition +
                 new Vector3(0f, -landingDip - crouchLowering -
-                    proneLowering + standingShoeOffset * uprightWeight, 0f);
+                    proneLowering + standingShoeOffset, 0f);
             if (visualRoot.localPosition != desiredPosition)
                 visualRoot.localPosition = desiredPosition;
             AnkleSupportSample coarseSupport = default;
