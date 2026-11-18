@@ -76,11 +76,20 @@ assert "float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);" in visual
 assert "Vector3 kneeForward = proneShare < 0.5f ?" in visual
 assert "crouchKneeForward : Vector3.down;" in visual
 assert "float kneeFloor = ankleWorldY + kneeClearance;" in visual
-# Prone's vertical knee pole is a direction hint only: the floor guard
-# ensures the physical terrain floor remains authoritative in every stance.
-for p in (0.0, 0.25, 0.5, 0.75, 1.0):
-    assert ("down" if p >= .5 else "crouch") == (
-        "down" if p >= .5 else "crouch")
+# A downward knee pole projected perpendicular to a rear-facing
+# (approximately horizontal) thigh-to-ankle axis remains in the sagittal
+# plane. The imported sideways pole previously allowed 0.20m+ flare.
+for lateral in (-.06, -.02, 0.0, .02, .06):
+    for rise in (-.15, 0.0, .12):
+        ax, ay, az = lateral, rise, -1.045
+        length = sqrt(ax*ax + ay*ay + az*az)
+        ax, ay, az = ax/length, ay/length, az/length
+        # Project world-down onto plane orthogonal to the leg axis.
+        dot = -ay
+        bx, by, bz = -dot*ax, -1.0-dot*ay, -dot*az
+        norm = sqrt(bx*bx + by*by + bz*bz)
+        assert norm > 0.95
+        assert abs(bx/norm) < .015, (lateral, rise, bx/norm)
 assert "bool turningFast = Mathf.Abs(turnDegreesPerSecond) > 110f;" in resolver
 assert "Vector3.Lerp(bend, forwardBend.normalized, 0.90f)" in visual
 assert visual.count("planar, yawRate, ankleRigWeight, transitioningLowStance,") == 2
