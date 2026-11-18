@@ -335,11 +335,11 @@ namespace Aaris.MapReview
             shell.size = new Vector3(
                 Mathf.Clamp(size.x * .94f, 1.35f, 2.25f),
                 top - bottom,
-                Mathf.Clamp(size.z * .94f, 2.35f, 4.30f));
+                Mathf.Clamp(size.z * .94f, 2.35f, 5.20f));
             // Match the wheel geometry across short hatchbacks and longer
             // vans/SUVs without introducing additional wheel GameObjects.
             float halfTrack = Mathf.Clamp(size.x * .445f, .63f, .90f);
-            float halfWheelbase = Mathf.Clamp(size.z * .322f, .92f, 1.43f);
+            float halfWheelbase = Mathf.Clamp(size.z * .322f, .92f, 1.72f);
             for (int i = 0; i < wheels.Length; i++)
             {
                 if (wheels[i] == null) continue;
