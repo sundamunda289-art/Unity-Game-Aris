@@ -257,6 +257,31 @@ var rk=animator.GetBoneTransform(HumanBodyBones.RightLowerLeg);
 var lf=animator.GetBoneTransform(HumanBodyBones.LeftFoot);
 var rf=animator.GetBoneTransform(HumanBodyBones.RightFoot);
 if(lh==null||rh==null||lk==null||rk==null||lf==null||rf==null)return;
+// The photo floor is deliberately cosmetic. Check native *terrain* under
+// both actual ankle bones so an early pose cannot pass while buried below
+// the real gameplay surface. This only runs in Editor transition QA.
+float worstGroundGap=float.PositiveInfinity;
+int terrainFootSamples=0;
+foreach(var shoe in new[]{lf,rf}){
+ foreach(var tile in Terrain.activeTerrains){
+  if(tile==null||tile.terrainData==null)continue;
+  Vector3 origin=tile.transform.position;
+  Vector3 size=tile.terrainData.size;
+  Vector3 pos=shoe.position;
+  if(pos.x<origin.x||pos.x>origin.x+size.x||
+     pos.z<origin.z||pos.z>origin.z+size.z)continue;
+  float terrainY=origin.y+tile.SampleHeight(pos);
+  worstGroundGap=Mathf.Min(worstGroundGap,pos.y-terrainY);
+  terrainFootSamples++;
+  break;
+ }
+}
+if(terrainFootSamples>0){
+Log("TRANSITION_TERRAIN_FEET stance="+b.Stance+
+" frame="+sampleIndex+" worstGap="+worstGroundGap.ToString("F3"));
+if(transitioning&&worstGroundGap< -0.15f)
+ throw new InvalidOperationException("TRANSITION_FOOT_BURIED");
+}
 Vector3 hipRight=Vector3.ProjectOnPlane(rh.position-lh.position,Vector3.up);
 if(hipRight.sqrMagnitude<0.02f)return;
 hipRight.Normalize();
