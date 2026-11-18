@@ -1508,7 +1508,28 @@ namespace Aaris.MapReview
                 Destroy(root);
                 return false;
             }
-            mesh.transform.localScale *= Mathf.Clamp(scale, .01f, 50f);
+            // The CC0 Premium GT has a wider shoulder/mirror envelope
+            // than its 4.63 m closed-coupe length. Uniform scaling to the
+            // width cap would compress it into a short, toy-like 3.87 m
+            // car with a sub-metre roof. Correct lateral width separately
+            // ONLY for this verified embedded-wheel model. Crucially,
+            // Y and Z use the same ratio: circular rolling tyres remain
+            // circular and WheelCollider radius follows the real mesh.
+            if (record.type.id == "GT" &&
+                record.type.useEmbeddedAuthoredWheels)
+            {
+                float lateral = Mathf.Clamp(widthMetres / bounds.size.x,
+                    .01f, 50f);
+                float rolling = Mathf.Clamp(lengthMetres / bounds.size.z,
+                    .01f, 50f);
+                mesh.transform.localScale = Vector3.Scale(
+                    mesh.transform.localScale, new Vector3(lateral, rolling, rolling));
+            }
+            else
+            {
+                // All other cars preserve original uniform isotropic fit.
+                mesh.transform.localScale *= Mathf.Clamp(scale, .01f, 50f);
+            }
             if (!TryGetVisualBoundsLocal(root.transform, out bounds))
             {
                 FallBackToVerifiedModel(typeIndex, "model scale");
