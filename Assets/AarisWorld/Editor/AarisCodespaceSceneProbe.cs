@@ -168,7 +168,25 @@ namespace Aaris.MapReview.Editor
                     "version https://git-lfs.github.com/spec/v1", StringComparison.Ordinal))
                     throw new InvalidOperationException("SCENE_IS_LFS_POINTER");
             }
-            var loaded = EditorSceneManager.OpenScene(Scene, OpenSceneMode.Single);
+            // An interactive QA menu may run against the map already open in
+            // the Editor. Avoid a redundant 2 km scene reload, which can
+            // discard unsaved inspection state and trigger minutes of shader
+            // recompilation on the software-rendered Codespace desktop.
+            Scene loaded = SceneManager.GetActiveScene();
+            if (!loaded.IsValid() || !loaded.isLoaded ||
+                loaded.path != Scene || SceneManager.sceneCount != 1)
+            {
+                // Switching scenes is safe only after all other open scenes
+                // have been saved. Never silently discard another editor's
+                // work to obtain a screenshot or smoke-test report.
+                for (int i = 0; i < SceneManager.sceneCount; i++)
+                {
+                    Scene open = SceneManager.GetSceneAt(i);
+                    if (open.IsValid() && open.isDirty)
+                        throw new InvalidOperationException("UNSAVED_OPEN_SCENE_BLOCKED");
+                }
+                loaded = EditorSceneManager.OpenScene(Scene, OpenSceneMode.Single);
+            }
             if (!loaded.IsValid() || !loaded.isLoaded || loaded.path != Scene)
                 throw new InvalidOperationException("NATIVE_SCENE_NOT_LOADED");
             var terrains = UnityEngine.Object.FindObjectsByType<Terrain>(FindObjectsSortMode.None);
@@ -804,10 +822,14 @@ namespace Aaris.MapReview.Editor
             }
             catch (Exception e)
             {
+                string reason = e is InvalidOperationException ?
+                    e.Message : e.GetType().Name;
                 Save(new Result { mode = "play", status = "failed", scene = Scene,
-                    reason = e is InvalidOperationException ? e.Message : e.GetType().Name },
-                    "play-report.json");
-                EditorApplication.Exit(1);
+                    reason = reason }, "play-report.json");
+                // CI automation needs a nonzero process exit code. A human
+                // running the same menu command must keep their Editor open.
+                if (Application.isBatchMode) EditorApplication.Exit(1);
+                else Debug.LogError("AARIS_NATIVE_PLAY_PREFLIGHT_FAILED:" + reason);
             }
         }
 
@@ -821,7 +843,12 @@ namespace Aaris.MapReview.Editor
                 {
                     int exit = SessionState.GetInt(ExitCode, 1);
                     SessionState.SetString(State, "");
-                    EditorApplication.Exit(exit);
+                    if (Application.isBatchMode)
+                        EditorApplication.Exit(exit);
+                    else if (exit == 0)
+                        Debug.Log("AARIS_NATIVE_PLAY_GUI_PASSED");
+                    else
+                        Debug.LogError("AARIS_NATIVE_PLAY_GUI_FAILED");
                 }
                 return;
             }
