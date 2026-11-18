@@ -496,7 +496,12 @@ namespace Aaris.MapReview
             // drift, while a locked/braking or sideways-sliding tyre should.
             float tyreSlip = car.TyreSlip;
             float slipBlend = Mathf.InverseLerp(0.24f, 0.90f, tyreSlip);
-            bool tyreSkidding = speed > 4f && tyreSlip > 0.24f;
+            // The RPM/gear simulation correctly follows *forward* speed,
+            // but skid audio must follow TOTAL chassis speed. A car sliding
+            // sideways at road speed has near-zero longitudinal velocity
+            // even while tyres are audibly scrubbing the asphalt.
+            float roadSpeed = car.TotalSpeedMetresPerSecond;
+            bool tyreSkidding = roadSpeed > 4f && tyreSlip > 0.24f;
             float skidCadence = Mathf.Lerp(0.82f, 0.38f, slipBlend);
             if (tyreSkidding && Time.time - lastSkidAt >= skidCadence)
             {
