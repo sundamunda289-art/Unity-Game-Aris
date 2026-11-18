@@ -118,13 +118,20 @@ namespace Aaris.MapReview
         private uint rng, matchSeed;
         public bool HasPickupInRange { get; private set; }
 
+        // Near-ground prestream may show loot before touchdown, but visibility
+        // must never grant pickup authority while an active aerial drop is
+        // still in progress. An absent/disabled drop is an ordinary foot scene.
+        private bool HasLandingAuthority =>
+            drop == null || !drop.isActiveAndEnabled || drop.HasLanded;
+
         /// <summary>Explicit pickup replaces the single carried gun.</summary>
         public void RequestPickup()
         {
             // UI callbacks can arrive while the game is paused or the
             // on-foot inventory is disabled by a vehicle transition.
             if (!isActiveAndEnabled || Time.timeScale <= 0f ||
-                inventory == null || !inventory.isActiveAndEnabled)
+                inventory == null || !inventory.isActiveAndEnabled ||
+                !HasLandingAuthority)
                 return;
             // A deliberate tap must not wait for the normal 330 ms refresh:
             // on a low-FPS phone the next routine poll may arrive too late.
@@ -765,7 +772,7 @@ namespace Aaris.MapReview
             // before any floor raycast or mutation of the held weapon.
             if (!isActiveAndEnabled || Time.timeScale <= 0f ||
                 inventory == null || !inventory.isActiveAndEnabled ||
-                player == null || (drop != null && drop.ShouldDeferGroundLoot))
+                player == null || !HasLandingAuthority)
                 return false;
             // Refuse the action before its physics checks when the visual
             // budget is full. The held gun remains owned by the player.
@@ -796,7 +803,9 @@ namespace Aaris.MapReview
 
         private bool TryTake(AarisWeaponPickup pickup)
         {
-            if (pickup == null || pickup.State == null || inventory == null ||
+            if (!HasLandingAuthority || Time.timeScale <= 0f ||
+                pickup == null || pickup.State == null || inventory == null ||
+                !inventory.isActiveAndEnabled ||
                 IsBlockedDrop(pickup) || !pickup.TryReserve()) return false;
 
             // Reserve the previous gun at the location already proven to be
@@ -894,7 +903,9 @@ namespace Aaris.MapReview
         {
             float releaseSquared = ReleaseMetres * ReleaseMetres;
             float pickupSquared = PickupDistance * PickupDistance;
-            bool explicitPickup = now <= requestPickupUntil;
+            bool mayPickup = HasLandingAuthority && Time.timeScale > 0f &&
+                inventory != null && inventory.isActiveAndEnabled;
+            bool explicitPickup = mayPickup && now <= requestPickupUntil;
             AarisWeaponPickup bestPickup = null;
             float bestDistance = pickupSquared;
             int unloaded = 0;
@@ -924,15 +935,15 @@ namespace Aaris.MapReview
                     unloaded++;
                     continue;
                 }
-                if (d2 <= bestDistance && !IsBlockedDrop(pickup) &&
-                    CanReachPickup(pickup))
+                if (mayPickup && d2 <= bestDistance &&
+                    !IsBlockedDrop(pickup) && CanReachPickup(pickup))
                 {
                     bestPickup = pickup;
                     bestDistance = d2;
                 }
             }
-            HasPickupInRange = bestPickup != null;
-            return bestPickup != null &&
+            HasPickupInRange = mayPickup && bestPickup != null;
+            return HasPickupInRange &&
                 (explicitPickup || (!inventory.HasAnyGun && allowInitialAutoPickup &&
                     (bestPickup.CandidateIndex >= 0 ||
                      bestPickup.CandidateIndex == starterLootId))) && TryTake(bestPickup);
