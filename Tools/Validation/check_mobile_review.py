@@ -93,7 +93,10 @@ def check(native=False):
     assert 'FrameTimingManager.GetLatestTimings(1u, mobileFrameTimings)' in source
     assert 'timing.gpuFrameTime >= cpuWork * 1.1d' in source
     assert 'sample.cpuLimitedSamples >= sample.gpuLimitedSamples * 2' in source
-    assert 'if (measuredCpuBound)' in source
+    # Keep the CPU-bound AND mixed-workload clarity guard; the old bare
+    # condition no longer matches the current GPU-timing governor.
+    assert 'bool measuredGpuBound = reliableTimings &&' in source
+    assert 'if (measuredCpuBound || (reliableTimings && !measuredGpuBound))' in source
     assert 's.meanGpuFrameMs' in source and 's.meanCpuMainMs' in source
     assert 'SampleMobileFrameTiming();' in source
     assert 'AARIS_TERRAIN_RENDER_AUDIT' in source
