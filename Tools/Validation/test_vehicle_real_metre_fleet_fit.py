@@ -80,8 +80,9 @@ class RealMetreVehicleFit(unittest.TestCase):
         self.assertNotIn("new Material(", helper)
         build = WORLD.split("private bool Build(", 1)[1].split(
             "private void Update()", 1)[0]
-        self.assertIn("if (record.type.useEmbeddedAuthoredWheels)\n"
-                      "                AlignEmbeddedTyresToRoad(", build)
+        self.assertIn("if (record.type.useEmbeddedAuthoredWheels &&\n"
+                      "                !AlignEmbeddedTyresToRoad(", build)
+        self.assertIn('FallBackToVerifiedModel(typeIndex, "tyre ground alignment")', build)
         self.assertLess(build.index("AlignEmbeddedTyresToRoad("),
                         build.index("motor.FitShellAndWheelbase(bounds)"))
         self.assertIn("motor.ConfigureExhaust(exhaustMaterial, bounds);", build)
