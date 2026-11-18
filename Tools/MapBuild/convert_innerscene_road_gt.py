@@ -216,7 +216,50 @@ def convert(input_glb, output, budget=70000):
             }),
             "count": source["count"],
         }
-    tris=counts["raw"]-counts["skipped"]
+    # Imported source wheel covers are very dark at oblique left-facing
+    # views. Add a small real geometric five-spoke alloy face on the
+    # outward plane of each wheel: one shared chrome material, no textures,
+    # no new GameObjects, no per-frame code, only 72 tris per wheel.
+    added_rim_triangles = 0
+    for group in GROUPS[1:]:
+        part = data[group]
+        outside = -1.0 if group.endswith("l") else 1.0
+        radius = .343 if group.startswith("wheel_f") else .362
+        x = outside * .043
+        faces = part["f"][4]  # Existing chrome material; same draw call.
+        def vert(y,z):
+            part["v"].append((x,y,z))
+            part["vn"].append((outside,0.0,0.0))
+            return len(part["v"])
+        def tri(a,b,c):
+            faces.append((a,b,c) if outside < 0 else (a,c,b))
+        def circle_point(r, angle):
+            return (r*math.sin(angle),r*math.cos(angle))
+        def ring_quad(inner,outer,start,end):
+            y0,z0=circle_point(inner,start)
+            y1,z1=circle_point(outer,start)
+            y2,z2=circle_point(outer,end)
+            y3,z3=circle_point(inner,end)
+            a,b,c,d=(vert(*q) for q in ((y0,z0),(y1,z1),(y2,z2),(y3,z3)))
+            tri(a,b,c)
+            tri(a,c,d)
+        before=len(faces)
+        for i in range(24):
+            a=i*math.tau/24
+            ring_quad(radius*.62,radius*.76,a,a+math.tau/24)
+        for i in range(5):
+            theta=i*math.tau/5
+            ring_quad(radius*.16,radius*.64,theta-.105,theta+.105)
+        center=vert(0.0,0.0)
+        for i in range(14):
+            a=i*math.tau/14
+            u=vert(*circle_point(radius*.145,a))
+            v=vert(*circle_point(radius*.145,a+math.tau/14))
+            tri(center,u,v)
+        newfaces=len(faces)-before
+        part["count"]+=newfaces
+        added_rim_triangles+=newfaces
+    tris=sum(part["count"] for part in data.values())
     if counts["raw"]!=104282 or tris>budget or tris<50000:
         raise ValueError("Unexpected geometry budget: "+str(counts))
     if any(data[k]["count"] < 2300 for k in GROUPS[1:]):
@@ -242,6 +285,7 @@ def convert(input_glb, output, budget=70000):
         "source":SOURCE_PAGE,"sha256":SOURCE_SHA256,
         "originalTriangles":counts["raw"],"removedInteriorDetailTriangles":counts["skipped"],
         "mobileVariantTriangles":tris,
+        "proceduralAlloySpokeTriangles":added_rim_triangles,
         "wheelTriangles":{k:data[k]["count"] for k in GROUPS[1:]},
         "bodyTriangles":data["body"]["count"],
         "originalTextureCount":12,
