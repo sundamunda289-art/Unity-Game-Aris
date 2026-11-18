@@ -78,6 +78,10 @@ jobs:
             exit 0
           fi
           git commit -m "feat(vehicle): vendor checksum-verified CC0 premium GT body"
+          # Checkout may mark existing LFS-migrated art dirty on hosted runners.
+          # Only the runner-local bookkeeping is discarded after the target
+          # body mesh is committed; no source/Codespace edits are touched.
+          git reset --hard HEAD
           for attempt in 1 2 3; do
             git fetch origin feat/aaris-premium-closed-gt-20261118
             git rebase origin/feat/aaris-premium-closed-gt-20261118
