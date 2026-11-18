@@ -199,6 +199,23 @@ def convert(input_glb, output, budget=70000):
                 a,b,c=triplet
                 faces.append((a,c,b))
             part["count"]+=tris
+    # Some source wheel-face normals/outer layers are asymmetric: the right
+    # alloy renders clearly but the left rim is almost black in native Unity.
+    # Mirror the actually-good right alloys, rubber and hub topology onto
+    # the left axle in local wheel coordinates, preserving correct winding.
+    # This does not change the face count or cost any runtime reflection.
+    for left, right in (("wheel_fl", "wheel_fr"),
+                        ("wheel_rl", "wheel_rr")):
+        source = data[right]
+        data[left] = {
+            "v": [(-x, y, z) for x, y, z in source["v"]],
+            "vn": [(-x, y, z) for x, y, z in source["vn"]],
+            "f": defaultdict(list, {
+                material: [(a, c, b) for (a, b, c) in faces]
+                for material, faces in source["f"].items()
+            }),
+            "count": source["count"],
+        }
     tris=counts["raw"]-counts["skipped"]
     if counts["raw"]!=104282 or tris>budget or tris<50000:
         raise ValueError("Unexpected geometry budget: "+str(counts))
