@@ -11,6 +11,23 @@ namespace Aaris.MapReview.Editor
     /// </summary>
     public static class AarisRoadGtScaleQA
     {
+        private static bool Visible(GameObject car, out Bounds combined)
+        {
+            combined = new Bounds();
+            bool found = false;
+            foreach (var renderer in car.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!renderer.enabled || renderer.forceRenderingOff ||
+                    !renderer.gameObject.activeInHierarchy) continue;
+                var filter = renderer.GetComponent<MeshFilter>();
+                if (filter == null || filter.sharedMesh == null ||
+                    filter.sharedMesh.vertexCount == 0) continue;
+                if (!found) { combined = renderer.bounds; found = true; }
+                else combined.Encapsulate(renderer.bounds);
+            }
+            return found;
+        }
+
         [MenuItem("Aaris/CI/Verify balanced Premium GT wheel and body scale")]
         public static void Verify()
         {
@@ -21,15 +38,15 @@ namespace Aaris.MapReview.Editor
                 "AarisVehicles/vehicle_catalog");
             if (prefab == null || json == null)
                 throw new InvalidOperationException("Premium GT assets unavailable");
-            var catalog = JsonUtility.FromJson<AarisVehicleTypesFile>(json.text);
-            AarisVehicleType gt = Array.Find(catalog.vehicles,
+            var catalog = JsonUtility.FromJson<AarisVehicleStudioCatalog>(json.text);
+            AarisVehicleStudioRecord gt = Array.Find(catalog.vehicles,
                 item => item != null && item.id == "GT");
             if (gt == null) throw new InvalidOperationException("GT catalog absent");
             var root = new GameObject("Temporary GT geometry and real physics QA");
             try
             {
                 var model = UnityEngine.Object.Instantiate(prefab, root.transform, false);
-                if (!AarisVehicleWorld.TryGetVisualBoundsLocal(root.transform,
+                if (!Visible(root,
                     out Bounds before))
                     throw new InvalidOperationException("GT import has no geometry");
                 float width = Mathf.Clamp(gt.referenceWidthMetres, 1.65f, 2.15f);
@@ -38,7 +55,7 @@ namespace Aaris.MapReview.Editor
                 float rolling = Mathf.Clamp(length / before.size.z, .01f, 50f);
                 model.transform.localScale = Vector3.Scale(model.transform.localScale,
                     new Vector3(lateral, rolling, rolling));
-                if (!AarisVehicleWorld.TryGetVisualBoundsLocal(root.transform,
+                if (!Visible(root,
                     out Bounds measured))
                     throw new InvalidOperationException("GT scaled mesh missing");
                 if (Mathf.Abs(measured.size.x - width) > .03f ||
@@ -47,7 +64,7 @@ namespace Aaris.MapReview.Editor
                     throw new InvalidOperationException("GT visual metric mismatch " +
                         measured.size.ToString("F3"));
                 model.transform.localPosition += new Vector3(0,.48f,0)-measured.center;
-                if (!AarisVehicleWorld.TryGetVisualBoundsLocal(root.transform,
+                if (!Visible(root,
                     out Bounds chassisBox))
                     throw new InvalidOperationException("GT recentered mesh missing");
                 var motor = root.AddComponent<AarisVehicleMotor>();
