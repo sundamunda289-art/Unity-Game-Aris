@@ -44,6 +44,7 @@ namespace Aaris.MapReview
         private float startupTime;
         private int startupSampleIndex;
         private Task<string> pendingLogWrite;
+        private float nextLongFrameReportAt;
         // Begin at native sharpness and adapt only after sustained FPS misses.
         private UniversalRenderPipelineAsset androidPipeline;
         private float originalRenderScale = 1f;
@@ -594,6 +595,15 @@ namespace Aaris.MapReview
                 frameIndex = (frameIndex + 1) % frameTimes.Length;
                 frameCount = Mathf.Min(frameCount + 1, frameTimes.Length);
             }
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Record real multi-second frames for field triage without doing disk
+            // I/O on the game thread. Rate-limit bursts after app resume.
+            if (dt >= 0.75f && Time.unscaledTime >= nextLongFrameReportAt)
+            {
+                nextLongFrameReportAt = Time.unscaledTime + 5f;
+                Record("frame-stall");
+            }
+#endif
             if (lowMemoryPending)
             {
                 lowMemoryPending = false;
@@ -835,21 +845,47 @@ namespace Aaris.MapReview
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (pendingLogWrite != null)
             {
-                // Keep at most one outstanding write. Pause/quit flush in order
-                // because Android can suspend the process after the callback.
-                if (!pendingLogWrite.IsCompleted && reason != "pause" && reason != "quit") return;
-                string previousError = pendingLogWrite.GetAwaiter().GetResult();
-                pendingLogWrite = null;
-                if (previousError != null)
+                // Never wait for storage from Unity's main thread. A blocked
+                // diagnostics writer during Android pause/quit can otherwise
+                // turn a temporary I/O delay into an application freeze/ANR.
+                if (!pendingLogWrite.IsCompleted)
                 {
-                    StopLogging(previousError);
-                    return;
+                    if (reason != "pause" && reason != "quit" &&
+                        reason != "low-memory" && reason != "frame-stall")
+                        return;
+                }
+                else
+                {
+                    string previousError;
+                    try { previousError = pendingLogWrite.GetAwaiter().GetResult(); }
+                    catch (Exception e) { previousError = e.GetType().Name; }
+                    pendingLogWrite = null;
+                    if (previousError != null)
+                    {
+                        StopLogging(previousError);
+                        return;
+                    }
                 }
             }
-            if (reason != "start" && reason != "pause" && reason != "quit")
+            if (reason != "start")
             {
+                // Preserve the ordering of urgent records without blocking
+                // Android lifecycle callbacks. These writes are best-effort:
+                // Android may terminate a process before a background append.
                 string path = logPath, report = LatestReport;
-                pendingLogWrite = Task.Run(() => AppendReport(path, report));
+                Task<string> previous = pendingLogWrite;
+                pendingLogWrite = previous == null
+                    ? Task.Run(() => AppendReport(path, report))
+                    : previous.ContinueWith(completed =>
+                    {
+                        if (completed.IsFaulted)
+                            return "Previous diagnostics write failed: " +
+                                completed.Exception.GetBaseException().GetType().Name;
+                        if (completed.IsCanceled)
+                            return "Previous diagnostics write canceled";
+                        if (completed.Result != null) return completed.Result;
+                        return AppendReport(path, report);
+                    }, TaskScheduler.Default);
                 return;
             }
 #endif
