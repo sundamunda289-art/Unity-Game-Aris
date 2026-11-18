@@ -1540,8 +1540,18 @@ namespace Aaris.MapReview
             // tyres to an arbitrary pivot height. Actual authored wheel
             // bottoms subsequently anchor the entire body to the road plane.
             mesh.transform.localPosition += new Vector3(0f, .48f, 0f) - bounds.center;
-            if (record.type.useEmbeddedAuthoredWheels)
-                AlignEmbeddedTyresToRoad(root.transform, mesh.transform);
+            // A misimported or tilted axle set must NOT silently continue.
+            // Without this guard an unsuccessful tyre-ground fit leaves a
+            // vehicle hovering or clipping the road while still marked valid.
+            // Degrade the art to the existing verified local prefab on the
+            // next spawn rather than destroying any saved vehicle state.
+            if (record.type.useEmbeddedAuthoredWheels &&
+                !AlignEmbeddedTyresToRoad(root.transform, mesh.transform))
+            {
+                FallBackToVerifiedModel(typeIndex, "tyre ground alignment");
+                Destroy(root);
+                return false;
+            }
             if (!TryGetVisualBoundsLocal(root.transform, out bounds))
             {
                 FallBackToVerifiedModel(typeIndex, "aligned model bounds");
