@@ -13,6 +13,9 @@ namespace Aaris.MapReview
         private static Material hull, dark, wingPanels, engineDark, safetyAccent, rotorPaint,
             propellerBlur, navRed, navGreen, navWhite,
             canopyBlue, canopyWhite, canopyOrange, rope;
+        // Unity may normalize serialized _EMISSION keywords while importing materials.
+        // One runtime-only copy per aircraft finish keeps the saved assets untouched.
+        private static Material hullDaylightFinish, wingDaylightFinish;
         private static Mesh cachedPropellerMesh, cachedPropellerBlurMesh;
 
         private static Material Paint(ref Material cached, Color color)
@@ -93,6 +96,28 @@ namespace Aaris.MapReview
             Material material = Paint(ref fallback, fallbackColor);
             SetAircraftFinish(material, metallic, smoothness);
             return material;
+        }
+
+        // On Unity 6, importing saved URP materials can remove _EMISSION from
+        // m_ValidKeywords while retaining their authored _EmissionColor. Without
+        // that keyword the aircraft can read as a black silhouette in daylight.
+        // Clone exactly once per finish: no per-frame material writes, added
+        // lights, texture samples or mutation of shared Resources assets.
+        private static Material EnsureDaylightFill(Material source, ref Material cached)
+        {
+            if (source == null || !source.HasProperty("_EmissionColor")) return source;
+            if (cached != null) return cached;
+            cached = new Material(source)
+            {
+                name = source.name + " (Aaris runtime daylight fill)",
+                enableInstancing = true
+            };
+            Color fill = cached.GetColor("_EmissionColor");
+            if (fill.maxColorComponent < 0.05f)
+                fill = new Color(0.095f, 0.106f, 0.103f, 1f);
+            cached.SetColor("_EmissionColor", fill);
+            cached.EnableKeyword("_EMISSION");
+            return cached;
         }
 
         private static GameObject Part(Transform parent, string name, PrimitiveType primitive,
@@ -257,12 +282,16 @@ namespace Aaris.MapReview
                 // Prefer the five serialized URP/Lit aircraft finishes. Unlike
                 // flat procedural paints, these preserve authored PBR surface
                 // properties and any future texture maps without per-frame work.
-                Material hullPaint = SavedAircraftFinish("CargoPlane-HulledMetal",
-                    ref hull, new Color(.31f, .36f, .35f), .38f, .32f);
+                Material hullPaint = EnsureDaylightFill(
+                    SavedAircraftFinish("CargoPlane-HulledMetal",
+                        ref hull, new Color(.31f, .36f, .35f), .38f, .32f),
+                    ref hullDaylightFinish);
                 Material cockpitPaint = SavedAircraftFinish("CargoPlane-DarkCockpit",
                     ref dark, new Color(.055f, .10f, .13f), .08f, .82f);
-                Material wingPaint = SavedAircraftFinish("CargoPlane-WingPanels",
-                    ref wingPanels, new Color(.39f, .43f, .40f), .30f, .25f);
+                Material wingPaint = EnsureDaylightFill(
+                    SavedAircraftFinish("CargoPlane-WingPanels",
+                        ref wingPanels, new Color(.39f, .43f, .40f), .30f, .25f),
+                    ref wingDaylightFinish);
                 Material enginePaint = SavedAircraftFinish("CargoPlane-EngineDark",
                     ref engineDark, new Color(.095f, .12f, .13f), .52f, .26f);
                 Material safetyPaint = SavedAircraftFinish("CargoPlane-SafetyAccent",
