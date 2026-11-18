@@ -24,6 +24,14 @@ assert "Mathf.InverseLerp(0.07f, 0.38f, planarSpeed)" in layout
 assert "Mathf.InverseLerp(0.68f, 0.96f, lowPose)" in layout
 assert "Vector3 anatomicalRight = Vector3.ProjectOnPlane(" in layout
 assert "rightThigh.position - leftThigh.position, Vector3.up" in layout
+assert "float lowPose, float dominantRigWeight, float planarSpeed," in layout
+assert "Mathf.Max(crouchRigWeight, proneRigWeight), planar," in visual
+assert "Mathf.InverseLerp(0.90f, 0.995f, dominantRigWeight)" in layout
+assert "float correction = settledPose * stationary * dominantSettled;" in layout
+assert layout.index("Vector3 anatomicalRight = Vector3.ProjectOnPlane(") < layout.index(
+    "if (correction < 0.001f) return;")
+assert "if (!validAnatomicalRight)" in layout
+assert "crouchKneeForward = Vector3.Cross(anatomicalRight," in layout
 assert "crouchKneeForward = Vector3.Cross(anatomicalRight," in layout
 assert "crouchKneeForward * 0.14f" in layout
 assert "crouchKneeForward * 0.22f" in layout
@@ -105,6 +113,40 @@ assert "leftFootGoal, kneeClearance, kneePoleStrength);" in visual
 assert "ref leftLowPlantLocked, ref leftLowPlantWorld);" in visual
 assert "rightFootGoal, kneeClearance, kneePoleStrength);" in visual
 assert "ref rightLowPlantLocked, ref rightLowPlantWorld);" in visual
+# The summed pose weight can remain 1.0 during an interrupted crouch/prone
+# crossfade even though neither pose is settled. Dominant-stance confidence
+# must suppress foot teleportation until one actual stance dominates.
+def clamp01(x):
+    return max(0.0, min(1.0, x))
+
+def smooth01(x):
+    t = clamp01(x)
+    return t * t * (3.0 - 2.0 * t)
+
+def foot_confidence(low_pose, crouch_rig, prone_rig, speed):
+    pose = smooth01((low_pose - .68) / .28)
+    dominant = smooth01((max(crouch_rig, prone_rig) - .90) / .095)
+    still = 1.0 - smooth01((speed - .07) / .31)
+    return pose * still * dominant
+
+assert foot_confidence(1.0, .5, .5, 0.0) == 0.0
+assert foot_confidence(1.0, .3, .7, 0.0) == 0.0
+assert foot_confidence(1.0, .95, .05, 0.0) > 0.0
+assert foot_confidence(1.0, 1.0, 0.0, 0.0) == 1.0
+assert foot_confidence(1.0, 0.0, 1.0, 0.0) == 1.0
+assert foot_confidence(1.0, 0.0, 1.0, 0.5) == 0.0
+assert foot_confidence(0.2, 0.2, 0.0, 0.0) == 0.0
+# The largest theoretical X/Z correction remains bounded by the same
+# existing 52cm crouch or 74cm prone budget, and decreases in crossfades.
+for weight in [i/100 for i in range(101)]:
+    mixed = foot_confidence(1.0, weight, 1.0-weight, 0.0)
+    assert 0.0 <= mixed <= 1.0
+    if .1 <= weight <= .9:
+        assert mixed == 0.0
+    for prone in (0.0, .5, 1.0):
+        budget = .52 * (1-prone) + .74 * prone
+        assert budget * mixed <= budget
+
 # Source-equivalent pole curves: settled prone gets a strong vertical pole,
 # whereas crawling, fresh transitions and fast turning preserve the clip.
 def smooth(x):
