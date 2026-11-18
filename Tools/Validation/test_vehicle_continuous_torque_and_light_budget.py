@@ -56,7 +56,9 @@ class MobileVehicleBudget(unittest.TestCase):
         self.assertIn("EnsureRoadHeadlight();",enter)
         self.assertIn("RefreshExteriorLights();",enter)
         lights=SOURCE.split("private void RefreshExteriorLights()",1)[1]
-        self.assertIn("roadHeadlight.enabled = driving;",lights)
+        self.assertIn("roadHeadlight.enabled = roadBeam;",lights)
+        self.assertIn("bool roadBeam = driving && NeedsRoadBeam();",lights)
+        self.assertIn("(roadBeam ? 8 : 0)",lights)
         self.assertNotIn("EnsureRoadHeadlight();",SOURCE.split("private void FixedUpdate()",1)[1])
 
 if __name__=="__main__": unittest.main()
