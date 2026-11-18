@@ -17,17 +17,23 @@ namespace Aaris.MapReview.Editor
         private static readonly string[] Names =
         {
             "sedan", "suv", "sports", "premium-gt",
-            "hatchback", "pickup", "van"
+            "hatchback", "pickup", "van", "buggy"
+        };
+        private static readonly string[] VehicleIds =
+        {
+            "Sedan", "SUV", "Sports", "GT",
+            "Hatchback", "Utility", "Van", "Buggy"
         };
         private static readonly string[] Paths =
         {
             "Assets/Resources/AarisVehicles/Authored/CivilianSedan.prefab",
             "Assets/Resources/AarisVehicles/Authored/1990s-suv.fbx",
             "Assets/Resources/AarisVehicles/Authored/1990s-sports-car.fbx",
-            "Assets/Resources/AarisVehicles/Authored/QuaterniusSports.obj",
+            "Assets/Resources/AarisVehicles/PremiumRoadGT/AarisRoadGT.prefab",
             "Assets/Resources/AarisVehicles/Authored/1990s-hatchback.fbx",
             "Assets/Resources/AarisVehicles/Authored/1990s-pickup-truck.fbx",
-            "Assets/Resources/AarisVehicles/Authored/1980s-van.fbx"
+            "Assets/Resources/AarisVehicles/Authored/1980s-van.fbx",
+            "Assets/Resources/AarisVehicles/Authored/AarisBuggy.obj"
         };
 
         [MenuItem("Aaris/CI/Capture genuine imported vehicle previews")]
@@ -47,6 +53,13 @@ namespace Aaris.MapReview.Editor
             if (string.IsNullOrEmpty(directory))
                 directory = Path.Combine(Path.GetTempPath(), "aaris-vehicle-art-review");
             Directory.CreateDirectory(directory);
+            TextAsset catalogJson = Resources.Load<TextAsset>(
+                "AarisVehicles/vehicle_catalog");
+            if (catalogJson == null)
+                throw new InvalidOperationException("Real runtime car catalogue not available.");
+            var catalog = JsonUtility.FromJson<AarisVehicleTypesFile>(catalogJson.text);
+            if (catalog == null || catalog.vehicles == null)
+                throw new InvalidOperationException("Invalid runtime car catalogue.");
 
             // Unsaved isolated stage; the native 2km terrain and game assets stay untouched.
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -58,7 +71,7 @@ namespace Aaris.MapReview.Editor
 
             var road = GameObject.CreatePrimitive(PrimitiveType.Plane);
             road.name = "Temporary neutral vehicle floor";
-            road.transform.localScale = new Vector3(2.2f, 1f, 2.2f);
+            road.transform.localScale = new Vector3(.7f, 1f, 1.8f);
             road.transform.position = new Vector3(0f, -.035f, 0f);
             var roadMaterial = new Material(shader) { name = "Temporary neutral asphalt" };
             roadMaterial.SetColor("_BaseColor", new Color(.24f, .27f, .29f));
@@ -99,25 +112,86 @@ namespace Aaris.MapReview.Editor
                     GameObject instance = UnityEngine.Object.Instantiate(prefab);
                     instance.name = "Temporary " + Names[i];
                     instance.SetActive(true);
+                    GameObject wheelRig = null;
+                    Material studioWheelMat = null;
                     try
                     {
                         if (!VisibleBounds(instance, out Bounds bounds))
                             throw new InvalidOperationException("No visible mesh geometry in " + Paths[i]);
+                        // Use REAL live catalogue metre caps, not duplicated
+                        // or silently outdated photo-studio dimensions.
+                        AarisVehicleType type = Array.Find(catalog.vehicles,
+                            v => v != null && v.id == VehicleIds[i]);
+                        if (type == null)
+                            throw new InvalidOperationException(
+                                "Runtime vehicle category absent: " + VehicleIds[i]);
+                        if (bounds.size.y > 2.75f &&
+                            bounds.size.y > Mathf.Max(bounds.size.x, bounds.size.z) * 1.30f &&
+                            bounds.size.x > .8f && bounds.size.z > .7f)
+                        {
+                            instance.transform.rotation = Quaternion.Euler(-90f, 0f, 0f) *
+                                instance.transform.rotation;
+                            if (!VisibleBounds(instance, out bounds))
+                                throw new InvalidOperationException("FBX up-axis import failed.");
+                        }
                         if (bounds.size.x > bounds.size.z * 1.10f)
                         {
-                            instance.transform.rotation = Quaternion.Euler(0f, 90f, 0f);
+                            instance.transform.rotation = Quaternion.Euler(0f, 90f, 0f) *
+                                instance.transform.rotation;
                             if (!VisibleBounds(instance, out bounds))
                                 throw new InvalidOperationException("Vehicle orientation bounds missing: " + Paths[i]);
                         }
-                        float scale = Mathf.Min(1.95f / Mathf.Max(.01f, bounds.size.x),
-                            4.45f / Mathf.Max(.01f, bounds.size.z));
-                        instance.transform.localScale *= Mathf.Clamp(scale, .01f, 30f);
+                        float width = Mathf.Clamp(type.referenceWidthMetres > 0f
+                            ? type.referenceWidthMetres : 1.88f, 1.65f, 2.15f);
+                        float length = Mathf.Clamp(type.referenceLengthMetres > 0f
+                            ? type.referenceLengthMetres : 4.28f, 3.35f, 5.50f);
+                        float uniform = Mathf.Min(width / bounds.size.x,
+                            length / bounds.size.z);
+                        if (type.id == "GT")
+                        {
+                            // The GT correction preserves equal rolling-plane
+                            // Y/Z ratios so tyres do not turn into ellipses.
+                            float transverse = Mathf.Clamp(width / bounds.size.x,
+                                .01f, 50f);
+                            float wheelPlane = Mathf.Clamp(length / bounds.size.z,
+                                .01f, 50f);
+                            instance.transform.localScale = Vector3.Scale(
+                                instance.transform.localScale,
+                                new Vector3(transverse, wheelPlane, wheelPlane));
+                        }
+                        else
+                            instance.transform.localScale *=
+                                Mathf.Clamp(uniform, .01f, 50f);
                         if (!VisibleBounds(instance, out bounds))
                             throw new InvalidOperationException("Vehicle scale bounds missing: " + Paths[i]);
                         instance.transform.position -=
                             new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
                         if (!VisibleBounds(instance, out bounds))
                             throw new InvalidOperationException("Vehicle recenter failed: " + Paths[i]);
+                        if (VehicleIds[i] == "Sedan")
+                        {
+                            // Sedan art contains a body only. Recreate the
+                            // 4 actual game wheel visuals so the comparison
+                            // cannot show an incorrectly wheel-less car.
+                            wheelRig = new GameObject("Studio Sedan Wheels");
+                            wheelRig.transform.position = new Vector3(0f, .49f, 0f);
+                            var motor = wheelRig.AddComponent<AarisVehicleMotor>();
+                            motor.Configure("Sedan", 24f, 1250f);
+                            motor.FitShellAndWheelbase(
+                                new Bounds(new Vector3(0f, .48f, 0f), bounds.size));
+                            studioWheelMat = new Material(shader);
+                            var atlas = Resources.Load<Texture2D>(
+                                "AarisVehicles/Models/colormap");
+                            if (atlas == null) throw new InvalidOperationException(
+                                "Missing actual Kenney wheel UV palette.");
+                            studioWheelMat.SetTexture("_BaseMap", atlas);
+                            studioWheelMat.SetColor("_BaseColor", Color.white);
+                            studioWheelMat.SetFloat("_Metallic", 0f);
+                            studioWheelMat.SetFloat("_Smoothness", .18f);
+                            if (!motor.AttachWheelModels(Resources.Load<GameObject>(
+                                    "AarisVehicles/Models/wheel-default"), studioWheelMat))
+                                throw new InvalidOperationException("Sedan wheel art unavailable.");
+                        }
                         Vector3 target = bounds.center + new Vector3(0f, .1f, 0f);
                         camera.transform.position = target + new Vector3(4.15f, 2.45f, 6.9f);
                         camera.transform.LookAt(target, Vector3.up);
@@ -127,15 +201,23 @@ namespace Aaris.MapReview.Editor
                         Debug.Log("AARIS_VEHICLE_STUDIO_CAPTURE " + Names[i] +
                             " bounds=" + bounds.size.ToString("F2") + " path=" + output);
                     }
-                    finally { UnityEngine.Object.DestroyImmediate(instance); }
+                    finally
+                    {
+                        if (wheelRig != null) UnityEngine.Object.DestroyImmediate(wheelRig);
+                        if (studioWheelMat != null)
+                            UnityEngine.Object.DestroyImmediate(studioWheelMat);
+                        UnityEngine.Object.DestroyImmediate(instance);
+                    }
                 }
                 File.WriteAllText(Path.Combine(directory, "README.txt"),
                     "Unity " + Application.unityVersion + " / " +
                     SystemInfo.graphicsDeviceName + Environment.NewLine +
-                    "Actual imported vehicle asset photographs under neutral studio lighting." +
+                    "Actual catalog-sized vehicle photographs on a 7 m street under neutral studio lighting." +
                     Environment.NewLine +
                     "These are not in-game spawn, handling, real match lighting, or Android FPS proof." +
                     Environment.NewLine + string.Join(Environment.NewLine, saved));
+                if (saved.Count != 8)
+                    throw new InvalidOperationException("Expected all 8 current vehicle models.");
                 Debug.Log("AARIS_VEHICLE_STUDIO_PASS " + saved.Count + " genuine Unity photos");
             }
             finally
