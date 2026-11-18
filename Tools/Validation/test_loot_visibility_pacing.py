@@ -66,6 +66,28 @@ class LootVisibilityPacing(unittest.TestCase):
         self.assertIn("beacon.enabled = false;", update)
         self.assertIn("nextBeaconVisibilityCheck = Time.unscaledTime + 0.45f;", update)
 
+    def test_missing_camera_lookup_shared_by_all_pickups(self):
+        # Forty streamed weapons must not each call Camera.main during
+        # Android focus loss / scene swap. Lookup is shared and throttled.
+        self.assertIn("private static Camera sharedBeaconCamera;", SRC)
+        self.assertIn("private static float nextSharedCameraLookup;", SRC)
+        self.assertIn("if (Time.unscaledTime < nextSharedCameraLookup) return null;", SRC)
+        self.assertIn("nextSharedCameraLookup = Time.unscaledTime + 0.45f;", SRC)
+        self.assertIn("sharedBeaconCamera = null;", SRC)
+        self.assertIn("nextSharedCameraLookup = 0f;", SRC)
+        self.assertEqual(SRC.count("Camera.main"), 1)
+        self.assertEqual(SRC.count("beaconObserver = FindBeaconCamera();"), 2)
+        for fps in (15, 30, 60, 90, 120):
+            next_lookup, calls = 0.0, 0
+            for frame in range(2 * fps):
+                now = frame / fps
+                for _ in range(40):
+                    if now < next_lookup:
+                        continue
+                    next_lookup = now + 0.45
+                    calls += 1
+            self.assertLessEqual(calls, 5, fps)
+
     def test_hidden_poll_budget_and_visible_fidelity(self):
         for fps in (15, 30, 60, 90, 120):
             with self.subTest(fps=fps):
