@@ -8,6 +8,23 @@ using UnityEngine.Rendering;
 
 namespace Aaris.MapReview.Editor
 {
+    // Editor assembly cannot reference runtime-internal AarisVehicleType.
+    // JsonUtility reads only fields needed from the SAME shipped catalogue.
+    [Serializable]
+    internal sealed class AarisVehicleStudioCatalog
+    {
+        public AarisVehicleStudioRecord[] vehicles;
+    }
+
+    [Serializable]
+    internal sealed class AarisVehicleStudioRecord
+    {
+        public string id, drivetrain;
+        public float referenceWidthMetres, referenceLengthMetres;
+        public float maxSpeedMetres, massKg, tyreGripScale;
+        public float suspensionScale, steeringScale, suspensionTravelScale;
+    }
+
     /// <summary>
     /// Genuine Unity import / URP art photographs, NOT gameplay or FPS evidence.
     /// Runs only in batch mode and never saves changes to the game scene.
@@ -57,7 +74,7 @@ namespace Aaris.MapReview.Editor
                 "AarisVehicles/vehicle_catalog");
             if (catalogJson == null)
                 throw new InvalidOperationException("Real runtime car catalogue not available.");
-            var catalog = JsonUtility.FromJson<AarisVehicleTypesFile>(catalogJson.text);
+            var catalog = JsonUtility.FromJson<AarisVehicleStudioCatalog>(catalogJson.text);
             if (catalog == null || catalog.vehicles == null)
                 throw new InvalidOperationException("Invalid runtime car catalogue.");
 
@@ -120,7 +137,7 @@ namespace Aaris.MapReview.Editor
                             throw new InvalidOperationException("No visible mesh geometry in " + Paths[i]);
                         // Use REAL live catalogue metre caps, not duplicated
                         // or silently outdated photo-studio dimensions.
-                        AarisVehicleType type = Array.Find(catalog.vehicles,
+                        AarisVehicleStudioRecord type = Array.Find(catalog.vehicles,
                             v => v != null && v.id == VehicleIds[i]);
                         if (type == null)
                             throw new InvalidOperationException(
