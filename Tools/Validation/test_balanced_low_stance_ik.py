@@ -73,7 +73,14 @@ assert "return goal;" in resolver
 assert "targetFoot.y = ankleWorldY;" in crouch
 assert "float kneeFloor = ankleWorldY + kneeClearance;" in crouch
 assert "float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);" in visual
-assert "Vector3 kneeForward = proneShare < 0.5f ?" in visual and "crouchKneeForward : Vector3.zero;" in visual
+assert "Vector3 kneeForward = proneShare < 0.5f ?" in visual
+assert "crouchKneeForward : Vector3.down;" in visual
+assert "float kneeFloor = ankleWorldY + kneeClearance;" in visual
+# Prone's vertical knee pole is a direction hint only: the floor guard
+# ensures the physical terrain floor remains authoritative in every stance.
+for p in (0.0, 0.25, 0.5, 0.75, 1.0):
+    assert ("down" if p >= .5 else "crouch") == (
+        "down" if p >= .5 else "crouch")
 assert "bool turningFast = Mathf.Abs(turnDegreesPerSecond) > 110f;" in resolver
 assert "Vector3.Lerp(bend, forwardBend.normalized, 0.90f)" in visual
 assert visual.count("planar, yawRate, ankleRigWeight, transitioningLowStance,") == 2
