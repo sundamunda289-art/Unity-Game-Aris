@@ -619,6 +619,27 @@ namespace Aaris.MapReview
             return null;
         }
 
+        // Validate only imported high-fidelity art. The legacy fallback
+        // cars have their own verified proportions and should never be
+        // rejected by this optional visual-quality envelope.
+        internal static bool HasPlausibleAuthoredSilhouette(
+            Vector3 size, float targetWidth, float targetLength)
+        {
+            if (float.IsNaN(size.sqrMagnitude) ||
+                float.IsInfinity(size.sqrMagnitude) ||
+                targetWidth <= 0f || targetLength <= 0f) return false;
+            // Height limits admit the low GT coupe and tall utility/van.
+            // A substantial fraction of each class's 7/8m-road footprint
+            // must be visible, not squeezed into a toy-sized body.
+            return size.x >= targetWidth * .74f &&
+                size.x <= targetWidth * 1.08f &&
+                size.z >= targetLength * .78f &&
+                size.z <= targetLength * 1.08f &&
+                size.y >= .82f && size.y <= 2.58f &&
+                size.x >= size.z * .28f &&
+                size.x <= size.z * .72f;
+        }
+
         // FBX exporters disagree about forward axes. The higher-fidelity
         // vehicles have semantic wheel names, so infer their true nose from
         // front-vs-rear axle centers after the broad X/Z bounds correction.
@@ -1558,6 +1579,22 @@ namespace Aaris.MapReview
                 Destroy(root);
                 return false;
             }
+            // A non-empty renderer is not enough: a broken importer can
+            // silently create a 30-cm-tall car or an oversized bus while all
+            // earlier wheel material/bounds checks return success. Use the
+            // exact final chassis-space mesh dimensions, AFTER source-axis,
+            // body scaling and tyre-ground alignment, before creating physics.
+            // The original verified fallback kit keeps its legacy footprint.
+            bool importedCar = record.type.useEmbeddedAuthoredWheels ||
+                record.type.preserveAuthoredUrpMaterials ||
+                record.type.convertAuthoredBodyMaterials;
+            if (importedCar && !HasPlausibleAuthoredSilhouette(
+                    bounds.size, widthMetres, lengthMetres))
+            {
+                FallBackToVerifiedModel(typeIndex, "unrealistic car silhouette");
+                Destroy(root);
+                return false;
+            }
             var motor = root.AddComponent<AarisVehicleMotor>();
             motor.Configure(record.type.id, record.type.maxSpeedMetres, record.type.massKg);
             motor.ConfigureHandling(record.type.drivetrain,
@@ -1601,8 +1638,17 @@ namespace Aaris.MapReview
                 StablePaintVariant(record.point.id, record.type.id)]);
             record.visible = motor;
             if (Debug.isDebugBuild)
+            {
                 Debug.Log("AARIS_CAR_PLACED " + record.point.id + " " +
                     record.type.id + " " + root.transform.position.ToString("F2"));
+                // One spawn-time source of truth for native Unity QA:
+                // compare these actual rendered metres against catalog cars.
+                // Debug-only, never a 30/60 FPS render or driving loop cost.
+                Debug.Log("AARIS_CAR_RENDER_METRES id=" + record.type.id +
+                    " width=" + bounds.size.x.ToString("F2") +
+                    " height=" + bounds.size.y.ToString("F2") +
+                    " length=" + bounds.size.z.ToString("F2"));
+            }
             return true;
         }
 
