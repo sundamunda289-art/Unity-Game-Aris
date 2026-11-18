@@ -1945,7 +1945,23 @@ namespace Aaris.MapReview
                 float carryTarget = !carrying ? 0f : aim ? 0.63f :
                     Mathf.Lerp(0.36f, 0.15f, releaseArms);
                 if (prone) carryTarget *= 0.6f;
-                readyPoseBlend = Mathf.Lerp(readyPoseBlend, carryTarget, alpha);
+                // Preserve the authored shoulder/arm cadence at fast sprint.
+                // Otherwise a residual frozen upper-body ready pose can hold
+                // both elbows stiff against the chest after the legs switch
+                // into a full running cycle. Aim and attack overrides remain
+                // authoritative; only non-aiming passive pose fades away.
+                float sprintArmRelease = !aim
+                    ? Mathf.SmoothStep(0f, 1f,
+                        Mathf.InverseLerp(0.20f, 0.85f, sprintBlend))
+                    : 0f;
+                carryTarget *= 1f - sprintArmRelease;
+                // Let go of the old ready pose promptly when accelerating,
+                // but restore it at the normal smooth rate when slowing down
+                // to avoid a pop during jog-to-idle.
+                float armReleaseAlpha = Mathf.Clamp01(alpha *
+                    (carryTarget < readyPoseBlend ? 1.65f : 1f));
+                readyPoseBlend = Mathf.Lerp(readyPoseBlend,
+                    carryTarget, armReleaseAlpha);
                 float layerWeight = Mathf.Clamp01(Mathf.Max(readyPoseBlend, attackUpper));
                 float attackRatio = layerWeight > 0.0001f
                     ? attackUpper / layerWeight : 0f;
