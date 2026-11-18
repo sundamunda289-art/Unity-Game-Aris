@@ -778,7 +778,14 @@ namespace Aaris.MapReview
                 else
                     displacement = Vector3.zero;
             }
+            // Follow the direction of actual planned movement while avoiding
+            // remote cover or retreating to safety. Otherwise occluded rivals
+            // moonwalk sideways/backwards while running across open terrain.
+            // Keep eyes/body on the player during clear, active combat.
+            // Rotation only: capsule collision and shot/zone gates are unchanged.
             Vector3 facing = distance > .05f ? toward : transform.forward;
+            if ((!canSee || retreat) && displacement.sqrMagnitude > 0.000001f)
+                facing = displacement.normalized;
             if (facing.sqrMagnitude > .01f)
                 transform.rotation = Quaternion.Slerp(transform.rotation,
                     Quaternion.LookRotation(facing), 1f - Mathf.Exp(-5f * dt));
