@@ -876,8 +876,9 @@ print('PASS: stationary crouch world-contact anchors')
 for needle in (
     'float minimumKneeWorldY = -10000f',
     'float kneeFloor = ankleWorldY + kneeClearance;',
-    'Vector3.Lerp(bend, forwardBend.normalized,',
-    'Mathf.Clamp01(kneePoleStrength)).normalized;',
+    'float poleSin = Vector3.Dot(axis, Vector3.Cross(bend, pole));',
+    'Mathf.Atan2(poleSin, poleCos) * Mathf.Rad2Deg;',
+    'poleAngle * Mathf.Clamp01(kneePoleStrength), axis) * bend;',
     'Vector3.ProjectOnPlane(Vector3.up, axis)',
     'Mathf.Min(pelvisShortfall, helmetRoom), 0f, 0.21f',
     'visualRoot.localPosition += Vector3.up * pelvisLift;'
