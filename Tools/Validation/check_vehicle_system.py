@@ -493,7 +493,10 @@ def test():
     assert "car.TotalSpeedMetresPerSecond /" in session
     assert "car.TopSpeedMetresPerSecond" in session
     assert "Mathf.Lerp(6.25f, 7.40f, speed01)" in session
-    assert "Mathf.Lerp(2.95f, 3.25f, speed01)" in session
+    assert "Mathf.Lerp(2.75f, 3.05f, speed01)" in session
+    assert "chaseAimHeight + .12f * speed01" in session
+    assert "BoxCollider shell = car.GetComponent<BoxCollider>();" in session
+    assert "chaseBodyLength = Mathf.Clamp(shell.size.z, 3.0f, 5.3f);" in session
     assert "Mathf.Lerp(62f, 70f," in session
     assert "Quaternion.Slerp(" in session
     assert "float cameraFrameDt = Mathf.Clamp(Time.deltaTime, 0f, .15f);" in session
@@ -502,10 +505,14 @@ def test():
     assert "float fovDelta = cameraFrameDt;" in session
     assert "1f - Mathf.Exp(-5f * fovDelta)" in session
     for speed01 in (0.0, .25, .5, .75, 1.0):
-        distance = 6.25 + (7.40 - 6.25) * speed01
-        height = 2.95 + (3.25 - 2.95) * speed01
-        assert 6.25 <= distance <= 7.40
-        assert 2.95 <= height <= 3.25
+        for length in (3.0, 4.20, 5.3):
+            distance_offset = max(-.24, min(.36, (length - 4.20) * .26))
+            distance = 6.25 + (7.40 - 6.25) * speed01 + distance_offset
+            assert 6.0 <= distance <= 7.76
+        for aim in (.68, 1.28, 1.65):
+            height_offset = max(-.15, min(.10, (aim - 1.30) * .25))
+            height = 2.75 + (3.05 - 2.75) * speed01 + height_offset
+            assert 2.60 <= height <= 3.15
     for contact in (0.0, .05, .1, .2, .24, .3, .35, .45, 1.0, 6.0):
         assert 0 <= max(0.0, contact - .24) <= contact
     # The driving session—not only the HUD—owns the held motor command.
