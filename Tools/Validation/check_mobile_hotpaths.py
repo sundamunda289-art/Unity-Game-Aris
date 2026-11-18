@@ -265,13 +265,12 @@ def audit():
     assert "string normalizedGpu = gpu.Replace('-', ' ').Replace('_', ' ');" in gpu_detection
     assert "return smallG57 ||" in gpu_detection
     for suffix in (" MC1", " MC2", " MP1", " MP2"):
-        assert 'normalizedGpu.IndexOf("' + suffix + '"' in gpu_detection
+        assert 'HasExactGpuModel(normalizedGpu, "Mali G57' + suffix + '")' in gpu_detection
 
     def small_g57(gpu_name):
+        import re
         name = gpu_name.replace("-", " ").replace("_", " ").lower()
-        return "mali g57" in name and any(
-            suffix in name for suffix in (" mc1", " mc2", " mp1", " mp2")
-        )
+        return bool(re.search(r"(?<![a-z0-9])mali g57 (?:mc[12]|mp[12])(?![a-z0-9])", name))
 
     for gpu_name, expected in (
         ("ARM Mali-G57 MC2", True),
@@ -281,6 +280,8 @@ def audit():
         ("MALI_G57 MC1", True),
         ("Mali-G57 MC3", False),
         ("Mali-G57 MC4", False),
+        ("Mali-G57 MC21", False),
+        ("Mali-G57 MC4 driver MC2", False),
         ("Mali-G57", False),
         ("Mali-G76 MC4", False),
         ("Adreno 740", False),
