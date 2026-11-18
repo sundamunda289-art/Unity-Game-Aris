@@ -106,7 +106,7 @@ assert 'float boneSpan = proneHeadBone.position.y -' in visual
 assert '(TargetHeightMetres - 0.14f) / boneSpan' in visual
 assert 'visualRoot.localScale *= scaleFactor;' in visual
 assert 'standingShoeOffset + adjustment' in visual
-assert 'standingShoeOffset * uprightWeight' in visual
+assert 'proneLowering + standingShoeOffset, 0f' in visual
 assert 'Mathf.Min(leftFootBone.position.y,' in visual
 # Native crouch/prone Head has to stay below stance capsule ceiling;
 # knee solver then replants feet at the real floor under each foot.
@@ -826,3 +826,8 @@ for fps in (10,20,30,60,120):
         assert not is_locked and next_foot == .08
     assert not low_contact(True,anchor,.25,0,1)[0]
 print('PASS: stationary crouch world-contact anchors')
+
+# The FBX import calibration must remain constant as the collision capsule crouches.
+assert 'standingShoeOffset * uprightWeight' not in visual
+assert 'not a standing animation weight' in visual
+print('PASS: permanent rig-origin calibration through crouch and prone')
