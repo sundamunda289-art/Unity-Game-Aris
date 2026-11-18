@@ -106,6 +106,8 @@ namespace Aaris.MapReview.Editor
                     GameObject instance = UnityEngine.Object.Instantiate(prefab);
                     instance.name = "Temporary " + Names[i];
                     instance.SetActive(true);
+                    GameObject wheelRig = null;
+                    Material studioWheelMat = null;
                     try
                     {
                         if (!VisibleBounds(instance, out Bounds bounds))
@@ -133,6 +135,32 @@ namespace Aaris.MapReview.Editor
                             new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
                         if (!VisibleBounds(instance, out bounds))
                             throw new InvalidOperationException("Vehicle recenter failed: " + Paths[i]);
+                        // The civilian Sedan prefab is a body-only art
+                        // asset. Real gameplay adds four Kenney WheelCollider
+                        // visuals; displaying a wheel-less shell in the
+                        // photo studio falsely suggested missing game wheels.
+                        if (VehicleIds[i] == "Sedan")
+                        {
+                            wheelRig = new GameObject("Studio sedan physics-wheel art");
+                            wheelRig.transform.position = new Vector3(0f, .49f, 0f);
+                            var motor = wheelRig.AddComponent<AarisVehicleMotor>();
+                            motor.Configure("Sedan", 24f, 1250f);
+                            motor.FitShellAndWheelbase(
+                                new Bounds(new Vector3(0f, .48f, 0f), bounds.size));
+                            studioWheelMat = new Material(shader);
+                            studioWheelMat.SetColor("_BaseColor",
+                                new Color(.22f, .24f, .27f, 1f));
+                            studioWheelMat.SetFloat("_Metallic", .15f);
+                            studioWheelMat.SetFloat("_Smoothness", .37f);
+                            var wheel = Resources.Load<GameObject>(
+                                "AarisVehicles/Models/wheel-default");
+                            if (!motor.AttachWheelModels(wheel, studioWheelMat))
+                                throw new InvalidOperationException(
+                                    "Actual sedan wheel mesh could not be attached.");
+                            if (wheelRig.GetComponentsInChildren<Renderer>().Length < 4)
+                                throw new InvalidOperationException(
+                                    "Sedan preview lacks four visible wheels.");
+                        }
                         Vector3 target = bounds.center + new Vector3(0f, .1f, 0f);
                         camera.transform.position = target + new Vector3(4.15f, 2.45f, 6.9f);
                         camera.transform.LookAt(target, Vector3.up);
@@ -142,7 +170,13 @@ namespace Aaris.MapReview.Editor
                         Debug.Log("AARIS_VEHICLE_STUDIO_CAPTURE " + Names[i] +
                             " bounds=" + bounds.size.ToString("F2") + " path=" + output);
                     }
-                    finally { UnityEngine.Object.DestroyImmediate(instance); }
+                    finally
+                    {
+                        if (wheelRig != null) UnityEngine.Object.DestroyImmediate(wheelRig);
+                        if (studioWheelMat != null)
+                            UnityEngine.Object.DestroyImmediate(studioWheelMat);
+                        UnityEngine.Object.DestroyImmediate(instance);
+                    }
                 }
                 File.WriteAllText(Path.Combine(directory, "README.txt"),
                     "Unity " + Application.unityVersion + " / " +
