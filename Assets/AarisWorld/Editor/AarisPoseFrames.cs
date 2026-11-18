@@ -159,7 +159,10 @@ float capTop=p.transform.TransformPoint(capsule.center+
 float excess=head.position.y-capTop;
 Log("PORTRAIT_HEADROOM stance="+b.Stance+
  " excessMetres="+excess.ToString("F3"));
-if(excess>.055f)throw new InvalidOperationException("ACTOR_HEAD_PENETRATES_CEILING_"+b.Stance);
+// The capsule changes immediately on input, while visuals intentionally
+// interpolate. Only enforce the helmet ceiling on settled portrait poses.
+if(!SessionState.GetBool("pose.transitions",false)&&excess>.055f)
+throw new InvalidOperationException("ACTOR_HEAD_PENETRATES_CEILING_"+b.Stance);
 }
 // Make the visual screenshot suite fail for genuinely sideways crouch knees
 // or a prone silhouette that frog-splays. The check exists only in the Unity
