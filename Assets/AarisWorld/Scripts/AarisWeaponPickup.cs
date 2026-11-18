@@ -18,10 +18,30 @@ namespace Aaris.MapReview
         // discover nearby visible guns without any scene-wide Find call in Update.
         private static readonly HashSet<AarisWeaponPickup> activePickups =
             new HashSet<AarisWeaponPickup>();
+        // All streamed pickups share one camera query when the main camera
+        // is unavailable during scene transitions or device resume.
+        private static Camera sharedBeaconCamera;
+        private static float nextSharedCameraLookup;
         internal static IEnumerable<AarisWeaponPickup> ActivePickups => activePickups;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ClearPickupRegistry() => activePickups.Clear();
+        private static void ClearPickupRegistry()
+        {
+            activePickups.Clear();
+            sharedBeaconCamera = null;
+            nextSharedCameraLookup = 0f;
+        }
+
+        private static Camera FindBeaconCamera()
+        {
+            if (sharedBeaconCamera != null && sharedBeaconCamera.isActiveAndEnabled)
+                return sharedBeaconCamera;
+            if (Time.unscaledTime < nextSharedCameraLookup) return null;
+            nextSharedCameraLookup = Time.unscaledTime + 0.45f;
+            sharedBeaconCamera = Camera.main;
+            return sharedBeaconCamera != null && sharedBeaconCamera.isActiveAndEnabled
+                ? sharedBeaconCamera : null;
+        }
 
         private AarisWeaponState state;
         private int candidateIndex;
@@ -163,7 +183,7 @@ namespace Aaris.MapReview
                 beacon.receiveShadows = false;
             }
             // Share the main camera reference; never search the scene every frame.
-            beaconObserver = Camera.main;
+            beaconObserver = FindBeaconCamera();
             activePickups.Add(this);
             return true;
         }
@@ -179,7 +199,7 @@ namespace Aaris.MapReview
             {
                 nextBeaconVisibilityCheck = Time.unscaledTime + 0.45f;
                 if (beaconObserver == null || !beaconObserver.isActiveAndEnabled)
-                    beaconObserver = Camera.main;
+                    beaconObserver = FindBeaconCamera();
                 if (beaconObserver != null && beaconObserver.isActiveAndEnabled)
                 {
                     float rangeSq = (beaconObserver.transform.position -
