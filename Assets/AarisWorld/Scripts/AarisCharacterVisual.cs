@@ -951,7 +951,7 @@ namespace Aaris.MapReview
             // the existing forward hint; prone passes a zero hint.
             if (minimumKneeWorldY > -1000f &&
                 forwardBend.sqrMagnitude > 0.0001f)
-                bend = Vector3.Lerp(bend, forwardBend.normalized, 0.72f).normalized;
+                bend = Vector3.Lerp(bend, forwardBend.normalized, 0.90f).normalized;
             float along = (upper * upper - lower * lower + distance * distance) /
                 (2f * distance);
             float across = Mathf.Sqrt(Mathf.Max(
@@ -1010,6 +1010,7 @@ namespace Aaris.MapReview
         private static void PlantCrouchLeg(Transform thigh, Transform shin,
             Transform foot, float ankleWorldY, Vector3 forward, float weight,
             float planarSpeed, float turnDegreesPerSecond,
+            Vector3 desiredFootWorld,
             ref bool contactLocked, ref Vector3 contactWorld)
         {
             if (foot == null || float.IsNaN(ankleWorldY) || weight <= 0.005f)
@@ -1018,6 +1019,11 @@ namespace Aaris.MapReview
                 return;
             }
             Vector3 targetFoot = foot.position;
+            // The hip-relative stance planner gives each side a reachable,
+            // anatomically balanced horizontal target. Its support height was
+            // sampled at that SAME X/Z (not the old, splayed animation foot).
+            targetFoot.x = desiredFootWorld.x;
+            targetFoot.z = desiredFootWorld.z;
             targetFoot.y = ankleWorldY;
             // A stationary crouch pivot changes skeleton yaw even when capsule
             // velocity is zero. Release the old world-space shoe anchors on a
@@ -1047,17 +1053,84 @@ namespace Aaris.MapReview
                 kneeFloor);
         }
 
+        // Crouching should keep feet within a compact, balanced footprint;
+        // prone legs should extend behind the hips instead of frog-splaying
+        // sideways. Retarget only *settled* low stances. Traversal, jumps and
+        // transitions retain the authored animation. No Unity allocations.
+        private void PlanBalancedLowStanceFeet(float proneShare,
+            float lowPose, float planarSpeed,
+            out Vector3 leftGoal, out Vector3 rightGoal)
+        {
+            leftGoal = leftFootBone != null ? leftFootBone.position : Vector3.zero;
+            rightGoal = rightFootBone != null ? rightFootBone.position : Vector3.zero;
+            if (leftFootBone == null || rightFootBone == null ||
+                leftThigh == null || rightThigh == null ||
+                locomotionHipsBone == null) return;
+
+            float settledPose = Mathf.SmoothStep(0f, 1f,
+                Mathf.InverseLerp(0.68f, 0.96f, lowPose));
+            float stationary = 1f - Mathf.SmoothStep(0f, 1f,
+                Mathf.InverseLerp(0.07f, 0.38f, planarSpeed));
+            float correction = settledPose * stationary;
+            if (correction < 0.001f) return;
+
+            float prone = Mathf.SmoothStep(0f, 1f,
+                Mathf.InverseLerp(0.35f, 0.85f, proneShare));
+            Vector3 facing = transform.forward;
+            if (prone > 0.001f && proneHeadBone != null)
+            {
+                // The root yaw is not necessarily the crawling torso yaw after
+                // Humanoid retargeting. Use the REAL hip-to-head direction.
+                Vector3 torso = Vector3.ProjectOnPlane(
+                    proneHeadBone.position - locomotionHipsBone.position,
+                    Vector3.up);
+                if (torso.sqrMagnitude > 0.04f)
+                    facing = Vector3.Slerp(facing, torso.normalized, prone);
+            }
+            facing = Vector3.ProjectOnPlane(facing, Vector3.up).normalized;
+            if (facing.sqrMagnitude < 0.25f) return;
+
+            Vector3 right = Vector3.Cross(Vector3.up, facing).normalized;
+            // Match left/right to the imported skeleton, not a guessed FBX yaw.
+            if (Vector3.Dot(right, rightThigh.position - leftThigh.position) < 0f)
+                right = -right;
+            Vector3 hipMid = (leftThigh.position + rightThigh.position) * 0.5f;
+            Vector3 crouchLeft = hipMid - right * 0.19f - facing * 0.06f;
+            Vector3 crouchRight = hipMid + right * 0.19f + facing * 0.07f;
+            Vector3 proneLeft = hipMid - facing * 0.73f - right * 0.16f;
+            Vector3 proneRight = hipMid - facing * 0.73f + right * 0.16f;
+            Vector3 requestedLeft = Vector3.Lerp(crouchLeft, proneLeft, prone);
+            Vector3 requestedRight = Vector3.Lerp(crouchRight, proneRight, prone);
+            // Never teleport boots: cap retargeting within one footstep and
+            // use existing analytic leg lengths as the final reach authority.
+            Vector3 leftDelta = Vector3.ProjectOnPlane(
+                requestedLeft - leftGoal, Vector3.up);
+            Vector3 rightDelta = Vector3.ProjectOnPlane(
+                requestedRight - rightGoal, Vector3.up);
+            leftGoal += Vector3.ClampMagnitude(leftDelta, 0.42f) * correction;
+            rightGoal += Vector3.ClampMagnitude(rightDelta, 0.42f) * correction;
+        }
+
         // One non-allocating ground sample per foot on low stances; unlike
-        // motor-bottom height this works on bridge and sloped terrain.
+        // motor-bottom height this works on bridges and sloped terrain.
         private float SupportedAnkleY(Transform foot, float clearance,
             out Vector3 supportNormal)
+        {
+            return SupportedAnkleY(foot, clearance, out supportNormal,
+                foot != null ? foot.position : Vector3.zero);
+        }
+
+        // Reuse the SAME one-ray-per-foot budget at the planned position:
+        // a candidate unsupported over an edge is rejected, never planted.
+        private float SupportedAnkleY(Transform foot, float clearance,
+            out Vector3 supportNormal, Vector3 sampleWorld)
         {
             supportNormal = Vector3.up;
             // A ray miss is not a floor. At ledges, gaps or non-walkable
             // surfaces, preserve the authored unsupported foot instead of
             // inventing a support plane at the motor origin.
             if (foot == null) return float.NaN;
-            Vector3 origin = foot.position + Vector3.up * 0.70f;
+            Vector3 origin = sampleWorld + Vector3.up * 0.70f;
             // Do not exclude the whole player layer: terrain, bridges and the
             // actor are often all Default (layer 0). The hit loop below
             // filters only colliders belonging to this character.
@@ -1607,19 +1680,21 @@ namespace Aaris.MapReview
                 float ankleClearance = Mathf.Lerp(PlantedAnkleMetres,
                     ProneAnkleClearanceMetres, proneShare);
                 Vector3 kneeForward = proneShare < 0.5f ? transform.forward : Vector3.zero;
+                PlanBalancedLowStanceFeet(proneShare, lowPose, planar,
+                    out Vector3 leftFootGoal, out Vector3 rightFootGoal);
                 float leftAnkleY = SupportedAnkleY(leftFootBone,
-                    ankleClearance, out Vector3 leftSupportNormal);
+                    ankleClearance, out Vector3 leftSupportNormal, leftFootGoal);
                 float rightAnkleY = SupportedAnkleY(rightFootBone,
-                    ankleClearance, out Vector3 rightSupportNormal);
+                    ankleClearance, out Vector3 rightSupportNormal, rightFootGoal);
                 if (!float.IsNaN(leftAnkleY))
                     PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
                         leftAnkleY, kneeForward, ankleRigWeight, planar, yawRate,
-                        ref leftLowPlantLocked, ref leftLowPlantWorld);
+                        leftFootGoal, ref leftLowPlantLocked, ref leftLowPlantWorld);
                 else leftLowPlantLocked = false;
                 if (!float.IsNaN(rightAnkleY))
                     PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
                         rightAnkleY, kneeForward, ankleRigWeight, planar, yawRate,
-                        ref rightLowPlantLocked, ref rightLowPlantWorld);
+                        rightFootGoal, ref rightLowPlantLocked, ref rightLowPlantWorld);
                 else rightLowPlantLocked = false;
                 // Crouch/prone used to correct only ankle height, leaving the
                 // sole visually cutting through a sloped road or bridge deck.
