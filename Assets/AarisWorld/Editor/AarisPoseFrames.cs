@@ -157,7 +157,12 @@ if(excess>.055f)throw new InvalidOperationException("ACTOR_HEAD_PENETRATES_CEILI
 HumanBodyBones[] bones={HumanBodyBones.Hips,HumanBodyBones.Chest,
 HumanBodyBones.Head,HumanBodyBones.LeftFoot,HumanBodyBones.RightFoot,
 HumanBodyBones.LeftHand,HumanBodyBones.RightHand,
+HumanBodyBones.LeftUpperLeg,HumanBodyBones.RightUpperLeg,
 HumanBodyBones.LeftLowerLeg,HumanBodyBones.RightLowerLeg};
+Log("STANCE_BASIS stance="+b.Stance+
+" rootForward="+p.transform.forward.ToString("F3")+
+" rootRight="+p.transform.right.ToString("F3")+
+" actorYaw="+p.transform.eulerAngles.y.ToString("F2"));
 foreach(var bone in bones){
 var t=animator.GetBoneTransform(bone);
 if(t==null)continue;
