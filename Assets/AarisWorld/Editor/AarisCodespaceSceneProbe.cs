@@ -201,7 +201,7 @@ namespace Aaris.MapReview.Editor
                 image.Apply(false);
                 Color32[] pixels = image.GetPixels32();
                 double sum = 0, sq = 0;
-                int magenta = 0, count = 0;
+                int magenta = 0, navyBlack = 0, black = 0, white = 0, count = 0;
                 int step = Math.Max(1, pixels.Length / 6000);
                 for (int i = 0; i < pixels.Length; i += step)
                 {
@@ -210,10 +210,22 @@ namespace Aaris.MapReview.Editor
                     sum += y;
                     sq += y * y;
                     if (p.r > 195 && p.g < 95 && p.b > 195) magenta++;
+                    // A varied but almost entirely dark-navy map is not a healthy
+                    // terrain render. Match the independent screenshot photo audit.
+                    if (p.r < 70 && p.g < 95 && p.b > 25 && p.b < 165 &&
+                        p.b > p.r + 18 && p.b > p.g + 12) navyBlack++;
+                    if (Mathf.Max(p.r, Mathf.Max(p.g, p.b)) < 18) black++;
+                    if (Mathf.Min(p.r, Mathf.Min(p.g, p.b)) > 242) white++;
                     count++;
                 }
                 float deviation = (float)Math.Sqrt(Math.Max(0, sq / count - (sum / count) * (sum / count)));
                 if (deviation < 6f) throw new InvalidOperationException("FRAME_NEARLY_UNIFORM");
+                if (black > count * 0.93f)
+                    throw new InvalidOperationException("FRAME_BLACK_CAMERA");
+                if (white > count * 0.93f)
+                    throw new InvalidOperationException("FRAME_WHITE_CAMERA");
+                if (navyBlack > count * 0.85f)
+                    throw new InvalidOperationException("FRAME_NAVY_BLACK_TERRAIN");
                 // A single magenta tree can cover far less than 75% of a landscape.
                 // Reject a small but repeatable hotspot (~0.1% of sampled pixels),
                 // without allocating a full-resolution segmentation mask on the CPU.
