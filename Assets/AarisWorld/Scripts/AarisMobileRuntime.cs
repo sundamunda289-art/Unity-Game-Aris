@@ -102,11 +102,16 @@ namespace Aaris.MapReview
             try
             {
                 string folder = Path.Combine(Application.persistentDataPath, "AarisDiagnostics");
-                Directory.CreateDirectory(folder);
                 logPath = Path.Combine(folder, "current.jsonl");
-                string previous = Path.Combine(folder, "previous.jsonl");
-                if (File.Exists(logPath)) File.Copy(logPath, previous, true);
-                File.WriteAllText(logPath, "");
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // File rotation can block Android's launch frame on slow flash.
+                // Enqueue it first; reports chain behind this task in FIFO order.
+                string initialPath = logPath;
+                pendingLogWrite = Task.Run(() => InitializeLogFile(initialPath));
+#else
+                string initialError = InitializeLogFile(logPath);
+                if (initialError != null) StopLogging(initialError);
+#endif
             }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             { Debug.LogWarning("Aaris diagnostics file unavailable: " + e.Message); logPath = null; }
@@ -833,28 +838,61 @@ namespace Aaris.MapReview
             LatestReport = JsonUtility.ToJson(s);
             if (logPath == null) return;
 #if UNITY_ANDROID && !UNITY_EDITOR
-            if (pendingLogWrite != null)
+            // Non-blocking, ordered diagnostic writes. All file I/O stays on
+            // background workers, including pause/quit. Main thread never
+            // waits for a filesystem operation or a pending report.
+            if (pendingLogWrite != null && pendingLogWrite.IsCompleted)
             {
-                // Keep at most one outstanding write. Pause/quit flush in order
-                // because Android can suspend the process after the callback.
-                if (!pendingLogWrite.IsCompleted && reason != "pause" && reason != "quit") return;
-                string previousError = pendingLogWrite.GetAwaiter().GetResult();
-                pendingLogWrite = null;
+                string previousError = pendingLogWrite.IsCanceled ? "cancelled"
+                    : pendingLogWrite.IsFaulted
+                        ? pendingLogWrite.Exception.GetBaseException().GetType().Name
+                        : pendingLogWrite.Result;
                 if (previousError != null)
                 {
+                    pendingLogWrite = null;
                     StopLogging(previousError);
                     return;
                 }
             }
-            if (reason != "start" && reason != "pause" && reason != "quit")
-            {
-                string path = logPath, report = LatestReport;
+            // Samples are best effort: never build an unlimited I/O backlog.
+            // Critical low-memory and lifecycle events are always enqueued.
+            if (reason == "sample" && pendingLogWrite != null &&
+                !pendingLogWrite.IsCompleted) return;
+            string path = logPath, report = LatestReport;
+            if (pendingLogWrite == null)
                 pendingLogWrite = Task.Run(() => AppendReport(path, report));
-                return;
-            }
-#endif
+            else
+                pendingLogWrite = pendingLogWrite.ContinueWith(previous =>
+                {
+                    if (previous.IsCanceled) return "cancelled";
+                    if (previous.IsFaulted)
+                        return previous.Exception.GetBaseException().GetType().Name;
+                    return previous.Result ?? AppendReport(path, report);
+                }, TaskScheduler.Default);
+            return;
+#else
             string error = AppendReport(logPath, LatestReport);
             if (error != null) StopLogging(error);
+#endif
+        }
+
+        // This method executes off-thread on Android, before first report.
+        // UnityEngine APIs must not be called from here.
+        private static string InitializeLogFile(string path)
+        {
+            try
+            {
+                string folder = Path.GetDirectoryName(path);
+                Directory.CreateDirectory(folder);
+                string previous = Path.Combine(folder, "previous.jsonl");
+                if (File.Exists(path)) File.Copy(path, previous, true);
+                File.WriteAllText(path, "");
+                return null;
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                return e.Message;
+            }
         }
 
         private static string AppendReport(string path, string report)
