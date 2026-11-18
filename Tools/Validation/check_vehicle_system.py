@@ -342,7 +342,8 @@ def test():
 
     # Do not give every model a sedan-size physical shell and wheelbase.
     assert "motor.FitShellAndWheelbase(bounds);" in build
-    assert "AlignEmbeddedTyresToRoad(root.transform, mesh.transform);" in build
+    assert "!AlignEmbeddedTyresToRoad(root.transform, mesh.transform)" in build
+    assert 'FallBackToVerifiedModel(typeIndex, "tyre ground alignment")' in build
     assert build.index("AlignEmbeddedTyresToRoad(") < build.index("motor.FitShellAndWheelbase(bounds)")
     assert "public void FitShellAndWheelbase(Bounds visualBounds)" in motor
     assert "Mathf.Clamp(size.x * .94f, 1.35f, 2.25f)" in motor
