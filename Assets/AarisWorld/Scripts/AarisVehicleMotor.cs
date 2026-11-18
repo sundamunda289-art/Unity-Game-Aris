@@ -996,6 +996,10 @@ namespace Aaris.MapReview
                 !isActiveAndEnabled || IsOccupied || body == null ||
                 !IsSafeToExit) return false;
             driver = session;
+            // A streamed parked car may have been asleep for minutes.
+            // PhysX is not guaranteed to wake just because we replaced the
+            // brake torque. Guarantee the first player throttle reacts.
+            if (body.IsSleeping()) body.WakeUp();
             forward = steering = smoothSteer = 0f;
             impactFlashUntil = 0f;
             // Release parked-car brake cache on boarding, otherwise the
@@ -1025,6 +1029,13 @@ namespace Aaris.MapReview
             if (float.IsNaN(steerAxis) || float.IsInfinity(steerAxis)) steerAxis = 0f;
             forward = Mathf.Clamp(forwardAxis, -1f, 1f);
             steering = Mathf.Clamp(steerAxis, -1f, 1f);
+            // A legitimately idle occupied Rigidbody can go back to sleep.
+            // Resume the native wheel simulation only on an actual new
+            // throttle/steer intent; neutral input never wakes parked cars.
+            if (body != null &&
+                (Mathf.Abs(forward) > .08f || Mathf.Abs(steering) > .08f) &&
+                body.IsSleeping())
+                body.WakeUp();
         }
 
         public void ReleaseDriver(AarisVehicleSession session)
