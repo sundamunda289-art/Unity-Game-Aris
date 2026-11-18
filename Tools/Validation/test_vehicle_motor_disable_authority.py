@@ -32,6 +32,32 @@ class DisabledVehicleAuthority(unittest.TestCase):
         self.assertIn("forward = steering = 0f;", disable)
         self.assertIn("ApplyWheelForces(0f, ParkingBrakeTorque);", disable)
 
+    def test_sleeping_parked_car_awakes_on_boarding_and_drive_intent(self):
+        boarding = MOTOR[MOTOR.index("public bool TryTakeDriver("):
+                         MOTOR.index("public void SetInput(")]
+        setter = MOTOR[MOTOR.index("public void SetInput("):
+                       MOTOR.index("public void ReleaseDriver(")]
+        self.assertIn("if (body.IsSleeping()) body.WakeUp();", boarding)
+        self.assertLess(boarding.index("driver = session;"),
+                        boarding.index("if (body.IsSleeping()) body.WakeUp();"))
+        self.assertIn("Mathf.Abs(forward) > .08f || Mathf.Abs(steering) > .08f", setter)
+        self.assertIn("body.IsSleeping())", setter)
+        self.assertIn("body.WakeUp();", setter)
+        self.assertLess(setter.index("if (driver == null || !isActiveAndEnabled) return;"),
+                        setter.index("body.WakeUp();"))
+        self.assertLess(setter.index("if (float.IsNaN(forwardAxis)"),
+                        setter.index("body.WakeUp();"))
+        # Neutral, disabled and absent-owner input must not wake PhysX.
+        for occupied in (False, True):
+            for enabled in (False, True):
+                for move, steer in ((0., 0.), (.08, 0.), (.4, 0.), (0., .8)):
+                    wake_allowed = (occupied and enabled and
+                                    (abs(move) > .08 or abs(steer) > .08))
+                    if not occupied or not enabled or (move == 0 and steer == 0):
+                        self.assertFalse(wake_allowed)
+                    if occupied and enabled and abs(move) > .08:
+                        self.assertTrue(wake_allowed)
+
     def test_nearest_vehicle_search_skips_inactive_models(self):
         nearest = WORLD[WORLD.index("public AarisVehicleMotor NearestAvailable("):]
         self.assertIn("!record.visible.isActiveAndEnabled", nearest)
