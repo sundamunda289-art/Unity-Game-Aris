@@ -184,6 +184,9 @@ class AutomotiveRefinement(unittest.TestCase):
         self.assertIn("Physics.SphereCastNonAlloc", camera)
         self.assertIn("followCamera.transform.position = next;", camera)
         self.assertIn("Vector3.SmoothDamp(", camera)
+        self.assertIn("Vector3.ProjectOnPlane(\n                vehicle.forward, Vector3.up);", camera)
+        self.assertIn("lastChaseHeading * chaseDistance", camera)
+        self.assertNotIn("vehicle.forward * chaseDistance", camera)
         self.assertNotIn("new Material(", camera)
 
 
