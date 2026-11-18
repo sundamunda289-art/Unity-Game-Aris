@@ -42,3 +42,14 @@ Date: 18 November 2026
 - Python regression suite: 107 car tests before photo studio extension.
 - This is not proof of Android sustained FPS, full Play Mode driving,
   terrain wheel-ground contact or actual on-device colour perception.
+
+## Native Unity full-fleet visual contact sheet
+
+The eight vehicles were captured at the calibrated game dimensions on the
+same seven-metre neutral roadway. Sedan review wheels now use the actual
+in-game Kenney wheel UV atlas, not a wheel-less body preview.
+
+- Image: Docs/VehicleVisualQA/2026-11-18-eight-cars-map-scale-review.jpg
+- All eight renders: AARIS_VEHICLE_STUDIO_PASS 8 genuine Unity photos.
+- Source photography does **not** include runtime paint property blocks;
+  in-game paint variants remain separate and must be visually tested in Play Mode.
