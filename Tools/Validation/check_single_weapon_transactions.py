@@ -92,7 +92,8 @@ def audit():
     assert "requestPickupUntil = Time.unscaledTime + 1.5f;" in world
     assert "nextRefresh = 0f;" in world
     assert "allowInitialAutoPickup = false;" in world
-    assert "HasPickupInRange = bestPickup != null;" in world
+    assert "HasPickupInRange = mayPickup && bestPickup != null;" in world
+    assert "bool mayPickup = HasLandingAuthority && Time.timeScale > 0f" in world
     assert "Physics.RaycastNonAlloc(sightLine, pickupObstructions, distance" in world
     # Full hit sets remain mandatory on overflow; reuse 128-slot scratch
     # first so ordinary dense-house overflow does not allocate each time.
