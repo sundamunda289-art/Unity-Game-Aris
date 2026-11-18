@@ -200,7 +200,23 @@ Log("CROUCH_KNEE_ALIGNMENT leftLateral="+leftLateral.ToString("F3")+
 if(Mathf.Abs(leftLateral)>0.25f||Mathf.Abs(rightLateral)>0.25f||
  kneeHeightDelta>0.12f)
 throw new InvalidOperationException("CROUCH_KNEE_SIDEWAYS_OR_MISALIGNED");
-}}
+}
+else if(b.Stance==AarisBattleActions.PlayerStance.Prone){
+Vector3 hipRight=Vector3.ProjectOnPlane(
+ rightUpper.position-leftUpper.position,Vector3.up);
+if(hipRight.sqrMagnitude<0.02f)
+throw new InvalidOperationException("PRONE_HIP_AXIS_INVALID");
+hipRight.Normalize();
+float leftLateral=Vector3.Dot(Vector3.ProjectOnPlane(
+ leftKnee.position-leftUpper.position,Vector3.up),hipRight);
+float rightLateral=Vector3.Dot(Vector3.ProjectOnPlane(
+ rightKnee.position-rightUpper.position,Vector3.up),hipRight);
+float kneeHeightDelta=Mathf.Abs(leftKnee.position.y-rightKnee.position.y);
+Log("PRONE_KNEE_ALIGNMENT leftLateral="+leftLateral.ToString("F3")+
+" rightLateral="+rightLateral.ToString("F3")+
+" kneeHeightDelta="+kneeHeightDelta.ToString("F3"));
+}
+}
 HumanBodyBones[] bones={HumanBodyBones.Hips,HumanBodyBones.Chest,
 HumanBodyBones.Head,HumanBodyBones.LeftFoot,HumanBodyBones.RightFoot,
 HumanBodyBones.LeftHand,HumanBodyBones.RightHand,
