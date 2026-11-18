@@ -912,7 +912,8 @@ namespace Aaris.MapReview
         // Analytical two-bone knee solve shared by vertical planting and
         // bounded world-space stance-foot locking. No collision queries or heap allocation.
         private static void PlantLegToTarget(Transform thigh, Transform shin,
-            Transform foot, Vector3 desiredFootWorld, Vector3 forward, float weight)
+            Transform foot, Vector3 desiredFootWorld, Vector3 forward, float weight,
+            float minimumKneeWorldY = -10000f)
         {
             if (thigh == null || shin == null || foot == null || weight <= 0f) return;
             Vector3 hip = thigh.position;
@@ -945,10 +946,43 @@ namespace Aaris.MapReview
                 bend = Vector3.ProjectOnPlane(Vector3.up, axis);
             if (bend.sqrMagnitude < 0.0001f) return;
             bend.Normalize();
+            // Retargeted low crouch samples may bend a knee sideways even
+            // when its foot is firmly grounded. The player-facing bend hint
+            // is reused only for crouch; prone passes a zero forward hint.
+            if (minimumKneeWorldY > -1000f &&
+                forwardBend.sqrMagnitude > 0.0001f)
+                bend = Vector3.Lerp(bend, forwardBend.normalized, 0.72f).normalized;
             float along = (upper * upper - lower * lower + distance * distance) /
                 (2f * distance);
             float across = Mathf.Sqrt(Mathf.Max(
                 0f, upper * upper - along * along));
+            // The target foot can be on a real floor while retargeted knees
+            // bend BELOW it. Bias the existing knee plane upward only when
+            // it violates the sampled low-stance clearance; never move root
+            // physics or change a running/airborne gait.
+            if (minimumKneeWorldY > -1000f && across > 0.005f)
+            {
+                float kneeY = hip.y + axis.y * along + bend.y * across;
+                if (kneeY < minimumKneeWorldY)
+                {
+                    Vector3 upwardBend = Vector3.ProjectOnPlane(Vector3.up, axis);
+                    if (upwardBend.sqrMagnitude > 0.0001f)
+                    {
+                        upwardBend.Normalize();
+                        float possible = across * (upwardBend.y - bend.y);
+                        if (possible > 0.0001f)
+                        {
+                            float correction = Mathf.Clamp01(
+                                (minimumKneeWorldY - kneeY) / possible);
+                            Vector3 corrected = Vector3.Slerp(bend, upwardBend, correction);
+                            // Slerp is nonlinear: use the reachable maximum
+                            // if intermediate bend still penetrates the floor.
+                            bend = hip.y + axis.y * along + corrected.y * across >=
+                                minimumKneeWorldY ? corrected : upwardBend;
+                        }
+                    }
+                }
+            }
             Vector3 kneeGoal = hip + axis * along + bend * across;
             Vector3 oldUpper = shin.position - thigh.position;
             Vector3 newUpper = kneeGoal - thigh.position;
@@ -1012,7 +1046,9 @@ namespace Aaris.MapReview
                 else
                     targetFoot += Vector3.ClampMagnitude(drift, 0.10f);
             }
-            PlantLegToTarget(thigh, shin, foot, targetFoot, forward, weight);
+            float kneeFloor = ankleWorldY + 0.02f;
+            PlantLegToTarget(thigh, shin, foot, targetFoot, forward, weight,
+                kneeFloor);
         }
 
         // One non-allocating ground sample per foot on low stances; unlike
@@ -1468,11 +1504,11 @@ namespace Aaris.MapReview
             // Preserve calibrated standing-ground offset through takeoff:
             // switching it off in the air would instantly teleport the model
             // upwards by the original ~0.75m shoe gap.
-            float uprightWeight = 1f - Mathf.Clamp01(
-                effectiveCrouchBlend + effectiveProneBlend);
+            // A rig-origin correction persists across stances. Fading it on
+            // crouch used to lift the feet and helmet away from the capsule.
             Vector3 desiredPosition = restingLocalPosition +
                 new Vector3(0f, -landingDip - crouchLowering -
-                    proneLowering + standingShoeOffset * uprightWeight, 0f);
+                    proneLowering + standingShoeOffset, 0f);
             if (visualRoot.localPosition != desiredPosition)
                 visualRoot.localPosition = desiredPosition;
             AnkleSupportSample coarseSupport = default;
@@ -1524,7 +1560,30 @@ namespace Aaris.MapReview
                     (capsuleTop - headInset);
                 if (excess > 0.005f)
                     visualRoot.localPosition += Vector3.down *
-                        Mathf.Min(excess, 0.45f) * lowPose;
+                        Mathf.Min(excess, 1.00f) * lowPose;
+            }
+            // A prone clip can pass the headroom check while sinking the
+            // pelvis through the floor. Use the same authoritative capsule
+            // bottom as a conservative floor proxy (no additional raycast).
+            // A capped visual-only lift leaves space for the helmet beneath
+            // the collision ceiling. The existing foot IK then replants shoes.
+            if (!visuallyAirborne && graphReady && groundedNow &&
+                effectiveProneBlend > 0.02f && locomotionHipsBone != null &&
+                proneHeadBone != null)
+            {
+                float capsuleFloor = transform.TransformPoint(controller.center -
+                    Vector3.up * (controller.height * 0.5f)).y;
+                float capsuleCeiling = transform.TransformPoint(controller.center +
+                    Vector3.up * (controller.height * 0.5f)).y;
+                float pelvisShortfall = capsuleFloor + 0.16f -
+                    locomotionHipsBone.position.y;
+                float helmetRoom = capsuleCeiling - 0.20f -
+                    proneHeadBone.position.y - 0.03f;
+                float pelvisLift = Mathf.Clamp(
+                    Mathf.Min(pelvisShortfall, helmetRoom), 0f, 0.21f) *
+                    Mathf.Clamp01(effectiveProneBlend);
+                if (pelvisLift > 0.001f)
+                    visualRoot.localPosition += Vector3.up * pelvisLift;
             }
             // Rotate the lower-body parent before terrain planting. The
             // existing analytic leg solve then restores exact shoe contact on
