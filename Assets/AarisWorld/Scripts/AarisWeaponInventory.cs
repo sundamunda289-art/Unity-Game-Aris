@@ -399,8 +399,23 @@ namespace Aaris.MapReview
         }
 
         public void BindLootWorld(AarisWeaponLootWorld world) => lootWorld = world;
-        public void RequestPickup() { if (lootWorld != null) lootWorld.RequestPickup(); }
-        public bool DropCurrent() => lootWorld != null && lootWorld.TryDropEquipped();
+
+        // Both touchscreen and keyboard actions share the same on-foot authority.
+        // Paused time, suspended combat and vehicle seats must not mutate ammo,
+        // stances or floor loot through a still-visible HUD callback.
+        private bool AcceptsPlayerWeaponInput =>
+            isActiveAndEnabled && Time.timeScale > 0f &&
+            motor != null && motor.isActiveAndEnabled &&
+            (combat == null || combat.isActiveAndEnabled);
+
+        public void RequestPickup()
+        {
+            if (AcceptsPlayerWeaponInput && lootWorld != null)
+                lootWorld.RequestPickup();
+        }
+
+        public bool DropCurrent() => AcceptsPlayerWeaponInput &&
+            lootWorld != null && lootWorld.TryDropEquipped();
 
         private static void SetHierarchyLayer(GameObject root, int layer)
         {
@@ -536,12 +551,13 @@ namespace Aaris.MapReview
             return true;
         }
 
-        public bool Reload() => HasGun && equipped.BeginReload();
+        public bool Reload() => AcceptsPlayerWeaponInput &&
+            HasGun && equipped.BeginReload();
 
         /// <summary>Unarmed punching without deleting either carried FBX.</summary>
         public bool ToggleFists()
         {
-            if (equipped == null) return false;
+            if (!AcceptsPlayerWeaponInput || equipped == null) return false;
             ResetCombatTransition();
             fistMode = !fistMode;
             equipped.enabled = !fistMode;
@@ -553,7 +569,8 @@ namespace Aaris.MapReview
         /// <summary>Swap hand and back slots; preserve reload/ammo exactly.</summary>
         public bool SwapWeapons()
         {
-            if (stowed == null || equipped == null) return false;
+            if (!AcceptsPlayerWeaponInput || stowed == null || equipped == null)
+                return false;
             ResetCombatTransition();
             AarisEquippedGun oldGun = equipped;
             equipped = stowed;
@@ -572,6 +589,7 @@ namespace Aaris.MapReview
 
         public void ToggleAim()
         {
+            if (!AcceptsPlayerWeaponInput) return;
             aiming = !aiming && HasGun;
             if (aiming && motor != null) motor.CancelAutoSprint();
             if (motor != null)
@@ -1070,6 +1088,7 @@ namespace Aaris.MapReview
 
         private void Update()
         {
+            if (!AcceptsPlayerWeaponInput) return;
             if (Input.GetKeyDown(KeyCode.E)) RequestPickup();
             if (Input.GetKeyDown(KeyCode.G)) DropCurrent();
             if (Input.GetKeyDown(KeyCode.R)) Reload();
