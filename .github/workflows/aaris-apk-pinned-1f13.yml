@@ -73,9 +73,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          gh codespace cp -c "$MACHINE"             "remote:/tmp/aaris-codespaces/android-apk/Build/AarisGame.apk"             dist/AarisGame.apk
-          gh codespace cp -c "$MACHINE"             "remote:/tmp/aaris-codespaces/android-apk/Build/AarisGame.apk.sha256"             dist/AarisGame.apk.sha256
-          gh codespace cp -c "$MACHINE"             "remote:/tmp/aaris-codespaces/android-apk/pinned-1f13-apk-verified.json"             dist/verified.json
+          # gh codespace cp uses a different filesystem layer than ssh on some
+          # Codespaces: scp may report missing /tmp files which exist inside
+          # the running container (GitHub CLI issue #12775). Stream using the
+          # same authenticated SSH channel that already verified the build.
+          # The SHA256/source JSON checks below reject any truncated transfer.
+          gh codespace ssh -c "$MACHINE" -- "cat /tmp/aaris-codespaces/android-apk/Build/AarisGame.apk" > dist/AarisGame.apk
+          gh codespace ssh -c "$MACHINE" -- "cat /tmp/aaris-codespaces/android-apk/Build/AarisGame.apk.sha256" > dist/AarisGame.apk.sha256
+          gh codespace ssh -c "$MACHINE" -- "cat /tmp/aaris-codespaces/android-apk/pinned-1f13-apk-verified.json" > dist/verified.json
+          test -s dist/AarisGame.apk
+          test -s dist/AarisGame.apk.sha256
+          test -s dist/verified.json
           (cd dist && sha256sum -c AarisGame.apk.sha256)
           python3 - <<'PY'
           import json
