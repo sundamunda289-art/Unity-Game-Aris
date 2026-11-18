@@ -36,5 +36,25 @@ for multi in (False, True):
         assert [0.52 + i * 0.22 for i in range(4)][-1] < 1.40
 assert sum([4, 4, 4, 1, 1, 2]) == 16
 assert sum([1, 1, 1, 1, 1, 2]) == 7
+# Native-only pose contracts: no false sense of success from sixteen files
+# when one crouch knee points sideways or the prone legs flare.
+assert 'CROUCH_KNEE_ALIGNMENT leftLateral=' in source
+assert 'LOW_STANCE_SPREAD stance=' in source
+assert 'LOW_STANCE_FOOT_SPLAY' in source
+assert 'CROUCH_KNEE_SIDEWAYS_OR_MISALIGNED' in source
+assert 'Mathf.Abs(leftLateral)>0.25f||Mathf.Abs(rightLateral)>0.25f||' in source
+assert 'kneeHeightDelta>0.12f' in source
+assert 'if(spread>0.62f)' in source
+for lateral_l, lateral_r, knee_delta, spread, accepted in (
+    (0.05, -0.01, 0.03, 0.44, True),
+    (0.29, 0.01, 0.03, 0.44, False),
+    (0.01, -0.30, 0.03, 0.44, False),
+    (0.01, 0.01, 0.14, 0.44, False),
+    (0.01, 0.01, 0.03, 0.73, False),
+):
+    actual = (abs(lateral_l) <= 0.25 and abs(lateral_r) <= 0.25 and
+              knee_delta <= 0.12 and spread <= 0.62)
+    assert actual == accepted
+
 print("PASS: optional 16-view native portrait contract; original seven retained")
 print("NOT TESTED: Unity camera render, rig pose visibility or Android performance")
