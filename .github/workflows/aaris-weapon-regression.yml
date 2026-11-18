@@ -7,9 +7,11 @@ on:
       - 'Assets/Resources/AarisWeapons/**'
       - 'Assets/AarisWorld/Scripts/AarisWeaponInventory.cs'
       - 'Assets/AarisWorld/Scripts/AarisWeaponPickup.cs'
+      - 'Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs'
       - 'Assets/AarisWorld/Scripts/AarisWeaponCatalog.cs'
       - 'Assets/AarisWorld/Scripts/AarisEquippedGun.cs'
       - 'Tools/Validation/check_weapon_loot.py'
+      - 'Tools/Validation/test_loot_visibility_pacing.py'
       - 'Tools/Validation/check_single_weapon_transactions.py'
       - 'Tools/Validation/check_armed_locomotion.py'
       - 'Docs/WEAPON_ASSETS_LICENSE_AND_SOURCE.md'
@@ -20,9 +22,11 @@ on:
       - 'Assets/Resources/AarisWeapons/**'
       - 'Assets/AarisWorld/Scripts/AarisWeaponInventory.cs'
       - 'Assets/AarisWorld/Scripts/AarisWeaponPickup.cs'
+      - 'Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs'
       - 'Assets/AarisWorld/Scripts/AarisWeaponCatalog.cs'
       - 'Assets/AarisWorld/Scripts/AarisEquippedGun.cs'
       - 'Tools/Validation/check_weapon_loot.py'
+      - 'Tools/Validation/test_loot_visibility_pacing.py'
       - 'Tools/Validation/check_single_weapon_transactions.py'
       - 'Tools/Validation/check_armed_locomotion.py'
       - 'Docs/WEAPON_ASSETS_LICENSE_AND_SOURCE.md'
@@ -50,3 +54,5 @@ jobs:
         run: python3 Tools/Validation/check_single_weapon_transactions.py
       - name: Verify armed locomotion and masked upper-body handling
         run: python3 Tools/Validation/check_armed_locomotion.py
+      - name: Verify off-screen gun visual pacing and camera-free beacon budget
+        run: python3 Tools/Validation/test_loot_visibility_pacing.py
