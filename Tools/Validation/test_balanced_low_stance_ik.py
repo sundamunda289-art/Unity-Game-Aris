@@ -63,7 +63,7 @@ assert "bool turningFast = Mathf.Abs(turnDegreesPerSecond) > 110f;" in crouch
 assert "Vector3.Lerp(bend, forwardBend.normalized, 0.90f)" in visual
 assert visual.count("ankleRigWeight, planar, yawRate,") == 2
 assert visual.count("PlanBalancedLowStanceFeet(") == 2
-assert "leftFootGoal, ref leftLowPlantLocked" in visual
-assert "rightFootGoal, ref rightLowPlantLocked" in visual
+assert "leftFootGoal, kneeClearance, ref leftLowPlantLocked" in visual
+assert "rightFootGoal, kneeClearance, ref rightLowPlantLocked" in visual
 print("PASS: compact crouch and aligned prone two-foot layout with reused support rays")
 print("NOT TESTED: Unity retargeted visuals, real collisions or Android FPS")
