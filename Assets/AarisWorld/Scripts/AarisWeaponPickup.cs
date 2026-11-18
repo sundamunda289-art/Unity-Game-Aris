@@ -24,6 +24,10 @@ namespace Aaris.MapReview
         private Transform model;
         private Renderer[] modelRenderers;
         private float pendingSpinDegrees;
+        // Visible pickups still animate every frame. Once off-screen, native
+        // Renderer.isVisible checks are throttled across the streamed loot set.
+        private float nextModelVisibilityCheck;
+        private bool modelWasVisible;
         private LineRenderer beacon;
         private Camera beaconObserver;
         private float nextBeaconVisibilityCheck;
@@ -189,18 +193,36 @@ namespace Aaris.MapReview
             if (pendingSpinDegrees >= 360f)
                 pendingSpinDegrees = Mathf.Repeat(pendingSpinDegrees, 360f);
             if (modelRenderers == null) return;
+            // Hidden loot would otherwise query every Renderer at 60-120 Hz.
+            // Poll off-screen meshes at most once every 0.10s; the original
+            // pending-angle accumulator preserves exact spin on reappearance.
+            // A visible mesh still updates on EVERY rendered gameplay frame.
+            if (!modelWasVisible && Time.unscaledTime < nextModelVisibilityCheck)
+                return;
+            bool visibleNow = false;
             for (int i = 0; i < modelRenderers.Length; i++)
             {
                 Renderer renderer = modelRenderers[i];
                 if (renderer == null || !renderer.isVisible) continue;
-                model.Rotate(0f, pendingSpinDegrees, 0f, Space.World);
-                pendingSpinDegrees = 0f;
+                visibleNow = true;
                 break;
             }
+            modelWasVisible = visibleNow;
+            if (!visibleNow)
+            {
+                nextModelVisibilityCheck = Time.unscaledTime + 0.10f;
+                return;
+            }
+            model.Rotate(0f, pendingSpinDegrees, 0f, Space.World);
+            pendingSpinDegrees = 0f;
         }
 
         private void OnEnable()
         {
+            // A formerly invisible pickup must be checked on its first
+            // re-enabled frame, not inherit an old hidden polling deadline.
+            modelWasVisible = false;
+            nextModelVisibilityCheck = 0f;
             // A streamed pickup may be temporarily disabled and reenabled.
             if (state != null && model != null && !consumed)
                 activePickups.Add(this);
