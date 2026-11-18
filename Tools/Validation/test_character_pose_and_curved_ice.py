@@ -786,3 +786,43 @@ assert 'ACTOR_HEAD_PENETRATES_CEILING_' in pose_probe
 assert 'SUCCESS_7_ACTOR_PORTRAITS' in pose_probe
 assert 'cam.cullingMask=savedMask;' in pose_probe
 assert 'cam.targetTexture=old;RenderTexture.active=active;' in pose_probe
+
+# Stationary crouch feet hold bounded world-space contact. Walking crouch
+# retains its authored stride and does not add new terrain raycasts.
+for required in (
+    'private Vector3 leftLowPlantWorld, rightLowPlantWorld;',
+    'private bool leftLowPlantLocked, rightLowPlantLocked;',
+    'planarSpeed >= 0.18f || weight < 0.30f',
+    'drift.sqrMagnitude > 0.20f * 0.20f',
+    'Vector3.ClampMagnitude(drift, 0.10f)',
+    'ref leftLowPlantLocked, ref leftLowPlantWorld',
+    'ref rightLowPlantLocked, ref rightLowPlantWorld',
+    'else leftLowPlantLocked = false;',
+    'else rightLowPlantLocked = false;',
+):
+    assert required in visual, required
+pause_guard = visual.split('internal void SetPresentationPaused(',1)[1].split('private void LateUpdate()',1)[0]
+teleport_guard = visual.split('if (movementDiscontinuity)',1)[1].split('float currentYaw',1)[0]
+for guard in (pause_guard, teleport_guard):
+    assert 'leftLowPlantLocked = false;' in guard
+    assert 'rightLowPlantLocked = false;' in guard
+def low_contact(locked, anchor, foot, speed, weight):
+    if speed >= .18 or weight < .30:
+        return False, anchor, foot
+    if not locked:
+        return True, foot, foot
+    delta = anchor-foot
+    if abs(delta) > .20:
+        return False, anchor, foot
+    return True, anchor, foot+max(-.10,min(.10,delta))
+for fps in (10,20,30,60,120):
+    locked, anchor, corrected = low_contact(False,0,0,0,1)
+    assert locked and anchor == corrected == 0
+    for i in range(fps):
+        locked, anchor, corrected = low_contact(locked,anchor,.08,0,1)
+        assert locked and abs(corrected)<1e-8
+    for speed in (.18,.5,2.4):
+        is_locked,_,next_foot=low_contact(True,anchor,.08,speed,1)
+        assert not is_locked and next_foot == .08
+    assert not low_contact(True,anchor,.25,0,1)[0]
+print('PASS: stationary crouch world-contact anchors')
