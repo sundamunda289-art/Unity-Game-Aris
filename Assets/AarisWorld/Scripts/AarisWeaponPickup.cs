@@ -10,6 +10,10 @@ namespace Aaris.MapReview
     [DisallowMultipleComponent]
     public sealed class AarisWeaponPickup : MonoBehaviour
     {
+        // Root is already lifted from the verified floor by the loot world.
+        // Keep the source mesh only 2.5 cm higher to avoid Z-fighting without
+        // making ground loot look like it is levitating above the terrain.
+        private const float ModelFloorClearance = 0.025f;
         // One bounded registration per successfully initialized pickup. The HUD can
         // discover nearby visible guns without any scene-wide Find call in Update.
         private static readonly HashSet<AarisWeaponPickup> activePickups =
@@ -125,15 +129,15 @@ namespace Aaris.MapReview
             model.localScale *= scale;
             // Original root-space bounds scale linearly around the FBX pivot.
             // Correct horizontal centering and leave the lowest geometry
-            // eight centimetres above the verified floor.
+            // only 2.5 centimetres above the pickup root's verified floor clearance.
             model.localPosition = new Vector3(
                 -modelBounds.center.x * scale,
-                0.08f - modelBounds.min.y * scale,
+                ModelFloorClearance - modelBounds.min.y * scale,
                 -modelBounds.center.z * scale);
             var visualPivot = new GameObject("Loot centered rotation pivot");
             visualPivot.transform.SetParent(transform, false);
             visualPivot.transform.localPosition = new Vector3(0f,
-                0.08f + (modelBounds.center.y - modelBounds.min.y) * scale, 0f);
+                ModelFloorClearance + (modelBounds.center.y - modelBounds.min.y) * scale, 0f);
             model.SetParent(visualPivot.transform, true);
             model = visualPivot.transform;
 
@@ -183,6 +187,13 @@ namespace Aaris.MapReview
                     bool show = beacon.enabled ? rangeSq < 36f * 36f :
                         rangeSq < 31f * 31f;
                     if (beacon.enabled != show) beacon.enabled = show;
+                }
+                else if (beacon.enabled)
+                {
+                    // When no active gameplay camera exists (loading,
+                    // transitions), never leave 40 stray transparent lines
+                    // drawing on mobile until a replacement camera appears.
+                    beacon.enabled = false;
                 }
             }
             if (model == null || Time.deltaTime <= 0f) return;
