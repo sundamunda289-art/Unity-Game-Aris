@@ -1068,12 +1068,15 @@ namespace Aaris.MapReview
         // transitions retain the authored animation. No Unity allocations.
         private void PlanBalancedLowStanceFeet(float proneShare,
             float lowPose, float planarSpeed,
-            out Vector3 leftGoal, out Vector3 rightGoal)
+            out Vector3 leftGoal, out Vector3 rightGoal,
+            out Vector3 crouchKneeForward)
         {
             leftGoal = leftFootBone != null ? leftFootBone.position : Vector3.zero;
             rightGoal = rightFootBone != null ? rightFootBone.position : Vector3.zero;
+            crouchKneeForward = transform.forward;
             if (leftFootBone == null || rightFootBone == null ||
                 leftThigh == null || rightThigh == null ||
+                leftShin == null || rightShin == null ||
                 locomotionHipsBone == null) return;
 
             float settledPose = Mathf.SmoothStep(0f, 1f,
@@ -1104,8 +1107,23 @@ namespace Aaris.MapReview
             if (Vector3.Dot(right, rightThigh.position - leftThigh.position) < 0f)
                 right = -right;
             Vector3 hipMid = (leftThigh.position + rightThigh.position) * 0.5f;
-            Vector3 crouchLeft = hipMid - right * 0.19f - facing * 0.06f;
-            Vector3 crouchRight = hipMid + right * 0.19f + facing * 0.07f;
+            // The imported crouch FBX twists its pelvis almost 90 degrees
+            // relative to player root yaw. Using root.forward as a knee pole
+            // makes one leg flare sideways even though both shoes are planted.
+            // Recover the anatomical right axis directly from left/right
+            // thigh origins. Right x Up = the rig's own forward bend plane.
+            Vector3 anatomicalRight = Vector3.ProjectOnPlane(
+                rightThigh.position - leftThigh.position, Vector3.up);
+            if (anatomicalRight.sqrMagnitude > 0.02f)
+                anatomicalRight.Normalize();
+            else
+                anatomicalRight = right;
+            crouchKneeForward = Vector3.Cross(anatomicalRight,
+                Vector3.up).normalized;
+            Vector3 crouchLeft = hipMid - anatomicalRight * 0.19f +
+                crouchKneeForward * 0.14f;
+            Vector3 crouchRight = hipMid + anatomicalRight * 0.19f +
+                crouchKneeForward * 0.22f;
             // Straight prone legs need a nearly full-length rear extension.
             // The previous 0.73m goal bent the knees into a frog pose.
             Vector3 proneLeft = hipMid - facing * 0.94f - right * 0.18f;
@@ -1692,10 +1710,12 @@ namespace Aaris.MapReview
                     ProneAnkleClearanceMetres, proneShare);
                 // Crouch knees face forward and stay above the shoe; extended
                 // prone retains the authored near-ground knee plane once feet align.
-                Vector3 kneeForward = proneShare < 0.5f ? transform.forward : Vector3.zero;
                 float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);
                 PlanBalancedLowStanceFeet(proneShare, lowPose, planar,
-                    out Vector3 leftFootGoal, out Vector3 rightFootGoal);
+                    out Vector3 leftFootGoal, out Vector3 rightFootGoal,
+                    out Vector3 crouchKneeForward);
+                Vector3 kneeForward = proneShare < 0.5f ?
+                    crouchKneeForward : Vector3.zero;
                 float leftAnkleY = SupportedAnkleY(leftFootBone,
                     ankleClearance, out Vector3 leftSupportNormal, leftFootGoal);
                 float rightAnkleY = SupportedAnkleY(rightFootBone,
