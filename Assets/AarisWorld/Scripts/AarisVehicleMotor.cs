@@ -322,8 +322,11 @@ namespace Aaris.MapReview
             var shell = GetComponent<BoxCollider>();
             if (shell == null) return;
             // Wheels, not the chassis shell, must carry vehicle weight.
-            float bottom = Mathf.Clamp(visualBounds.min.y + .05f, .20f, .40f);
-            float top = Mathf.Clamp(visualBounds.max.y - .05f, .95f, 2.55f);
+            // On imported cars the real tyre-bottom alignment can put the
+            // chassis shell below its root pivot. Keep the solid shell over
+            // its suspension contact patch rather than floating above it.
+            float bottom = Mathf.Clamp(visualBounds.min.y + .10f, -.35f, .40f);
+            float top = Mathf.Clamp(visualBounds.max.y - .05f, .65f, 2.55f);
             if (top <= bottom + .45f) return;
             shell.center = new Vector3(
                 Mathf.Clamp(visualBounds.center.x, -.15f, .15f),
