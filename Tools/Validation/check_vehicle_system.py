@@ -313,7 +313,8 @@ def test():
     build = world.split("private bool Build(AarisVehicleRecord", 1)[1].split(
         "private void Update()", 1)[0]
     assert "TryGetVisualBoundsLocal(root.transform, out Bounds bounds)" in build
-    assert build.count("TryGetVisualBoundsLocal(root.transform, out bounds)") == 2
+    # After real-wheel positioning, remeasure again in chassis coordinates.
+    assert build.count("TryGetVisualBoundsLocal(root.transform, out bounds)") == 3
     assert "renderer.bounds" not in build
     assert "mesh.transform.localPosition += new Vector3(0f, .48f, 0f) - bounds.center;" in build
     assert "localSpace.worldToLocalMatrix" in world
@@ -338,7 +339,9 @@ def test():
     assert 4 > 2 * 1.1  # local sideways FBX should still be turned once
 
     # Do not give every model a sedan-size physical shell and wheelbase.
-    assert "motor.FitShellAndWheelbase(new Bounds(new Vector3(0f, .48f, 0f)," in build
+    assert "motor.FitShellAndWheelbase(bounds);" in build
+    assert "AlignEmbeddedTyresToRoad(root.transform, mesh.transform);" in build
+    assert build.index("AlignEmbeddedTyresToRoad(") < build.index("motor.FitShellAndWheelbase(bounds)")
     assert "public void FitShellAndWheelbase(Bounds visualBounds)" in motor
     assert "Mathf.Clamp(size.x * .94f, 1.35f, 2.25f)" in motor
     assert "Mathf.Clamp(size.z * .94f, 2.35f, 4.30f)" in motor
