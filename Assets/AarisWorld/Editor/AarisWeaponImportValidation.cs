@@ -12,6 +12,94 @@ namespace Aaris.MapReview.Editor
     public static class AarisWeaponImportValidation
     {
         [Serializable] private sealed class LiveCatalog { public AarisWeaponSpec[] weapons; }
+
+        // Measure imported mesh geometry in a temporary, identity-scaled
+        // scene root. Renderer.bounds can be stale after import or rotation,
+        // so this repeats the real pickup/equip corner measurement in Unity.
+        private static void ValidateVisibleScale(AarisWeaponSpec spec, GameObject prefab)
+        {
+            var auditRoot = new GameObject("Aaris_Weapon_Scale_Audit_Temporary");
+            try
+            {
+                var instance = UnityEngine.Object.Instantiate(
+                    prefab, auditRoot.transform, false);
+                instance.transform.localPosition = Vector3.zero;
+                instance.transform.localRotation =
+                    AarisWeaponInventory.ImportedModelRotation(spec);
+                Bounds combined = default(Bounds);
+                bool found = false;
+                foreach (var renderer in instance.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (renderer == null || !renderer.enabled ||
+                        renderer.forceRenderingOff || !renderer.gameObject.activeInHierarchy)
+                        continue;
+                    Bounds localBounds;
+                    if (renderer is SkinnedMeshRenderer skinned)
+                    {
+                        if (skinned.sharedMesh == null ||
+                            skinned.sharedMesh.vertexCount == 0) continue;
+                        localBounds = skinned.localBounds;
+                    }
+                    else if (renderer is MeshRenderer)
+                    {
+                        var filter = renderer.GetComponent<MeshFilter>();
+                        if (filter == null || filter.sharedMesh == null ||
+                            filter.sharedMesh.vertexCount == 0) continue;
+                        localBounds = filter.sharedMesh.bounds;
+                    }
+                    else continue;
+
+                    Vector3 center = localBounds.center;
+                    Vector3 extents = localBounds.extents;
+                    for (int corner = 0; corner < 8; corner++)
+                    {
+                        Vector3 local = center + new Vector3(
+                            (corner & 1) == 0 ? -extents.x : extents.x,
+                            (corner & 2) == 0 ? -extents.y : extents.y,
+                            (corner & 4) == 0 ? -extents.z : extents.z);
+                        Vector3 position = auditRoot.transform.InverseTransformPoint(
+                            renderer.transform.TransformPoint(local));
+                        if (!found)
+                        {
+                            combined = new Bounds(position, Vector3.zero);
+                            found = true;
+                        }
+                        else combined.Encapsulate(position);
+                    }
+                }
+
+                if (!found) throw new InvalidOperationException(
+                    "No visible geometry for weapon scale: " + spec.id);
+                float longest = Mathf.Max(
+                    combined.size.x, combined.size.y, combined.size.z);
+                if (longest < 0.001f || float.IsNaN(longest) ||
+                    float.IsInfinity(longest))
+                    throw new InvalidOperationException(
+                        "Invalid imported weapon size: " + spec.id);
+                // These are the actual normalization rules used by ground
+                // pickups and the held gun. Detect a tiny imported model
+                // hitting the 10x cap rather than silently shipping a toy gun.
+                float scale = Mathf.Clamp(
+                    spec.presentationLengthMetres / longest, 0.0000001f, 10f);
+                float groundLength = longest * scale;
+                float heldLength = groundLength * spec.handScale;
+                if (Mathf.Abs(groundLength - spec.presentationLengthMetres) > 0.01f ||
+                    Mathf.Abs(heldLength - spec.presentationLengthMetres *
+                        spec.handScale) > 0.01f)
+                    throw new InvalidOperationException(
+                        "Imported geometry cannot reach target visible gun length: " +
+                        spec.id + " source=" + longest + "m, floor=" +
+                        groundLength + "m, hand=" + heldLength + "m");
+                Debug.Log("AARIS_WEAPON_SCALE_PASS: " + spec.id +
+                    " imported=" + longest.ToString("F3") + "m, floor=" +
+                    groundLength.ToString("F3") + "m, hand=" +
+                    heldLength.ToString("F3") + "m");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(auditRoot);
+            }
+        }
         [MenuItem("Aaris/Validate Offline Weapons and Loot")]
         public static void Run()
         {
@@ -60,6 +148,7 @@ namespace Aaris.MapReview.Editor
                     throw new InvalidOperationException("Invalid phone mesh triangle count " +
                         thisModel + ": " + path);
                 triangles += thisModel;
+                ValidateVisibleScale(spec, model);
                 string resourcePath = spec.modelResource;
                 if (Resources.Load<GameObject>(resourcePath) == null)
                     throw new InvalidOperationException("Resources.Load failed: " + resourcePath);
