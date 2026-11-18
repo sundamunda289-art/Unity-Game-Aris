@@ -88,6 +88,9 @@ namespace Aaris.MapReview
         // preserving authored swing motion and CharacterController authority.
         private Vector3 leftUprightPlantWorld, rightUprightPlantWorld;
         private bool leftUprightPlantLocked, rightUprightPlantLocked;
+        // Visual-only low-stance shoe anchors; release immediately for walking.
+        private Vector3 leftLowPlantWorld, rightLowPlantWorld;
+        private bool leftLowPlantLocked, rightLowPlantLocked;
         private const float UprightPlantEnterGapMetres = 0.065f;
         private const float UprightPlantReleaseGapMetres = 0.115f;
         private const float UprightPlantBreakDistanceMetres = 0.18f;
@@ -975,11 +978,35 @@ namespace Aaris.MapReview
         }
 
         private static void PlantCrouchLeg(Transform thigh, Transform shin,
-            Transform foot, float ankleWorldY, Vector3 forward, float weight)
+            Transform foot, float ankleWorldY, Vector3 forward, float weight,
+            float planarSpeed, ref bool contactLocked, ref Vector3 contactWorld)
         {
-            if (foot == null) return;
+            if (foot == null || float.IsNaN(ankleWorldY) || weight <= 0.005f)
+            {
+                contactLocked = false;
+                return;
+            }
             Vector3 targetFoot = foot.position;
             targetFoot.y = ankleWorldY;
+            // Do not pin a moving crouch foot or force the knee beyond reach.
+            if (planarSpeed >= 0.18f || weight < 0.30f)
+            {
+                contactLocked = false;
+            }
+            else if (!contactLocked)
+            {
+                contactWorld = targetFoot;
+                contactLocked = true;
+            }
+            else
+            {
+                Vector3 drift = new Vector3(contactWorld.x - targetFoot.x,
+                    0f, contactWorld.z - targetFoot.z);
+                if (drift.sqrMagnitude > 0.20f * 0.20f)
+                    contactLocked = false;
+                else
+                    targetFoot += Vector3.ClampMagnitude(drift, 0.10f);
+            }
             PlantLegToTarget(thigh, shin, foot, targetFoot, forward, weight);
         }
 
@@ -1170,6 +1197,8 @@ namespace Aaris.MapReview
                 // World-space shoe locks cannot survive a vehicle/flight hand-off.
                 leftUprightPlantLocked = false;
                 rightUprightPlantLocked = false;
+                leftLowPlantLocked = false;
+                rightLowPlantLocked = false;
                 if (graphReady)
                 {
                     if (paused) graph.Stop();
@@ -1275,6 +1304,8 @@ namespace Aaris.MapReview
                 motionHistoryReady = false;
                 leftUprightPlantLocked = false;
                 rightUprightPlantLocked = false;
+                leftLowPlantLocked = false;
+                rightLowPlantLocked = false;
                 smoothedAccelerationPitch = 0f;
                 smoothedTurnBank = 0f;
                 smoothedOrientationWarpYaw = 0f;
@@ -1515,10 +1546,14 @@ namespace Aaris.MapReview
                     ankleClearance, out Vector3 rightSupportNormal);
                 if (!float.IsNaN(leftAnkleY))
                     PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
-                        leftAnkleY, kneeForward, ankleRigWeight);
+                        leftAnkleY, kneeForward, ankleRigWeight, planar,
+                        ref leftLowPlantLocked, ref leftLowPlantWorld);
+                else leftLowPlantLocked = false;
                 if (!float.IsNaN(rightAnkleY))
                     PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
-                        rightAnkleY, kneeForward, ankleRigWeight);
+                        rightAnkleY, kneeForward, ankleRigWeight, planar,
+                        ref rightLowPlantLocked, ref rightLowPlantWorld);
+                else rightLowPlantLocked = false;
                 // Crouch/prone used to correct only ankle height, leaving the
                 // sole visually cutting through a sloped road or bridge deck.
                 // Reuse the exact two support normals sampled above; no extra
@@ -1529,6 +1564,12 @@ namespace Aaris.MapReview
                 if (!float.IsNaN(rightAnkleY))
                     AlignFootToSupport(rightFootBone, rightSupportNormal,
                         ankleRigWeight, 26f, 0.72f);
+            }
+            else
+            {
+                // Standing, takeoff and unsupported low poses drop stale anchors.
+                leftLowPlantLocked = false;
+                rightLowPlantLocked = false;
             }
             // Standing/walk/run need world-space contact too. Apply the same
             // analytic leg solve only to a near-ground stance foot; high swing
