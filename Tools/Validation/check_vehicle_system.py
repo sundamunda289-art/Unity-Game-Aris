@@ -356,7 +356,8 @@ def test():
     assert "Vector3.ProjectOnPlane(" in motor
     assert "body.linearVelocity, transform.up).magnitude;" in motor
     assert "Mathf.InverseLerp(0f, 24f, planarSpeed)" in motor
-    assert "if (planarSpeed > 6f && groundedWheelCount >= 2)" in motor
+    assert "if (planarSpeed > 6f && groundedWheelCount >= 2 &&" in motor
+    assert "groundedAxleMask == 3" in motor
     for fwd, sideways in ((0, 0), (0, 15), (15, 0), (12, 16), (0, 35)):
         speed = math.hypot(fwd, sideways)
         steer = 32 - 22 * min(1, max(0, speed / 24))
