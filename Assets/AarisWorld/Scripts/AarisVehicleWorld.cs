@@ -779,23 +779,29 @@ namespace Aaris.MapReview
                 label.Contains("tail_light");
             if (glass)
             {
-                baseColor.a = Mathf.Min(baseColor.a, .38f);
+                // Legacy imported OBJ glass lacks a modelled cabin. Drawing
+                // its panes semi-transparent adds sorting/overdraw on 2GB
+                // phones and makes the unbuilt interior look like a hole.
+                // Retain a glazed, tinted URP surface but keep it opaque.
+                // Imported true PBR URP car glass uses the separate pass above.
+                Color smoked = Color.Lerp(
+                    new Color(.11f, .17f, .23f, 1f), baseColor, .18f);
+                smoked.a = 1f;
                 if (result.HasProperty("_BaseColor"))
-                    result.SetColor("_BaseColor", baseColor);
-                if (result.HasProperty("_Metallic")) result.SetFloat("_Metallic", .02f);
-                if (result.HasProperty("_Smoothness")) result.SetFloat("_Smoothness", .88f);
-                result.SetOverrideTag("RenderType", "Transparent");
-                if (result.HasProperty("_Surface")) result.SetFloat("_Surface", 1f);
+                    result.SetColor("_BaseColor", smoked);
+                if (result.HasProperty("_Metallic")) result.SetFloat("_Metallic", .05f);
+                if (result.HasProperty("_Smoothness")) result.SetFloat("_Smoothness", .81f);
+                result.SetOverrideTag("RenderType", "Opaque");
+                if (result.HasProperty("_Surface")) result.SetFloat("_Surface", 0f);
                 if (result.HasProperty("_SrcBlend"))
                     result.SetFloat("_SrcBlend",
-                        (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                        (float)UnityEngine.Rendering.BlendMode.One);
                 if (result.HasProperty("_DstBlend"))
                     result.SetFloat("_DstBlend",
-                        (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-                if (result.HasProperty("_ZWrite")) result.SetFloat("_ZWrite", 0f);
-                result.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-                result.renderQueue =
-                    (int)UnityEngine.Rendering.RenderQueue.Transparent;
+                        (float)UnityEngine.Rendering.BlendMode.Zero);
+                if (result.HasProperty("_ZWrite")) result.SetFloat("_ZWrite", 1f);
+                result.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                result.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Geometry;
             }
             else if (headlight || taillight)
             {
