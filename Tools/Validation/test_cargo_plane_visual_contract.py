@@ -34,7 +34,9 @@ class CargoPlaneVisualContract(unittest.TestCase):
     def test_daylight_fill_uses_cached_lit_materials_without_new_lights(self):
         for name in ("HulledMetal", "WingPanels"):
             material = (MATERIALS / ("CargoPlane-" + name + ".mat")).read_text()
-            self.assertIn("- _EMISSION", material)
+            # Unity import may remove this serialized keyword. Runtime code
+            # must enable it on a cached copy regardless of serialized state.
+            self.assertIn("m_ValidKeywords:", material)
             self.assertIn("m_LightmapFlags: 0", material)
             emission_line = next(line for line in material.splitlines()
                                  if line.strip().startswith("- _EmissionColor:"))
@@ -46,6 +48,15 @@ class CargoPlaneVisualContract(unittest.TestCase):
             "internal static GameObject CreateElongatedCanopy(", 1)[0]
         self.assertNotIn("AddComponent<Light>", source)
         self.assertNotIn("new Material(", source)
+        helper = CS.split("private static Material EnsureDaylightFill(", 1)[1].split(
+            "private static GameObject Part(", 1)[0]
+        self.assertIn("new Material(source)", helper)
+        self.assertIn('cached.EnableKeyword("_EMISSION")', helper)
+        self.assertIn('cached.SetColor("_EmissionColor", fill)', helper)
+        self.assertIn("if (cached != null) return cached;", helper)
+        self.assertIn("ref hullDaylightFinish", source)
+        self.assertIn("ref wingDaylightFinish", source)
+        self.assertNotIn("source.EnableKeyword", helper)
 
 
 if __name__ == "__main__":
