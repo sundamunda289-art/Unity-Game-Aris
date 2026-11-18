@@ -104,8 +104,11 @@ assert "Vector3.up * pronePoleStrength;" in visual
 assert "Mathf.InverseLerp(0.78f, 0.98f, effectiveProneBlend)" in visual
 assert "Mathf.InverseLerp(65f, 140f, Mathf.Abs(yawRate))" in visual
 assert "bool turningFast = Mathf.Abs(turnDegreesPerSecond) > 110f;" in resolver
-assert "Vector3.Lerp(bend, forwardBend.normalized," in visual
-assert "Mathf.Clamp01(kneePoleStrength)).normalized;" in visual
+assert "float poleSin = Vector3.Dot(axis, Vector3.Cross(bend, pole));" in visual
+assert "float poleCos = Mathf.Clamp(Vector3.Dot(bend, pole), -1f, 1f);" in visual
+assert "Mathf.Atan2(poleSin, poleCos) * Mathf.Rad2Deg;" in visual
+assert "poleAngle * Mathf.Clamp01(kneePoleStrength), axis) * bend;" in visual
+assert "Vector3.Lerp(bend, forwardBend.normalized," not in visual
 assert "kneeFloor, kneePoleStrength);" in visual
 assert visual.count("planar, yawRate, ankleRigWeight, transitioningLowStance,") == 2
 assert visual.count("PlanBalancedLowStanceFeet(") == 2
@@ -183,5 +186,27 @@ for blend in (0.8, 0.9, 1.0):
         if previous is not None:
             assert max(abs(a-b) for a, b in zip(now, previous)) < .07
         previous = now
-print("PASS: compact crouch, smooth prone knee pole and two-foot terrain layout")
+# Angle-based pole blending must not collapse at 50% even when
+# original and desired knee directions are 180 degrees apart.
+# This math mirrors atan2(sin,cos) and axis-angle rotation in C#.
+from math import atan2, cos, sin, pi, hypot, isfinite
+def pole_arc(start, target, strength):
+    angle = atan2(start[0]*target[1]-start[1]*target[0],
+                  start[0]*target[0]+start[1]*target[1])
+    rotation = angle * strength
+    x = start[0]*cos(rotation)-start[1]*sin(rotation)
+    y = start[0]*sin(rotation)+start[1]*cos(rotation)
+    return x,y
+
+for target_angle in (0.0, .1, 1.57, 3.0, pi, -3.0, -1.2):
+    desired=(cos(target_angle),sin(target_angle))
+    for weight in (0.0,.01,.25,.49,.5,.51,.75,.90,.99,1.0):
+        vec=pole_arc((1.0,0.0),desired,weight)
+        assert all(isfinite(c) for c in vec)
+        assert abs(hypot(*vec)-1.0)<1e-10, (target_angle,weight,vec)
+        if weight==1.0:
+            assert hypot(vec[0]-desired[0],vec[1]-desired[1])<1e-10
+# Opposite knee directions used to cancel exactly at weight 0.5.
+assert abs(hypot(*pole_arc((1.0,0.0),(-1.0,0.0),.5))-1.0)<1e-10
+print("PASS: compact crouch, nondegenerate knee pole and two-foot terrain layout")
 print("NOT TESTED: Unity retargeted visuals, real collisions or Android FPS")
