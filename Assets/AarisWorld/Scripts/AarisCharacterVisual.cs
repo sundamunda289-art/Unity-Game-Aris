@@ -1122,8 +1122,14 @@ namespace Aaris.MapReview
             // Give prone shoes nearly full available leg reach (the analytic solver
             // still caps distance to real thigh+shin lengths). A shorter
             // 0.94m goal left each knee flaring ~0.25m to the side.
-            Vector3 proneLeft = hipMid - facing * 1.055f - right * 0.18f;
-            Vector3 proneRight = hipMid - facing * 1.055f + right * 0.18f;
+            // Drive each heel from its OWN thigh origin. Using a shared hip
+            // midpoint combined with imported pelvis yaw left one leg only
+            // 0.999m long while the other was 1.049m, producing asymmetric
+            // outward knee flare. Both retain the same real bone lengths.
+            Vector3 proneLeft = leftThigh.position - facing * 1.045f -
+                right * 0.035f;
+            Vector3 proneRight = rightThigh.position - facing * 1.045f +
+                right * 0.035f;
             Vector3 requestedLeft = Vector3.Lerp(crouchLeft, proneLeft, prone);
             Vector3 requestedRight = Vector3.Lerp(crouchRight, proneRight, prone);
             // Never teleport boots: cap retargeting within one footstep and
