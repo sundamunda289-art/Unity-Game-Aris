@@ -48,7 +48,7 @@ class VehiclePaintAndFallback(unittest.TestCase):
     def test_premium_palette_and_panel_only_clearcoat(self):
         palette = WORLD.split("private static readonly Color[] BodyPaintColours =", 1)[1].split("private static int StablePaintVariant(", 1)[0]
         self.assertEqual(palette.count("new Color("), 8)
-        for shade in ("pearl white", "satin silver", "graphite steel", "oxblood crimson", "midnight sapphire", "olive jade", "pale champagne", "smoked teal"):
+        for shade in ("ceramic pearl", "satin titanium", "graphite blue steel", "deep burgundy", "navy sapphire", "muted olive", "antique champagne", "dark petrol teal"):
             self.assertIn(shade, palette)
         paint = WORLD.split("private static void PaintVerifiedBodySlots(", 1)[1].split("private void FallBackToVerifiedModel(", 1)[0]
         self.assertIn("if (separatePaint || civilianPaint)", paint)
