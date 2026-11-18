@@ -106,12 +106,12 @@ assert 'float boneSpan = proneHeadBone.position.y -' in visual
 assert '(TargetHeightMetres - 0.14f) / boneSpan' in visual
 assert 'visualRoot.localScale *= scaleFactor;' in visual
 assert 'standingShoeOffset + adjustment' in visual
-assert 'standingShoeOffset * uprightWeight' in visual
+assert 'proneLowering + standingShoeOffset, 0f' in visual
 assert 'Mathf.Min(leftFootBone.position.y,' in visual
 # Native crouch/prone Head has to stay below stance capsule ceiling;
 # knee solver then replants feet at the real floor under each foot.
 assert 'float capsuleTop = transform.TransformPoint(controller.center +' in visual
-assert 'Mathf.Min(excess, 0.45f) * lowPose' in visual
+assert 'Mathf.Min(excess, 1.00f) * lowPose' in visual
 assert 'private float SupportedAnkleY(Transform foot, float clearance,' in visual
 assert 'Ray ray = new Ray(origin, Vector3.down);' in visual
 assert 'Physics.RaycastNonAlloc(ray,' in visual
@@ -856,3 +856,22 @@ for fps in (10,20,30,60,120):
         assert not is_locked and next_foot == .08
     assert not low_contact(True,anchor,.25,0,1)[0]
 print('PASS: stationary crouch world-contact anchors')
+
+# Rescue independently authored crouch/prone knee-height and pelvis fixes
+# without losing the canonical fast-pivot anchor-release regression.
+assert 'float kneeFloor = ankleWorldY + 0.02f;' in visual
+assert 'minimumKneeWorldY = -10000f' in visual
+assert 'Vector3.ProjectOnPlane(Vector3.up, axis)' in visual
+assert 'standingShoeOffset * uprightWeight' not in visual
+print('PASS: knee-bend floor guard and persistent rig offset')
+
+assert 'Vector3.Lerp(bend, forwardBend.normalized, 0.72f).normalized' in visual
+assert 'forwardBend.sqrMagnitude > 0.0001f' in visual
+print('PASS: crouch forward knee hint; prone path stays independent')
+
+for needle in ('float pelvisShortfall = capsuleFloor + 0.16f -',
+               'float helmetRoom = capsuleCeiling - 0.20f -',
+               'Mathf.Min(pelvisShortfall, helmetRoom), 0f, 0.21f',
+               'visualRoot.localPosition += Vector3.up * pelvisLift;'):
+    assert needle in visual
+print('PASS: prone capsule bounded pelvis lift')
