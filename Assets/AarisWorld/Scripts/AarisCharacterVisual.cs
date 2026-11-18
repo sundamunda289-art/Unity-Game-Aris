@@ -979,7 +979,8 @@ namespace Aaris.MapReview
 
         private static void PlantCrouchLeg(Transform thigh, Transform shin,
             Transform foot, float ankleWorldY, Vector3 forward, float weight,
-            float planarSpeed, ref bool contactLocked, ref Vector3 contactWorld)
+            float planarSpeed, float turnDegreesPerSecond,
+            ref bool contactLocked, ref Vector3 contactWorld)
         {
             if (foot == null || float.IsNaN(ankleWorldY) || weight <= 0.005f)
             {
@@ -988,8 +989,12 @@ namespace Aaris.MapReview
             }
             Vector3 targetFoot = foot.position;
             targetFoot.y = ankleWorldY;
-            // Do not pin a moving crouch foot or force the knee beyond reach.
-            if (planarSpeed >= 0.18f || weight < 0.30f)
+            // A stationary crouch pivot changes skeleton yaw even when capsule
+            // velocity is zero. Release the old world-space shoe anchors on a
+            // fast turn instead of twisting planted knees against the new pose.
+            // Reacquire contact once the turn slows, with no extra raycasts.
+            bool turningFast = Mathf.Abs(turnDegreesPerSecond) > 110f;
+            if (planarSpeed >= 0.18f || weight < 0.30f || turningFast)
             {
                 contactLocked = false;
             }
@@ -1554,12 +1559,12 @@ namespace Aaris.MapReview
                     ankleClearance, out Vector3 rightSupportNormal);
                 if (!float.IsNaN(leftAnkleY))
                     PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
-                        leftAnkleY, kneeForward, ankleRigWeight, planar,
+                        leftAnkleY, kneeForward, ankleRigWeight, planar, yawRate,
                         ref leftLowPlantLocked, ref leftLowPlantWorld);
                 else leftLowPlantLocked = false;
                 if (!float.IsNaN(rightAnkleY))
                     PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
-                        rightAnkleY, kneeForward, ankleRigWeight, planar,
+                        rightAnkleY, kneeForward, ankleRigWeight, planar, yawRate,
                         ref rightLowPlantLocked, ref rightLowPlantWorld);
                 else rightLowPlantLocked = false;
                 // Crouch/prone used to correct only ankle height, leaving the
