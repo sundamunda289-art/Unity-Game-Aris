@@ -103,11 +103,16 @@ namespace Aaris.MapReview
             try
             {
                 string folder = Path.Combine(Application.persistentDataPath, "AarisDiagnostics");
-                Directory.CreateDirectory(folder);
                 logPath = Path.Combine(folder, "current.jsonl");
-                string previous = Path.Combine(folder, "previous.jsonl");
-                if (File.Exists(logPath)) File.Copy(logPath, previous, true);
-                File.WriteAllText(logPath, "");
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // Avoid synchronous flash I/O before the first rendered frame.
+                // The initial report queues behind file rotation.
+                string initialPath = logPath;
+                pendingLogWrite = Task.Run(() => InitializeLogFile(initialPath));
+#else
+                string startupError = InitializeLogFile(logPath);
+                if (startupError != null) StopLogging(startupError);
+#endif
             }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             { Debug.LogWarning("Aaris diagnostics file unavailable: " + e.Message); logPath = null; }
@@ -851,7 +856,8 @@ namespace Aaris.MapReview
                 if (!pendingLogWrite.IsCompleted)
                 {
                     if (reason != "pause" && reason != "quit" &&
-                        reason != "low-memory" && reason != "frame-stall")
+                        reason != "low-memory" && reason != "frame-stall" &&
+                        reason != "start")
                         return;
                 }
                 else
@@ -867,30 +873,46 @@ namespace Aaris.MapReview
                     }
                 }
             }
-            if (reason != "start")
-            {
-                // Preserve the ordering of urgent records without blocking
-                // Android lifecycle callbacks. These writes are best-effort:
-                // Android may terminate a process before a background append.
-                string path = logPath, report = LatestReport;
-                Task<string> previous = pendingLogWrite;
-                pendingLogWrite = previous == null
-                    ? Task.Run(() => AppendReport(path, report))
-                    : previous.ContinueWith(completed =>
-                    {
-                        if (completed.IsFaulted)
-                            return "Previous diagnostics write failed: " +
-                                completed.Exception.GetBaseException().GetType().Name;
-                        if (completed.IsCanceled)
-                            return "Previous diagnostics write canceled";
-                        if (completed.Result != null) return completed.Result;
-                        return AppendReport(path, report);
-                    }, TaskScheduler.Default);
-                return;
-            }
-#endif
+            // Also enqueue the first start report after background rotation.
+            // Keep the already-merged #679 urgent-event ordering.
+            string path = logPath, report = LatestReport;
+            Task<string> previous = pendingLogWrite;
+            pendingLogWrite = previous == null
+                ? Task.Run(() => AppendReport(path, report))
+                : previous.ContinueWith(completed =>
+                {
+                    if (completed.IsFaulted)
+                        return "Previous diagnostics write failed: " +
+                            completed.Exception.GetBaseException().GetType().Name;
+                    if (completed.IsCanceled)
+                        return "Previous diagnostics write canceled";
+                    if (completed.Result != null) return completed.Result;
+                    return AppendReport(path, report);
+                }, TaskScheduler.Default);
+            return;
+#else
             string error = AppendReport(logPath, LatestReport);
             if (error != null) StopLogging(error);
+#endif
+        }
+
+        // Called on a background worker in Android, before any report append.
+        // This function must not use UnityEngine APIs.
+        private static string InitializeLogFile(string path)
+        {
+            try
+            {
+                string folder = Path.GetDirectoryName(path);
+                Directory.CreateDirectory(folder);
+                string previous = Path.Combine(folder, "previous.jsonl");
+                if (File.Exists(path)) File.Copy(path, previous, true);
+                File.WriteAllText(path, "");
+                return null;
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                return e.Message;
+            }
         }
 
         private static string AppendReport(string path, string report)
