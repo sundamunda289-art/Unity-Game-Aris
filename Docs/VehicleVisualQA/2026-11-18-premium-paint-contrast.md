@@ -14,10 +14,10 @@ three formerly overlapping shades with more natural automotive hues:
 
 - Midnight sapphire blue: (0.12, 0.20, 0.47)
 - Refined olive-bronze: (0.49, 0.48, 0.25)
-- Deep petrol teal: (0.10, 0.45, 0.50)
+- Deep petrol teal: (0.11, 0.48, 0.53)
 
 The minimum pairwise normalised RGB separation among all eight shades
-is now **0.2421**, a 2.67x separation compared with the baseline.
+is now **0.2534**, a 2.80x separation compared with the baseline.
 
 Only body paint swatches changed. No new texture, shader, mesh,
 rendering material, runtime allocation, draw call, or HDR effect.
