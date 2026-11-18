@@ -80,8 +80,10 @@ namespace Aaris.MapReview.Editor
                     if (block.isEmpty)
                         throw new InvalidOperationException("Paint renderer missing runtime property block");
                     Color tint = block.GetColor("_BaseColor");
-                    if (tint.a < .98f || !float.IsFinite(tint.r) ||
-                        !float.IsFinite(tint.g) || !float.IsFinite(tint.b))
+                    if (tint.a < .98f || float.IsNaN(tint.r) ||
+                        float.IsNaN(tint.g) || float.IsNaN(tint.b) ||
+                        float.IsInfinity(tint.r) || float.IsInfinity(tint.g) ||
+                        float.IsInfinity(tint.b))
                         throw new InvalidOperationException("Invalid runtime paint swatch");
                     return tint;
                 }
