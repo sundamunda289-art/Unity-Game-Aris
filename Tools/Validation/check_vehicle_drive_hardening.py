@@ -26,7 +26,13 @@ def test():
     assert "body.angularVelocity.magnitude >= .5f" in motor
     assert "Vector3.Dot(transform.up, Vector3.up) < .72f" in motor
     assert "return grounded >= 2;" in motor
-    assert "car == null || !car.IsSafeToExit" in session
+    # Only a stationary rollover can bypass the upright/wheel-contact gate.
+    # Every EXIT path still requires the verified ground/capsule/wall route.
+    assert "public bool CanEvacuateStoppedVehicle" in motor
+    assert "TotalSpeedMetresPerSecond < .65f" in motor
+    assert "body.angularVelocity.magnitude < .25f" in motor
+    assert "(!car.IsSafeToExit && !car.CanEvacuateStoppedVehicle)" in session
+    assert "!TryFindExit(out Vector3 safeExit)" in session
     assert "car.SpeedMetresPerSecond > 1.1f" not in session
 
     # A closer sliding/overturned car must not mask a safe nearby car.
