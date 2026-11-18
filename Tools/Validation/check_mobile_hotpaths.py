@@ -727,6 +727,24 @@ def audit():
     # Sustained aiming should not resend the same property block on each frame.
     placement = gloo[gloo.index("private void UpdatePlacement()"):
                      gloo.index("private float FindOpenDistance(")]
+    # Regression: the OBJ centre is +Z while its two ends are -Z.
+    # The open/concave side is local -Z, which must look back at the
+    # player once the wall is spawned ahead of that player (+ahead).
+    obj = (ROOT / "Assets/Resources/AarisCombat/GlooWall.obj").read_text()
+    points = [tuple(float(n) for n in line.split()[1:4])
+              for line in obj.splitlines() if line.startswith("v ")]
+    centre_z = [z for x, y, z in points if abs(x) < 0.15 and y == 0]
+    wing_z = [z for x, y, z in points if abs(x) > 1.7 and y == 0]
+    assert centre_z and wing_z
+    assert sum(centre_z) / len(centre_z) > sum(wing_z) / len(wing_z) + 0.25
+    assert "proposedRotation = Quaternion.LookRotation(ahead, Vector3.up);" in placement
+    assert "Quaternion.LookRotation(-ahead, Vector3.up)" not in placement
+    assert "ghost.transform.SetPositionAndRotation(proposedPoint, proposedRotation);" in placement
+    assert "root.transform.SetPositionAndRotation(point, rotation);" in release
+    # Keep the procedural fallback wings bent the same way as the authored OBJ.
+    assert "new Vector3(-1.46f, 0f, -0.25f)" in gloo
+    assert "new Vector3(1.46f, 0f, -0.25f)" in gloo
+
     tint_guard = "if (!ghostTintInitialized || ghostTintValid != placementValid)"
     assert tint_guard in placement
     assert placement.count("AarisGlooWallVisuals.Tint(ghostRenderers") == 1
