@@ -21,10 +21,10 @@ class StoppedRolloverExitTests(unittest.TestCase):
         self.assertIn("public bool CanEvacuateStoppedVehicle =>", MOTOR)
         self.assertIn("TotalSpeedMetresPerSecond < .65f", MOTOR)
         self.assertIn("body.angularVelocity.magnitude < .25f", MOTOR)
-        for speed, angular in ((0, 0), (.64, .24), (.65, .0),
-                               (.0, .25), (2.0, .0), (.0, 1.0)):
-            approved = speed < .65 and angular < .25
-            self.assertEqual(approved, speed < .65 and angular < .25)
+        for speed, angular, expected in ((0, 0, True), (.64, .24, True),
+                                         (.65, .0, False), (.0, .25, False),
+                                         (2.0, .0, False), (.0, 1.0, False)):
+            self.assertEqual(speed < .65 and angular < .25, expected)
         self.assertIn("(!car.IsSafeToExit && !car.CanEvacuateStoppedVehicle)", EXIT_ACTION)
         self.assertIn("!TryFindExit(out Vector3 safeExit)", EXIT_ACTION)
         # Boarding remains strictly limited to normally grounded, upright cars.
