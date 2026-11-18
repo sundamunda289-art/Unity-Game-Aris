@@ -947,14 +947,23 @@ namespace Aaris.MapReview
                 bend = Vector3.ProjectOnPlane(Vector3.up, axis);
             if (bend.sqrMagnitude < 0.0001f) return;
             bend.Normalize();
-            // Keep the existing 90% crouch pole, but allow a smooth, stronger
-            // upward prone pole only once the character has settled.
-            // A transient crawl/turn keeps its authored animated knee plane.
+            // Keep crouch's existing 90% pole bias, and let settled prone
+            // blend toward its upward pole. A linear vector blend between
+            // antiparallel directions can collapse to (0,0,0) at 50%,
+            // making a nearly straight knee snap or fold. Rotate along the
+            // hip-to-ankle plane instead: this stays unit-length for every
+            // intermediate stance weight and needs no extra allocations.
             if (minimumKneeWorldY > -1000f &&
                 forwardBend.sqrMagnitude > 0.0001f &&
                 kneePoleStrength > 0.001f)
-                bend = Vector3.Lerp(bend, forwardBend.normalized,
-                    Mathf.Clamp01(kneePoleStrength)).normalized;
+            {
+                Vector3 pole = forwardBend.normalized;
+                float poleSin = Vector3.Dot(axis, Vector3.Cross(bend, pole));
+                float poleCos = Mathf.Clamp(Vector3.Dot(bend, pole), -1f, 1f);
+                float poleAngle = Mathf.Atan2(poleSin, poleCos) * Mathf.Rad2Deg;
+                bend = Quaternion.AngleAxis(
+                    poleAngle * Mathf.Clamp01(kneePoleStrength), axis) * bend;
+            }
             float along = (upper * upper - lower * lower + distance * distance) /
                 (2f * distance);
             float across = Mathf.Sqrt(Mathf.Max(
