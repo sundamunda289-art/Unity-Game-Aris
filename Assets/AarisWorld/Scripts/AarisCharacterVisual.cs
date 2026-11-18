@@ -1652,8 +1652,31 @@ namespace Aaris.MapReview
                 float excess = proneHeadBone.position.y -
                     (capsuleTop - headInset);
                 if (excess > 0.005f)
-                    visualRoot.localPosition += Vector3.down *
-                        Mathf.Min(excess, 1.00f) * lowPose;
+                {
+                    float headroomDrop = Mathf.Min(excess, 1.00f) * lowPose;
+                    // The physical capsule shrinks immediately but the
+                    // imported prone FBX blends over several real frames.
+                    // Forcing the partially-upright skeleton under its final
+                    // 0.62m ceiling previously buried both shoes by ~0.8m
+                    // during the first crouch-to-prone frame. During that
+                    // brief blend, ground clearance wins over forced visual
+                    // headroom: the final settled pose retains the existing
+                    // full headroom correction and collision authority.
+                    if (groundedNow && effectiveProneBlend > 0.03f &&
+                        effectiveProneBlend < 0.96f &&
+                        leftFootBone != null && rightFootBone != null)
+                    {
+                        float capsuleFloor = transform.TransformPoint(
+                            controller.center - Vector3.up *
+                            (controller.height * 0.5f)).y;
+                        float lowestShoeY = Mathf.Min(
+                            leftFootBone.position.y, rightFootBone.position.y);
+                        float safeDown = Mathf.Max(0f,
+                            lowestShoeY - (capsuleFloor + 0.02f));
+                        headroomDrop = Mathf.Min(headroomDrop, safeDown);
+                    }
+                    visualRoot.localPosition += Vector3.down * headroomDrop;
+                }
             }
             // Prone may satisfy headroom yet sink its pelvis below the floor.
             // Use the authoritative capsule bottom as a conservative visual
