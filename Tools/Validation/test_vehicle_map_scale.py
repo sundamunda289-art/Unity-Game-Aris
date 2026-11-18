@@ -26,7 +26,7 @@ class VehicleWorldScale(unittest.TestCase):
     def test_car_class_metre_envelopes_fit_two_lane_map(self):
         self.assertEqual(MAP["world_units"], "metres")
         self.assertEqual(MAP["size_m"], [2000, 2000])
-        self.assertTrue(all(r["width"] == 8 for r in MAP["roads"]))
+        self.assertEqual(sorted({r["width"] for r in MAP["roads"]}), [7, 8])
         for car, (width, length) in EXPECTED.items():
             with self.subTest(car=car):
                 literal = r'case "' + re.escape(car) + (
@@ -35,7 +35,7 @@ class VehicleWorldScale(unittest.TestCase):
                 self.assertIsNotNone(result, car)
                 self.assertEqual(tuple(float(x) for x in result.groups()),
                                  (width, length))
-                self.assertLess(width, 8 / 2 - 1.5, car)
+                self.assertLess(width, 7 / 2 - 1.2, car)
                 self.assertLess(length, 6, car)
 
     def test_imported_z_up_cars_rotate_into_ground_plane_before_yaw(self):
