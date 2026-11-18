@@ -108,7 +108,8 @@ class VehicleVisualFidelity(unittest.TestCase):
         self.assertIn("candidate.size.z > wholeCar.size.z * 1.04f", helper)
         builder = WORLD.split("private bool Build(", 1)[1].split(
             "private void Update()", 1)[0]
-        self.assertIn("Bounds lampBounds = new Bounds(", builder)
+        self.assertIn("Bounds lampBounds = bounds;", builder)
+        self.assertIn("motor.FitShellAndWheelbase(bounds);", builder)
         self.assertIn("record.type.useEmbeddedAuthoredWheels &&", builder)
         self.assertIn("TryGetAuthoredLampBodyBounds(root.transform, mesh.transform,", builder)
         self.assertIn("lampBounds = bodyOnly;", builder)
