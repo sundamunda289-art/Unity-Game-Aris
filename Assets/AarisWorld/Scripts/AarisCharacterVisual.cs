@@ -1119,10 +1119,13 @@ namespace Aaris.MapReview
                 crouchKneeForward * 0.14f;
             Vector3 crouchRight = hipMid + anatomicalRight * 0.19f +
                 crouchKneeForward * 0.22f;
-            // Straight prone legs need a nearly full-length rear extension.
-            // The previous 0.73m goal bent the knees into a frog pose.
-            Vector3 proneLeft = hipMid - facing * 0.94f - right * 0.18f;
-            Vector3 proneRight = hipMid - facing * 0.94f + right * 0.18f;
+            // Give prone shoes nearly full available leg reach (the analytic solver
+            // still caps distance to real thigh+shin lengths). A shorter
+            // 0.94m goal left each knee flaring ~0.25m to the side.
+            Vector3 proneLeft = leftThigh.position - facing * 1.055f -
+                right * 0.035f;
+            Vector3 proneRight = rightThigh.position - facing * 1.055f +
+                right * 0.035f;
             Vector3 requestedLeft = Vector3.Lerp(crouchLeft, proneLeft, prone);
             Vector3 requestedRight = Vector3.Lerp(crouchRight, proneRight, prone);
             // Never teleport boots: cap retargeting within one footstep and
@@ -1131,8 +1134,12 @@ namespace Aaris.MapReview
                 requestedLeft - leftGoal, Vector3.up);
             Vector3 rightDelta = Vector3.ProjectOnPlane(
                 requestedRight - rightGoal, Vector3.up);
-            leftGoal += Vector3.ClampMagnitude(leftDelta, 0.52f) * correction;
-            rightGoal += Vector3.ClampMagnitude(rightDelta, 0.52f) * correction;
+            // Keep crouch's authored small step, but let the stationary
+            // settled prone heels reach the extension they actually need.
+            // Movement and transition correction still fade to zero.
+            float reachBudget = Mathf.Lerp(0.52f, 0.74f, prone);
+            leftGoal += Vector3.ClampMagnitude(leftDelta, reachBudget) * correction;
+            rightGoal += Vector3.ClampMagnitude(rightDelta, reachBudget) * correction;
         }
 
         // One non-allocating ground sample per foot on low stances; unlike
