@@ -128,7 +128,7 @@ assert 'bool transitioningLowStance =' in visual
 assert '(crouchRigWeight > 0.03f && crouchRigWeight < 0.96f)' in visual
 assert '(proneRigWeight > 0.03f && proneRigWeight < 0.96f)' in visual
 assert visual.count('kneeClearance, transitioningLowStance,') == 2
-assert visual.count('ankleRigWeight, planar, yawRate,') == 2
+assert visual.count('planar, yawRate, ankleRigWeight, transitioningLowStance,') == 2
 for yaw_rate, moving, weight, crouch_weight, prone_weight, should_release in (
     (0.0, 0.0, 1.0, 1.0, 0.0, False),
     (110.0, 0.0, 1.0, 1.0, 0.0, False),
@@ -638,6 +638,7 @@ assert ': Mathf.Clamp01(effectiveCrouchBlend + effectiveProneBlend);' in visual
 assert 'float proneLowering = primaryLoaded && proneClip != null &&' in visual
 # One two-bone solve per leg, irrespective of intermediate stance blends.
 assert visual.count('PlantCrouchLeg(') == 3  # definition + low-stance left/right
+assert visual.count('ResolveLowStanceFootContact(') == 3  # definition + both shoes
 assert visual.count('PlantLegToTarget(') >= 3  # definition + crouch wrapper + upright 3D target
 assert 'out Vector3 supportNormal' in visual
 assert 'foot = stanceFoot, footPosition = stanceFoot.position' in visual
