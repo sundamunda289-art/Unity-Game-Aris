@@ -148,10 +148,17 @@ namespace Aaris.MapReview.Editor
                             motor.FitShellAndWheelbase(
                                 new Bounds(new Vector3(0f, .48f, 0f), bounds.size));
                             studioWheelMat = new Material(shader);
-                            studioWheelMat.SetColor("_BaseColor",
-                                new Color(.22f, .24f, .27f, 1f));
-                            studioWheelMat.SetFloat("_Metallic", .15f);
-                            studioWheelMat.SetFloat("_Smoothness", .37f);
+                            // Match the REAL shared Kenney wheel UV atlas,
+                            // rather than showing four untextured grey discs.
+                            var wheelAtlas = Resources.Load<Texture2D>(
+                                "AarisVehicles/Models/colormap");
+                            if (wheelAtlas == null)
+                                throw new InvalidOperationException(
+                                    "Game wheel palette texture missing.");
+                            studioWheelMat.SetTexture("_BaseMap", wheelAtlas);
+                            studioWheelMat.SetColor("_BaseColor", Color.white);
+                            studioWheelMat.SetFloat("_Metallic", 0f);
+                            studioWheelMat.SetFloat("_Smoothness", .18f);
                             var wheel = Resources.Load<GameObject>(
                                 "AarisVehicles/Models/wheel-default");
                             if (!motor.AttachWheelModels(wheel, studioWheelMat))
