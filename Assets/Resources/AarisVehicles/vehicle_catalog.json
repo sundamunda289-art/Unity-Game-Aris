@@ -13,7 +13,9 @@
       "tyreGripScale": 1,
       "suspensionScale": 1,
       "steeringScale": 1,
-      "suspensionTravelScale": 0.96
+      "suspensionTravelScale": 0.96,
+      "referenceWidthMetres": 1.84,
+      "referenceLengthMetres": 4.42
     },
     {
       "id": "SUV",
@@ -28,7 +30,9 @@
       "tyreGripScale": 0.98,
       "suspensionScale": 1.08,
       "steeringScale": 0.9,
-      "suspensionTravelScale": 1.1
+      "suspensionTravelScale": 1.1,
+      "referenceWidthMetres": 1.96,
+      "referenceLengthMetres": 4.5
     },
     {
       "id": "Sports",
@@ -43,7 +47,9 @@
       "tyreGripScale": 1.09,
       "suspensionScale": 1.16,
       "steeringScale": 1.12,
-      "suspensionTravelScale": 0.84
+      "suspensionTravelScale": 0.84,
+      "referenceWidthMetres": 1.91,
+      "referenceLengthMetres": 4.4
     },
     {
       "id": "GT",
@@ -58,7 +64,9 @@
       "suspensionScale": 1.12,
       "steeringScale": 1.1,
       "suspensionTravelScale": 0.86,
-      "fallbackAuthoredModelResource": "AarisVehicles/Authored/QuaterniusSports"
+      "fallbackAuthoredModelResource": "AarisVehicles/Authored/QuaterniusSports",
+      "referenceWidthMetres": 1.92,
+      "referenceLengthMetres": 4.42
     },
     {
       "id": "Hatchback",
@@ -73,7 +81,9 @@
       "tyreGripScale": 1.04,
       "suspensionScale": 0.97,
       "steeringScale": 1.08,
-      "suspensionTravelScale": 0.94
+      "suspensionTravelScale": 0.94,
+      "referenceWidthMetres": 1.74,
+      "referenceLengthMetres": 3.95
     },
     {
       "id": "Van",
@@ -87,7 +97,9 @@
       "tyreGripScale": 0.91,
       "suspensionScale": 1.04,
       "steeringScale": 0.82,
-      "suspensionTravelScale": 1.07
+      "suspensionTravelScale": 1.07,
+      "referenceWidthMetres": 1.97,
+      "referenceLengthMetres": 4.57
     },
     {
       "id": "Utility",
@@ -101,13 +113,15 @@
       "tyreGripScale": 0.94,
       "suspensionScale": 1.08,
       "steeringScale": 0.88,
-      "suspensionTravelScale": 1.16
+      "suspensionTravelScale": 1.16,
+      "referenceWidthMetres": 1.96,
+      "referenceLengthMetres": 4.57
     },
     {
       "id": "Buggy",
       "modelResource": "AarisVehicles/Models/truck-flat",
       "weight": 2,
-      "maxSpeedMetres": 25.0,
+      "maxSpeedMetres": 25,
       "massKg": 1130,
       "wheelResource": "AarisVehicles/Models/wheel-truck",
       "authoredModelResource": "AarisVehicles/Authored/AarisBuggy",
@@ -115,7 +129,9 @@
       "tyreGripScale": 1.1,
       "suspensionScale": 0.94,
       "steeringScale": 1.1,
-      "suspensionTravelScale": 1.24
+      "suspensionTravelScale": 1.24,
+      "referenceWidthMetres": 1.8,
+      "referenceLengthMetres": 3.72
     }
   ]
 }
