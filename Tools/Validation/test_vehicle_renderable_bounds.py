@@ -12,7 +12,7 @@ WORLD = (ROOT / 'Assets/AarisWorld/Scripts/AarisVehicleWorld.cs').read_text('utf
 class VisibleCarBounds(unittest.TestCase):
     def test_hidden_or_empty_imported_meshes_cannot_expand_fitted_body(self):
         section = WORLD.split('internal static bool TryGetVisualBoundsLocal(Transform localSpace,\n', 1)[1].split(
-            'private void Awake()', 1)[0]
+            'private static void AccumulateLocalBounds(', 1)[0]
         # Both MeshFilter+MeshRenderer and SkinnedMeshRenderer paths are visibility gated.
         self.assertIn('filter.sharedMesh.vertexCount == 0', section)
         self.assertIn('renderer == null || !renderer.enabled', section)
