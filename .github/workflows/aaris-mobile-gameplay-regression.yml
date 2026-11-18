@@ -83,6 +83,10 @@ jobs:
           python Tools/Validation/test_loot_visibility_pacing.py
           python Tools/Validation/test_audio_footstep_gait.py
           python Tools/Validation/test_jump_contact_transition.py
+          python Tools/Validation/test_balanced_low_stance_ik.py
+          python Tools/Validation/test_locked_slope_foot_support.py
+          python Tools/Validation/test_native_stance_transition_capture.py
+          python Tools/Validation/test_character_pose_and_curved_ice.py
           python Tools/Validation/check_battle_hardening.py
           python Tools/Validation/test_open_combat_houses.py
           python Tools/Validation/test_house_facade_details.py
