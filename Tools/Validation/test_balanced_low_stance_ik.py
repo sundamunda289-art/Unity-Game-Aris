@@ -57,19 +57,23 @@ assert "float floor = float.NaN;" in support
 assert "hit.collider.transform.IsChildOf(transform)" in support
 assert "hit.normal.y < minWalkableNormalY" in support
 
+resolver = visual[visual.index("private static Vector3 ResolveLowStanceFootContact("):
+                  visual.index("private static void PlantCrouchLeg(")]
 crouch = visual[visual.index("private static void PlantCrouchLeg("):
                 visual.index("private void PlanBalancedLowStanceFeet(")]
-assert "targetFoot.x = desiredFootWorld.x;" in crouch
-assert "targetFoot.z = desiredFootWorld.z;" in crouch
+assert "Vector3 targetFoot = resolvedFootWorld;" in crouch
+assert "return goal;" in resolver
 assert "targetFoot.y = ankleWorldY;" in crouch
 assert "float kneeFloor = ankleWorldY + kneeClearance;" in crouch
 assert "float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);" in visual
 assert "Vector3 kneeForward = proneShare < 0.5f ?" in visual and "crouchKneeForward : Vector3.zero;" in visual
-assert "bool turningFast = Mathf.Abs(turnDegreesPerSecond) > 110f;" in crouch
+assert "bool turningFast = Mathf.Abs(turnDegreesPerSecond) > 110f;" in resolver
 assert "Vector3.Lerp(bend, forwardBend.normalized, 0.90f)" in visual
-assert visual.count("ankleRigWeight, planar, yawRate,") == 2
+assert visual.count("planar, yawRate, ankleRigWeight, transitioningLowStance,") == 2
 assert visual.count("PlanBalancedLowStanceFeet(") == 2
-assert "leftFootGoal, kneeClearance, ref leftLowPlantLocked" in visual
-assert "rightFootGoal, kneeClearance, ref rightLowPlantLocked" in visual
+assert "leftFootGoal, kneeClearance);" in visual
+assert "ref leftLowPlantLocked, ref leftLowPlantWorld);" in visual
+assert "rightFootGoal, kneeClearance);" in visual
+assert "ref rightLowPlantLocked, ref rightLowPlantWorld);" in visual
 print("PASS: compact crouch and aligned prone two-foot layout with reused support rays")
 print("NOT TESTED: Unity retargeted visuals, real collisions or Android FPS")
