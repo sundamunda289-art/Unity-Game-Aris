@@ -179,11 +179,12 @@ jobs:
                 "-aarisCaptureIntent=$CAPTURE_INTENT" \
                 -logFile /project/ci-logs/unity-editor.log
             '
-      - name: Audit actual PNGs for black, white and empty frames
+      - name: Audit actual PNGs for invalid colors and empty frames
         id: audit
         if: steps.render.outcome == 'success'
         run: |
           python3 -m pip install --disable-pip-version-check pillow==11.3.0
+          python3 Tools/Validation/test_photo_visual_regression.py
           python3 Tools/CI/photo_audit.py --directory ci-photos
       - name: Publish photos to live-photos Release
         if: always()
