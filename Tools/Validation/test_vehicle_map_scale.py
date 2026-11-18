@@ -62,6 +62,20 @@ class VehicleWorldScale(unittest.TestCase):
         self.assertIn("motor.AttachEmbeddedWheelModels(mesh.transform)", WORLD)
         self.assertIn("Vector3.Scale(mesh.transform.localScale, scale)", WORLD)
 
+    def test_art_review_uses_actual_gt_and_all_eight_calibrated_models(self):
+        studio = (ROOT / "Assets/AarisWorld/Editor/AarisVehiclePhotoStudio.cs").read_text()
+        self.assertIn("AarisVehicleVisualCalibration.FittedScale(", studio)
+        self.assertIn("AarisVehicleVisualCalibration.CorrectSourceAxes(", studio)
+        self.assertIn("Assets/Resources/AarisVehicles/PremiumRoadGT/AarisRoadGT.prefab", studio)
+        self.assertIn("Assets/Resources/AarisVehicles/Authored/AarisBuggy.obj", studio)
+        self.assertIn("new Vector3(.7f, 1f, 1.8f)", studio)
+        self.assertNotIn("Mathf.Min(1.95f /", studio)
+
+    def test_full_length_physics_shell_for_pickups(self):
+        motor = (ROOT / "Assets/AarisWorld/Scripts/AarisVehicleMotor.cs").read_text()
+        self.assertIn("Mathf.Clamp(size.z * .94f, 2.35f, 5.20f)", motor)
+        self.assertIn("ResetSprungMasses()", motor)
+
     def test_map_parking_clearance_matches_biggest_vehicles(self):
         probe = WORLD.split("private bool TryResolve(", 1)[1].split(
             "private bool TryResolvePlanned(", 1)[0]
