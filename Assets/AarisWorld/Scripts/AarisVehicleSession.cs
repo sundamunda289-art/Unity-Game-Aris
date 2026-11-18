@@ -42,6 +42,10 @@ namespace Aaris.MapReview
         private float touchMove, touchSteer;
         private AarisVehicleMotor nearbyCar;
         private Vector3 cameraVelocity;
+        // Cached horizontal chase heading survives steep pitch/airborne flips.
+        // On a hill, following the car's full 3D forward vector would shove
+        // the camera through the road by chaseDistance * sin(pitch).
+        private Vector3 lastChaseHeading = Vector3.forward;
         public bool IsDriving => car != null;
         // Hide DRIVE for overturned, still-moving or unsupported vehicles.
         // The final authority remains AarisVehicleMotor.TryTakeDriver.
@@ -187,6 +191,14 @@ namespace Aaris.MapReview
             transform.localPosition = new Vector3(-.42f, .64f, .1f);
             transform.localRotation = Quaternion.identity;
             cameraVelocity = Vector3.zero;
+            // Never reuse a previous car's heading when boarding this one.
+            Vector3 entryHeading = Vector3.ProjectOnPlane(
+                car.transform.forward, Vector3.up);
+            if (entryHeading.sqrMagnitude < .04f)
+                entryHeading = Vector3.ProjectOnPlane(
+                    transform.forward, Vector3.up);
+            lastChaseHeading = entryHeading.sqrMagnitude >= .04f
+                ? entryHeading.normalized : Vector3.forward;
             Debug.Log("AARIS_VEHICLE_ENTER " + car.VehicleId);
             return true;
         }
@@ -436,8 +448,16 @@ namespace Aaris.MapReview
                 car.DrivingVelocityWorld, Vector3.up);
             aim += Vector3.ClampMagnitude(planarTravel * .035f, .75f);
             Vector3 start = aim + Vector3.up * .85f;
-            Vector3 requested = vehicle.position - vehicle.forward * chaseDistance +
-                Vector3.up * chaseHeight;
+            // Stable world-up chase: preserve yaw, never inherit the car's
+            // uphill pitch or airborne nose-up attitude as camera altitude.
+            // A nearly vertical chassis has no reliable projected forward;
+            // keep the last valid horizontal heading instead of snapping it.
+            Vector3 horizontalForward = Vector3.ProjectOnPlane(
+                vehicle.forward, Vector3.up);
+            if (horizontalForward.sqrMagnitude >= .04f)
+                lastChaseHeading = horizontalForward.normalized;
+            Vector3 requested = vehicle.position -
+                lastChaseHeading * chaseDistance + Vector3.up * chaseHeight;
             // Smooth the intended orbit first, then collision-test the camera's
             // actual rendered position. Clamping the goal before SmoothDamp
             // allowed interpolation to cross walls on sharp vehicle turns.
