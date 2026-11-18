@@ -861,7 +861,7 @@ print('PASS: stationary crouch world-contact anchors')
 # the capsule, and crouch bend bias cannot leak into prone (zero hint).
 for needle in (
     'float minimumKneeWorldY = -10000f',
-    'float kneeFloor = ankleWorldY + 0.02f;',
+    'float kneeFloor = ankleWorldY + kneeClearance;',
     'Vector3.Lerp(bend, forwardBend.normalized, 0.90f).normalized',
     'Vector3.ProjectOnPlane(Vector3.up, axis)',
     'Mathf.Min(pelvisShortfall, helmetRoom), 0f, 0.21f',
