@@ -87,6 +87,10 @@ namespace Aaris.MapReview
         private const float AntiRollStrength = 4800f;
         private float antiRollMassScale = 1f;
         private int groundedWheelCount;
+        // Contact count alone cannot tell whether the road supports both
+        // axles: two front tyres at a crest are not two supported axles.
+        // Bit 0 = front, bit 1 = rear. Reuse the SAME four WheelHit queries.
+        private int groundedAxleMask;
         private float nextTelemetryAt;
         // A short impact pulse communicates a meaningful collision without
         // creating sparks/particles on phones or changing the drive authority.
@@ -729,7 +733,7 @@ namespace Aaris.MapReview
             int grounded = groundedWheelCount;
             // Airborne, overturned, parked and disabled cars must not lean
             // sideways because of gravity, collisions or stale input.
-            if (!driving || grounded < 2 ||
+            if (!driving || grounded < 2 || groundedAxleMask != 3 ||
                 Vector3.Dot(transform.up, Vector3.up) < .45f)
             {
                 visualPitchTarget = visualRollTarget = visualJounceTarget = 0f;
@@ -1264,15 +1268,19 @@ namespace Aaris.MapReview
             // to accumulate real longitudinal/lateral tyre slip.
             tyreSlip = 0f;
             groundedWheelCount = 0;
+            groundedAxleMask = 0;
             rearContactsGrounded[0] = rearContactsGrounded[1] = false;
             ApplyAntiRoll(0, 1);
             ApplyAntiRoll(2, 3);
             SampleBodyDynamics();
 
-            // An airborne car must NOT get a gravity-like downward suction
-            // simply because it passed 6 m/s. Contact counts are reused
-            // from the four already-sampled WheelHits, no new physics probes.
-            if (planarSpeed > 6f && groundedWheelCount >= 2)
+            // Two grounded tyres on one axle do NOT support the other end
+            // of a vehicle at a crest, bridge lip, steep ramp or drop-off.
+            // Require front AND rear support to avoid pulling an unsupported
+            // end down with an artificial aero/suspension force. Only the
+            // existing four WheelHit samples are used; no extra queries.
+            if (planarSpeed > 6f && groundedWheelCount >= 2 &&
+                groundedAxleMask == 3)
                 // Realistic road-car aero: the old force reached >1g on
                 // light hatchbacks at motorway speed. Bound added contact
                 // load to 0.36g across every catalog mass without altering
@@ -1375,6 +1383,8 @@ namespace Aaris.MapReview
 
             bool leftGrounded = left.GetGroundHit(out WheelHit leftHit);
             bool rightGrounded = right.GetGroundHit(out WheelHit rightHit);
+            if (leftGrounded || rightGrounded)
+                groundedAxleMask |= leftIndex == 0 ? 1 : 2;
             float leftTravel = 1f, rightTravel = 1f;
             if (leftGrounded)
             {
