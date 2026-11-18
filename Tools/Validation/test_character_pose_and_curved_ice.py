@@ -122,18 +122,31 @@ assert 'PlantCrouchLeg(leftThigh, leftShin, leftFootBone,' in visual
 # hits rather than adding a physics query or pinning a twisting knee.
 assert 'float planarSpeed, float turnDegreesPerSecond,' in visual
 assert 'bool turningFast = Mathf.Abs(turnDegreesPerSecond) > 110f;' in visual
-assert 'if (planarSpeed >= 0.18f || weight < 0.30f || turningFast)' in visual
+assert 'if (planarSpeed >= 0.18f || weight < 0.30f ||' in visual
+assert 'turningFast || transitioningStance)' in visual
+assert 'bool transitioningLowStance =' in visual
+assert '(crouchRigWeight > 0.03f && crouchRigWeight < 0.96f)' in visual
+assert '(proneRigWeight > 0.03f && proneRigWeight < 0.96f)' in visual
+assert visual.count('kneeClearance, transitioningLowStance,') == 2
 assert visual.count('ankleRigWeight, planar, yawRate,') == 2
-for yaw_rate, moving, weight, should_release in (
-    (0.0, 0.0, 1.0, False),
-    (110.0, 0.0, 1.0, False),
-    (110.1, 0.0, 1.0, True),
-    (-180.0, 0.0, 1.0, True),
-    (0.0, 0.19, 1.0, True),
-    (0.0, 0.0, 0.29, True),
+for yaw_rate, moving, weight, crouch_weight, prone_weight, should_release in (
+    (0.0, 0.0, 1.0, 1.0, 0.0, False),
+    (110.0, 0.0, 1.0, 1.0, 0.0, False),
+    (110.1, 0.0, 1.0, 1.0, 0.0, True),
+    (-180.0, 0.0, 1.0, 1.0, 0.0, True),
+    (0.0, 0.19, 1.0, 1.0, 0.0, True),
+    (0.0, 0.0, 0.29, 0.29, 0.0, True),
+    (0.0, 0.0, 1.0, 0.57, 0.0, True),  # enter crouch
+    (0.0, 0.0, 1.0, 0.55, 0.42, True), # crouch -> prone
+    (0.0, 0.0, 1.0, 0.0, 0.62, True),  # leave prone
+    (0.0, 0.0, 1.0, 0.0, 1.0, False), # settled prone
 ):
-    assert ((moving >= 0.18 or weight < 0.30 or abs(yaw_rate) > 110.0)
-            == should_release), (yaw_rate, moving, weight)
+    transitioning = (0.03 < crouch_weight < 0.96 or
+                     0.03 < prone_weight < 0.96)
+    assert ((moving >= 0.18 or weight < 0.30 or
+             abs(yaw_rate) > 110.0 or transitioning)
+            == should_release), (
+                yaw_rate, moving, weight, crouch_weight, prone_weight)
 assert 'Vector3 currentKnee = knee - hip;' in visual
 assert 'Vector3.ProjectOnPlane(currentKnee, animatedAxis)' in visual
 assert 'Quaternion.FromToRotation(animatedAxis, axis) * bend' in visual
