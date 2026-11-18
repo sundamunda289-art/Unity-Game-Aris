@@ -282,16 +282,14 @@ namespace Aaris.MapReview
                 // Prefer the five serialized URP/Lit aircraft finishes. Unlike
                 // flat procedural paints, these preserve authored PBR surface
                 // properties and any future texture maps without per-frame work.
-                Material hullPaint = EnsureDaylightFill(
-                    SavedAircraftFinish("CargoPlane-HulledMetal",
-                        ref hull, new Color(.31f, .36f, .35f), .38f, .32f),
-                    ref hullDaylightFinish);
+                Material hullPaint = SavedAircraftFinish("CargoPlane-HulledMetal",
+                    ref hull, new Color(.31f, .36f, .35f), .38f, .32f);
+                hullPaint = EnsureDaylightFill(hullPaint, ref hullDaylightFinish);
                 Material cockpitPaint = SavedAircraftFinish("CargoPlane-DarkCockpit",
                     ref dark, new Color(.055f, .10f, .13f), .08f, .82f);
-                Material wingPaint = EnsureDaylightFill(
-                    SavedAircraftFinish("CargoPlane-WingPanels",
-                        ref wingPanels, new Color(.39f, .43f, .40f), .30f, .25f),
-                    ref wingDaylightFinish);
+                Material wingPaint = SavedAircraftFinish("CargoPlane-WingPanels",
+                    ref wingPanels, new Color(.39f, .43f, .40f), .30f, .25f);
+                wingPaint = EnsureDaylightFill(wingPaint, ref wingDaylightFinish);
                 Material enginePaint = SavedAircraftFinish("CargoPlane-EngineDark",
                     ref engineDark, new Color(.095f, .12f, .13f), .52f, .26f);
                 Material safetyPaint = SavedAircraftFinish("CargoPlane-SafetyAccent",
