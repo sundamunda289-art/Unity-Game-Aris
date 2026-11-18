@@ -88,14 +88,58 @@ assert "return goal;" in resolver
 assert "targetFoot.y = ankleWorldY;" in crouch
 assert "float kneeFloor = ankleWorldY + kneeClearance;" in crouch
 assert "float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);" in visual
-assert "Vector3 kneeForward = proneShare < 0.5f ?" in visual and "crouchKneeForward : Vector3.zero;" in visual
+assert "float crouchPoleStrength = (1f - proneKneeShare) * 0.90f;" in visual
+assert "float pronePoleStrength = proneKneeShare * proneKneeSettle *" in visual
+assert "kneeStillness * kneeTurnStability;" in visual
+assert "Vector3 kneeForward = crouchKneeForward * crouchPoleStrength +" in visual
+assert "Vector3.up * pronePoleStrength;" in visual
+assert "Mathf.InverseLerp(0.78f, 0.98f, effectiveProneBlend)" in visual
+assert "Mathf.InverseLerp(65f, 140f, Mathf.Abs(yawRate))" in visual
 assert "bool turningFast = Mathf.Abs(turnDegreesPerSecond) > 110f;" in resolver
-assert "Vector3.Lerp(bend, forwardBend.normalized, 0.90f)" in visual
+assert "Vector3.Lerp(bend, forwardBend.normalized," in visual
+assert "Mathf.Clamp01(kneePoleStrength)).normalized;" in visual
+assert "kneeFloor, kneePoleStrength);" in visual
 assert visual.count("planar, yawRate, ankleRigWeight, transitioningLowStance,") == 2
 assert visual.count("PlanBalancedLowStanceFeet(") == 2
-assert "leftFootGoal, kneeClearance);" in visual
+assert "leftFootGoal, kneeClearance, kneePoleStrength);" in visual
 assert "ref leftLowPlantLocked, ref leftLowPlantWorld);" in visual
-assert "rightFootGoal, kneeClearance);" in visual
+assert "rightFootGoal, kneeClearance, kneePoleStrength);" in visual
 assert "ref rightLowPlantLocked, ref rightLowPlantWorld);" in visual
-print("PASS: compact crouch and aligned prone two-foot layout with reused support rays")
+# Source-equivalent pole curves: settled prone gets a strong vertical pole,
+# whereas crawling, fresh transitions and fast turning preserve the clip.
+def smooth(x):
+    x = max(0.0, min(1.0, x))
+    return x * x * (3.0 - 2.0 * x)
+
+def pole_weights(share, blend, speed, turn):
+    prone = smooth((share - .35) / .50)
+    crouch = (1.0 - prone) * .90
+    settled = smooth((blend - .78) / .20)
+    still = 1.0 - smooth((speed - .07) / .31)
+    turning = 1.0 - smooth((abs(turn) - 65.0) / 75.0)
+    upward = prone * settled * still * turning
+    return crouch, upward
+
+assert pole_weights(0.0, 0.0, 0.0, 0.0) == (.90, 0.0)
+assert pole_weights(1.0, 1.0, 0.0, 0.0) == (0.0, 1.0)
+assert pole_weights(1.0, .65, 0.0, 0.0) == (0.0, 0.0)
+assert pole_weights(1.0, 1.0, .5, 0.0) == (0.0, 0.0)
+assert pole_weights(1.0, 1.0, 0.0, 160.0) == (0.0, 0.0)
+for share in (0.0, .1, .35, .5, .75, .85, 1.0):
+    for blend in (0.0, .7, .8, .9, 1.0):
+        for speed in (0.0, .2, .5):
+            for yaw in (0.0, 90.0, 160.0):
+                crouch, upward = pole_weights(share, blend, speed, yaw)
+                assert 0 <= crouch <= .90 and 0 <= upward <= 1.0
+                assert 0 <= crouch + upward <= 1.000001
+# No binary knee pole change at prone share .5 or the settled threshold.
+for blend in (0.8, 0.9, 1.0):
+    previous = None
+    for i in range(101):
+        share = i / 100.0
+        now = pole_weights(share, blend, .0, .0)
+        if previous is not None:
+            assert max(abs(a-b) for a, b in zip(now, previous)) < .07
+        previous = now
+print("PASS: compact crouch, smooth prone knee pole and two-foot terrain layout")
 print("NOT TESTED: Unity retargeted visuals, real collisions or Android FPS")
