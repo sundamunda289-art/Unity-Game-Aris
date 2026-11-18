@@ -39,11 +39,11 @@ namespace Aaris.MapReview
         private bool originalOceanReceiving, changedOceanCasting, changedOceanReceiving;
         private const float ReportInterval = 15f;
 #if UNITY_ANDROID && !UNITY_EDITOR
-        private long androidPssKB = -1;
         private AarisOfflineDrop startupDrop;
         private float startupTime;
         private int startupSampleIndex;
         private Task<string> pendingLogWrite;
+        private bool diagnosticsFileNeedsInitialization;
         // Begin at native sharpness and adapt only after sustained FPS misses.
         private UniversalRenderPipelineAsset androidPipeline;
         private float originalRenderScale = 1f;
@@ -102,11 +102,16 @@ namespace Aaris.MapReview
             try
             {
                 string folder = Path.Combine(Application.persistentDataPath, "AarisDiagnostics");
-                Directory.CreateDirectory(folder);
                 logPath = Path.Combine(folder, "current.jsonl");
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // Initialize diagnostics on a worker rather than blocking scene Awake.
+                diagnosticsFileNeedsInitialization = true;
+#else
+                Directory.CreateDirectory(folder);
                 string previous = Path.Combine(folder, "previous.jsonl");
                 if (File.Exists(logPath)) File.Copy(logPath, previous, true);
                 File.WriteAllText(logPath, "");
+#endif
             }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             { Debug.LogWarning("Aaris diagnostics file unavailable: " + e.Message); logPath = null; }
@@ -800,13 +805,9 @@ namespace Aaris.MapReview
                 androidPssKB = -1, warningCount = warningCount, lastError = lastError
             };
 #if UNITY_ANDROID && !UNITY_EDITOR
-            // PSS is a synchronous kernel memory query. Keep it off the routine gameplay sample path.
-            if (reason == "terrain-render-audit" || reason == "low-memory" || reason == "pause")
-            {
-                try { using (var debug = new AndroidJavaClass("android.os.Debug")) androidPssKB = debug.CallStatic<long>("getPss"); }
-                catch (Exception e) { Debug.LogWarning("Android PSS unavailable: " + e.GetType().Name); }
-            }
-            s.androidPssKB = androidPssKB;
+            // android.os.Debug.getPss() can synchronously stall the render thread.
+            // Read PSS from Android profiling tools instead. -1 means unavailable.
+            s.androidPssKB = -1;
             if (startupDrop != null) s.dropPhase = startupDrop.Phase.ToString();
             s.lowMemoryWindZonesDisabled = suppressedWindZones;
             s.lowMemoryGrassTilesDisabled = suppressedGrassTiles;
@@ -833,12 +834,22 @@ namespace Aaris.MapReview
             LatestReport = JsonUtility.ToJson(s);
             if (logPath == null) return;
 #if UNITY_ANDROID && !UNITY_EDITOR
+            if (diagnosticsFileNeedsInitialization)
+            {
+                diagnosticsFileNeedsInitialization = false;
+                string path = logPath, report = LatestReport;
+                string previous = Path.Combine(Path.GetDirectoryName(path), "previous.jsonl");
+                pendingLogWrite = Task.Run(() => InitializeDiagnosticsFile(path, previous, report));
+                return;
+            }
             if (pendingLogWrite != null)
             {
-                // Keep at most one outstanding write. Pause/quit flush in order
-                // because Android can suspend the process after the callback.
-                if (!pendingLogWrite.IsCompleted && reason != "pause" && reason != "quit") return;
-                string previousError = pendingLogWrite.GetAwaiter().GetResult();
+                // Do not block the Unity main thread even for pause/quit.
+                // Skip a diagnostic sample if a previous I/O task is unfinished.
+                if (!pendingLogWrite.IsCompleted) return;
+                string previousError;
+                try { previousError = pendingLogWrite.GetAwaiter().GetResult(); }
+                catch (Exception e) { previousError = e.GetType().Name; }
                 pendingLogWrite = null;
                 if (previousError != null)
                 {
@@ -846,16 +857,30 @@ namespace Aaris.MapReview
                     return;
                 }
             }
-            if (reason != "start" && reason != "pause" && reason != "quit")
-            {
-                string path = logPath, report = LatestReport;
-                pendingLogWrite = Task.Run(() => AppendReport(path, report));
-                return;
-            }
-#endif
+            string pathToWrite = logPath, reportToWrite = LatestReport;
+            pendingLogWrite = Task.Run(() => AppendReport(pathToWrite, reportToWrite));
+#else
             string error = AppendReport(logPath, LatestReport);
             if (error != null) StopLogging(error);
+#endif
         }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private static string InitializeDiagnosticsFile(string path, string previous, string firstReport)
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                if (File.Exists(path)) File.Copy(path, previous, true);
+                File.WriteAllText(path, firstReport + "\n");
+                return null;
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                return e.Message;
+            }
+        }
+#endif
 
         private static string AppendReport(string path, string report)
         {
