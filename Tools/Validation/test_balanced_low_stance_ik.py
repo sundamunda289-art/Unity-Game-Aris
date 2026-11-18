@@ -37,7 +37,7 @@ for direction in ((0.0, 1.0), (1.0, 0.0), (0.6, -0.8)):
     prone_r = (-forward_x * .73 + right_x * .16,
                -forward_z * .73 + right_z * .16)
     dist = lambda a, b: sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
-    assert .38 <= dist(crouch_l, crouch_r) <= .40
+    assert .40 <= dist(crouch_l, crouch_r) <= .41
     assert abs(dist(prone_l, prone_r) - .32) < .00001
     assert abs((prone_l[0] + prone_r[0]) / 2 + forward_x * .73) < 1e-6
     assert abs((prone_l[1] + prone_r[1]) / 2 + forward_z * .73) < 1e-6
