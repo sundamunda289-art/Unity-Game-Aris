@@ -40,6 +40,13 @@ public static void CaptureMultiAnglePortrait(){
 SessionState.SetBool("pose.multiangle",true);
 CapturePortrait();
 }
+// Editor-only time-sampled stance transition portraits. Keep the existing
+// 16-angle settled-pose QA unchanged; this mode inspects the interpolation
+// at four steps during crouch, prone and return-to-standing.
+public static void CaptureTransitionPortrait(){
+SessionState.SetBool("pose.transitions",true);
+CapturePortrait();
+}
 public static void CaptureBatch(){
 if(!Application.isBatchMode)throw new InvalidOperationException("BATCHMODE_REQUIRED");
 try{
@@ -215,6 +222,51 @@ Log("MEASURE stance="+b.Stance+" footY="+foot.y.ToString("F3")+
 " meshGap="+(meshMin-terrainY).ToString("F3")+
 " skins="+count+" capsuleHeight="+capsule.height.ToString("F3"));
 }
+// Native, read-only transition diagnostic: only a pose that is actually
+// blending is required to release both previous low-stance world locks.
+// The reflection stays in Editor QA, never the Android gameplay hot path.
+static void LogTransitionContact(AarisThirdPersonPlayer p,
+    AarisBattleActions b,int sampleIndex){
+var actor=p.GetComponent<AarisCharacterVisual>();
+if(actor==null)return;
+var type=typeof(AarisCharacterVisual);
+var flags=System.Reflection.BindingFlags.Instance|
+    System.Reflection.BindingFlags.NonPublic;
+float crouch=(float)type.GetField("crouchBlend",flags).GetValue(actor);
+float prone=(float)type.GetField("proneBlend",flags).GetValue(actor);
+bool left=(bool)type.GetField("leftLowPlantLocked",flags).GetValue(actor);
+bool right=(bool)type.GetField("rightLowPlantLocked",flags).GetValue(actor);
+bool transitioning=(crouch>0.03f&&crouch<0.96f)||
+                   (prone>0.03f&&prone<0.96f);
+Log("TRANSITION_CONTACT stance="+b.Stance+
+" frame="+sampleIndex+" crouch="+crouch.ToString("F3")+
+" prone="+prone.ToString("F3")+
+" leftLocked="+left+" rightLocked="+right+
+" blending="+transitioning);
+if(transitioning&&(left||right))
+throw new InvalidOperationException("TRANSITION_FOOT_ANCHOR_STALE");
+var animator=p.GetComponentInChildren<Animator>(true);
+if(animator==null||!animator.isHuman)return;
+var lh=animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
+var rh=animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
+var lk=animator.GetBoneTransform(HumanBodyBones.LeftLowerLeg);
+var rk=animator.GetBoneTransform(HumanBodyBones.RightLowerLeg);
+var lf=animator.GetBoneTransform(HumanBodyBones.LeftFoot);
+var rf=animator.GetBoneTransform(HumanBodyBones.RightFoot);
+if(lh==null||rh==null||lk==null||rk==null||lf==null||rf==null)return;
+Vector3 hipRight=Vector3.ProjectOnPlane(rh.position-lh.position,Vector3.up);
+if(hipRight.sqrMagnitude<0.02f)return;
+hipRight.Normalize();
+float lSide=Vector3.Dot(Vector3.ProjectOnPlane(
+ lk.position-lh.position,Vector3.up),hipRight);
+float rSide=Vector3.Dot(Vector3.ProjectOnPlane(
+ rk.position-rh.position,Vector3.up),hipRight);
+float spread=Vector3.ProjectOnPlane(lf.position-rf.position,Vector3.up).magnitude;
+Log("TRANSITION_LEGS stance="+b.Stance+" frame="+sampleIndex+
+" spread="+spread.ToString("F3")+
+" leftKneeSide="+lSide.ToString("F3")+
+" rightKneeSide="+rSide.ToString("F3"));
+}
 static void Finish(string reason){
 Log(reason);SessionState.SetString("pose.state","");Phase("07_COMPLETE");
 if(EditorApplication.isPlaying)EditorApplication.isPlaying=false;
@@ -226,11 +278,13 @@ int code=(reason=="SUCCESS_18_REAL_FRAMES"||
  reason=="SUCCESS_PRONE_GEOMETRY_ONLY"||
  reason=="SUCCESS_STANCE_JUMP_MOTOR"||
  reason=="SUCCESS_7_ACTOR_PORTRAITS"||
- reason=="SUCCESS_16_ACTOR_MULTIANGLE_PORTRAITS")?0:2;
+ reason=="SUCCESS_16_ACTOR_MULTIANGLE_PORTRAITS"||
+ reason=="SUCCESS_16_STANCE_TRANSITION_FRAMES")?0:2;
 SessionState.EraseBool("pose.geometryOnly");
 SessionState.EraseBool("pose.stanceJump");
 SessionState.EraseBool("pose.portrait");
 SessionState.EraseBool("pose.multiangle");
+SessionState.EraseBool("pose.transitions");
 EditorApplication.delayCall+=()=>EditorApplication.Exit(code);
 }
 }
@@ -325,11 +379,15 @@ bool fastProbe=SessionState.GetBool("pose.diag",false) ||
 SessionState.GetBool("pose.geometryOnly",false);
 bool portrait=SessionState.GetBool("pose.portrait",false);
 bool multiangle=portrait&&SessionState.GetBool("pose.multiangle",false);
+bool transitions=portrait&&SessionState.GetBool("pose.transitions",false);
 bool orbitStance=multiangle&&n<=2;
-int needed=portrait?(n==5?2:orbitStance?4:1):fastProbe?(n==2?1:0):3;
+bool transitionFrames=transitions&&(n==1||n==2||n==3);
+int needed=portrait?(n==5?2:transitionFrames?4:orbitStance?4:1):
+ fastProbe?(n==2?1:0):3;
 // Each orbit frame gets its own measured Play Mode pose/readback. The
 // existing seven front-view frames retain their original timings.
 double readyAge=portrait?(n==5?(count==0?.30:1.15):
+ transitionFrames?.10+count*.18:
  orbitStance?.52+count*.22:.52):.25+count*.30;
 if(count<needed&&age>readyAge){
 try{
@@ -356,6 +414,8 @@ float eye=b.Stance==AarisBattleActions.PlayerStance.Prone ? 0.42f :
 Vector3 target=p.transform.position+Vector3.up*eye;
 Vector3 viewDirection=orbitStance
  ?Quaternion.AngleAxis(90f*count,Vector3.up)*p.transform.forward
+ :transitionFrames
+ ?Quaternion.AngleAxis(90f,Vector3.up)*p.transform.forward
  :p.transform.forward;
 Vector3 photoPosition=target+viewDirection*3.0f+Vector3.up*0.42f;
 cam.transform.position=photoPosition;
@@ -395,18 +455,20 @@ cam.targetTexture=old;RenderTexture.active=active;
 UnityEngine.Object.DestroyImmediate(image);RenderTexture.ReleaseTemporary(rt);}
 SessionState.SetInt("pose.count",count+1);
 Log("FRAME "+Names[n]+" "+count+" stance="+b.Stance+
-" viewDegrees="+(orbitStance?90*count:0)+
+" viewDegrees="+(orbitStance?90*count:transitionFrames?90:0)+
 " air="+p.IsInAir+" pos="+p.transform.position.ToString("F2"));
+if(transitionFrames)LogTransitionContact(p,b,count);
 if(count==0)LogPhysicalHeight(p,b);
 }catch(Exception ex){Finish("ERROR_"+ex.GetType().Name+"_"+ex.Message);return;}
 }
-if(age>(portrait?(n==5?1.35:orbitStance?1.40:.70):
- fastProbe?.38:1.3)&&
+if(age>(portrait?(n==5?1.35:transitionFrames?.84:
+ orbitStance?1.40:.70):fastProbe?.38:1.3)&&
  SessionState.GetInt("pose.count",0)>=needed){
 if(SessionState.GetBool("pose.diag",false)&&n>=2){
 p.CancelAutoSprint();Finish("SUCCESS_PRONE_DIAGNOSTIC");
 }else if(n+1>=Names.Length){p.CancelAutoSprint();
-Finish(portrait?(multiangle?"SUCCESS_16_ACTOR_MULTIANGLE_PORTRAITS":
+Finish(portrait?(transitions?"SUCCESS_16_STANCE_TRANSITION_FRAMES":
+multiangle?"SUCCESS_16_ACTOR_MULTIANGLE_PORTRAITS":
 "SUCCESS_7_ACTOR_PORTRAITS"):"SUCCESS_18_REAL_FRAMES");}
 else Stage(n+1,p,b);}
 }
