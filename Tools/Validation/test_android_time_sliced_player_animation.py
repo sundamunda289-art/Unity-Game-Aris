@@ -33,10 +33,36 @@ class AndroidTimeSlicedAnimations(unittest.TestCase):
         self.assertLess(staged.index("Resources.LoadAll<AnimationClip>(MocapLocomotion)"),
                         staged.index("foreach (string clipName in AndroidAnimationNames)"))
         self.assertIn("foreach (string clipName in AndroidAnimationNames)", staged)
-        self.assertIn("Resources.LoadAll<AnimationClip>(location);\n                yield return null;", staged)
+        self.assertIn("Resources.LoadAll<AnimationClip>(location);", staged)
+        self.assertLess(staged.index("Resources.LoadAll<AnimationClip>(location);"),
+                        staged.index("yield return null;", staged.index(
+                            "Resources.LoadAll<AnimationClip>(location);")))
+        self.assertIn("AndroidMaxClipGroupLoadMs = Mathf.Max(AndroidMaxClipGroupLoadMs, clipMs);", staged)
+        self.assertIn("AndroidMocapGroupLoadMs = Mathf.Max(AndroidMocapGroupLoadMs, mocapMs);", staged)
+        self.assertEqual(staged.count("AndroidClipGroupLoadCount++;"), 2)
         self.assertIn('string prefix = candidate == FallbackModel ? KenneyClips : PrimaryClips;', staged)
         self.assertIn("if (!isActiveAndEnabled) yield break;", staged)
         self.assertEqual(staged.count("Resources.LoadAll<AnimationClip>"), 2)
+
+    def test_peak_clip_import_ms_is_observed_without_changing_visuals(self):
+        runtime = (ROOT / "Assets/AarisWorld/Scripts/AarisMobileRuntime.cs").read_text()
+        fields = SRC.split("private const float TargetHeightMetres = 1.78f;", 1)[1].split(
+            "[SerializeField", 1)[0]
+        self.assertIn("internal static float AndroidMocapGroupLoadMs { get; private set; } = -1f;", fields)
+        self.assertIn("internal static float AndroidMaxClipGroupLoadMs { get; private set; } = -1f;", fields)
+        self.assertIn("internal static int AndroidClipGroupLoadCount { get; private set; }", fields)
+        self.assertIn("private static void ResetAndroidClipLoadEvidence()", fields)
+        self.assertIn("RuntimeInitializeLoadType.SubsystemRegistration", fields)
+        clips = SRC.split("private IEnumerator PrewarmAndroidAnimationGroups(", 1)[1].split("#endif", 1)[0]
+        self.assertEqual(clips.count("Time.realtimeSinceStartupAsDouble"), 4)
+        self.assertIn("characterMocapGroupLoadMs = -1f, characterMaxClipGroupLoadMs = -1f;", runtime)
+        self.assertIn("characterClipGroupLoadCount;", runtime)
+        self.assertIn("s.characterMocapGroupLoadMs = AarisCharacterVisual.AndroidMocapGroupLoadMs;", runtime)
+        self.assertIn("s.characterMaxClipGroupLoadMs = AarisCharacterVisual.AndroidMaxClipGroupLoadMs;", runtime)
+        self.assertIn("s.characterClipGroupLoadCount = AarisCharacterVisual.AndroidClipGroupLoadCount;", runtime)
+        # No destructive model/clip trimming or GPU settings modifications.
+        self.assertNotIn("QualitySettings.skinWeights", SRC)
+        self.assertNotIn("Resources.UnloadAsset", clips)
 
     def test_async_model_is_complete_before_clip_staging_and_graph(self):
         routine = SRC.split("private IEnumerator LoadCharacterAsynchronously()", 1)[1].split(
