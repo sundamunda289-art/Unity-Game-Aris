@@ -60,7 +60,6 @@ class ColliderWallClockBudget(unittest.TestCase):
             "private int Cell", 1
         )[0]
         self.assertIn("DeferredColliderUpdatesPerFrame = 24", SOURCE)
-        self.assertIn("AndroidDeactivationFrameBudgetSeconds", SOURCE) if False else None
         self.assertIn("AndroidDeactivationBudgetSeconds = 0.0015;", SOURCE)
         self.assertIn("AndroidDeactivationClockCheckInterval = 4;", SOURCE)
         self.assertIn("bool constrainTime = Application.platform == RuntimePlatform.Android;", body)
