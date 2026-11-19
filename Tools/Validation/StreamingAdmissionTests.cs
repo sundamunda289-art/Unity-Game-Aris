@@ -158,6 +158,9 @@ internal static class StreamingAdmissionTests
                 "Cleanup allowed optional work");
             cleanup.isDone = true;
             Frame(2);
+            Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() && Load() == null,
+                "Cleanup completion frame reused for optional integration");
+            Frame(3);
             Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(), "Cleanup held forever");
         }
         Configure(6144);
