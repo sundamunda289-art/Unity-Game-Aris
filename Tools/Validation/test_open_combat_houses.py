@@ -208,7 +208,7 @@ class OpenCombatHouseContracts(unittest.TestCase):
         self.assertEqual(missing_mesh, [])
         self.assertIn("target: {fileID: 201417}", streamer)
         runtime = (SCRIPTS / "AarisNearbyColliders.cs").read_text(encoding="utf-8")
-        self.assertIn("if (c == null || !c.enabled) continue;", runtime)
+        self.assertIn("if (c == null || !c.enabled) return;", runtime)
         self.assertIn("if (!c.enabled) c.enabled = true;", runtime)
         # Rebuilding the map must not silently revert #505's native fix.
         # Gate ALL distant colliders at runtime, only AFTER the streamer
