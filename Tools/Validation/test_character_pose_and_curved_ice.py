@@ -163,7 +163,30 @@ assert 'UprightPlantEnterGapMetres = 0.065f' in visual
 assert 'UprightPlantReleaseGapMetres = 0.115f' in visual
 assert 'UprightPlantBreakDistanceMetres = 0.18f' in visual
 assert 'plantWorld - foot.position, transform.up' in visual
-assert 'PlantLegToTarget(thigh, shin, foot, targetFoot, transform.forward,' in visual
+assert 'PlantLegToTarget(thigh, shin, foot, targetFoot, kneeForward,' in visual
+# Standing's IK must bend along the imported skeleton rather than the
+# CharacterController forward (the Bamen/Tactical pelvis can be yaw-offset).
+assert 'private Vector3 AnatomicalKneeForward()' in visual
+anatomical = visual.split('private Vector3 AnatomicalKneeForward()', 1)[1].split(
+    'private void CorrectReversedSwingKnee(', 1)[0]
+assert 'rightThigh.position - leftThigh.position' in anatomical
+assert 'Vector3.Cross(hipRight.normalized, Vector3.up).normalized' in anatomical
+swing = visual.split('private void CorrectReversedSwingKnee(', 1)[1].split(
+    'private static Vector3 ResolveLowStanceFootContact(', 1)[0]
+assert 'Vector3.ProjectOnPlane(kneeForward, axis)' in swing
+assert 'foot.position, kneeForward, 1f' in swing
+assert visual.count('CorrectReversedSwingKnee(thigh, shin, foot, kneeForward);') == 2
+assert 'Vector3 uprightKneeForward = AnatomicalKneeForward();' in visual
+assert visual.count('uprightContactWeight, uprightKneeForward,') == 2
+# Cross(hipRight, worldUp) preserves the forward axis of a yaw-rotated
+# imported rig: controller-facing +Z must not replace anatomical facing.
+for hip_right, expected_forward in (
+    ((1, 0, 0), (0, 0, 1)),
+    ((0, 0, 1), (-1, 0, 0)),
+    ((-1, 0, 0), (0, 0, -1)),
+):
+    derived = (-hip_right[2], 0, hip_right[0])
+    assert derived == expected_forward
 assert 'leftUprightPlantLocked = false;' in visual
 assert 'rightUprightPlantLocked = false;' in visual
 assert 'ProneAnkleClearanceMetres' in visual
