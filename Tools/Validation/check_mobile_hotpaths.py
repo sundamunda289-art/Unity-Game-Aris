@@ -170,7 +170,8 @@ def audit():
     assert "bool turningFast = Mathf.Abs(turnDegreesPerSecond) > 140f;" in foot_solver
     assert "if (turningFast || gap > UprightPlantReleaseGapMetres ||" in foot_solver
     assert "if (!turningFast && !plantLocked &&" in foot_solver
-    assert visual.count("planar, yawRate, uprightContactWeight, coarseSupport") == 2
+    assert visual.count("planar, yawRate, uprightContactWeight, uprightKneeForward,") == 2
+    assert visual.count("Vector3 uprightKneeForward = AnatomicalKneeForward();") == 1
     for yaw_rate, rapid in ((0, False), (100, False), (140, False),
                             (141, True), (-141, True), (500, True)):
         assert (abs(yaw_rate) > 140) == rapid
