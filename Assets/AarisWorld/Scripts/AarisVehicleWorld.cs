@@ -1846,6 +1846,14 @@ namespace Aaris.MapReview
                 // fail here, even after five-ray placement succeeded.
                 // Evicting the old car first would leave the player with
                 // zero visible vehicles in a formerly full 10-car stream.
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // Avoid overlapping heavy builds across independent streamers.
+                if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                {
+                    record.nextProbe = now + .15f;
+                    break;
+                }
+#endif
                 if (!Build(record, pos))
                 {
                     record.nextProbe = now + 3.0f;

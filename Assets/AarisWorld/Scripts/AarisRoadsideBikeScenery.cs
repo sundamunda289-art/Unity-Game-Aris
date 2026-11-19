@@ -205,6 +205,11 @@ namespace Aaris.MapReview
                     return;
                 }
                 if (!bikePrewarm.isDone) return;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // URP material setup allocates native resources too; spread it
+                // away from optional vehicle and loot model integration.
+                if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()) return;
+#endif
                 bikeSource = bikePrewarm.asset as GameObject;
                 bikePrewarm = null;
                 if (bikeSource == null)
@@ -274,6 +279,16 @@ namespace Aaris.MapReview
             // The parked model stays until the new bay and real mesh validate.
             nearest.nextProbe = now + 3f;
             if (!TryParkingSpot(nearest.point, out Vector3 spot)) return;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Pooled-bike movement stays immediate. Gate only a brand-new
+            // model, after validating floor and collision placement.
+            if (parkedVictim == null && parkedBikePool.Count == 0 &&
+                !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+            {
+                nearest.nextProbe = now + .4f;
+                return;
+            }
+#endif
             // A parking candidate is fully validated BEFORE moving any bike.
             // Reposition one of the same three original meshes with its
             // deterministic destination paint instead of Instantiate/Destroy.

@@ -1037,6 +1037,9 @@ namespace Aaris.MapReview
                 if (dist > loadSquared) continue;
                 if (active.Count >= streamLimit) return false;
                 if (buildAttempts >= modelBuildBudget) return true;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()) return true;
+#endif
                 buildAttempts++;
                 var root = new GameObject("Dropped " + record.state.Spec.displayName);
                 root.transform.SetParent(transform, false);
@@ -1084,6 +1087,11 @@ namespace Aaris.MapReview
                     nextCandidateProbeAt[i] = now + 0.33f;
                     continue;
                 }
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // Preserve planned pickup and starter state if admission
+                // is deferred to a later render frame.
+                if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()) return true;
+#endif
                 buildAttempts++;
                 var root = new GameObject("Loot " + choices[i].displayName + " #" + i);
                 root.transform.SetParent(transform, false);
