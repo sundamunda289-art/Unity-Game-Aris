@@ -1,0 +1,29 @@
+name: Aaris New Locomotion Motion Sources
+on:
+  push:
+    branches:
+      - feature/isolated-locomotion-gym-20261119
+    paths:
+      - Tools/CI/fetch_gym_mocap.py
+      - .github/workflows/aaris-new-locomotion-sources.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fetch-movement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify public movement-only motion capture
+        run: |
+          python3 Tools/CI/fetch_gym_mocap.py --output "$RUNNER_TEMP/aaris-new-mocap" --inspect-accad
+      - name: Retain source evidence for manual retarget review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-new-mocap-source-evidence
+          path: |
+            ${{ runner.temp }}/aaris-new-mocap/source-manifest.json
+          if-no-files-found: warn
+          retention-days: 7
