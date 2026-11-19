@@ -63,12 +63,32 @@ namespace Aaris.MapReview
             }
         }
 
-        private static bool Prepare(bool includePanels)
+        private static bool Prepare(GameObject originalPrefab, bool includePanels)
         {
             if (wall != null && roof != null && trim != null &&
                 (!includePanels || (door != null && glass != null)))
                 return true;
-            var shader = Shader.Find("Universal Render Pipeline/Lit");
+            // The imported settlement catalog retains direct prefab->material
+            // references. Prefer that already retained URP shader so our
+            // first optional house does not require an unrelated name lookup.
+            // Keep the old fallback for prefabs with missing/other renderers.
+            Shader shader = null;
+            if (originalPrefab != null)
+            {
+                var source = originalPrefab.GetComponentInChildren<MeshRenderer>(true);
+                if (source != null)
+                    foreach (Material material in source.sharedMaterials)
+                    {
+                        if (material != null && material.shader != null &&
+                            material.shader.name == "Universal Render Pipeline/Lit")
+                        {
+                            shader = material.shader;
+                            break;
+                        }
+                    }
+            }
+            if (shader == null)
+                shader = Shader.Find("Universal Render Pipeline/Lit");
             if (shader == null) return false;
             if (wall == null)
             {
@@ -330,7 +350,7 @@ namespace Aaris.MapReview
             if (float.IsNaN(width) || float.IsInfinity(width) ||
                 float.IsNaN(depth) || float.IsInfinity(depth) ||
                 float.IsNaN(height) || float.IsInfinity(height) ||
-                width<8f || depth<9f || height<5f || !Prepare(includePanels)) return null;
+                width<8f || depth<9f || height<5f || !Prepare(originalPrefab, includePanels)) return null;
             // Material matching belongs to this house only. An imported material
             // must never become the shared fallback for later unrelated houses.
             Material defaultWall = wall, defaultRoof = roof;
