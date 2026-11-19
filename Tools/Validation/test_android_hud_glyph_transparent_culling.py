@@ -103,6 +103,22 @@ class AndroidHudGlyphInkCulling(unittest.TestCase):
         self.assertGreater(total_skipped, 126 * 126 * len(GLYPHS) * .44)
         self.assertLess(total_ink_calls, 126 * 126 * len(GLYPHS) * .56)
 
+    def test_one_time_atlas_timing_is_reported_without_per_pixel_clock_calls(self):
+        runtime = (Path(__file__).resolve().parents[2] /
+                   "Assets/AarisWorld/Scripts/AarisMobileRuntime.cs").read_text()
+        self.assertIn("internal static float AtlasBuildMs { get; private set; } = -1f;", SOURCE)
+        self.assertIn("private static void ResetAtlasTiming() { AtlasBuildMs = -1f; }", SOURCE)
+        atlas = SOURCE.split("private static void BuildAtlas()", 1)[1]
+        self.assertEqual(atlas.count("Time.realtimeSinceStartupAsDouble"), 2)
+        self.assertLess(atlas.index("double startedAt = Time.realtimeSinceStartupAsDouble;"),
+                        atlas.index("const int width = Size * Columns"))
+        self.assertGreater(atlas.index("AtlasBuildMs = (float)("),
+                           atlas.index("Sprites[i] = Sprite.Create(texture,"))
+        self.assertIn("public float hudAtlasBuildMs = -1f;", runtime)
+        self.assertIn("hudAtlasBuildMs = AarisHudGlyphs.AtlasBuildMs", runtime)
+        self.assertNotIn("AtlasBuildMs", SOURCE.split("private static float Human(", 1)[1].split(
+            "private static void BuildAtlas()", 1)[0])
+
     def test_no_hud_appearance_or_texture_resolution_changes(self):
         self.assertIn("private const int Size = 128;", SOURCE)
         self.assertIn("private const int Columns = 4;", SOURCE)
