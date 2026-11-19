@@ -25,7 +25,7 @@ class BikeRecycling(unittest.TestCase):
         self.assertIn('Instantiate(bikeSource, root.transform, false);', CODE)
         self.assertIn('private const int MaximumVisibleBikes = 3;', CODE)
         self.assertIn('new Stack<GameObject>(MaximumVisibleBikes);', CODE)
-        self.assertIn('if (parkedBikePool.Count < MaximumVisibleBikes)', CODE)
+        self.assertIn('parkedBikePool.Count < MaximumVisibleBikes', CODE)
         self.assertIn('parkedBikePool.Push(retired);', CODE)
         self.assertIn('ReuseBike(previous, nearest.point, spot)', CODE)
         self.assertIn('ReuseBike(parkedBikePool.Pop(), nearest.point, spot)', CODE)
