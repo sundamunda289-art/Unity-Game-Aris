@@ -47,7 +47,7 @@ class BudgetAndroidVehicleWarmup(unittest.TestCase):
         self.assertIn("type.modelResource, type.wheelResource", warmup)
         self.assertNotIn("type.authoredModelResource", warmup)
         self.assertNotIn("Instantiate(", warmup)
-        self.assertLess(warmup.index("yield return request;"), warmup.index("if (!Setup())"))
+        self.assertLess(warmup.index("yield return request;"), warmup.index("if (!Setup(preloadedPoints, text))"))
 
     def test_original_validation_and_vehicles_kept(self):
         self.assertIn("if (!world.Setup()) { Destroy(obj); return; }", self.bootstrap)
