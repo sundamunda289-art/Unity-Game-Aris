@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.Profiling;
 using UnityEngine.Animations;
 using UnityEngine.Playables;
 
@@ -16,6 +17,10 @@ namespace Aaris.MapReview
     [DefaultExecutionOrder(200)]
     public sealed class AarisCharacterVisual : MonoBehaviour
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private static readonly ProfilerMarker k_CharacterRig =
+            new ProfilerMarker("Aaris.Startup.CharacterRigInstantiate");
+#endif
         private const string PrimaryModel = "AarisCharacters/Primary/TacticalSoldier/TacticalSoldier";
         private const string PreviousPrimaryModel = "AarisCharacters/Primary/RealisticSoldier/RealisticSoldier";
         private const string LegacyPrimaryModel = "AarisCharacters/Primary/Player";
@@ -322,6 +327,9 @@ namespace Aaris.MapReview
 
         private bool TryInstantiateCharacter(string resourcePath, GameObject preloaded = null)
         {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            using var profilerScope = k_CharacterRig.Auto();
+#endif
             GameObject source = preloaded;
 #if !UNITY_ANDROID || UNITY_EDITOR
             // Editor tooling keeps its existing immediate scene-preview path.
