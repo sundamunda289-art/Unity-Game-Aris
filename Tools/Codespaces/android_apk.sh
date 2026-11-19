@@ -421,6 +421,35 @@ ANDROID="$(dirname "$EDITOR")/Data/PlaybackEngines/AndroidPlayer"
 # The Editor build script requires both platform APIs and the bundled NDK.
 export AARIS_ANDROID_SDK_ROOT="$ANDROID/SDK"
 export AARIS_ANDROID_NDK_ROOT="$ANDROID/NDK"
+# Unity's official Android module currently includes API 34+ but this game's
+# Android build method requires API 33. Add only that platform with the bundled
+# official sdkmanager, leaving the app's targetSdkVersion at 33.
+if ! test -s "$AARIS_ANDROID_SDK_ROOT/platforms/android-33/android.jar"; then
+  SDK_MANAGER="$(find "$AARIS_ANDROID_SDK_ROOT/cmdline-tools" -maxdepth 4 \
+    -type f -name sdkmanager -print -quit 2>/dev/null || true)"
+  if ! test -x "$SDK_MANAGER"; then
+    echo APK_ANDROID_SDKMANAGER_MISSING
+    exit 29
+  fi
+  echo APK_ANDROID_PLATFORM_33_INSTALL_START
+  # sdkmanager may ask to accept the Android SDK package license. Keep its
+  # full output private and check the exit code of sdkmanager, not yes(1).
+  set +o pipefail
+  if yes | timeout 900 env JAVA_HOME="$JDK_ROOT" "$SDK_MANAGER" \
+      --sdk_root="$AARIS_ANDROID_SDK_ROOT" 'platforms;android-33' \
+      >"$BASE/private-sdk33-install.log" 2>&1; then
+    sdk_rc=0
+  else
+    sdk_rc=${PIPESTATUS[1]}
+  fi
+  set -o pipefail
+  if test "$sdk_rc" -ne 0 ||
+     ! test -s "$AARIS_ANDROID_SDK_ROOT/platforms/android-33/android.jar"; then
+    echo APK_ANDROID_PLATFORM_33_INSTALL_FAILED
+    exit 29
+  fi
+  echo APK_ANDROID_PLATFORM_33_VERIFIED
+fi
 if ! test -s "$AARIS_ANDROID_SDK_ROOT/platforms/android-33/android.jar" ||
    ! test -s "$AARIS_ANDROID_SDK_ROOT/platforms/android-35/android.jar" ||
    ! test -r "$AARIS_ANDROID_NDK_ROOT/source.properties"; then
