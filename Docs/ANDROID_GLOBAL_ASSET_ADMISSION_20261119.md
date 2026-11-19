@@ -124,12 +124,44 @@ cascades. That can matter for render memory, but no atlas or asset quality
 reduction is made without real GPU memory/visual evidence. Likewise no HDR,
 MSAA, tree meshes, layer maps or scene color/depth dependencies were changed.
 
+## Fourth-pass startup CPU overlap and exact HUD ink optimization
+
+The original Android `AarisMobileRuntime.Update` may emit an urgent
+`frame-stall`, `low-memory` or `asset-unload-complete` report in the same
+rendered frame as scheduled `startup` or 15-second `sample` diagnostics.
+Each report sorts up to 180 rolling frame intervals and serializes profiler
+and memory data. `CanRecordPeriodicDiagnostics()` now lets the non-urgent
+reports run only when no other report has already used that frame. Scheduled
+deadlines stay pending until an available frame; **all urgent evidence remains
+immediate**. Existing `ProfilerMarker` scopes are unchanged.
+
+Source inspection also found that `AarisHudGlyphs.BuildAtlas` computes
+five complex antialiased line/circle glyphs through CPU Vector2 distance math
+while the combat HUD is created at scene bootstrap. The new
+`OutsideGlyphInk` fast-path skips those distance calculations only for
+pixel coordinates rigorously outside **every** original line and circle,
+including the full SDF antialias transition. Independent Python parsing of
+all authored strokes verifies the bounds mathematically, then checks all
+128px sample locations. Exactly **40,827 / 79,380 (51.4%)** of the five
+glyphs' rasterized interior pixels fall outside these rectangles. This is
+a reduction in **eligible expensive SDF evaluations**, not a measured
+51.4% improvement in total atlas time, FPS, startup duration, or GPU use.
+The sprites, colors, AA edge math, canvas, texture dimensions, atlas
+material and gameplay touch hitboxes are unchanged.
+
+`AarisOfflineDropVisuals` still selects the original high-quality cargo
+plane. Its `CargoPlaneRealistic.obj` source is roughly 7 MB and is
+synchronously resolved at flight creation; its Unity player-compressed
+cost is not established by source OBJ size. The existing
+`PlaneModelResolveMs` / `PlaneInstantiateMs` telemetry should be
+measured on actual devices before changing flight visuals or startup UX.
+
 ## Verification
 
 Pass: 30 focused Python regression tests for global optional admission,
 pre-existing frame gate, vehicle fallback preload, motorcycle prewarm,
 rival model and animation prewarm. The complete Android source-regression
-suite passed **214 tests** via `python3 -m unittest discover -s Tools/Validation
+suite passed **222 tests** via `python3 -m unittest discover -s Tools/Validation
 -p 'test_android_*.py'`; settlement source/integrity suite passed **13 tests**
 via `python3 Tools/Validation/test_settlement_expansion.py`;
 `git diff --check main...HEAD` passed.
