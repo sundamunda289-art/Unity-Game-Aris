@@ -39,7 +39,7 @@ class PlayerStreamerLifecycle(unittest.TestCase):
         off = STREAMER[STREAMER.index("private void OnDisable()"):]
         self.assertIn("if (streamed[i] && obstacles[i] != null)", off)
         self.assertIn("obstacles[i].enabled = true;", off)
-        self.assertIn("if (c == null || !c.enabled) continue;", STREAMER)
+        self.assertIn("if (c == null || !c.enabled) return;", STREAMER)
 
     def test_late_drop_component_uses_bounded_lookup_before_streaming(self):
         update = STREAMER[STREAMER.index("private void Update()"):
