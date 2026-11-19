@@ -413,7 +413,7 @@ namespace Aaris.MapReview
                 capsule.slopeLimit = 43f;
                 var health = actor.AddComponent<AarisOfflineHealth>();
                 var rival = actor.AddComponent<AarisOfflineRival>();
-                rival.Initialize(this, health, player, playerHealth);
+                rival.Initialize(this, health, player, playerHealth, index);
                 rivals[index] = rival;
                 populatedSlots[index] = true;
                 activeRivals++;
@@ -744,6 +744,10 @@ namespace Aaris.MapReview
         // Sparse far ticks can span two frames on a 15 FPS phone; do not
         // truncate ordinary 133 ms travel, but cap extreme app-resume hitches.
         private float nextFarSimulation, lastSimulationTime;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // Six 10Hz phases distribute distant capsules across rendered frames.
+        private float farSimulationPhase;
+#endif
         private float avoidanceHandedness;
         private bool canSee;
         private PlayableGraph graph;
@@ -752,7 +756,7 @@ namespace Aaris.MapReview
         public bool IsAlive => health != null && !health.IsDead;
 
         internal void Initialize(AarisOfflineBRDirector director, AarisOfflineHealth self,
-            Transform victim, AarisOfflineHealth victimHealth)
+            Transform victim, AarisOfflineHealth victimHealth, int encounterSlot)
         {
             owner = director;
             health = self;
@@ -763,7 +767,12 @@ namespace Aaris.MapReview
             turnOffset = UnityEngine.Random.Range(-12f, 12f);
             avoidanceHandedness = UnityEngine.Random.value < 0.5f ? 1f : -1f;
             lastSimulationTime = Time.time;
-            nextFarSimulation = Time.time;
+            nextFarSimulation = Time.time; // First distant update remains immediate.
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Six authored rival slots at distinct phases of the same 100ms cycle.
+            // No additional physics ticks, bots, timers or per-frame allocations.
+            farSimulationPhase = encounterSlot * (FarSimulationInterval / 6f);
+#endif
             BuildVisual();
         }
 
@@ -905,7 +914,21 @@ namespace Aaris.MapReview
                 dt = Mathf.Clamp(Time.time - lastSimulationTime, 0f, 0.22f);
             lastSimulationTime = Time.time;
             if (farSimulation)
+            {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // Anchor to stable phase slots; scheduling relative to each
+                // observed tick allows bots to converge onto the same frame.
+                float nextTick = (Mathf.Floor((Time.time - farSimulationPhase) /
+                    FarSimulationInterval) + 1f) * FarSimulationInterval + farSimulationPhase;
+                // Float rounding at exact boundaries must not run a bot twice
+                // in consecutive frames and create a mini catch-up burst.
+                if (nextTick <= Time.time + 0.0001f)
+                    nextTick += FarSimulationInterval;
+                nextFarSimulation = nextTick;
+#else
                 nextFarSimulation = Time.time + FarSimulationInterval;
+#endif
+            }
             Vector3 toward = distance > .01f ? diff / distance : transform.forward;
             if (Time.time >= nextThink)
             {
