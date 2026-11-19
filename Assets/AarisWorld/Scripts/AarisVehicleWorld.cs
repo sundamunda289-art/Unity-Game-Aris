@@ -369,6 +369,11 @@ namespace Aaris.MapReview
             }
 
             if (motor == null || player == null) { Destroy(gameObject); yield break; }
+            // Setup() performs synchronous reference/material validation even
+            // after async prewarm. Reserve a separate optional integration
+            // frame so it cannot overlap house and pickup construction.
+            while (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                yield return null;
             // All original validation, authored-asset fallback, car placement,
             // material quality and gameplay rules are still performed here.
             if (!Setup()) { Destroy(gameObject); yield break; }
