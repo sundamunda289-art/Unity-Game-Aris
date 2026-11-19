@@ -108,6 +108,26 @@ class SharedLootCandidateImport(unittest.TestCase):
         self.assertIn("AddUsableModel(spec, prefab, available);", android_loader)
         self.assertIn("CommitModels(available);", android_loader)
 
+    def test_json_cpu_cost_is_logged_only_once_per_async_boot(self):
+        runtime = (ROOT / "Assets/AarisWorld/Scripts/AarisMobileRuntime.cs").read_text()
+        doc = WORLD.split("internal sealed class AarisLootDocument", 1)[1].split(
+            "public sealed class AarisWeaponLootWorld", 1)[0]
+        self.assertIn("internal static float AndroidParseMs { get; private set; } = -1f;", doc)
+        self.assertIn("AndroidParseMs = -1f;", doc)
+        self.assertIn("double parsingStarted = Time.realtimeSinceStartupAsDouble;", doc)
+        self.assertIn("AndroidParseMs = (float)((Time.realtimeSinceStartupAsDouble -", doc)
+        self.assertIn("internal static float AndroidDefinitionParseMs { get; private set; } = -1f;", CATALOG)
+        self.assertIn("ResetAndroidImportTiming()", CATALOG)
+        loader = CATALOG.split("internal static IEnumerator LoadForMatchAsync()", 1)[1].split(
+            "public static GameObject ModelFor(", 1)[0]
+        self.assertIn("double parseStarted = Time.realtimeSinceStartupAsDouble;", loader)
+        self.assertIn("AndroidDefinitionParseMs = (float)((Time.realtimeSinceStartupAsDouble -", loader)
+        self.assertIn("public float lootCandidateParseMs = -1f, weaponDefinitionParseMs = -1f;", runtime)
+        self.assertIn("lootCandidateParseMs = AarisLootDocument.AndroidParseMs,", runtime)
+        self.assertIn("weaponDefinitionParseMs = AarisWeaponCatalog.AndroidDefinitionParseMs", runtime)
+        self.assertNotIn("AndroidParseMs", HUD)
+        self.assertNotIn("AndroidDefinitionParseMs", WORLD)
+
     def test_landing_before_or_after_manifest_completion_preserves_sites(self):
         for load_frame in (2, 4, 8, 15):
             for landing_frame in (1, 2, 5, 12, 17):
