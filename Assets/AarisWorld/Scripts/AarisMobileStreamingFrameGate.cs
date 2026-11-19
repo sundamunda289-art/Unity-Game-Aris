@@ -28,6 +28,10 @@ namespace Aaris.MapReview
         // Reserve its NEXT frame before yielding; optional models/materials
         // must not begin another import or hierarchy build on that frame.
         private static int essentialRigFrame = -1;
+        // The high-detail cargo plane has its own unavoidable native
+        // Instantiate + material/renderer setup. A separate reservation
+        // preserves a simultaneous character-rig fence rather than replacing it.
+        private static int essentialAircraftFrame = -1;
         internal static int RigReservedDeferredAttempts { get; private set; }
         // One shared native import slot across optional model prewarmers.
         // Completed requests release the slot even when a coroutine stops.
@@ -121,6 +125,7 @@ namespace Aaris.MapReview
             pressureBlockedThisFrame = false;
             ImportSettleDeferredAttempts = PressureDeferredFrames = 0;
             essentialRigFrame = -1;
+            essentialAircraftFrame = -1;
             RigReservedDeferredAttempts = 0;
             optionalLoadInFlight = null;
             unusedAssetCleanup = null;
@@ -163,10 +168,26 @@ namespace Aaris.MapReview
             return false;
         }
 
+        // Called before the existing aircraft integration yield, so optional
+        // streamers can check the reservation during the NEXT render frame.
+        // Does not delay flight, airplane input or the essential model load.
+        internal static bool ReserveNextFrameForEssentialAircraft()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (IsConstrainedDevice())
+            {
+                essentialAircraftFrame = Time.frameCount + 1;
+                return true;
+            }
+#endif
+            return false;
+        }
+
         private static bool IsEssentialRigFrame()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
-            return Time.frameCount == essentialRigFrame;
+            return Time.frameCount == essentialRigFrame ||
+                   Time.frameCount == essentialAircraftFrame;
 #else
             return false;
 #endif
@@ -177,6 +198,8 @@ namespace Aaris.MapReview
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (IsEssentialRigFrame())
             {
+                // Essential player/aircraft frames have priority over optional
+                // houses, model imports and Foley. The counter counts both.
                 RigReservedDeferredAttempts++;
                 return false;
             }
