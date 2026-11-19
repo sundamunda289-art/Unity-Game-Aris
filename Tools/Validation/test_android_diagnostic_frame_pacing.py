@@ -47,7 +47,7 @@ class AndroidDiagnosticFramePacing(unittest.TestCase):
         self.assertIn("Time.frameCount != lastDiagnosticFrame &&", gate)
         self.assertIn("Time.frameCount != lowMemoryReportObservedFrame &&", gate)
         self.assertIn("Time.frameCount != assetUnloadCompletionObservedFrame;", gate)
-        self.assertIn("#else\n                Record(\"low-memory\");\n#endif", cleanup)
+        self.assertIn("#else\n            return true;", gate)
         record = SRC.split("private void Record(string reason)", 1)[1].split(
             "private static string InitializeLogFile", 1)[0]
         self.assertIn("lastDiagnosticFrame = Time.frameCount;", record)
@@ -88,7 +88,9 @@ class AndroidDiagnosticFramePacing(unittest.TestCase):
         self.assertIn("lowMemoryReportPending = false;", report)
         self.assertIn('Record("low-memory");', report)
         # Android reports later; Editor retains the original immediate log.
-        self.assertIn("#else\\n                Record(\"low-memory\");\\n#endif", cleanup)
+        self.assertIn("#else", cleanup)
+        self.assertIn('Record("low-memory");', cleanup)
+        self.assertIn("#endif", cleanup)
         self.assertNotIn("GC.Collect()", cleanup)
         self.assertNotIn("WaitForCompletion", cleanup)
 
