@@ -627,7 +627,8 @@ def audit():
     assert "Cell(lastPosition.x - retainDistance)" in nearby
     assert "Cell(lastPosition.z - retainDistance)" in nearby
     assert "float limit = c.enabled ? retainLimit : enterLimit;" in nearby
-    assert "if (dx * dx + dz * dz > limit) continue;" in nearby
+    assert "if (distanceSquared > limit) continue;" in nearby
+    assert "if (distanceSquared > retainLimit) continue;" in nearby
 
     def collider_transitions(distances, margin):
         enabled, changes = False, 0

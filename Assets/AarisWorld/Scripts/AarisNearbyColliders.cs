@@ -309,15 +309,20 @@ namespace Aaris.MapReview
                 {
                     if (visited[i] == query) continue;
                     visited[i] = query;
-                    Collider c = obstacles[i];
-                    if (c == null) continue;
                     // XZ distance supports long piers and elevated towers without early deactivation.
                     Vector3 q = worldBounds[i].ClosestPoint(lastPosition);
                     float dx = q.x - lastPosition.x, dz = q.z - lastPosition.z;
+                    float distanceSquared = dx * dx + dz * dz;
+                    // Even an already-enabled collider cannot be retained
+                    // outside this radius. Reject using managed cached bounds
+                    // before querying Unity Object/Collider native state.
+                    if (distanceSquared > retainLimit) continue;
+                    Collider c = obstacles[i];
+                    if (c == null) continue;
                     // Existing active colliders have a wider exit radius.
                     // New colliders still enter at the authored distance.
                     float limit = c.enabled ? retainLimit : enterLimit;
-                    if (dx * dx + dz * dz > limit) continue;
+                    if (distanceSquared > limit) continue;
                     wanted[i] = query;
                     if (!c.enabled) c.enabled = true;
                     nextActive.Add(i);
@@ -330,12 +335,14 @@ namespace Aaris.MapReview
             {
                 if (visited[i] == query) continue;
                 visited[i] = query;
-                Collider c = obstacles[i];
-                if (c == null) continue;
                 Vector3 q = worldBounds[i].ClosestPoint(lastPosition);
                 float dx = q.x - lastPosition.x, dz = q.z - lastPosition.z;
+                float distanceSquared = dx * dx + dz * dz;
+                if (distanceSquared > retainLimit) continue;
+                Collider c = obstacles[i];
+                if (c == null) continue;
                 float limit = c.enabled ? retainLimit : enterLimit;
-                if (dx * dx + dz * dz > limit) continue;
+                if (distanceSquared > limit) continue;
                 wanted[i] = query;
                 if (!c.enabled) c.enabled = true;
                 nextActive.Add(i);
@@ -386,8 +393,8 @@ namespace Aaris.MapReview
                         if (probeVisited[i] == probeStamp) continue;
                         probeVisited[i] = probeStamp;
                         Collider c = obstacles[i];
-                        if (streamed[i] && c != null && !c.enabled &&
-                            worldBounds[i].Intersects(probe))
+                        if (worldBounds[i].Intersects(probe) &&
+                            streamed[i] && c != null && !c.enabled)
                             return true;
                     }
                 }
@@ -398,8 +405,8 @@ namespace Aaris.MapReview
                 if (probeVisited[i] == probeStamp) continue;
                 probeVisited[i] = probeStamp;
                 Collider c = obstacles[i];
-                if (streamed[i] && c != null && !c.enabled &&
-                    worldBounds[i].Intersects(probe))
+                if (worldBounds[i].Intersects(probe) &&
+                    streamed[i] && c != null && !c.enabled)
                     return true;
             }
             return false;

@@ -48,6 +48,10 @@ namespace Aaris.MapReview
         private Canvas statusCanvas;
         private Text status;
         private LineRenderer boundary;
+        private readonly Vector3[] boundaryPoints = new Vector3[65];
+        private LineRenderer drawnBoundary;
+        private Vector2 drawnBoundaryCenter;
+        private float drawnBoundaryRadius;
         private Material boundaryMaterial;
         // One bounded resource lookup per match, not per opponent.
         private bool rivalAssetsResolved;
@@ -592,16 +596,37 @@ namespace Aaris.MapReview
         {
             if (boundary == null) return;
             // Until the ring enters the map, it adds no draw calls at all.
-            if (radius > 925f) { boundary.enabled = false; return; }
+            if (radius > 925f)
+            {
+                if (boundary.enabled) boundary.enabled = false;
+                return;
+            }
+            // Terrain is authored/static. During the long stationary zone
+            // phases, the same ring needs neither 65 terrain resamples nor
+            // another native point upload. Compare exact values: even small
+            // legitimate zone motion must still be drawn at the existing rate.
+            if (drawnBoundary == boundary &&
+                drawnBoundaryCenter.x == center.x &&
+                drawnBoundaryCenter.y == center.y &&
+                drawnBoundaryRadius == radius)
+            {
+                if (!boundary.enabled) boundary.enabled = true;
+                return;
+            }
             for (int i = 0; i < 65; i++)
             {
                 float angle = i * Mathf.PI * 2f / 64f;
                 float x = center.x + Mathf.Cos(angle) * radius;
                 float z = center.y + Mathf.Sin(angle) * radius;
                 float ground = TryGetGround(x, z, out float sample) ? sample : OceanCutoff;
-                boundary.SetPosition(i, new Vector3(x, ground + 1.2f, z));
+                boundaryPoints[i] = new Vector3(x, ground + 1.2f, z);
             }
-            boundary.enabled = true;
+            // One native batch upload preserves all 65 original points.
+            boundary.SetPositions(boundaryPoints);
+            drawnBoundary = boundary;
+            drawnBoundaryCenter = center;
+            drawnBoundaryRadius = radius;
+            if (!boundary.enabled) boundary.enabled = true;
         }
 
         // Source rig uses some legacy shaders. Never modify imported materials:
