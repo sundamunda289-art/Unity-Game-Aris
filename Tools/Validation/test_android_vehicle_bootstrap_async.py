@@ -32,8 +32,15 @@ class BudgetAndroidVehicleWarmup(unittest.TestCase):
             "private IEnumerator SetupAfterBudgetAndroidPrewarm(", 1
         )[1]
         self.assertIn('Resources.LoadAsync<TextAsset>("AarisVehicles/vehicle_catalog")', warmup)
-        self.assertIn("Resources.LoadAsync<GameObject>(path)", warmup)
-        self.assertIn("request.priority = -1;", warmup)
+        # Optional vehicle models now share the one low-RAM prewarm
+        # admission. The gate owns LoadAsync and low-priority scheduling.
+        self.assertIn(
+            "AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(path)",
+            warmup)
+        self.assertIn("while ((request =", warmup)
+        gate = (ROOT / "Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs").read_text()
+        self.assertIn("Resources.LoadAsync<T>(path)", gate)
+        self.assertIn("request.priority = -1;", gate)
         self.assertIn("yield return request;", warmup)
         self.assertIn("yield return null;", warmup)
         self.assertIn("new HashSet<string>(StringComparer.Ordinal)", warmup)
