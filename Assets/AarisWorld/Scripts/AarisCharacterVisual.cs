@@ -2209,7 +2209,17 @@ namespace Aaris.MapReview
                         Mathf.InverseLerp(0.18f, 0.60f, effectiveProneBlend)) *
                         (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(
                             0.96f, 0.995f, effectiveProneBlend)));
-                    transitionKneeSideTurn = 80f *
+                    // Back-view native QA still showed a 37.8cm lateral
+                    // get-up knee after floor-safe reprojection. Permit a
+                    // slightly larger one-frame correction ONLY while the
+                    // requested pose is already Standing and the outgoing
+                    // prone blend is still meaningful. Prone entry, crouch,
+                    // movement, jumps and turns keep the proven 80-degree
+                    // limit. This adjusts only the existing solve budget.
+                    float sideTurnBudget = !prone && !crouching &&
+                        effectiveProneBlend > 0.18f &&
+                        effectiveProneBlend < 0.80f ? 118f : 80f;
+                    transitionKneeSideTurn = sideTurnBudget *
                         Mathf.Max(crouchEntry, proneTransition) *
                         kneeStillness * kneeTurnStability;
                 }
