@@ -147,7 +147,11 @@ glyphs' rasterized interior pixels fall outside these rectangles. This is
 a reduction in **eligible expensive SDF evaluations**, not a measured
 51.4% improvement in total atlas time, FPS, startup duration, or GPU use.
 The sprites, colors, AA edge math, canvas, texture dimensions, atlas
-material and gameplay touch hitboxes are unchanged.
+material and gameplay touch hitboxes are unchanged. The atlas generator
+also records one one-time `AarisHudGlyphs.AtlasBuildMs` duration in Android
+JSON telemetry (`hudAtlasBuildMs`, -1 when not built), separating first-frame
+HUD CPU/rasterization/upload cost from plane model and GPU timings without
+timing each pixel or adding instrumentation to LateUpdate.
 
 `AarisOfflineDropVisuals` still selects the original high-quality cargo
 plane. Its `CargoPlaneRealistic.obj` source is roughly 7 MB and is
@@ -161,7 +165,7 @@ measured on actual devices before changing flight visuals or startup UX.
 Pass: 30 focused Python regression tests for global optional admission,
 pre-existing frame gate, vehicle fallback preload, motorcycle prewarm,
 rival model and animation prewarm. The complete Android source-regression
-suite passed **222 tests** via `python3 -m unittest discover -s Tools/Validation
+suite passed **223 tests** via `python3 -m unittest discover -s Tools/Validation
 -p 'test_android_*.py'`; settlement source/integrity suite passed **13 tests**
 via `python3 Tools/Validation/test_settlement_expansion.py`;
 `git diff --check main...HEAD` passed.
