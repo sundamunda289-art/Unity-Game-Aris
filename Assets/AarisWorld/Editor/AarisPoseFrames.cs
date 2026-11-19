@@ -604,9 +604,17 @@ Log("FRAME "+(motionMatrix?MotionNames[n]:Names[n])+" "+count+" stance="+b.Stanc
 SessionState.GetFloat("pose.transitionYawDegrees",90f):0)+
 " air="+p.IsInAir+" pos="+p.transform.position.ToString("F2"));
 if(transitionFrames)LogTransitionContact(p,b,count);
-// Measure both the first pose and its final settled multi-angle frame.
-// Editor-only QA: zero work or allocations in Android players.
-if(count==0 || (orbitStance && count==needed-1)) LogPhysicalHeight(p,b);
+// Record game clock and all actual humanoid bones for EACH motion-matrix
+// screenshot. Three sequential camera angles are captured at three
+// different animation phases: the timestamp makes that explicit and avoids
+// misdiagnosing a normal swing as a camera-dependent rig defect. This runs
+// only inside opt-in Editor batch QA, never in an Android build.
+if(motionMatrix)
+ Log("MOTION_TIMESTAMP stage="+MotionNames[n]+" frame="+count+
+ " unscaledSeconds="+Time.unscaledTime.ToString("F3"));
+// Existing 7/16-view capture modes retain their previous, sparse reports.
+if(motionMatrix || count==0 || (orbitStance && count==needed-1))
+ LogPhysicalHeight(p,b);
 }catch(Exception ex){Finish("ERROR_"+ex.GetType().Name+"_"+ex.Message);return;}
 }
 if(age>(portrait?(motionMatrix?1.06:n==5?1.35:transitionFrames?.84:
