@@ -47,7 +47,10 @@ namespace Aaris.MapReview
             bool attached = false;
             try
             {
-                AndroidJNI.AttachCurrentThread();
+                // Unity returns a negative code if the worker could not
+                // attach; never issue Java calls on an unattached thread.
+                if (AndroidJNI.AttachCurrentThread() < 0)
+                    return Snapshot.Unknown("jni-attach-failed");
                 attached = true;
                 using (var sdk = new AndroidJavaClass("android.os.Build$VERSION"))
                 {
@@ -78,9 +81,13 @@ namespace Aaris.MapReview
                             result.reasonCode = info.Call<int>("getReason");
                             result.statusCode = info.Call<int>("getStatus");
                             result.timestampUtcMs = info.Call<long>("getTimestamp");
-                            // These are last-exit OS estimates, NOT live PSS.
-                            result.historicalPssKB = info.Call<long>("getPss");
-                            result.historicalRssKB = info.Call<long>("getRss");
+                            // Android reports 0 when no historical memory
+                            // sample existed, NOT a zero-memory process.
+                            // Keep unknown memory distinct from this game's live PSS.
+                            long lastPss = info.Call<long>("getPss");
+                            long lastRss = info.Call<long>("getRss");
+                            result.historicalPssKB = lastPss > 0 ? lastPss : -1L;
+                            result.historicalRssKB = lastRss > 0 ? lastRss : -1L;
                         }
                     }
                 }
