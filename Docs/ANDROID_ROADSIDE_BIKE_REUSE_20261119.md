@@ -20,3 +20,7 @@ Target: Unity 6000.3.26f1 / URP 17.3.0 / 4GB Android, Snapdragon 680 and Adreno 
 ## Validation and caveat
 
 `test_roadside_bike_visuals.py`, `test_android_roadside_prewarm.py` and the new `test_android_roadside_bike_reuse.py` protect source contracts, placement safety, fixed material categories and synthetic three-rig bound. CI does not replace Unity compile, profiler, Play Mode visual QA or Android crash/ANR evidence. Original phone symptoms must be measured after installing and testing a new APK; do not claim this change alone resolves them.
+
+## Cross-branch integration gate
+
+The concurrently merged tactical HUD startup change initially caused a C# preprocessor syntax validation failure unrelated to motorcycle code. Canonical `main` subsequently merged the targeted fix in #714. Re-run all PR checks against this corrected main before accepting the bike pool optimization; don't waive a failed C# syntax gate.
