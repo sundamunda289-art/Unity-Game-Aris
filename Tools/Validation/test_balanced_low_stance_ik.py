@@ -111,6 +111,9 @@ assert "float correctedSide = Vector3.Dot(" in solver
 assert "Mathf.Abs(correctedSide) <" in solver
 assert "Mathf.Abs(kneeSide) - 0.001f" in solver
 
+assert "float sideTurnBudget = !prone && !crouching &&" in visual
+assert "effectiveProneBlend < 0.80f ? 118f : 80f;" in visual
+assert "transitionKneeSideTurn = sideTurnBudget *" in visual
 assert "float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);" in visual
 assert "float crouchPoleStrength = (1f - proneKneeShare) * 0.90f;" in visual
 assert "float pronePoleStrength = proneKneeShare * proneKneeSettle *" in visual
