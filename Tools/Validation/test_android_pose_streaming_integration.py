@@ -38,8 +38,8 @@ class PoseAndStreamingIntegration(unittest.TestCase):
             "private struct AnkleSupportSample", 1)[0]
         self.assertIn("Vector3.ProjectOnPlane(\n                rightGoal - leftGoal, Vector3.up)", method)
         self.assertIn("float guard = stationary * Mathf.SmoothStep(0f, 1f,", method)
-        self.assertIn("if (stanceSpread > 0.57f && guard > 0.001f)", method)
-        self.assertIn("(stanceSpread - 0.57f) * 0.5f, 0.12f", method)
+        self.assertIn("if (stanceSpread > 0.50f && guard > 0.001f)", method)
+        self.assertIn("(stanceSpread - 0.50f) * 0.5f, 0.16f", method)
         self.assertIn("leftGoal += inward;", method)
         self.assertIn("rightGoal -= inward;", method)
         self.assertLess(method.index("leftGoal += inward;"),
@@ -64,8 +64,8 @@ class PoseAndStreamingIntegration(unittest.TestCase):
             "// Resolve X/Z BEFORE sampling Y.", 1)[0]
         self.assertIn("if (prone && groundedNow && !visuallyAirborne &&", low)
         self.assertIn("transitioningLowStance && authoredProne &&", low)
-        self.assertIn("entryKneeSideTurn = 38f * entry * settle *", low)
-        self.assertEqual(VISUAL.count("kneeSideAxis, 0.29f, entryKneeSideTurn);"), 2)
+        self.assertIn("entryKneeSideTurn = 55f * entry * settle *", low)
+        self.assertEqual(VISUAL.count("kneeSideAxis, 0.26f, entryKneeSideTurn);"), 2)
 
     def test_rig_stage_timing_and_original_bakemesh_validation_remain(self):
         for native, field in (
