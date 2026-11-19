@@ -935,6 +935,16 @@ namespace Aaris.MapReview
             public bool terrainLitSupported;
             public int lowMemoryWindZonesDisabled, lowMemoryGrassTilesDisabled;
             public float lowMemoryShadowDistance;
+            // Read-only URP snapshot: distinguish real GPU state on the phone
+            // from serialized high/low assets. No render setting is changed.
+            public int urpMsaaSamples = -1, urpShadowCascades = -1;
+            public int urpMainLightShadowmapResolution = -1;
+            public float urpShadowDistance = -1f;
+            public bool urpRequiresDepthTexture, urpRequiresOpaqueTexture, urpSupportsHdr;
+            // These count denied admission *attempts*, not unique jobs or
+            // milliseconds of work. Source of truth is the native GPU profiler.
+            public int optionalStreamCleanupDeferrals, optionalStreamFrameDeferrals;
+            public int optionalStreamImportDeferrals;
             // Previous Android 11+ process exit, not current usage or proof
             // that this launch crashed. -1 means unobserved/unavailable.
             public string previousExitEvidence = "pending";
@@ -1036,8 +1046,24 @@ namespace Aaris.MapReview
                 timingSamples = gpuLimitedSamples = cpuLimitedSamples = 0;
                 gpuFrameTimeTotalMs = cpuMainTimeTotalMs = cpuRenderTimeTotalMs = 0d;
             }
+            s.optionalStreamCleanupDeferrals =
+                AarisMobileStreamingFrameGate.CleanupDeferredAttempts;
+            s.optionalStreamFrameDeferrals =
+                AarisMobileStreamingFrameGate.SameFrameDeferredAttempts;
+            s.optionalStreamImportDeferrals =
+                AarisMobileStreamingFrameGate.ImportDeferredAttempts;
             if (GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset pipeline)
+            {
                 s.renderScale = pipeline.renderScale;
+                s.urpMsaaSamples = pipeline.msaaSampleCount;
+                s.urpShadowCascades = pipeline.shadowCascadeCount;
+                s.urpShadowDistance = pipeline.shadowDistance;
+                s.urpMainLightShadowmapResolution =
+                    pipeline.mainLightShadowmapResolution;
+                s.urpRequiresDepthTexture = pipeline.supportsCameraDepthTexture;
+                s.urpRequiresOpaqueTexture = pipeline.supportsCameraOpaqueTexture;
+                s.urpSupportsHdr = pipeline.supportsHDR;
+            }
 #endif
             LatestReport = JsonUtility.ToJson(s);
             if (logPath == null) return;
