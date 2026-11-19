@@ -30,6 +30,9 @@ namespace Aaris.MapReview
         private const int MaximumSpawnPasses = 4;
         private int spawnPasses = 1;
         private readonly Collider[] spawnHits = new Collider[24];
+        // Only used when dense authored cover saturates the normal overlap
+        // query; an exhaustive allocating fallback remains for >96 hits.
+        private readonly Collider[] crowdedSpawnHits = new Collider[96];
         private readonly System.Random random = new System.Random();
         private Transform player;
         private AarisOfflineHealth playerHealth;
@@ -415,9 +418,19 @@ namespace Aaris.MapReview
             Collider[] hits = spawnHits;
             if (count >= spawnHits.Length)
             {
-                hits = Physics.OverlapCapsule(low, high, 0.34f,
-                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                count = hits.Length;
+                // NonAlloc returns an unordered, potentially incomplete set
+                // at capacity. A larger reusable query avoids allocating in
+                // ordinary crowded settlements but never ignores blockers.
+                hits = crowdedSpawnHits;
+                count = Physics.OverlapCapsuleNonAlloc(low, high, 0.34f,
+                    crowdedSpawnHits, Physics.DefaultRaycastLayers,
+                    QueryTriggerInteraction.Ignore);
+                if (count >= crowdedSpawnHits.Length)
+                {
+                    hits = Physics.OverlapCapsule(low, high, 0.34f,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                    count = hits.Length;
+                }
             }
             for (int i = 0; i < count; i++)
                 if (hits[i] != null && !(hits[i] is TerrainCollider)) return false;
@@ -661,6 +674,9 @@ namespace Aaris.MapReview
         private Transform target;
         private CharacterController capsule;
         private readonly RaycastHit[] sightHits = new RaycastHit[20];
+        // Kept per rival: retain correct closest-visible-target selection
+        // without RaycastAll allocations when >20 cover hits overlap.
+        private readonly RaycastHit[] crowdedSightHits = new RaycastHit[128];
         private float nextThink, nextAttack, verticalSpeed, turnOffset, visualBlend;
         // Outside the combat range, save mobile CPU by updating far capsules
         // at 10 Hz. Keep near opponents at full gameplay frame rate.
@@ -919,9 +935,19 @@ namespace Aaris.MapReview
             RaycastHit[] hits = sightHits;
             if (count >= sightHits.Length)
             {
-                hits = Physics.RaycastAll(ray, distance,
+                // Saturated NonAlloc hits are unordered and may not contain
+                // the closest obstacle. Retry in a reusable larger buffer.
+                hits = crowdedSightHits;
+                count = Physics.RaycastNonAlloc(ray, crowdedSightHits, distance,
                     Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                count = hits.Length;
+                if (count >= crowdedSightHits.Length)
+                {
+                    // Preserve exhaustive visibility on pathological overlap:
+                    // never treat an incomplete ray as line of sight.
+                    hits = Physics.RaycastAll(ray, distance,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                    count = hits.Length;
+                }
             }
             float first = distance + 1f;
             Collider closest = null;
