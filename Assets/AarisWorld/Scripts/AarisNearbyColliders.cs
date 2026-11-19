@@ -28,6 +28,11 @@ namespace Aaris.MapReview
         private int indexCursor;
         private bool indexReady;
         private readonly Dictionary<long, List<int>> cells = new Dictionary<long, List<int>>();
+        // A single unexpectedly huge imported MeshCollider must not make one
+        // Android indexing frame expand millions of cell entries. Large
+        // authored shapes stay physical and are queried by their cached bounds.
+        private readonly List<int> oversizedIndices = new List<int>(8);
+        private const int MaxCellsPerCollider = 64;
         private List<int> active, nextActive;
         private int[] visited, wanted, probeVisited;
         private int query, probeQuery;
@@ -120,15 +125,49 @@ namespace Aaris.MapReview
                 Mathf.Abs(x.y) + Mathf.Abs(y.y) + Mathf.Abs(z.y), Mathf.Abs(x.z) + Mathf.Abs(y.z) + Mathf.Abs(z.z));
             worldBounds[i] = new Bounds(m.MultiplyPoint3x4(local.center), worldSize);
             Bounds bounds = worldBounds[i];
+            Vector3 min = bounds.min, max = bounds.max;
+            // Invalid or astronomically distant imports remain solid instead
+            // of overflowing cell coordinates or silently losing collision.
+            // The authored 2 km world is far inside this generous safe range.
+            if (!Finite(min) || !Finite(max) ||
+                Mathf.Abs(min.x) > 1000000f || Mathf.Abs(max.x) > 1000000f ||
+                Mathf.Abs(min.z) > 1000000f || Mathf.Abs(max.z) > 1000000f)
+            {
+                streamed[i] = false;
+                return;
+            }
+            int firstX = Cell(min.x), lastX = Cell(max.x);
+            int firstZ = Cell(min.z), lastZ = Cell(max.z);
+            long width = (long)lastX - firstX + 1;
+            long depth = (long)lastZ - firstZ + 1;
+            // The existing per-frame budget counts *colliders*, not grid
+            // cells. Prevent a single huge collider from dominating a frame.
+            // An overflow collider is still considered for activation, LOS
+            // and placement via oversizedIndices in both query paths.
+            if (width <= 0 || depth <= 0 ||
+                width > MaxCellsPerCollider || depth > MaxCellsPerCollider ||
+                width * depth > MaxCellsPerCollider)
+            {
+                oversizedIndices.Add(i);
+                return;
+            }
             // A long pier or building belongs to every intersected cell.
-            for (int xCell = Cell(bounds.min.x); xCell <= Cell(bounds.max.x); xCell++)
-                for (int zCell = Cell(bounds.min.z); zCell <= Cell(bounds.max.z); zCell++)
+            // Long loop counters cannot wrap at int.MaxValue.
+            for (long xCell = firstX; xCell <= lastX; xCell++)
+                for (long zCell = firstZ; zCell <= lastZ; zCell++)
                 {
-                    long key = Key(xCell, zCell);
+                    long key = Key((int)xCell, (int)zCell);
                     if (!cells.TryGetValue(key, out List<int> entries))
                     { entries = new List<int>(); cells.Add(key, entries); }
                     entries.Add(i);
                 }
+        }
+
+        private static bool Finite(Vector3 value)
+        {
+            return !float.IsNaN(value.x) && !float.IsInfinity(value.x) &&
+                   !float.IsNaN(value.y) && !float.IsInfinity(value.y) &&
+                   !float.IsNaN(value.z) && !float.IsInfinity(value.z);
         }
 
         private void FinishIndexBuild()
@@ -255,6 +294,23 @@ namespace Aaris.MapReview
                     nextActive.Add(i);
                 }
             }
+            // Large authored structures are intentionally absent from cells.
+            // Scan just this small overflow list with the same exact XZ
+            // distances, hysteresis and collision-enable rules as grid hits.
+            foreach (int i in oversizedIndices)
+            {
+                if (visited[i] == query) continue;
+                visited[i] = query;
+                Collider c = obstacles[i];
+                if (c == null) continue;
+                Vector3 q = worldBounds[i].ClosestPoint(lastPosition);
+                float dx = q.x - lastPosition.x, dz = q.z - lastPosition.z;
+                float limit = c.enabled ? retainLimit : enterLimit;
+                if (dx * dx + dz * dz > limit) continue;
+                wanted[i] = query;
+                if (!c.enabled) c.enabled = true;
+                nextActive.Add(i);
+            }
             foreach (int i in active)
                 if (wanted[i] != query && obstacles[i] != null && obstacles[i].enabled)
                 { obstacles[i].enabled = false; }
@@ -306,6 +362,17 @@ namespace Aaris.MapReview
                             return true;
                     }
                 }
+            // The same large bridge/wall must be visible to placement and
+            // rival-cover probes even when it spans more than 64 grid cells.
+            foreach (int i in oversizedIndices)
+            {
+                if (probeVisited[i] == probeStamp) continue;
+                probeVisited[i] = probeStamp;
+                Collider c = obstacles[i];
+                if (streamed[i] && c != null && !c.enabled &&
+                    worldBounds[i].Intersects(probe))
+                    return true;
+            }
             return false;
         }
 

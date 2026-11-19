@@ -77,8 +77,9 @@ namespace Aaris.MapReview
         private void Start()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
-            // Keep the heavy authored ice preview off the first terrain
-            // frame; a very early valid input can still create it immediately.
+            // Prewarm the original ice art off the first terrain frame, but
+            // do not construct an unused preview hierarchy. First valid WALL
+            // input still creates the same hologram immediately.
             StartCoroutine(PrepareGhostAcrossFrames());
 #else
             EnsureGhostCreated();
@@ -98,9 +99,9 @@ namespace Aaris.MapReview
         {
             yield return null;
             yield return AarisGlooWallVisuals.PrewarmAuthoredArt();
-            // An early WALL tap may have already built the preview. Never
-            // instantiate a second hierarchy or overwrite its renderer cache.
-            if (isActiveAndEnabled && ghost == null) EnsureGhostCreated();
+            // Asset loading alone should not allocate a full preview hierarchy
+            // on phones that never use WALL. BeginAim is the sole creation
+            // point on Android and still has immediate original-art fallback.
         }
 #endif
 
