@@ -43,6 +43,9 @@ namespace Aaris.MapReview
         private float startupTime;
         private int startupSampleIndex;
         private Task<string> pendingLogWrite;
+        // One prior-process OS report only, never queried during a hot frame.
+        private AarisAndroidExitHistory.Snapshot previousExitSnapshot;
+        private bool previousExitReady;
         // Limit main-thread async asset integration on budget Android GPUs.
         private UnityEngine.ThreadPriority originalBackgroundLoadPriority;
         private bool modifiedBackgroundLoadPriority;
@@ -176,7 +179,27 @@ namespace Aaris.MapReview
                 Debug.LogWarning("AARIS_TERRAIN_PAINT_RELEASE_DISABLED: preserve original alphamap GPU uploads.");
             AuditNativeTerrain();
             Record("terrain-render-audit");
+#if UNITY_ANDROID && !UNITY_EDITOR
+            StartCoroutine(CollectPreviousProcessExitAfterStartup());
+#endif
         }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private IEnumerator CollectPreviousProcessExitAfterStartup()
+        {
+            // Defer Android JNI until the opening scene, asset integration and
+            // startup snapshots have run. The binder request runs on a worker.
+            yield return new WaitForSecondsRealtime(12f);
+            Task<AarisAndroidExitHistory.Snapshot> query =
+                AarisAndroidExitHistory.QueryAsync();
+            while (!query.IsCompleted) yield return null;
+            try { previousExitSnapshot = query.GetAwaiter().GetResult(); }
+            catch (Exception)
+            { previousExitSnapshot = AarisAndroidExitHistory.Snapshot.Unknown("query-error"); }
+            previousExitReady = true;
+            Record("previous-process-exit");
+        }
+#endif
 
         // The 2 km visual-only ocean is a flat water surface, not a shadow caster.
         // Disable both shadow passes once before the first camera frame; keep the
@@ -867,6 +890,12 @@ namespace Aaris.MapReview
             public bool terrainLitSupported;
             public int lowMemoryWindZonesDisabled, lowMemoryGrassTilesDisabled;
             public float lowMemoryShadowDistance;
+            // Previous Android 11+ process exit, not current usage or proof
+            // that this launch crashed. -1 means unobserved/unavailable.
+            public string previousExitEvidence = "pending";
+            public int previousExitReasonCode = -1, previousExitStatusCode = -1;
+            public long previousExitTimestampUtcMs = -1;
+            public long previousExitPssKB = -1, previousExitRssKB = -1;
         }
         private int warningCount;
         private void Record(string reason)
@@ -913,6 +942,15 @@ namespace Aaris.MapReview
             // device profiler supplies process PSS when diagnosing OOM/LMK.
             // -1 explicitly means unavailable, not zero memory usage.
             s.androidPssKB = -1;
+            if (previousExitReady)
+            {
+                s.previousExitEvidence = previousExitSnapshot.state;
+                s.previousExitReasonCode = previousExitSnapshot.reasonCode;
+                s.previousExitStatusCode = previousExitSnapshot.statusCode;
+                s.previousExitTimestampUtcMs = previousExitSnapshot.timestampUtcMs;
+                s.previousExitPssKB = previousExitSnapshot.historicalPssKB;
+                s.previousExitRssKB = previousExitSnapshot.historicalRssKB;
+            }
             s.peakFixedStepsPerRender = peakFixedStepsInWindow;
             s.fixedStepsInSample = fixedStepsInWindow;
             if (startupDrop != null) s.dropPhase = startupDrop.Phase.ToString();
