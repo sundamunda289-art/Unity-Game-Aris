@@ -19,8 +19,10 @@ Find `/tmp/aaris-locomotion-gym-output/AarisLocomotionGym.apk` and
 The staging project reuses a stable cache directory, serializes builds, and contains only runtime/editor C# code, one shared player
 prefab, character + locomotion Resources, and tiny URP settings; it excludes
 map terrain, buildings, vehicles and other optional Resource assets.
-**Mono backend and ARM64-only** are intentionally used for quick testing;
-the full production APK continues using its existing IL2CPP settings.
+The default is **Mono + ARMv7 (32-bit)** for faster QA builds on Android
+devices that support 32-bit apps. For a 64-bit-only device, set
+`AARIS_GYM_ARM64=1` before the command; this selects **IL2CPP + ARM64**
+instead, which takes longer. The full production APK is unaffected.
 The gym has its own package name, `com.aaris.locomotiongym`.
 
 Controls: move with the existing joystick or WASD; camera drag/right mouse,

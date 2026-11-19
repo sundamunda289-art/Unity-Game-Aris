@@ -18,6 +18,11 @@ class LocomotionGymTests(unittest.TestCase):
         self.assertIn('scenes = new[] { ScenePath }', source)
         self.assertIn('com.aaris.locomotiongym', source)
         self.assertIn('BuildTarget.Android', source)
+        self.assertIn('AndroidArchitecture.ARMv7', source)
+        self.assertIn('AndroidArchitecture.ARM64', source)
+        self.assertIn('AARIS_GYM_ARM64', source)
+        self.assertIn('ScriptingImplementation.IL2CPP', source)
+        self.assertIn('ScriptingImplementation.Mono2x', source)
 
     def test_stance_uses_production_controller(self):
         source = self.read("Assets/AarisWorld/Scripts/AarisLocomotionGymMarker.cs")

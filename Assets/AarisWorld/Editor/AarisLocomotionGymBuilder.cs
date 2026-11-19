@@ -165,10 +165,17 @@ namespace Aaris.MapReview.Editor
             PlayerSettings.Android.targetSdkVersion =
                 AndroidSdkVersions.AndroidApiLevel33;
             PlayerSettings.Android.useCustomKeystore = false;
-            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
-            PlayerSettings.Android.buildApkPerCpuArchitecture = false;
+            // Unity Android Mono builds support ARMv7 only, whereas ARM64
+            // requires IL2CPP. Default to the fast 32-bit QA artifact and
+            // allow an explicit 64-bit-only device fallback.
+            bool buildArm64 =
+                Environment.GetEnvironmentVariable("AARIS_GYM_ARM64") == "1";
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android,
-                ScriptingImplementation.Mono2x);
+                buildArm64 ? ScriptingImplementation.IL2CPP :
+                    ScriptingImplementation.Mono2x);
+            PlayerSettings.Android.targetArchitectures = buildArm64 ?
+                AndroidArchitecture.ARM64 : AndroidArchitecture.ARMv7;
+            PlayerSettings.Android.buildApkPerCpuArchitecture = false;
             PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
             PlayerSettings.SetGraphicsAPIs(BuildTarget.Android,
                 new[] { GraphicsDeviceType.OpenGLES3 });
