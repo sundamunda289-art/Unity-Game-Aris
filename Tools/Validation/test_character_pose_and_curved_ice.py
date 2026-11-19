@@ -943,7 +943,7 @@ print('PASS: stationary crouch world-contact anchors')
 assert 'bool returningFromProne = actions != null &&' in visual
 assert 'actions.Stance == AarisBattleActions.PlayerStance.Standing &&' in visual
 assert 'effectiveProneBlend >= 0.01f &&' in visual
-assert 'effectiveProneBlend < 0.70f;' in visual
+assert 'effectiveProneBlend < 0.35f;' in visual
 assert 'effectiveCrouchBlend < 0.08f &&' in visual
 assert 'effectiveProneBlend < 0.01f) || returningFromProne);' in visual
 assert 'standingShoeOffset + adjustment' in visual
