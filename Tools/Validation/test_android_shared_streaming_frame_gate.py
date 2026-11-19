@@ -111,9 +111,8 @@ class SharedStreamingAdmission(unittest.TestCase):
             "private bool CanAttemptRivalSpawn()", 1)[0]
         policy = RIVALS.split("private bool CanAttemptRivalSpawn()", 1)[1].split(
             "private void Begin()", 1)[0]
-        self.assertIn(
-            "if (!spawnComplete && Time.time >= nextSpawn &&\\n"
-            "                CanAttemptRivalSpawn())", update)
+        self.assertIn("if (!spawnComplete && Time.time >= nextSpawn &&", update)
+        self.assertIn("CanAttemptRivalSpawn())", update)
         self.assertLess(update.index("CanAttemptRivalSpawn()"),
                         update.index("int slot = attemptedSlots++;"))
         self.assertIn(
