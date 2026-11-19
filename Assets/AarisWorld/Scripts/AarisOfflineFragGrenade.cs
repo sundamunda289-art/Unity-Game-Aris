@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -15,6 +16,58 @@ namespace Aaris.MapReview
         private static Material grenadeMaterial, oliveShell, oliveLight, darkMetal;
         private static bool grenadeFinishesLoaded;
         private static PhysicsMaterial bounceMaterial;
+        private static GameObject cachedGrenadePrefab;
+        private static bool grenadePrefabLookupComplete;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // The maximum active inventory is 10, but keeping six inactive
+        // physics/visual roots bounds native memory without per-throw churn.
+        private const int MaxPooledGrenades = 6;
+        private static readonly Stack<AarisOfflineFragGrenade> idleGrenades =
+            new Stack<AarisOfflineFragGrenade>(MaxPooledGrenades);
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetPoolForPlaySession() => idleGrenades.Clear();
+
+        internal static IEnumerator PrewarmGrenadeAssets()
+        {
+            // This is optional. An immediate throw still uses the original
+            // synchronous fallback, preserving gameplay availability.
+            yield return new WaitForSecondsRealtime(2f);
+            if (!grenadePrefabLookupComplete)
+            {
+                ResourceRequest model = Resources.LoadAsync<GameObject>("AarisCombat/FragGrenade");
+                model.priority = -1;
+                yield return model;
+                if (!grenadePrefabLookupComplete)
+                {
+                    cachedGrenadePrefab = model.asset as GameObject;
+                    grenadePrefabLookupComplete = true;
+                }
+            }
+            if (cachedGrenadePrefab == null || grenadeFinishesLoaded) yield break;
+            ResourceRequest shell = Resources.LoadAsync<Material>(
+                "AarisCombat/Materials/FragGrenade-OliveShell");
+            shell.priority = -1;
+            yield return shell;
+            yield return null;
+            ResourceRequest light = Resources.LoadAsync<Material>(
+                "AarisCombat/Materials/FragGrenade-OliveLight");
+            light.priority = -1;
+            yield return light;
+            yield return null;
+            ResourceRequest metal = Resources.LoadAsync<Material>(
+                "AarisCombat/Materials/FragGrenade-DarkMetal");
+            metal.priority = -1;
+            yield return metal;
+            if (!grenadeFinishesLoaded)
+            {
+                oliveShell = shell.asset as Material;
+                oliveLight = light.asset as Material;
+                darkMetal = metal.asset as Material;
+                grenadeFinishesLoaded = true;
+            }
+        }
+#endif
         private readonly Collider[] overlaps = new Collider[96];
         private readonly RaycastHit[] rays = new RaycastHit[48];
         private readonly Dictionary<IAarisDamageable, (float amount, Collider collider)> blastTargets =
@@ -27,6 +80,21 @@ namespace Aaris.MapReview
 
         public static AarisOfflineFragGrenade Throw(Vector3 origin, Vector3 velocity, GameObject thrower)
         {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Reuse the entire original Rigidbody, collider and imported
+            // visual. No Create/Instantiate/Destroy on a warmed pool hit.
+            while (idleGrenades.Count > 0)
+            {
+                AarisOfflineFragGrenade reused = idleGrenades.Pop();
+                if (reused == null || reused.body == null) continue;
+                reused.transform.SetPositionAndRotation(origin, Quaternion.identity);
+                reused.body.isKinematic = false;
+                reused.gameObject.SetActive(true);
+                reused.Launch(reused.body, velocity, thrower);
+                reused.body.WakeUp();
+                return reused;
+            }
+#endif
             var grenade = new GameObject("Aaris_FragGrenade");
             grenade.transform.position = origin;
             var sphere = grenade.AddComponent<SphereCollider>();
@@ -40,7 +108,12 @@ namespace Aaris.MapReview
                     bounceCombine = PhysicsMaterialCombine.Maximum
                 };
             sphere.sharedMaterial = bounceMaterial;
-            GameObject imported = Resources.Load<GameObject>("AarisCombat/FragGrenade");
+            if (!grenadePrefabLookupComplete)
+            {
+                cachedGrenadePrefab = Resources.Load<GameObject>("AarisCombat/FragGrenade");
+                grenadePrefabLookupComplete = true;
+            }
+            GameObject imported = cachedGrenadePrefab;
             GameObject visual = imported != null
                 ? Instantiate(imported, grenade.transform, false)
                 : GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -112,6 +185,8 @@ namespace Aaris.MapReview
             body = rigidbody;
             owner = thrower;
             detonateAt = Time.time + fuseSeconds;
+            lastBounceAudio = -10f;
+            detonated = false;
             armed = true;
             body.linearVelocity = velocity;
             body.angularVelocity = new Vector3(4f, 6f, 2f);
@@ -189,7 +264,24 @@ namespace Aaris.MapReview
                 if (rb != null && !rb.isKinematic)
                     rb.AddExplosionForce(340f, blast, blastRadius, 0.25f, ForceMode.Impulse);
             }
-            // External prefab/VFX may replace this locally; combat remains independent.
+            // No retained victim/rigidbody references while waiting in pool.
+            blastTargets.Clear();
+            damageableScratch.Clear();
+            owner = null;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (idleGrenades.Count < MaxPooledGrenades)
+            {
+                // Return the whole initialized visual+physics hierarchy.
+                // IgnoreCollision is re-applied in Launch after reactivation.
+                body.linearVelocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
+                body.isKinematic = true;
+                gameObject.SetActive(false);
+                idleGrenades.Push(this);
+                return;
+            }
+#endif
+            // Overflow retains the original teardown behavior.
             Destroy(gameObject);
         }
 
