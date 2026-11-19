@@ -15,18 +15,43 @@ namespace Aaris.MapReview
         // One shared native import slot across optional model prewarmers.
         // Completed requests release the slot even when a coroutine stops.
         private static ResourceRequest optionalLoadInFlight;
+        // Unity's critical-memory asset cleanup can run for many rendered
+        // frames. Starting optional imports/hierarchies while it is still
+        // unloading competes for native memory and the same main-thread time.
+        // The cleanup itself is never blocked; essential scene/gameplay work
+        // never enters this optional admission gate.
+        private static AsyncOperation unusedAssetCleanup;
+
+        internal static void DeferOptionalWorkDuringAssetCleanup(AsyncOperation cleanup)
+        {
+            if (cleanup != null && !cleanup.isDone)
+                unusedAssetCleanup = cleanup;
+        }
+
+        private static bool IsAssetCleanupPending()
+        {
+            if (unusedAssetCleanup == null) return false;
+            if (!unusedAssetCleanup.isDone) return true;
+            // Do not hold a completed Unity operation or block work forever.
+            unusedAssetCleanup = null;
+            return false;
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void Reset()
         {
             claimedFrame = -1;
             optionalLoadInFlight = null;
+            unusedAssetCleanup = null;
         }
 #endif
 
         internal static bool TryClaimOptionalModelBuild()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
+            // Even a larger phone can report critical memory: keep all optional
+            // native hierarchy construction off the unused-asset cleanup pass.
+            if (IsAssetCleanupPending()) return false;
             // Unknown memory or larger phones retain the authored per-system
             // budgets. Read only when an actual model build is imminent.
             int ramMb = SystemInfo.systemMemorySize;
@@ -49,6 +74,7 @@ namespace Aaris.MapReview
 #if UNITY_ANDROID && !UNITY_EDITOR
             int ramMb = SystemInfo.systemMemorySize;
             bool constrained = ramMb > 0 && ramMb <= 4608;
+            if (IsAssetCleanupPending()) return null;
             if (constrained)
             {
                 if (optionalLoadInFlight != null && !optionalLoadInFlight.isDone)
