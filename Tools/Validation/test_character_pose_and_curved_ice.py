@@ -187,7 +187,11 @@ assert 'rightGoal - leftGoal, Vector3.up' in visual
 assert 'stanceSpread > 0.57f && guard > 0.001f' in visual
 assert 'Mathf.Min(' in visual and '(stanceSpread - 0.57f) * 0.5f, 0.12f' in visual
 assert 'leftGoal += inward;' in visual and 'rightGoal -= inward;' in visual
-assert 'Mathf.Lerp(0.32f, 1f, proneKneeSettle)' in visual
+# A 32% intermediate prone knee pole worsened return-to-standing lateral
+# knee metrics in real Unity playback (frame 1: 0.103m to 0.330m).
+# Preserve the original pole interpolation and limit only excessive feet.
+assert 'Mathf.Lerp(0.32f, 1f, proneKneeSettle)' not in visual
+assert 'float pronePoleStrength = proneKneeShare * proneKneeSettle *' in visual
 assert visual.index('Vector3 stanceSeparation =') < visual.index('if (correction < 0.001f) return;')
 assert visual.count('float leftAnkleY = SupportedAnkleY(') == 1
 assert visual.count('float rightAnkleY = SupportedAnkleY(') == 1
