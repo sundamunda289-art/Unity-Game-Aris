@@ -47,12 +47,16 @@ namespace Aaris.MapReview
         internal static float AndroidMocapGroupLoadMs { get; private set; } = -1f;
         internal static float AndroidMaxClipGroupLoadMs { get; private set; } = -1f;
         internal static int AndroidClipGroupLoadCount { get; private set; }
+        internal static float AndroidRigInstantiateMs { get; private set; } = -1f;
+        internal static float AndroidRigGraphSetupMs { get; private set; } = -1f;
+        internal static float AndroidRigBakeMeshMs { get; private set; } = -1f;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetAndroidClipLoadEvidence()
         {
             AndroidMocapGroupLoadMs = AndroidMaxClipGroupLoadMs = -1f;
             AndroidClipGroupLoadCount = 0;
+            AndroidRigInstantiateMs = AndroidRigGraphSetupMs = AndroidRigBakeMeshMs = -1f;
         }
 #endif
 
@@ -237,6 +241,13 @@ namespace Aaris.MapReview
                 // over frames before creating its animation PlayableGraph.
                 yield return PrewarmAndroidAnimationGroups(candidate);
                 if (!isActiveAndEnabled) yield break;
+                // Reserve a frame for the essential player rig so optional
+                // buildings, car imports and Foley cannot *start* a native
+                // integration on its costly Instantiate/PlayableGraph/BakeMesh
+                // frame. Already-running imports remain untouched.
+                if (AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialRig())
+                    yield return null;
+                if (!isActiveAndEnabled) yield break;
                 if (TryInstantiateCharacter(candidate, source))
                 {
                     FinishVisualSetup();
@@ -361,7 +372,14 @@ namespace Aaris.MapReview
 #endif
             if (source == null) return false;
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+            double rigInstantiateStarted = Time.realtimeSinceStartupAsDouble;
+#endif
             visual = Instantiate(source, transform, false);
+#if UNITY_ANDROID && !UNITY_EDITOR
+            AndroidRigInstantiateMs = Mathf.Max(AndroidRigInstantiateMs,
+                (float)((Time.realtimeSinceStartupAsDouble - rigInstantiateStarted) * 1000d));
+#endif
             visual.name = "AarisRiggedCharacterVisual";
             visual.transform.localPosition = Vector3.zero;
             visual.transform.localRotation = Quaternion.Euler(0f, modelYawOffset, 0f);
@@ -416,9 +434,16 @@ namespace Aaris.MapReview
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             // Keep clip-level foot stabilization below the terrain-aware solve.
             animator.stabilizeFeet = true;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            double graphStarted = Time.realtimeSinceStartupAsDouble;
+#endif
             SetupAnimations();
             if (!graphReady) return false;
             graph.Evaluate(0f);
+#if UNITY_ANDROID && !UNITY_EDITOR
+            AndroidRigGraphSetupMs = Mathf.Max(AndroidRigGraphSetupMs,
+                (float)((Time.realtimeSinceStartupAsDouble - graphStarted) * 1000d));
+#endif
 
             // Import bounds can be centered correctly while the evaluated
             // geometry is still kilometres away. Check actual vertices once
@@ -426,7 +451,14 @@ namespace Aaris.MapReview
             var posed = new Mesh();
             try
             {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                double bakeStarted = Time.realtimeSinceStartupAsDouble;
+#endif
                 bodySkin.BakeMesh(posed);
+#if UNITY_ANDROID && !UNITY_EDITOR
+                AndroidRigBakeMeshMs = Mathf.Max(AndroidRigBakeMeshMs,
+                    (float)((Time.realtimeSinceStartupAsDouble - bakeStarted) * 1000d));
+#endif
                 if (posed.vertexCount == 0) return false;
                 Transform skinTransform = bodySkin.transform;
                 Vector3 actorCentre = transform.position + Vector3.up * (TargetHeightMetres * 0.5f);
