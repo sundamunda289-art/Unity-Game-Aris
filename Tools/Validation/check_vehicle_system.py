@@ -172,9 +172,9 @@ def test():
     battle=script("AarisBattleHUD")
     nearby=script("AarisNearbyColliders")
 
-    // WheelCollider visuals remain full-rate for the driven car and
-    // for any body seen by a camera. Only offscreen, unoccupied
-    // rolling cars can time-slice cosmetic updates (four phases).
+    # WheelCollider visuals remain full-rate for the driven car and
+    # for any body seen by a camera. Only offscreen, unoccupied
+    # rolling cars can time-slice cosmetic updates (four phases).
     late = motor.split("private void LateUpdate()", 1)[1].split(
         "private void OnEnable()", 1)[0]
     assert "representativeBodyRenderer" in motor
