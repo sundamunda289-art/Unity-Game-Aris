@@ -3,11 +3,14 @@ on:
   pull_request:
     paths:
       - 'Assets/AarisWorld/Scripts/AarisSettlementExpansion.cs'
+      - 'Assets/AarisWorld/Scripts/AarisTreeClearanceIndex.cs*'
       - 'Assets/AarisWorld/Scripts/AarisModularHouse.cs'
       - 'Assets/AarisWorld/Scripts/AarisBreakablePanel.cs'
       - 'Assets/AarisWorld/Scripts/AarisExpansionCatalog.cs'
       - 'Assets/Resources/AarisExpansion/**'
       - 'Tools/Validation/test_settlement_expansion.py'
+      - 'Tools/Validation/run_tree_clearance_csharp.py'
+      - 'Tools/Validation/TreeClearanceIndexTests.cs'
       - 'Tools/Validation/test_android_selective_tree_retention.py'
       - 'Tools/Validation/test_android_tree_clearance_streaming.py'
       - 'Tools/Validation/test_settlement_streamed_obstacles.py'
@@ -16,11 +19,14 @@ on:
   push:
     paths:
       - 'Assets/AarisWorld/Scripts/AarisSettlementExpansion.cs'
+      - 'Assets/AarisWorld/Scripts/AarisTreeClearanceIndex.cs*'
       - 'Assets/AarisWorld/Scripts/AarisModularHouse.cs'
       - 'Assets/AarisWorld/Scripts/AarisBreakablePanel.cs'
       - 'Assets/AarisWorld/Scripts/AarisExpansionCatalog.cs'
       - 'Assets/Resources/AarisExpansion/**'
       - 'Tools/Validation/test_settlement_expansion.py'
+      - 'Tools/Validation/run_tree_clearance_csharp.py'
+      - 'Tools/Validation/TreeClearanceIndexTests.cs'
       - 'Tools/Validation/test_android_selective_tree_retention.py'
       - 'Tools/Validation/test_android_tree_clearance_streaming.py'
       - 'Tools/Validation/test_settlement_streamed_obstacles.py'
@@ -43,6 +49,11 @@ jobs:
           python3 Tools/Validation/test_android_selective_tree_retention.py
           python3 Tools/Validation/test_android_tree_clearance_streaming.py
           python3 Tools/Validation/test_settlement_streamed_obstacles.py
+      - name: Compile and exercise the production tree-clearance index
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends mono-mcs
+          python3 Tools/Validation/run_tree_clearance_csharp.py
       - name: Explain evidence level
         run: |
           echo 'Offline geometry and asset references audited; native Unity render/Play Mode still required.'

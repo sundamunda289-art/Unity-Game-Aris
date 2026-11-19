@@ -50,23 +50,10 @@ namespace Aaris.MapReview
         private const float ObstacleMargin = 1.25f;
 
         private readonly Collider[] obstacles = new Collider[96];
-        // Three floats per tree are sufficient for exact placement clearance.
-        // Avoid retaining the much larger native TreeInstance structs in managed memory.
-        private struct TreeClearanceSample
-        {
-            internal readonly float x, z, margin;
-
-            internal TreeClearanceSample(float x, float z, float margin)
-            {
-                this.x = x;
-                this.z = z;
-                this.margin = margin;
-            }
-        }
-
         private const int AndroidTreeProbeBudgetPerFrame = 256;
-        private readonly Dictionary<Terrain, List<TreeClearanceSample>> treeCache =
-            new Dictionary<Terrain, List<TreeClearanceSample>>();
+        private const double AndroidTreeProbeBudgetSeconds = 0.001;
+        private readonly Dictionary<Terrain, AarisTreeClearanceIndex> treeCache =
+            new Dictionary<Terrain, AarisTreeClearanceIndex>();
         // Only clearance records near a planned site (including every possible
         // 26m interactive relocation) can influence settlement placement.
         // The actual native terrain trees and scene visuals remain untouched.
@@ -200,9 +187,8 @@ namespace Aaris.MapReview
                 // TerrainData.treeInstances copies an entire native tree array to
                 // managed memory at once. On Android, read bounded individual
                 // records instead; Unity 6 GetTreeInstance avoids that copy.
-                // Retain only world X/Z/margin records that can affect a
-                // planned house or any safe relocated interactive house.
-                // Building the interest cells is bounded by the plan (max 32).
+                // Preserve the selective retention filter: only trees that can
+                // affect a house or any safe relocation enter the temporary index.
                 BuildTreeInterestCells(plan);
                 foreach (Terrain t in terrains)
                 {
@@ -210,19 +196,19 @@ namespace Aaris.MapReview
                     TerrainData data = t.terrainData;
                     Vector3 origin = t.transform.position;
                     Vector3 size = data.size;
-                    var samples = new List<TreeClearanceSample>();
+                    var samples = new AarisTreeClearanceIndex();
                     treeCache.Add(t, samples);
                     int treeCount = data.treeInstanceCount;
                     int processed = 0;
+                    double sliceDeadline = mobile ? Time.realtimeSinceStartupAsDouble +
+                        AndroidTreeProbeBudgetSeconds : 0d;
                     for (int i = 0; i < treeCount; i++)
                     {
                         TreeInstance tree = data.GetTreeInstance(i);
                         float x = origin.x + tree.position.x * size.x;
                         float z = origin.z + tree.position.z * size.z;
-                        // This O(1) membership check prevents storing distant
-                        // forest data that will never intersect any building.
-                        // The native tree sample budget still counts EVERY
-                        // visited tree, including those we do not retain.
+                        // Retain only relevant cells, but budget EVERY native
+                        // tree probe, including discarded clearance records.
                         if (!float.IsNaN(x) && !float.IsInfinity(x) &&
                             !float.IsNaN(z) && !float.IsInfinity(z) &&
                             treeInterestCells.Contains(
@@ -230,12 +216,19 @@ namespace Aaris.MapReview
                         {
                             float margin = Mathf.Min(3.8f,
                                 Mathf.Max(0.5f, tree.widthScale * 1.5f));
-                            samples.Add(new TreeClearanceSample(x, z, margin));
+                            samples.Add(x, z, margin);
                         }
-                        if (mobile && ++processed >= AndroidTreeProbeBudgetPerFrame)
+                        // A fixed item count alone is not a CPU time budget on
+                        // throttled phones. Check every 16 records and yield at
+                        // either limit; always process some work before yielding.
+                        if (mobile && (++processed >= AndroidTreeProbeBudgetPerFrame ||
+                            ((processed & 15) == 0 &&
+                             Time.realtimeSinceStartupAsDouble >= sliceDeadline)))
                         {
                             processed = 0;
                             yield return null;
+                            sliceDeadline = Time.realtimeSinceStartupAsDouble +
+                                AndroidTreeProbeBudgetSeconds;
                         }
                     }
                     if (mobile) yield return null;
@@ -465,7 +458,7 @@ namespace Aaris.MapReview
             foreach (Terrain terrain in all)
             {
                 if (terrain == null || terrain.terrainData == null ||
-                    !treeCache.TryGetValue(terrain, out List<TreeClearanceSample> trees))
+                    !treeCache.TryGetValue(terrain, out AarisTreeClearanceIndex trees))
                     continue;
                 Vector3 basePoint = terrain.transform.position;
                 Vector3 tileSize = terrain.terrainData.size;
@@ -474,13 +467,10 @@ namespace Aaris.MapReview
                     site.z + hz + 3.8f < basePoint.z ||
                     site.z - hz - 3.8f > basePoint.z + tileSize.z)
                     continue;
-                for (int i = 0; i < trees.Length; i++)
-                {
-                    TreeClearanceSample tree = trees[i];
-                    if (Mathf.Abs(tree.x - site.x) < hx + tree.margin &&
-                        Mathf.Abs(tree.z - site.z) < hz + tree.margin)
-                        return true;
-                }
+                // The complete tile snapshot includes trees from both sides
+                // of seams. Query only intersecting cells; every candidate is
+                // still tested against the exact original clearance predicate.
+                if (trees.Blocks(site.x, site.z, hx, hz)) return true;
             }
             return false;
         }

@@ -11,6 +11,8 @@ from pathlib import Path
 
 SOURCE = (Path(__file__).resolve().parents[2] / "Assets" / "AarisWorld" /
           "Scripts" / "AarisSettlementExpansion.cs").read_text(encoding="utf-8")
+INDEX = (Path(__file__).resolve().parents[2] / "Assets" / "AarisWorld" /
+         "Scripts" / "AarisTreeClearanceIndex.cs").read_text(encoding="utf-8")
 
 
 def half_extents(site):
@@ -61,12 +63,15 @@ class TreeClearanceStreaming(unittest.TestCase):
         self.assertIn("int treeCount = data.treeInstanceCount;", SOURCE)
         self.assertIn("for (int i = 0; i < treeCount; i++)", SOURCE)
         self.assertNotIn("data.treeInstances", SOURCE)
-        self.assertIn("samples.Add(new TreeClearanceSample(x, z, margin));", SOURCE)
-        self.assertIn("Dictionary<Terrain, List<TreeClearanceSample>>", SOURCE)
+        self.assertIn("samples.Add(x, z, margin);", SOURCE)
+        self.assertIn("Dictionary<Terrain, AarisTreeClearanceIndex>", SOURCE)
+        self.assertIn("trees.Blocks(site.x, site.z, hx, hz)", SOURCE)
 
     def test_android_has_bounded_sampling_work_and_cleanup(self):
         self.assertIn("AndroidTreeProbeBudgetPerFrame = 256", SOURCE)
-        self.assertIn("if (mobile && ++processed >= AndroidTreeProbeBudgetPerFrame)", SOURCE)
+        self.assertIn("if (mobile && (++processed >= AndroidTreeProbeBudgetPerFrame ||", SOURCE)
+        self.assertIn("AndroidTreeProbeBudgetSeconds = 0.001", SOURCE)
+        self.assertIn("Time.realtimeSinceStartupAsDouble >= sliceDeadline", SOURCE)
         self.assertIn("processed = 0;", SOURCE)
         self.assertIn("yield return null;", SOURCE)
         self.assertIn("finally", SOURCE)
@@ -78,8 +83,9 @@ class TreeClearanceStreaming(unittest.TestCase):
         self.assertIn("FootprintHalfExtents(site, VegetationMargin", SOURCE)
         self.assertIn("foreach (Terrain terrain in all)", SOURCE)
         self.assertIn("TryRelocateInteractiveSite(site, terrains, out y)", SOURCE)
-        self.assertIn("tree.x - site.x", SOURCE)
-        self.assertIn("tree.z - site.z", SOURCE)
+        self.assertIn("Math.Abs(tree.x - x) < halfX + tree.margin", INDEX)
+        self.assertIn("Math.Abs(tree.z - z) < halfZ + tree.margin", INDEX)
+        self.assertNotIn("trees.Length", INDEX + SOURCE)
 
     def test_bounded_compact_cache_matches_original_blocking_predicate(self):
         rng = random.Random(20261119)

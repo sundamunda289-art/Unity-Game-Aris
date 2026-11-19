@@ -56,7 +56,7 @@ class ExpansionCatalogPrewarm(unittest.TestCase):
 
     def test_site_order_native_tree_and_gameplay_geometry_preserved(self):
         self.assertIn("AndroidTreeProbeBudgetPerFrame = 256", SRC)
-        self.assertIn("if (mobile && ++processed >= AndroidTreeProbeBudgetPerFrame)", SRC)
+        self.assertIn("if (mobile && (++processed >= AndroidTreeProbeBudgetPerFrame ||", SRC)
         self.assertIn("foreach (var site in plan.sites)", SRC)
         self.assertIn("int attemptsPerFrame = mobile ? 1 : 2;", SRC)
         self.assertIn("!TryRelocateInteractiveSite(site, terrains, out y)", SRC)

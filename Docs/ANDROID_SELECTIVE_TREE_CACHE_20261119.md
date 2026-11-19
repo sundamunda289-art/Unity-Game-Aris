@@ -24,7 +24,7 @@ a change to the rendered or collidable native forest**.
 
 Every native tree record is still visited under the existing 256
 samples-per-frame budget, but only potentially relevant records are
-temporarily retained. The per-tile TreeClearanceSample list, the exact
+temporarily retained. The per-tile clearance snapshot, the exact
 TreesBlock comparison, collision semantics, tile-seam coverage, house
 order, fallback and relocation behavior all remain the same.
 
@@ -33,6 +33,10 @@ coroutine's finally block on normal completion or cancellation.
 
 No terrain tree, mesh, material, texture, map object or visual asset
 is deleted, hidden, downscaled or altered.
+
+Follow-up: the snapshot is now indexed by world cells for each individual
+footprint query, and Android sampling also checks a cooperative time budget.
+See [the index audit](ANDROID_FOREST_CLEARANCE_INDEX_AUDIT_20261119.md).
 
 ## Static validation and limits
 

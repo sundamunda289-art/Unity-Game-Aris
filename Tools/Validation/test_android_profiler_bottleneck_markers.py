@@ -88,7 +88,7 @@ class AndroidBottleneckProfilerMarkers(unittest.TestCase):
         self.assertIn("private bool Build(AarisVehicleRecord record, Vector3 pos)", car)
         self.assertIn("worldBounds[i] = new Bounds(m.MultiplyPoint3x4", colliders)
         self.assertIn("IndexCollider(indexCursor);", colliders)
-        self.assertIn("treeCache.TryGetValue(terrain, out List<TreeClearanceSample>", trees)
+        self.assertIn("treeCache.TryGetValue(terrain, out AarisTreeClearanceIndex", trees)
         self.assertIn("internal static GameObject CreatePlane(", plane)
         self.assertIn('LatestReport = JsonUtility.ToJson(s);', diagnostics)
         self.assertIn('Record("frame-stall");', diagnostics)
