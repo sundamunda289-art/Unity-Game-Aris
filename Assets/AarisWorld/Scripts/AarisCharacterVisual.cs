@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Animations;
@@ -170,6 +171,11 @@ namespace Aaris.MapReview
 
         private void Start()
         {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Keep the original player visible while Unity asynchronously
+            // deserializes the large, unchanged full-quality character mesh.
+            StartCoroutine(LoadCharacterAsynchronously());
+#else
             if (!TryInstantiateCharacter(PrimaryModel) &&
                 !TryInstantiateCharacter(PreviousPrimaryModel) &&
                 !TryInstantiateCharacter(LegacyPrimaryModel) &&
@@ -179,7 +185,34 @@ namespace Aaris.MapReview
                 enabled = false;
                 return;
             }
+            FinishVisualSetup();
+#endif
+        }
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private IEnumerator LoadCharacterAsynchronously()
+        {
+            // One request at a time: do not load all fallback rigs into RAM.
+            string[] candidates = { PrimaryModel, PreviousPrimaryModel,
+                LegacyPrimaryModel, FallbackModel };
+            foreach (string candidate in candidates)
+            {
+                ResourceRequest request = Resources.LoadAsync<GameObject>(candidate);
+                yield return request;
+                if (!isActiveAndEnabled) yield break;
+                if (TryInstantiateCharacter(candidate, request.asset as GameObject))
+                {
+                    FinishVisualSetup();
+                    yield break;
+                }
+            }
+            Debug.LogWarning("Aaris: no usable imported humanoid. Keeping original player visible.");
+            enabled = false;
+        }
+#endif
+
+        private void FinishVisualSetup()
+        {
             TryApplySkin();
             actions = GetComponent<AarisBattleActions>();
             playerMotor = GetComponent<AarisThirdPersonPlayer>();
@@ -226,9 +259,14 @@ namespace Aaris.MapReview
                 renderer.gameObject.name.StartsWith("AarisPlayer_", StringComparison.Ordinal);
         }
 
-        private bool TryInstantiateCharacter(string resourcePath)
+        private bool TryInstantiateCharacter(string resourcePath, GameObject preloaded = null)
         {
-            var source = Resources.Load<GameObject>(resourcePath);
+            GameObject source = preloaded;
+#if !UNITY_ANDROID || UNITY_EDITOR
+            // Editor tooling keeps its existing immediate scene-preview path.
+            // On Android only the completed async request may create the rig.
+            if (source == null) source = Resources.Load<GameObject>(resourcePath);
+#endif
             if (source == null) return false;
 
             visual = Instantiate(source, transform, false);

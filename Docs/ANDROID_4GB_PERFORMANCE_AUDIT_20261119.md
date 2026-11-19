@@ -72,3 +72,7 @@ test_player_streamer_lifecycle.py, test_settlement_streamed_obstacles.py and
 check_mobile_hotpaths.py. Static tests cannot demonstrate actual FPS gains,
 Unity compilation or a crash fix. Compare cold-start physics/CPU Profiler
 spikes, memory and ANR/LMK records on the 4GB Snapdragon 680 Android handset.
+
+## Follow-up: Android primary character async loading
+
+The 6.95 MB authored primary character FBX was synchronously requested in AarisCharacterVisual.Start(). Android now issues one Resources.LoadAsync<GameObject> request at a time in the existing original-to-fallback priority order; the saved placeholder stays untouched until a rig is actually ready. Editor scene probes keep their immediate existing path. Mesh, textures, animation selection, materials, resolution, foliage and authored geometry are not reduced. The completed async asset can still incur rig-instantiation/animation-graph cost; this is a source-level reduction in cold-start synchronous loading risk, **not** a measured freeze fix. Verify the model is actually visible on Android, first-frame and p95/p99 timing, memory, and fallback behavior.
