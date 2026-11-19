@@ -1035,7 +1035,9 @@ namespace Aaris.MapReview
         // bounded world-space stance-foot locking. No collision queries or heap allocation.
         private static void PlantLegToTarget(Transform thigh, Transform shin,
             Transform foot, Vector3 desiredFootWorld, Vector3 forward, float weight,
-            float minimumKneeWorldY = -10000f, float kneePoleStrength = 0.90f)
+            float minimumKneeWorldY = -10000f, float kneePoleStrength = 0.90f,
+            Vector3 anatomicalSideAxis = default(Vector3),
+            float maximumKneeSideMetres = 0f, float maximumSideTurnDegrees = 0f)
         {
             if (thigh == null || shin == null || foot == null || weight <= 0f) return;
             Vector3 hip = thigh.position;
@@ -1131,6 +1133,61 @@ namespace Aaris.MapReview
                 }
             }
             Vector3 kneeGoal = hip + axis * along + bend * across;
+            // Native PlayMode revealed a 52.6cm sideways knee excursion in
+            // the *entering-prone* crossfade. Keep the precise two-bone
+            // lengths/ankle contact, and trim only the excess knee lateral
+            // component on that bend circle. This leaves upright, settled
+            // crouch/prone, turning, running and prone->stand untouched.
+            // Rotation is limited per solve; no extra raycast or allocation.
+            if (maximumSideTurnDegrees > 0.001f &&
+                maximumKneeSideMetres > 0.05f && across > 0.01f &&
+                anatomicalSideAxis.sqrMagnitude > 0.25f)
+            {
+                float kneeSide = Vector3.Dot(kneeGoal - hip, anatomicalSideAxis);
+                if (Mathf.Abs(kneeSide) > maximumKneeSideMetres)
+                {
+                    Vector3 lateralBasis = Vector3.ProjectOnPlane(
+                        anatomicalSideAxis, axis);
+                    float sideAxisLength = lateralBasis.magnitude;
+                    if (sideAxisLength > 0.10f)
+                    {
+                        lateralBasis /= sideAxisLength;
+                        float oldSide = Vector3.Dot(bend, lateralBasis);
+                        float desiredSide = Mathf.Clamp(
+                            (Mathf.Clamp(kneeSide, -maximumKneeSideMetres,
+                                maximumKneeSideMetres) -
+                             along * Vector3.Dot(axis, anatomicalSideAxis)) /
+                            (across * sideAxisLength), -0.995f, 0.995f);
+                        Vector3 otherBend = bend - lateralBasis * oldSide;
+                        if (otherBend.sqrMagnitude < 0.0001f)
+                        {
+                            // Deterministic tangent for a knee exactly on
+                            // the lateral axis; prefer the already-safe up.
+                            otherBend = Vector3.ProjectOnPlane(
+                                Vector3.up, axis);
+                            otherBend -= lateralBasis *
+                                Vector3.Dot(otherBend, lateralBasis);
+                        }
+                        if (otherBend.sqrMagnitude > 0.0001f)
+                        {
+                            Vector3 desiredBend = lateralBasis * desiredSide +
+                                otherBend.normalized * Mathf.Sqrt(Mathf.Max(
+                                    0f, 1f - desiredSide * desiredSide));
+                            Vector3 candidateBend = Vector3.RotateTowards(
+                                bend, desiredBend,
+                                maximumSideTurnDegrees * Mathf.Deg2Rad, 0f);
+                            Vector3 candidateKnee = hip + axis * along +
+                                candidateBend * across;
+                            // Do not undo the floor-safe bend-circle solve.
+                            if (candidateKnee.y >= minimumKneeWorldY - 0.002f)
+                            {
+                                bend = candidateBend;
+                                kneeGoal = candidateKnee;
+                            }
+                        }
+                    }
+                }
+            }
             Vector3 oldUpper = shin.position - thigh.position;
             Vector3 newUpper = kneeGoal - thigh.position;
             if (oldUpper.sqrMagnitude < 0.0001f ||
@@ -1213,7 +1270,8 @@ namespace Aaris.MapReview
         private static void PlantCrouchLeg(Transform thigh, Transform shin,
             Transform foot, float ankleWorldY, Vector3 forward, float weight,
             Vector3 resolvedFootWorld, float kneeClearance,
-            float kneePoleStrength)
+            float kneePoleStrength, Vector3 anatomicalSideAxis,
+            float kneeLateralMaxMetres, float maxKneeSideTurnDegrees)
         {
             if (foot == null || float.IsNaN(ankleWorldY) || weight <= 0.005f)
                 return;
@@ -1223,7 +1281,8 @@ namespace Aaris.MapReview
             targetFoot.y = ankleWorldY;
             float kneeFloor = ankleWorldY + kneeClearance;
             PlantLegToTarget(thigh, shin, foot, targetFoot, forward, weight,
-                kneeFloor, kneePoleStrength);
+                kneeFloor, kneePoleStrength, anatomicalSideAxis,
+                kneeLateralMaxMetres, maxKneeSideTurnDegrees);
         }
 
         // Crouching should keep feet within a compact, balanced footprint;
@@ -1969,6 +2028,27 @@ namespace Aaris.MapReview
                     Vector3.up * pronePoleStrength;
                 float kneePoleStrength = Mathf.Clamp01(
                     crouchPoleStrength + pronePoleStrength);
+                // An early prone knee can flare sideways while its clip
+                // retargets the previous crouch leg axis. Do not force an
+                // early pole in both directions: PlayMode proved that harms
+                // prone->standing. Constrain the knee circle only while the
+                // requested stance is Prone, at very low speed, while the
+                // actual prone pose enters. Fade in and out across the blend.
+                Vector3 kneeSideAxis = Vector3.ProjectOnPlane(
+                    rightThigh.position - leftThigh.position, Vector3.up);
+                float entryKneeSideTurn = 0f;
+                if (prone && groundedNow && !visuallyAirborne &&
+                    transitioningLowStance && authoredProne &&
+                    kneeSideAxis.sqrMagnitude > 0.02f)
+                {
+                    kneeSideAxis.Normalize();
+                    float entry = Mathf.SmoothStep(0f, 1f,
+                        Mathf.InverseLerp(0.35f, 0.65f, effectiveProneBlend));
+                    float settle = 1f - Mathf.SmoothStep(0f, 1f,
+                        Mathf.InverseLerp(0.84f, 0.98f, effectiveProneBlend));
+                    entryKneeSideTurn = 38f * entry * settle *
+                        kneeStillness * kneeTurnStability;
+                }
                 // Resolve X/Z BEFORE sampling Y. This keeps the one existing
                 // Physics query per foot on the actual locked point, rather
                 // than on a different goal across a ramp or stair lip.
@@ -1985,12 +2065,14 @@ namespace Aaris.MapReview
                 if (!float.IsNaN(leftAnkleY))
                     PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
                         leftAnkleY, kneeForward, ankleRigWeight,
-                        leftFootGoal, kneeClearance, kneePoleStrength);
+                        leftFootGoal, kneeClearance, kneePoleStrength,
+                        kneeSideAxis, 0.29f, entryKneeSideTurn);
                 else leftLowPlantLocked = false;
                 if (!float.IsNaN(rightAnkleY))
                     PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
                         rightAnkleY, kneeForward, ankleRigWeight,
-                        rightFootGoal, kneeClearance, kneePoleStrength);
+                        rightFootGoal, kneeClearance, kneePoleStrength,
+                        kneeSideAxis, 0.29f, entryKneeSideTurn);
                 else rightLowPlantLocked = false;
                 // Crouch/prone used to correct only ankle height, leaving the
                 // sole visually cutting through a sloped road or bridge deck.
