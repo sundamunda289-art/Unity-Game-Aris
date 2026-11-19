@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -289,7 +290,26 @@ namespace Aaris.MapReview
             var obj = new GameObject("Aaris 2km Match Vehicles (streamed)");
             var world = obj.AddComponent<AarisVehicleWorld>();
             world.player = motor.transform;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // On 4 GB Android or a constrained GPU, avoid synchronously
+            // hydrating every fallback car and wheel on the first map frame.
+            // This changes resource scheduling, not the car/physics/visual plan.
+            if ((SystemInfo.systemMemorySize > 0 &&
+                 SystemInfo.systemMemorySize <= 4096) ||
+                AarisMobileRuntime.UseConstrainedGpuStreamingBudget())
+            {
+                world.StartCoroutine(world.SetupAfterBudgetAndroidPrewarm(motor));
+                return;
+            }
+#endif
             if (!world.Setup()) { Destroy(obj); return; }
+            AttachSessionAndHud(motor, world);
+        }
+
+        private static void AttachSessionAndHud(
+            AarisThirdPersonPlayer motor, AarisVehicleWorld world)
+        {
+            if (motor == null || world == null) return;
             var session = motor.GetComponent<AarisVehicleSession>();
             if (session == null) session = motor.gameObject.AddComponent<AarisVehicleSession>();
             session.Configure(world, motor);
@@ -297,6 +317,58 @@ namespace Aaris.MapReview
             var hud = hudObject.AddComponent<AarisVehicleHUD>();
             hud.Configure(session);
         }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private IEnumerator SetupAfterBudgetAndroidPrewarm(AarisThirdPersonPlayer motor)
+        {
+            // The scene should render before catalogue/mesh integrations begin.
+            yield return null;
+            ResourceRequest catalogueRequest =
+                Resources.LoadAsync<TextAsset>("AarisVehicles/vehicle_catalog");
+            catalogueRequest.priority = -1;
+            yield return catalogueRequest;
+
+            TextAsset text = catalogueRequest.asset as TextAsset;
+            if (text != null)
+            {
+                AarisVehicleTypesFile definitions = null;
+                try { definitions = JsonUtility.FromJson<AarisVehicleTypesFile>(text.text); }
+                catch (Exception) { /* Setup() retains authoritative error logging. */ }
+
+                if (definitions != null && definitions.vehicles != null)
+                {
+                    // One in-flight request, one integration at a time.
+                    // Authored high-fidelity FBX prewarm remains proximity-based
+                    // and is NEVER added to this startup queue.
+                    var visited = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (AarisVehicleType type in definitions.vehicles)
+                    {
+                        if (type == null || type.weight <= 0 ||
+                            type.maxSpeedMetres < 8f || type.maxSpeedMetres > 28f)
+                            continue;
+                        string[] paths = { type.modelResource, type.wheelResource };
+                        foreach (string path in paths)
+                        {
+                            if (string.IsNullOrEmpty(path) || !visited.Add(path))
+                                continue;
+                            ResourceRequest request = Resources.LoadAsync<GameObject>(path);
+                            request.priority = -1;
+                            yield return request;
+                            // Space out Unity main-thread integration and URP
+                            // object initialization, even for tiny fallback kits.
+                            yield return null;
+                        }
+                    }
+                }
+            }
+
+            if (motor == null || player == null) { Destroy(gameObject); yield break; }
+            // All original validation, authored-asset fallback, car placement,
+            // material quality and gameplay rules are still performed here.
+            if (!Setup()) { Destroy(gameObject); yield break; }
+            AttachSessionAndHud(motor, this);
+        }
+#endif
 
         private bool Setup()
         {
@@ -1659,7 +1731,9 @@ namespace Aaris.MapReview
 
         private void Update()
         {
-            if (player == null) return;
+            // The mobile prewarmer can span multiple rendered frames. Never
+            // poll empty plan/type arrays until Setup validates the catalog.
+            if (player == null || vehicleTypes == null || prefabs == null) return;
             float now = Time.unscaledTime;
             if (now < nextPoll) return;
             nextPoll = now + .3f;
