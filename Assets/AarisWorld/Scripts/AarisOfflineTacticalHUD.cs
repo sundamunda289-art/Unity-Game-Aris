@@ -113,6 +113,11 @@ namespace Aaris.MapReview
             if (motor == null || gloo == null) { enabled = false; return; }
             Build();
             initialized = true;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Stage the original authored grenade prefab/materials before the
+            // first throw, without adding visuals or physics to scene startup.
+            StartCoroutine(AarisOfflineFragGrenade.PrewarmGrenadeAssets());
+#endif
         }
 
         // Stripped player prefabs can omit either optional component. Poll for
