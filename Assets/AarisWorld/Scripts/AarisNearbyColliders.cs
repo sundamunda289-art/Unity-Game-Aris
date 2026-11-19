@@ -208,6 +208,10 @@ namespace Aaris.MapReview
             // deactivate terrain, authored-off or unsupported collider types.
             int processed = 0;
             bool constrainTime = Application.platform == RuntimePlatform.Android;
+            // FinishIndexBuild's RefreshNow has just synchronized live cover.
+            // Avoid following that work with the first batch of native toggles
+            // in the same Android render frame; Editor keeps its old cadence.
+            if (constrainTime) yield return null;
             double frameStartedAt = constrainTime ? Time.realtimeSinceStartupAsDouble : 0d;
             for (int i = 0; i < obstacles.Length; i++)
             {
