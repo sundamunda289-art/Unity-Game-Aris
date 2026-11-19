@@ -68,9 +68,29 @@ namespace Aaris.MapReview
         private void Start()
         {
             nearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
-            // Parsing the small road plan at boot is cheap. The large mesh import
-            // is asynchronous and starts only when the player enters prewarm range.
-            TextAsset data = Resources.Load<TextAsset>("AarisVehicles/vehicle_candidates");
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Cars use the exact same authored candidate JSON. Join their
+            // shared async request instead of reading it synchronously on
+            // the opening map frame. No new bikes or 3D models are created.
+            StartCoroutine(LoadRoadPlanAfterAndroidImport());
+#else
+            LoadRoadPlans(Resources.Load<TextAsset>("AarisVehicles/vehicle_candidates"));
+#endif
+        }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private System.Collections.IEnumerator LoadRoadPlanAfterAndroidImport()
+        {
+            yield return null; // render aircraft/terrain before parsing road plans
+            yield return AarisVehiclePointManifest.LoadAndroidAsync();
+            if (!isActiveAndEnabled) yield break;
+            yield return null; // native request completion and JSON parse are separate frames
+            LoadRoadPlans(AarisVehiclePointManifest.AndroidCached);
+        }
+#endif
+
+        private void LoadRoadPlans(TextAsset data)
+        {
             if (data == null)
             {
                 Debug.LogWarning("Aaris bikes: road nodes missing.");
