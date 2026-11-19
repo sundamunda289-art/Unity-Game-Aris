@@ -17,6 +17,16 @@ KNOWN_REASONS = {
     "asset-unload-complete", "pause", "quit", "terrain-render-audit",
     "previous-process-exit"
 }
+# Stable Android 11+ ApplicationExitInfo getReason() values. Treat SIGNALED
+# as ambiguous: some devices report low-memory kills this way.
+# Names are sanitized classifications, not device logs or proof of a driver bug.
+EXIT_REASON_LABELS = {
+    2: "signaled",
+    3: "low-memory-kill",
+    4: "java-crash",
+    5: "native-crash",
+    6: "anr",
+}
 LIMITATIONS = (
     "Statistics summarize Unity's emitted records, not full frame traces, "
     "Android PSS, native crash logs or a proof of causation. Repeated rolling "
@@ -127,6 +137,26 @@ def analyze(lines):
         signals.append(
             "At least one sampled window was GPU-time dominant; Android GPU profiler required"
         )
+    if 3 in previous_exit_reason_codes:
+        signals.append(
+            "Android exit history reports a previous low-memory kill; compare PSS "
+            "and memory-pressure evidence")
+    if 6 in previous_exit_reason_codes:
+        signals.append(
+            "Android exit history reports a previous ANR; inspect ANR and "
+            "main-thread traces before assigning its cause")
+    if 5 in previous_exit_reason_codes:
+        signals.append(
+            "Android exit history reports a previous native crash; inspect the "
+            "native tombstone before inferring a graphics-driver fault")
+    if 4 in previous_exit_reason_codes:
+        signals.append(
+            "Android exit history reports a previous Java crash; inspect the "
+            "redacted exception trace")
+    if 2 in previous_exit_reason_codes:
+        signals.append(
+            "Android exit history reports a signal; some Android devices report "
+            "low-memory kills as SIGNALED, so this reason alone is ambiguous")
     if not valid:
         signals.append("No valid Aaris JSON telemetry was provided")
     return {
@@ -163,6 +193,10 @@ def analyze(lines):
             "pressure_recovery_frames_cumulative_max": optional_counters["optionalStreamPressureDeferredFrames"],
         },
         "previous_process_exit_reason_codes_observed": sorted(previous_exit_reason_codes),
+        "previous_process_exit_reason_labels_observed": [
+            EXIT_REASON_LABELS.get(code, "other")
+            for code in sorted(previous_exit_reason_codes)
+        ],
         "signals_to_investigate": signals,
         "limitations": LIMITATIONS
     }
