@@ -88,6 +88,15 @@ namespace Aaris.MapReview
                     yield return null;
                 yield return request;
                 GameObject candidate = request.asset as GameObject;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // Async completion is NOT the same as a free native frame.
+                // Renderer hierarchy inspection can still coincide with a
+                // car, settlement or pickup build. Do not throw away a
+                // successfully loaded rival while that slot is occupied.
+                if (candidate != null)
+                    while (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                        yield return null;
+#endif
                 if (HasRenderableRivalPrefab(candidate))
                 {
                     prewarmedRivalPrefab = candidate;
