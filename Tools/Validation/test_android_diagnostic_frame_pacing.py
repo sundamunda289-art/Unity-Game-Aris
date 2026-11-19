@@ -44,7 +44,9 @@ class AndroidDiagnosticFramePacing(unittest.TestCase):
         gate = SRC.split("private bool CanRecordPeriodicDiagnostics()", 1)[1].split(
             "private void OnLowMemory()", 1)[0]
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", gate)
-        self.assertIn("return Time.frameCount != lastDiagnosticFrame;", gate)
+        self.assertIn("Time.frameCount != lastDiagnosticFrame &&", gate)
+        self.assertIn("Time.frameCount != lowMemoryReportObservedFrame &&", gate)
+        self.assertIn("Time.frameCount != assetUnloadCompletionObservedFrame;", gate)
         self.assertIn("#else\n            return true;", gate)
         record = SRC.split("private void Record(string reason)", 1)[1].split(
             "private static string InitializeLogFile", 1)[0]
@@ -67,6 +69,38 @@ class AndroidDiagnosticFramePacing(unittest.TestCase):
                         update.index('Record("startup");'))
         self.assertLess(update.index('Record("startup");'),
                         update.index('Record("sample");'))
+
+    def test_low_memory_report_waits_until_after_native_cleanup_start(self):
+        update = SRC.split("private void Update()", 1)[1].split(
+            "private bool CanRecordPeriodicDiagnostics()", 1)[0]
+        cleanup = update.split("if (lowMemoryPending)", 1)[1].split(
+            "// Avoid two diagnostic snapshots in the same frame.", 1)[0]
+        self.assertIn("AarisOfflineFragGrenade.ReleaseInactivePooledGrenades();", cleanup)
+        self.assertIn("unloading = Resources.UnloadUnusedAssets();", cleanup)
+        self.assertIn("lowMemoryReportPending = true;", cleanup)
+        self.assertIn("lowMemoryReportObservedFrame = Time.frameCount;", cleanup)
+        self.assertLess(cleanup.index("unloading = Resources.UnloadUnusedAssets();"),
+                        cleanup.index("lowMemoryReportPending = true;"))
+        report = update.split("if (lowMemoryReportPending &&", 1)[1].split(
+            "// The regular 15-second ring", 1)[0]
+        self.assertIn("Time.frameCount != lowMemoryReportObservedFrame", report)
+        self.assertIn("CanRecordPeriodicDiagnostics()", report)
+        self.assertIn("lowMemoryReportPending = false;", report)
+        self.assertIn('Record("low-memory");', report)
+        # Android reports later; Editor retains the original immediate log.
+        self.assertIn('#else\\n                Record("low-memory");\\n#endif'.replace('\\n', '\\n'), cleanup)
+        self.assertNotIn("GC.Collect()", cleanup)
+        self.assertNotIn("WaitForCompletion", cleanup)
+
+    def test_native_unload_completion_never_steals_its_own_report_frame(self):
+        update = SRC.split("private void Update()", 1)[1].split(
+            "private bool CanRecordPeriodicDiagnostics()", 1)[0]
+        self.assertIn("assetUnloadCompletionObservedFrame = Time.frameCount;", update)
+        self.assertIn("assetUnloadCompletionReportPending = true;", update)
+        gate = SRC.split("private bool CanRecordPeriodicDiagnostics()", 1)[1].split(
+            "private void OnLowMemory()", 1)[0]
+        self.assertIn("Time.frameCount != assetUnloadCompletionObservedFrame", gate)
+        self.assertIn("Time.frameCount != lowMemoryReportObservedFrame", gate)
 
     def test_bursts_cannot_consume_two_periodic_snapshots_same_frame(self):
         records, waiting_startup, waiting_sample = simulate_periodic_reports(
