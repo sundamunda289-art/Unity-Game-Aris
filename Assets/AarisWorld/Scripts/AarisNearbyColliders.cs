@@ -207,7 +207,8 @@ namespace Aaris.MapReview
             // A distant collider remains solid until its turn. We never
             // deactivate terrain, authored-off or unsupported collider types.
             int processed = 0;
-            double frameStartedAt = Time.realtimeSinceStartupAsDouble;
+            bool constrainTime = Application.platform == RuntimePlatform.Android;
+            double frameStartedAt = constrainTime ? Time.realtimeSinceStartupAsDouble : 0d;
             for (int i = 0; i < obstacles.Length; i++)
             {
                 if (target == null) { deferredDeactivation = null; yield break; }
@@ -226,13 +227,14 @@ namespace Aaris.MapReview
                 }
                 processed++;
                 if (processed >= DeferredColliderUpdatesPerFrame ||
-                    (processed % AndroidDeactivationClockCheckInterval == 0 &&
+                    (constrainTime && processed % AndroidDeactivationClockCheckInterval == 0 &&
                      Time.realtimeSinceStartupAsDouble - frameStartedAt >=
                      AndroidDeactivationBudgetSeconds))
                 {
                     processed = 0;
                     yield return null;
-                    frameStartedAt = Time.realtimeSinceStartupAsDouble;
+                    if (constrainTime)
+                        frameStartedAt = Time.realtimeSinceStartupAsDouble;
                 }
             }
             deferredDeactivation = null;
