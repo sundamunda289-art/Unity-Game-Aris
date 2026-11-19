@@ -28,8 +28,7 @@ class EssentialCharacterRigFrame(unittest.TestCase):
         reserve = GATE.split("internal static bool ReserveNextFrameForEssentialRig()", 1)[1].split(
             "private static bool IsEssentialRigFrame()", 1)[0]
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", reserve)
-        self.assertIn("int ramMb = SystemInfo.systemMemorySize;", reserve)
-        self.assertIn("ramMb > 0 && ramMb <= 4608", reserve)
+        self.assertIn("if (IsConstrainedDevice())", reserve)
         self.assertIn("essentialRigFrame = Time.frameCount + 1;", reserve)
         self.assertIn("return true;", reserve)
         self.assertIn("return false;", reserve)

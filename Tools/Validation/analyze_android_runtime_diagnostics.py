@@ -46,6 +46,12 @@ def analyze(lines):
     plane_high_detail = None
     previous_exit_reason_codes = set()
     started = completed = suppressed = 0
+    optional_constrained = None
+    optional_counters = {
+        "optionalStreamImportDeferrals": None,
+        "optionalStreamImportSettleDeferrals": None,
+        "optionalStreamPressureDeferredFrames": None,
+    }
 
     def maximum(old, new):
         return old if new is None else new if old is None else max(old, new)
@@ -66,6 +72,10 @@ def analyze(lines):
             invalid += 1
             continue
         valid += 1
+        if isinstance(row.get("optionalStreamConstrained"), bool):
+            optional_constrained = row["optionalStreamConstrained"]
+        for key in optional_counters:
+            optional_counters[key] = maximum(optional_counters[key], number(row, key))
         reason = row.get("reason")
         reason = reason if isinstance(reason, str) and reason in KNOWN_REASONS else "other"
         reasons[reason] += 1
@@ -145,6 +155,12 @@ def analyze(lines):
             "prefab_instantiate_ms_max": max_plane_instantiate,
             "total_visual_create_ms_max": max_plane_total,
             "high_detail_selected_when_observed": plane_high_detail
+        },
+        "optional_streaming": {
+            "constrained_policy_when_observed": optional_constrained,
+            "import_busy_attempts_cumulative_max": optional_counters["optionalStreamImportDeferrals"],
+            "integration_frame_attempts_cumulative_max": optional_counters["optionalStreamImportSettleDeferrals"],
+            "pressure_recovery_frames_cumulative_max": optional_counters["optionalStreamPressureDeferredFrames"],
         },
         "previous_process_exit_reason_codes_observed": sorted(previous_exit_reason_codes),
         "signals_to_investigate": signals,

@@ -942,6 +942,8 @@ namespace Aaris.MapReview
             // One-time JSON decode only; excludes asynchronous native import.
             public float lootCandidateParseMs = -1f, weaponDefinitionParseMs = -1f;
             public bool planeHighDetailSelected;
+            public bool optionalStreamConstrained;
+            public int optionalStreamImportSettleDeferrals, optionalStreamPressureDeferredFrames;
             public int assetUnloadStartedCount, assetUnloadCompletedCount, assetUnloadSuppressedCount;
             public float lastAssetUnloadElapsedMs = -1f;
             public bool assetUnloadInProgress;
@@ -1099,6 +1101,11 @@ namespace Aaris.MapReview
                 AarisMobileStreamingFrameGate.SameFrameDeferredAttempts;
             s.optionalStreamImportDeferrals =
                 AarisMobileStreamingFrameGate.ImportDeferredAttempts;
+            s.optionalStreamConstrained = AarisMobileStreamingFrameGate.IsConstrainedDevice();
+            s.optionalStreamImportSettleDeferrals =
+                AarisMobileStreamingFrameGate.ImportSettleDeferredAttempts;
+            s.optionalStreamPressureDeferredFrames =
+                AarisMobileStreamingFrameGate.PressureDeferredFrames;
             if (GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset pipeline)
             {
                 s.renderScale = pipeline.renderScale;

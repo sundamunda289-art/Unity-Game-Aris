@@ -12,12 +12,12 @@ BIKE = (SRC / "AarisRoadsideBikeScenery.cs").read_text()
 CLAIM = "AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()"
 
 
-def simulate_admission(available_ram, frame_numbers):
+def simulate_admission(available_ram, frame_numbers, budget_gpu=False):
     """Python control-flow mirror, NOT a Unity runtime measurement."""
     last = -1
     decisions = []
     for frame in frame_numbers:
-        if available_ram <= 0 or available_ram > 4608:
+        if (available_ram <= 0 or available_ram > 4608) and not budget_gpu:
             decisions.append(True)
         elif frame == last:
             decisions.append(False)
@@ -28,9 +28,10 @@ def simulate_admission(available_ram, frame_numbers):
 
 
 class SharedStreamingAdmission(unittest.TestCase):
-    def test_low_ram_android_only_and_unknown_ram_unrestricted(self):
+    def test_low_ram_or_budget_gpu_android_only(self):
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", GATE)
-        self.assertIn("if (ramMb > 0 && ramMb <= 4608)", GATE)
+        self.assertIn("constrainedDevice = (ramMb > 0 && ramMb <= 4608) ||", GATE)
+        self.assertIn("AarisMobileRuntime.UseConstrainedGpuStreamingBudget();", GATE)
         self.assertIn("int frame = Time.frameCount;", GATE)
         self.assertRegex(GATE,
                          r"if \(claimedFrame == frame\)\s*\{\s*"
@@ -41,6 +42,8 @@ class SharedStreamingAdmission(unittest.TestCase):
         for ram in (0, -1, 6144, 8192):
             self.assertEqual(simulate_admission(ram, [1, 1, 1]),
                              [True, True, True])
+            self.assertEqual(simulate_admission(ram, [1, 1, 2], budget_gpu=True),
+                             [True, False, True])
 
     def test_reset_clears_per_scene_static_slot(self):
         self.assertIn("[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]", GATE)

@@ -78,7 +78,8 @@ class AndroidAudioBootTest(unittest.TestCase):
         self.assertIn("yield return LoadOptionalFoleyAcrossFrames();", essential)
         gate = (ROOT / "Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs").read_text()
         self.assertIn("if (IsAssetCleanupPending())", gate)
-        self.assertIn("optionalLoadInFlight != null && !optionalLoadInFlight.isDone", gate)
+        self.assertIn("if (!optionalLoadInFlight.isDone)", gate)
+        self.assertIn("if (IsOptionalImportBusy()) return false;", gate)
         self.assertIn("request.priority = -1;", gate)
 
     def test_not_yet_loaded_variants_have_base_fallback(self):

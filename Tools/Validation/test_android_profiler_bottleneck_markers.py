@@ -5,6 +5,7 @@ A static test cannot prove native Unity compile, player frames or GPU origin.
 """
 from pathlib import Path
 import unittest
+from run_runtime_native_work_csharp import braced
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "Assets" / "AarisWorld" / "Scripts"
@@ -75,7 +76,11 @@ class AndroidBottleneckProfilerMarkers(unittest.TestCase):
                 i = code.index(method)
                 scope = code.index(f"using var profilerScope = {field}.Auto();")
                 self.assertGreater(scope, i)
-                self.assertLess(scope - i, 250)
+                # Long multiline signatures/comments are harmless. Inspect
+                # the actual containing body instead of its character offset.
+                body = braced(code, method)
+                self.assertIn(f"using var profilerScope = {field}.Auto();", body)
+                self.assertNotRegex(body, r"(?m)^\s*yield\s+(return|break)\b")
 
     def test_instrumented_original_runtime_paths_still_exist(self):
         character = (SCRIPTS / "AarisCharacterVisual.cs").read_text()

@@ -5,13 +5,24 @@ namespace Aaris.MapReview
     /// <summary>
     /// Coordinates optional 3D model and nonessential Foley audio imports across streamers.
     /// Per-streamer budgets alone can still create several heavy hierarchies in
-    /// the same rendered frame. This adds one shared low-RAM Android admission
+    /// the same rendered frame. This adds one shared budget-device Android admission
     /// slot; essential gameplay and existing collision/visibility stay live.
     /// </summary>
     internal static class AarisMobileStreamingFrameGate
     {
 #if UNITY_ANDROID && !UNITY_EDITOR
         private static int claimedFrame = -1;
+        private static bool devicePolicyReady, constrainedDevice;
+        private static int importIntegrationFrame = -1;
+        private static int pressureDecisionFrame = -1, consecutivePressureDeferrals;
+        private static bool pressureBlockedThisFrame;
+        // Defer at most two attempt-frames while frame time exceeds 50 ms.
+        // Still admit one optional item on the third during sustained load,
+        // so a slow device cannot starve its nearby models indefinitely.
+        private const float SlowFrameSeconds = 0.05f;
+        private const int MaximumPressureDeferralFrames = 2;
+        internal static int ImportSettleDeferredAttempts { get; private set; }
+        internal static int PressureDeferredFrames { get; private set; }
         // Essential player rig construction is one high-cost main-thread
         // operation (Instantiate + PlayableGraph + validation BakeMesh).
         // Reserve its NEXT frame before yielding; optional models/materials
@@ -27,7 +38,7 @@ namespace Aaris.MapReview
         // The cleanup itself is never blocked; essential scene/gameplay work
         // never enters this optional admission gate.
         private static AsyncOperation unusedAssetCleanup;
-        // Monotonic attempted-admission counters. Reading three ints only
+        // Monotonic attempted-admission counters. Reading these ints only
         // during existing 15-second diagnostics does not allocate, poll native
         // hierarchies, or add logging to the model-streaming hot path.
         internal static int CleanupDeferredAttempts { get; private set; }
@@ -49,10 +60,52 @@ namespace Aaris.MapReview
             return false;
         }
 
+        private static bool IsOptionalImportBusy()
+        {
+            int frame = Time.frameCount;
+            if (optionalLoadInFlight != null)
+            {
+                if (!optionalLoadInFlight.isDone)
+                {
+                    ImportDeferredAttempts++;
+                    return true;
+                }
+                optionalLoadInFlight = null;
+                // isDone includes native main-thread integration. Keep its
+                // observed completion frame free of another hierarchy/import.
+                importIntegrationFrame = frame;
+            }
+            if (importIntegrationFrame != frame) return false;
+            ImportSettleDeferredAttempts++;
+            return true;
+        }
+
+        private static bool ShouldDeferForFramePressure(int frame)
+        {
+            // Several streamers can ask in one frame. They must share one
+            // decision, not consume two recovery frames in the same Update.
+            if (pressureDecisionFrame == frame) return pressureBlockedThisFrame;
+            pressureDecisionFrame = frame;
+            pressureBlockedThisFrame = Time.unscaledDeltaTime > SlowFrameSeconds &&
+                consecutivePressureDeferrals < MaximumPressureDeferralFrames;
+            if (pressureBlockedThisFrame)
+            {
+                consecutivePressureDeferrals++;
+                PressureDeferredFrames++;
+            }
+            else consecutivePressureDeferrals = 0;
+            return pressureBlockedThisFrame;
+        }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void Reset()
         {
             claimedFrame = -1;
+            devicePolicyReady = constrainedDevice = false;
+            importIntegrationFrame = pressureDecisionFrame = -1;
+            consecutivePressureDeferrals = 0;
+            pressureBlockedThisFrame = false;
+            ImportSettleDeferredAttempts = PressureDeferredFrames = 0;
             essentialRigFrame = -1;
             RigReservedDeferredAttempts = 0;
             optionalLoadInFlight = null;
@@ -61,14 +114,32 @@ namespace Aaris.MapReview
         }
 #endif
 
+        internal static bool IsConstrainedDevice()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (!devicePolicyReady)
+            {
+                int ramMb = SystemInfo.systemMemorySize;
+                // More RAM does not make an Adreno 610 or Mali-G52 faster.
+                // Reuse the exact driver-aware policy and cache it once,
+                // avoiding native device queries/string work in hot paths.
+                constrainedDevice = (ramMb > 0 && ramMb <= 4608) ||
+                    AarisMobileRuntime.UseConstrainedGpuStreamingBudget();
+                devicePolicyReady = true;
+            }
+            return constrainedDevice;
+#else
+            return false;
+#endif
+        }
+
         // Called by the essential player visual AFTER animation imports,
-        // immediately before its final one-frame yield. False on larger RAM
-        // devices retains their current full-speed behavior.
+        // immediately before its final one-frame yield. Fast devices retain
+        // their current full-speed behavior.
         internal static bool ReserveNextFrameForEssentialRig()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
-            int ramMb = SystemInfo.systemMemorySize;
-            if (ramMb > 0 && ramMb <= 4608)
+            if (IsConstrainedDevice())
             {
                 essentialRigFrame = Time.frameCount + 1;
                 return true;
@@ -101,17 +172,18 @@ namespace Aaris.MapReview
                 CleanupDeferredAttempts++;
                 return false;
             }
-            // Unknown memory or larger phones retain the authored per-system
-            // budgets. Read only when an actual model build is imminent.
-            int ramMb = SystemInfo.systemMemorySize;
-            if (ramMb > 0 && ramMb <= 4608)
+            if (IsConstrainedDevice())
             {
+                // Background IO can still finalize native objects on the
+                // main thread. Hierarchy builds share its import fence too.
+                if (IsOptionalImportBusy()) return false;
                 int frame = Time.frameCount;
                 if (claimedFrame == frame)
                 {
                     SameFrameDeferredAttempts++;
                     return false;
                 }
+                if (ShouldDeferForFramePressure(frame)) return false;
                 claimedFrame = frame;
             }
 #endif
@@ -126,8 +198,7 @@ namespace Aaris.MapReview
         {
             if (string.IsNullOrEmpty(path)) return null;
 #if UNITY_ANDROID && !UNITY_EDITOR
-            int ramMb = SystemInfo.systemMemorySize;
-            bool constrained = ramMb > 0 && ramMb <= 4608;
+            bool constrained = IsConstrainedDevice();
             if (IsAssetCleanupPending())
             {
                 CleanupDeferredAttempts++;
@@ -140,13 +211,8 @@ namespace Aaris.MapReview
             }
             if (constrained)
             {
-                if (optionalLoadInFlight != null && !optionalLoadInFlight.isDone)
-                {
-                    ImportDeferredAttempts++;
-                    return null;
-                }
                 // Model imports and optional hierarchy/material integration
-                // must not both be admitted in the same low-RAM frame.
+                // share in-flight, completion-frame and pressure admission.
                 if (!TryClaimOptionalModelBuild()) return null;
             }
 #endif

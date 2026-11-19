@@ -18,6 +18,26 @@ def report(*items):
 
 
 class RuntimeDiagnosticEvidence(unittest.TestCase):
+    def test_streaming_policy_and_counters_require_valid_evidence(self):
+        empty = report({"reason": "sample"})["optional_streaming"]
+        self.assertTrue(all(value is None for value in empty.values()))
+        result = report(
+            {"reason": "sample", "optionalStreamConstrained": True,
+             "optionalStreamImportDeferrals": 4,
+             "optionalStreamImportSettleDeferrals": 3,
+             "optionalStreamPressureDeferredFrames": 2},
+            {"reason": "sample", "optionalStreamConstrained": "private-device-name",
+             "optionalStreamImportDeferrals": -1,
+             "optionalStreamImportSettleDeferrals": True,
+             "optionalStreamPressureDeferredFrames": float("inf")})
+        self.assertEqual(result["optional_streaming"], {
+            "constrained_policy_when_observed": True,
+            "import_busy_attempts_cumulative_max": 4,
+            "integration_frame_attempts_cumulative_max": 3,
+            "pressure_recovery_frames_cumulative_max": 2,
+        })
+        self.assertNotIn("private-device-name", json.dumps(result))
+
     def test_empty_log_does_not_invent_crash_cause(self):
         result = MOD.analyze([])
         self.assertEqual(result["valid_records"], 0)

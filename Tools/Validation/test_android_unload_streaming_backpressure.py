@@ -75,7 +75,7 @@ class CriticalMemoryBackpressure(unittest.TestCase):
 
     def test_budget_remains_android_only_and_source_visuals_unchanged(self):
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", GATE)
-        self.assertIn("bool constrained = ramMb > 0 && ramMb <= 4608;", GATE)
+        self.assertIn("bool constrained = IsConstrainedDevice();", GATE)
         self.assertNotIn("Destroy(", GATE)
         self.assertNotIn("QualitySettings", GATE)
         self.assertNotIn("TerrainData", GATE)

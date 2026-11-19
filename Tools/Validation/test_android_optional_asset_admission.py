@@ -18,8 +18,9 @@ WEAPONS = (SRC / "AarisWeaponCatalog.cs").read_text()
 class OptionalAssetAdmission(unittest.TestCase):
     def test_budget_is_android_only_and_preserves_fast_phones(self):
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", GATE)
-        self.assertIn("bool constrained = ramMb > 0 && ramMb <= 4608;", GATE)
-        self.assertIn("optionalLoadInFlight != null && !optionalLoadInFlight.isDone", GATE)
+        self.assertIn("bool constrained = IsConstrainedDevice();", GATE)
+        self.assertIn("if (IsOptionalImportBusy()) return false;", GATE)
+        self.assertIn("if (!optionalLoadInFlight.isDone)", GATE)
         self.assertIn("if (!TryClaimOptionalModelBuild()) return null;", GATE)
         self.assertIn("optionalLoadInFlight = request;", GATE)
         self.assertIn("optionalLoadInFlight = null;", GATE)
