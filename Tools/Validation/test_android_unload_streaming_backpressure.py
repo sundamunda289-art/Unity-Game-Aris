@@ -52,8 +52,12 @@ class CriticalMemoryBackpressure(unittest.TestCase):
         gate = GATE.split("internal static bool TryClaimOptionalModelBuild()", 1)[1].split(
             "internal static ResourceRequest TryStartOptionalLoadAsync", 1)[0]
         async_load = GATE.split("internal static ResourceRequest TryStartOptionalLoadAsync", 1)[1]
-        self.assertIn("if (IsAssetCleanupPending()) return false;", gate)
-        self.assertIn("if (IsAssetCleanupPending()) return null;", async_load)
+        self.assertRegex(gate,
+                         r"if \(IsAssetCleanupPending\(\)\)\s*\{\s*"
+                         r"CleanupDeferredAttempts\+\+;\s*return false;\s*\}")
+        self.assertRegex(async_load,
+                         r"if \(IsAssetCleanupPending\(\)\)\s*\{\s*"
+                         r"CleanupDeferredAttempts\+\+;\s*return null;\s*\}")
         self.assertLess(gate.index("IsAssetCleanupPending()"),
                         gate.index("claimedFrame = frame;"))
         self.assertLess(async_load.index("IsAssetCleanupPending()"),
