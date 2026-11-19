@@ -79,6 +79,25 @@ class SharedLootCandidateImport(unittest.TestCase):
         self.assertIn("if (doc == null || doc.schema != 1 || doc.sizeMetres != 2000 ||", init)
         self.assertIn("enabled = false;", init)
 
+    def test_android_only_boot_method_is_hidden_from_unity_editor_compile(self):
+        # LoadForAndroidAsync is defined behind UNITY_ANDROID, so its only
+        # caller method must be under the same guard. An Android-only
+        # invocation site alone is insufficient to prevent Editor CS1061.
+        body = WORLD.split("public sealed class AarisWeaponLootWorld", 1)[1]
+        marker = "        private IEnumerator InitializeAndroid()"
+        index = body.index(marker)
+        self.assertEqual(body[:index].rstrip().splitlines()[-1],
+                         "#if UNITY_ANDROID && !UNITY_EDITOR")
+        tail = body[index:].split("        private void Initialize()", 1)[0]
+        self.assertIn("yield return AarisLootDocument.LoadForAndroidAsync();", tail)
+        self.assertTrue(tail.rstrip().endswith("#endif"))
+        boot = body.split("internal static void EnsureForPlayer(", 1)[1].split(
+            "private void Start()", 1)[0]
+        self.assertIn("world.StartCoroutine(world.InitializeAndroid());", boot)
+        self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", boot)
+        self.assertIn("#else", boot)
+        self.assertIn("if (AarisWeaponCatalog.TryLoad()) world.Initialize();", boot)
+
     def test_weapon_catalog_definitions_are_async_before_model_prewarm(self):
         android_loader = CATALOG.split("internal static IEnumerator LoadForMatchAsync()", 1)[1].split(
             "public static GameObject ModelFor(", 1)[0]
