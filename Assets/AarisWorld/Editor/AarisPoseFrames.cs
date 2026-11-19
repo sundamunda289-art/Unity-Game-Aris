@@ -218,7 +218,26 @@ throw new InvalidOperationException("CROUCH_KNEE_SIDEWAYS_OR_MISALIGNED");
 // Only the settled prone orbit sample is an appropriate foot-contact gate:
 // the first frame deliberately captures the transition from crouching.
 if(b.Stance==AarisBattleActions.PlayerStance.Prone&&terrainFound&&
- SessionState.GetInt("pose.count",0)>=4){
+ SessionState.GetInt("pose.count",0)>=3){
+// The final 4-angle orbit frame is index 3, not index 4.
+ // Measure the true settled knee axis using the same thigh plane as
+ // crouch; this marker is mandatory for the native Python auditor.
+ Vector3 hipSide=Vector3.ProjectOnPlane(
+  rightUpper.position-leftUpper.position,Vector3.up);
+ if(hipSide.sqrMagnitude<0.02f)
+  throw new InvalidOperationException("PRONE_HIP_AXIS_INVALID");
+ hipSide.Normalize();
+ float leftLateral=Vector3.Dot(Vector3.ProjectOnPlane(
+  leftKnee.position-leftUpper.position,Vector3.up),hipSide);
+ float rightLateral=Vector3.Dot(Vector3.ProjectOnPlane(
+  rightKnee.position-rightUpper.position,Vector3.up),hipSide);
+ float kneeHeightDelta=Mathf.Abs(leftKnee.position.y-rightKnee.position.y);
+ Log("PRONE_KNEE_ALIGNMENT leftLateral="+leftLateral.ToString("F3")+
+  " rightLateral="+rightLateral.ToString("F3")+
+  " kneeHeightDelta="+kneeHeightDelta.ToString("F3"));
+ if(Mathf.Abs(leftLateral)>0.25f||Mathf.Abs(rightLateral)>0.25f||
+  kneeHeightDelta>0.12f)
+  throw new InvalidOperationException("PRONE_KNEE_SIDEWAYS_OR_MISALIGNED");
 float leftAnkle=leftFoot.position.y-terrainY;
 float rightAnkle=rightFoot.position.y-terrainY;
 float leftKneeHeight=leftKnee.position.y-terrainY;
