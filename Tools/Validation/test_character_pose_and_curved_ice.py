@@ -881,6 +881,16 @@ assert 'float crouchLowering = naturalMocapLoaded ? 0f :' in visual
 assert 'realisticSoldierLoaded ? RealisticSoldierCrouchRigLowering :' in visual
 assert 'CrouchRigLowering) * crouchRigWeight;' in visual
 assert 'public static void CapturePortrait()' in pose_probe
+# Fixed front and back camera sessions are essential for validating lateral
+# transition splay: rotating cameras across time samples hides the defect.
+for marker in (
+    'public static void CaptureTransitionFrontPortrait()',
+    'public static void CaptureTransitionBackPortrait()',
+    'SessionState.SetFloat("pose.transitionYawDegrees",0f);',
+    'SessionState.SetFloat("pose.transitionYawDegrees",180f);',
+    'SessionState.GetFloat("pose.transitionYawDegrees",90f)',
+):
+    assert marker in pose_probe, marker
 assert 'ACTOR_HEAD_PENETRATES_CEILING_' in pose_probe
 assert 'SUCCESS_7_ACTOR_PORTRAITS' in pose_probe
 assert 'cam.cullingMask=savedMask;' in pose_probe
