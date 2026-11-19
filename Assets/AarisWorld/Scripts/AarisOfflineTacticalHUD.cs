@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -111,14 +112,47 @@ namespace Aaris.MapReview
             medicalTerrains = Terrain.activeTerrains;
             medicalNearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
             if (motor == null || gloo == null) { enabled = false; return; }
-            Build();
-            initialized = true;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // The tactical buttons are unusable while inside the aircraft.
+            // Do not build their uGUI hierarchy in the scene's first render
+            // frame alongside the essential player and battle HUD.
+            if (drop != null && !drop.HasLanded)
+                StartCoroutine(BuildAfterAndroidFlightFrames());
+            else
+#endif
+            {
+                Build();
+                initialized = true;
+            }
 #if UNITY_ANDROID && !UNITY_EDITOR
             // Stage the original authored grenade prefab/materials before the
             // first throw, without adding visuals or physics to scene startup.
             StartCoroutine(AarisOfflineFragGrenade.PrewarmGrenadeAssets());
 #endif
         }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private IEnumerator BuildAfterAndroidFlightFrames()
+        {
+            // Spread optional UI allocation away from first-frame render setup.
+            // In ground-start scenes Build() above stays immediate.
+            yield return null;
+            yield return null;
+            if (!isActiveAndEnabled) yield break;
+            RefreshOptionalComponents(true);
+            Build();
+            // A new overlay must never intercept aircraft/drop controls
+            // before its first Update has had a chance to hide it.
+            bool onFoot = (drop == null || drop.HasLanded) &&
+                          (vehicle == null || !vehicle.IsDriving);
+            if (!onFoot)
+            {
+                canvas.enabled = false;
+                raycaster.enabled = false;
+            }
+            initialized = true;
+        }
+#endif
 
         // Stripped player prefabs can omit either optional component. Poll for
         // late additions at most once per second, never on every render frame.
