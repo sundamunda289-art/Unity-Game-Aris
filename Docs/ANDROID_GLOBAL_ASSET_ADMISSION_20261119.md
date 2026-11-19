@@ -160,6 +160,41 @@ cost is not established by source OBJ size. The existing
 `PlaneModelResolveMs` / `PlaneInstantiateMs` telemetry should be
 measured on actual devices before changing flight visuals or startup UX.
 
+## Sixth pass: single asynchronous loot manifest for guns and medical pickups
+
+Two independent gameplay consumers referenced the same
+`AarisWeapons/loot_candidates` TextAsset. Previously, the weapon world
+deferred its heavy gun **models** but synchronously loaded/parsed the
+candidate manifest in `Initialize`; the tactical HUD could call the same
+`AarisLootDocument.Load` while streaming first medical/helmet pickups.
+If that happened first, the synchronous resource import occurred during
+landing rather than as part of a staged bootstrap. This was a genuine source
+path to **potential** frame-time contention, not a measured Android stall.
+
+`AarisLootDocument.LoadForAndroidAsync` now imports the candidate TextAsset
+once, asynchronously, following the first aircraft render frame, and
+performs the managed `JsonUtility.FromJson` on the **next** frame after
+native request completion. It publishes an immutable cached document and a
+finished flag. Both the weapon world and the tactical medical streamer
+consume that same cache on Android and do not retry a failed request through
+synchronous `Resources.Load`. A ground-start medical scan safely returns
+until the manifest has finished, then scans all original authored positions
+in their original order. The established Editor/desktop synchronous loader
+remains available, and a missing/invalid manifest still fails closed under
+existing schema checks.
+
+The smaller `AarisWeapons/weapon_catalog` definition file is now also
+loaded by `Resources.LoadAsync<TextAsset>` in Android match prewarm, with
+its JSON validation in a separate frame before native weapon prefab loads.
+Desktop and explicit essential synchronous callers retain the original
+fallback. Five authored gun categories, weights, match seeding,
+pickup/ground validation, physics reach, meshes and textures remain intact.
+
+Android diagnostics additionally report one-time JSON decode times
+`lootCandidateParseMs` and `weaponDefinitionParseMs` (default -1 until
+attempted). These **exclude** native asset import, upload and GPU work; they
+are not an FPS number. No per-frame timing instrumentation was added.
+
 ## Verification
 
 Pass: 30 focused Python regression tests for global optional admission,
