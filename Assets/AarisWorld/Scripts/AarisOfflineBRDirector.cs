@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Animations;
@@ -52,6 +53,39 @@ namespace Aaris.MapReview
         private AnimationClip rivalIdle, rivalRun;
         private readonly Dictionary<Material, Material> rivalMaterialCache =
             new Dictionary<Material, Material>();
+        // Begin visual loading away from the first terrain frames. Only one
+        // ResourceRequest is active; no models, materials, LODs or tree counts change.
+        private static readonly string[] RivalVisualResourcePaths =
+        {
+            "AarisCharacters/Primary/RealisticSoldier/RealisticSoldier",
+            "AarisCharacters/Primary/Player",
+            "AarisCharacters/Kenney/characterMedium"
+        };
+        private GameObject prewarmedRivalPrefab;
+        private string prewarmedRivalPath;
+        private bool rivalVisualPrewarmComplete;
+
+        private IEnumerator PrewarmRivalVisuals()
+        {
+            // Defer CPU/asset integration until the initial map is visible.
+            yield return new WaitForSecondsRealtime(2f);
+            for (int i = 0; i < RivalVisualResourcePaths.Length; i++)
+            {
+                ResourceRequest request =
+                    Resources.LoadAsync<GameObject>(RivalVisualResourcePaths[i]);
+                yield return request;
+                GameObject candidate = request.asset as GameObject;
+                if (HasRenderableRivalPrefab(candidate))
+                {
+                    prewarmedRivalPrefab = candidate;
+                    prewarmedRivalPath = RivalVisualResourcePaths[i];
+                    break;
+                }
+                // Failed fallback attempts also yield a frame.
+                yield return null;
+            }
+            rivalVisualPrewarmComplete = true;
+        }
 
         internal void ResolveRivalAssets(out GameObject prefab, out Avatar avatar,
             out AnimationClip idle, out AnimationClip run)
@@ -60,8 +94,10 @@ namespace Aaris.MapReview
             {
                 rivalAssetsResolved = true;
                 const string primary = "AarisCharacters/Primary/RealisticSoldier/RealisticSoldier";
-                string path = primary;
-                rivalPrefab = Resources.Load<GameObject>(path);
+                string path = prewarmedRivalPrefab != null
+                    ? prewarmedRivalPath : primary;
+                rivalPrefab = prewarmedRivalPrefab != null
+                    ? prewarmedRivalPrefab : Resources.Load<GameObject>(path);
                 if (!HasRenderableRivalPrefab(rivalPrefab))
                 {
                     path = "AarisCharacters/Primary/Player";
@@ -154,6 +190,7 @@ namespace Aaris.MapReview
             drop = player.GetComponent<AarisOfflineDrop>();
             terrains = Terrain.activeTerrains;
             nearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
+            StartCoroutine(PrewarmRivalVisuals());
         }
 
         private void Update()
@@ -166,6 +203,9 @@ namespace Aaris.MapReview
                 // ground battle while the real player is still parachuting.
                 if (drop == null) drop = player.GetComponent<AarisOfflineDrop>();
                 if (drop != null && !drop.HasLanded) return;
+                // Don't start the match clock while the first character
+                // resource is integrating into Unity on constrained phones.
+                if (!rivalVisualPrewarmComplete) return;
                 Begin();
             }
 
