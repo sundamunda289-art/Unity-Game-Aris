@@ -226,6 +226,7 @@ namespace Aaris.MapReview
             if (player != null) drop = player.GetComponent<AarisOfflineDrop>();
         }
 
+#if UNITY_ANDROID && !UNITY_EDITOR
         private IEnumerator InitializeAndroid()
         {
             yield return null; // Render the aircraft before loading ground-only models.
@@ -237,6 +238,7 @@ namespace Aaris.MapReview
             if (!isActiveAndEnabled) yield break;
             Initialize();
         }
+#endif
 
         private void Initialize()
         {
