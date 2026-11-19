@@ -59,6 +59,31 @@ namespace Aaris.MapReview
             return Sprites[index];
         }
 
+        // Strictly conservative bounds around the authored antialiased
+        // lines/circles (including their 0.008 SDF transition). The original
+        // math runs unchanged INSIDE each envelope; outside, every primitive
+        // has exactly zero alpha. On slow Android startup this avoids most
+        // expensive Vector2 lengths in transparent glyph pixels without
+        // changing a single opaque or edge pixel, atlas resolution or style.
+        private static bool OutsideGlyphInk(Glyph glyph, Vector2 p)
+        {
+            switch (glyph)
+            {
+                case Glyph.Fire:
+                    return p.x < .15f || p.x > .83f || p.y < .15f || p.y > .82f;
+                case Glyph.Jump:
+                    return p.x < .18f || p.x > .84f || p.y < .19f || p.y > .95f;
+                case Glyph.Crouch:
+                    return p.x < .19f || p.x > .88f || p.y < .18f || p.y > .84f;
+                case Glyph.Prone:
+                    return p.x < .06f || p.x > .94f || p.y < .20f || p.y > .63f;
+                case Glyph.Sprint:
+                    return p.x < .12f || p.x > .88f || p.y < .18f || p.y > .90f;
+                default:
+                    return false;
+            }
+        }
+
         private static float Circle(Vector2 p, float x, float y, float radius)
         {
             float distance = (p - new Vector2(x, y)).magnitude - radius;
@@ -76,6 +101,7 @@ namespace Aaris.MapReview
 
         private static float Human(Glyph id, Vector2 p)
         {
+            if (OutsideGlyphInk(id, p)) return 0f;
             float a = 0f;
             if (id == Glyph.Sprint)
             {
@@ -131,6 +157,7 @@ namespace Aaris.MapReview
 
         private static float Fire(Vector2 p)
         {
+            if (OutsideGlyphInk(Glyph.Fire, p)) return 0f;
             // Angled cartridge with speed lines, clearly distinct from the
             // limb/stance glyphs. Fire becomes unarmed melee via game state.
             float a = 0f;
