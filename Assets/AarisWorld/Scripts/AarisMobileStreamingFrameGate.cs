@@ -3,7 +3,7 @@ using UnityEngine;
 namespace Aaris.MapReview
 {
     /// <summary>
-    /// Coordinates optional 3D model integration across independent streamers.
+    /// Coordinates optional 3D model and nonessential Foley audio imports across streamers.
     /// Per-streamer budgets alone can still create several heavy hierarchies in
     /// the same rendered frame. This adds one shared low-RAM Android admission
     /// slot; essential gameplay and existing collision/visibility stay live.
@@ -80,8 +80,9 @@ namespace Aaris.MapReview
             return true;
         }
 
-        // Native terrain, tree collision and essential loot loading are never
-        // delayed. Only optional 3D model/clip prewarming shares this budget.
+        // Native terrain, tree collision, essential loot and first-use sound
+        // cues are never delayed. Optional 3D models, clips and Foley variants
+        // share the same admission budget on constrained Android hardware.
         internal static ResourceRequest TryStartOptionalLoadAsync<T>(string path)
             where T : UnityEngine.Object
         {
