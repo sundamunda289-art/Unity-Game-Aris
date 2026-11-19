@@ -741,6 +741,12 @@ namespace Aaris.MapReview
                 {
                     assetUnloadStartedRealtime = Time.realtimeSinceStartup;
                     unloading = Resources.UnloadUnusedAssets();
+#if UNITY_ANDROID && !UNITY_EDITOR
+                    // Critical-memory reclamation takes priority over optional
+                    // scene hierarchies and cosmetic asset imports. Other
+                    // streamers retry without dropping authored content.
+                    AarisMobileStreamingFrameGate.DeferOptionalWorkDuringAssetCleanup(unloading);
+#endif
                     assetUnloadStartedCount++;
                     unloadAfter = Time.unscaledTime + 30;
                 }
