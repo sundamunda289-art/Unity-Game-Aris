@@ -545,7 +545,16 @@ namespace Aaris.MapReview
                 float dx = site.position.x - playerPosition.x;
                 float dz = site.position.z - playerPosition.z;
                 if (dx * dx + dz * dz > 42f * 42f) continue;
-                if (TrySpawnMedicalCase(site)) activeMedicalSites.Add(site);
+                if (TrySpawnMedicalCase(site, out bool deferredByBudget))
+                    activeMedicalSites.Add(site);
+                else if (deferredByBudget)
+                {
+                    // A busy optional model slot is not an invalid location.
+                    // Retry this SAME authored site on the next frame rather
+                    // than discarding it for five seconds at landing.
+                    medicalSpawnCursor--;
+                    return;
+                }
                 else site.retry = now + 5f;
                 // Spread floor/overlap queries and new hierarchies across
                 // rendered frames. Resume at the same authored slot order.
@@ -621,8 +630,9 @@ namespace Aaris.MapReview
             return true;
         }
 
-        private bool TrySpawnMedicalCase(MedicalSite site)
+        private bool TrySpawnMedicalCase(MedicalSite site, out bool deferredByBudget)
         {
+            deferredByBudget = false;
             if (medicalTerrains == null || medicalTerrains.Length == 0)
                 medicalTerrains = Terrain.activeTerrains;
             if (medicalTerrains == null) return false;
@@ -700,6 +710,16 @@ namespace Aaris.MapReview
                         return true;
                     }
                 }
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // No new native 3D hierarchy may collide with a large
+                // car, loot, bike or settlement build on a 4 GB Android frame.
+                // Pooled helmets above are never delayed.
+                if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                {
+                    deferredByBudget = true;
+                    return false;
+                }
+#endif
                 var helmetRoot = new GameObject("Aaris Streamed Helmet");
                 helmetRoot.transform.position = spot;
                 Material helmetShell = MedicalPaint(ref helmetShellPaint,
@@ -730,6 +750,15 @@ namespace Aaris.MapReview
                     return true;
                 }
             }
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Admission happens AFTER full terrain/physics validation and
+            // pool reuse, so denied slots do not alter gameplay or visuals.
+            if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+            {
+                deferredByBudget = true;
+                return false;
+            }
+#endif
             var root = new GameObject("Aaris Streamed Medkit");
             root.transform.position = spot;
             Material shell = MedicalPaint(ref medcasePaint,
