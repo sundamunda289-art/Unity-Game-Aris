@@ -211,11 +211,14 @@ namespace Aaris.MapReview
                     auditedTiles++;
                     if (tile.gameObject.activeInHierarchy && tile.enabled && tile.drawHeightmap)
                         visibleHeightmaps++;
+                    // Diagnostics need counts, not Unity's texture objects.
+                    // Avoid materializing all control-map Texture2D references
+                    // immediately after the first Android terrain frame.
                     var layers = tile.terrainData.terrainLayers;
-                    var control = tile.terrainData.alphamapTextures;
-                    if (layers != null && layers.Length > 0 && control != null && control.Length > 0)
+                    int controlCount = tile.terrainData.alphamapTextureCount;
+                    if (layers != null && layers.Length > 0 && controlCount > 0)
                         paintedTiles++;
-                    if (control != null) alphamapCount += control.Length;
+                    alphamapCount += controlCount;
                     Material material = tile.materialTemplate;
                     if (material != null && (material.shader == null || !material.shader.isSupported))
                         invalidTerrainMaterials++;
