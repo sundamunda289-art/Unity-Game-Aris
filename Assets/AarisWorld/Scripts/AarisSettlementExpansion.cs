@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.Profiling;
 using UnityEngine.SceneManagement;
 
 namespace Aaris.MapReview
@@ -36,6 +37,10 @@ namespace Aaris.MapReview
     [DisallowMultipleComponent, DefaultExecutionOrder(-80)]
     public sealed class AarisSettlementExpansion : MonoBehaviour
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private static readonly ProfilerMarker k_TreeClearance =
+            new ProfilerMarker("Aaris.Startup.TreeClearance");
+#endif
         private const string Scene = "Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity";
         private const float SeaLevel = -38.07552f;
         private const float MaxGroundDeviation = 1.25f;
@@ -432,6 +437,9 @@ namespace Aaris.MapReview
 
         private bool TreesBlock(AarisExpansionSite site, Terrain[] all)
         {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            using var profilerScope = k_TreeClearance.Auto();
+#endif
             // A footprint on the seam between native tiles must check trees
             // from BOTH tiles, not only the tile containing its centre.
             FootprintHalfExtents(site, VegetationMargin, out float hx, out float hz);
