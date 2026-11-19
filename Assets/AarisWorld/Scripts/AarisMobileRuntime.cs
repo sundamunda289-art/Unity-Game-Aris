@@ -382,6 +382,14 @@ namespace Aaris.MapReview
             return smallG57 || legacyMali || smallPowerVr || smallAdreno610;
         }
 
+        // Vehicle streaming must use the SAME GPU classification as terrain,
+        // shadows and vegetation. A 4 GB Adreno 610 device is still GPU-limited
+        // even though its physical memory exceeds the 3 GB vehicle threshold.
+        internal static bool UseConstrainedGpuStreamingBudget()
+        {
+            return IsBudgetAndroidGpu();
+        }
+
         // Model prefixes are not interchangeable: Mali-G520 is not G52,
         // and Mali-G570 MC2 is not G57 MC2. Skip accidental substring hits
         // while accepting vendor punctuation and suffixes such as "MC2".
