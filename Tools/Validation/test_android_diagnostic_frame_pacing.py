@@ -46,7 +46,9 @@ class AndroidDiagnosticFramePacing(unittest.TestCase):
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", gate)
         self.assertIn("Time.frameCount != lastDiagnosticFrame &&", gate)
         self.assertIn("Time.frameCount != lowMemoryReportObservedFrame &&", gate)
-        self.assertIn("Time.frameCount != assetUnloadCompletionObservedFrame;", gate)
+        self.assertIn("Time.frameCount != assetUnloadCompletionObservedFrame &&", gate)
+        self.assertIn(
+            "AarisMobileStreamingFrameGate.TryClaimNonessentialDiagnosticFrame();", gate)
         self.assertIn("#else\n            return true;", gate)
         record = SRC.split("private void Record(string reason)", 1)[1].split(
             "private static string InitializeLogFile", 1)[0]
@@ -61,7 +63,8 @@ class AndroidDiagnosticFramePacing(unittest.TestCase):
         self.assertIn('Record("asset-unload-complete");', update)
         self.assertIn("dt >= 0.75f", update)
         self.assertIn("unloading = Resources.UnloadUnusedAssets();", update)
-        self.assertIn('if (startupSampleIndex < 3 && CanRecordPeriodicDiagnostics())', update)
+        self.assertIn('if (startupSampleIndex < 3)', update)
+        self.assertIn('if (seconds >= threshold && CanRecordPeriodicDiagnostics())', update)
         self.assertIn('if (Time.unscaledTime >= sampleAt && CanRecordPeriodicDiagnostics())', update)
         self.assertLess(update.index('Record("frame-stall");'),
                         update.index('Record("startup");'))
@@ -69,6 +72,19 @@ class AndroidDiagnosticFramePacing(unittest.TestCase):
                         update.index('Record("startup");'))
         self.assertLess(update.index('Record("startup");'),
                         update.index('Record("sample");'))
+
+    def test_startup_report_claims_only_after_due_threshold(self):
+        update = SRC.split("private void Update()", 1)[1].split(
+            "private bool CanRecordPeriodicDiagnostics()", 1)[0]
+        startup = update.split("if (startupSampleIndex < 3)", 1)[1].split(
+            "if (Time.unscaledTime >= sampleAt", 1)[0]
+        self.assertIn(
+            "if (seconds >= threshold && CanRecordPeriodicDiagnostics())", startup)
+        self.assertLess(startup.index("seconds >= threshold"),
+                        startup.index("CanRecordPeriodicDiagnostics()"))
+        self.assertLess(startup.index("CanRecordPeriodicDiagnostics()"),
+                        startup.index('Record("startup");'))
+        self.assertNotIn("TryClaimNonessentialDiagnosticFrame()", startup)
 
     def test_low_memory_report_waits_until_after_native_cleanup_start(self):
         update = SRC.split("private void Update()", 1)[1].split(
