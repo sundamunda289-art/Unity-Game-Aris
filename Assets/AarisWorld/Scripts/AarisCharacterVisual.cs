@@ -1871,12 +1871,14 @@ namespace Aaris.MapReview
             // ground support sample during only this handoff, with the same
             // bounded per-frame correction. No new solver, rig allocation or
             // movement/collider authority change. At full prone/crouch and
-            // on real jumps this remains disabled.
+            // on real jumps this remains disabled. Start below 35% prone
+            // share: native Front QA showed moving the whole root sooner
+            // preserves shoe contact but flares transition knees and heels.
             bool returningFromProne = actions != null &&
                 actions.Stance == AarisBattleActions.PlayerStance.Standing &&
                 effectiveCrouchBlend < 0.08f &&
                 effectiveProneBlend >= 0.01f &&
-                effectiveProneBlend < 0.70f;
+                effectiveProneBlend < 0.35f;
             bool uprightGroundedSoldier = CalibratedSoldierLoaded && graphReady &&
                 groundedNow && !visuallyAirborne &&
                 (aerialDrop == null || aerialDrop.HasLanded) &&
