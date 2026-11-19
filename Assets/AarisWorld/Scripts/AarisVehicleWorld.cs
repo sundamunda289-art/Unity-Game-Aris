@@ -266,7 +266,8 @@ namespace Aaris.MapReview
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             int memoryMB = SystemInfo.systemMemorySize;
-            if (memoryMB > 0 && memoryMB <= 3072)
+            if ((memoryMB > 0 && memoryMB <= 3072) ||
+                AarisMobileRuntime.UseConstrainedGpuStreamingBudget())
             {
                 spawnBudgetPerPoll = 1;
                 unloadBudgetPerPoll = 2;
