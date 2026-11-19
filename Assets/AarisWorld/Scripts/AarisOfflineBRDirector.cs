@@ -64,6 +64,10 @@ namespace Aaris.MapReview
         private GameObject prewarmedRivalPrefab;
         private string prewarmedRivalPath;
         private bool rivalVisualPrewarmComplete;
+        // Android imports only the candidate clip subassets that can be read
+        // asynchronously. If a bundled FBX exposes clips only via LoadAll,
+        // ResolveRivalAssets retains the exact original fallback behavior.
+        private AnimationClip prewarmedRivalIdle, prewarmedRivalRun;
 
         private IEnumerator PrewarmRivalVisuals()
         {
@@ -84,7 +88,31 @@ namespace Aaris.MapReview
                 // Failed fallback attempts also yield a frame.
                 yield return null;
             }
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Keep animation imports off the first rival's spawn frame.
+            // The two requests are sequential and low-priority; neither
+            // instantiates an Animator nor replaces the original clip fallback.
+            const string idlePath = "AarisCharacters/Primary/Animations/idle";
+            const string runPath = "AarisCharacters/Primary/Animations/run";
+            ResourceRequest idleRequest = Resources.LoadAsync<AnimationClip>(idlePath);
+            idleRequest.priority = -1;
+            yield return idleRequest;
+            var idle = idleRequest.asset as AnimationClip;
+            if (IsUsableRivalClip(idle)) prewarmedRivalIdle = idle;
+            yield return null;
+            ResourceRequest runRequest = Resources.LoadAsync<AnimationClip>(runPath);
+            runRequest.priority = -1;
+            yield return runRequest;
+            var run = runRequest.asset as AnimationClip;
+            if (IsUsableRivalClip(run)) prewarmedRivalRun = run;
+            yield return null;
+#endif
             rivalVisualPrewarmComplete = true;
+        }
+
+        private static bool IsUsableRivalClip(AnimationClip clip)
+        {
+            return clip != null && !clip.legacy && clip.humanMotion && clip.length > .02f;
         }
 
         internal void ResolveRivalAssets(out GameObject prefab, out Avatar avatar,
@@ -112,12 +140,31 @@ namespace Aaris.MapReview
                     rivalPrefab = null;
                 if (rivalPrefab != null)
                 {
-                    foreach (Avatar available in Resources.LoadAll<Avatar>(path))
-                        if (available != null && available.isValid && available.isHuman)
-                        { rivalAvatar = available; break; }
+                    // The original prefab often already references its valid
+                    // humanoid Avatar. Reuse it rather than synchronously
+                    // enumerating imported Avatar subassets on first spawn.
+                    Animator prefabAnimator =
+                        rivalPrefab.GetComponentInChildren<Animator>(true);
+                    Avatar attachedAvatar = prefabAnimator != null
+                        ? prefabAnimator.avatar : null;
+                    if (attachedAvatar != null && attachedAvatar.isValid &&
+                        attachedAvatar.isHuman)
+                        rivalAvatar = attachedAvatar;
+                    if (rivalAvatar == null)
+                    {
+                        // Older FBX imports can have a detached Avatar asset:
+                        // retain the same verified fallback as before.
+                        foreach (Avatar available in Resources.LoadAll<Avatar>(path))
+                            if (available != null && available.isValid && available.isHuman)
+                            { rivalAvatar = available; break; }
+                    }
                 }
-                rivalIdle = LoadRivalClip("AarisCharacters/Primary/Animations/idle");
-                rivalRun = LoadRivalClip("AarisCharacters/Primary/Animations/run");
+                rivalIdle = IsUsableRivalClip(prewarmedRivalIdle)
+                    ? prewarmedRivalIdle
+                    : LoadRivalClip("AarisCharacters/Primary/Animations/idle");
+                rivalRun = IsUsableRivalClip(prewarmedRivalRun)
+                    ? prewarmedRivalRun
+                    : LoadRivalClip("AarisCharacters/Primary/Animations/run");
                 if (rivalIdle == null) rivalIdle = LoadRivalClip("AarisCharacters/Kenney/idle");
                 if (rivalRun == null) rivalRun = LoadRivalClip("AarisCharacters/Kenney/run");
                 if (rivalPrefab == null)
@@ -163,7 +210,7 @@ namespace Aaris.MapReview
         private static AnimationClip LoadRivalClip(string path)
         {
             foreach (AnimationClip clip in Resources.LoadAll<AnimationClip>(path))
-                if (clip != null && !clip.legacy && clip.humanMotion && clip.length > .02f)
+                if (IsUsableRivalClip(clip))
                     return clip;
             return null;
         }
