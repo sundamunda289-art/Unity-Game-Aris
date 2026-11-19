@@ -203,7 +203,8 @@ namespace Aaris.MapReview
 #if UNITY_ANDROID && !UNITY_EDITOR
             ResourceRequest definitionsRequest = Resources.LoadAsync<TextAsset>(
                 "AarisWeapons/weapon_catalog");
-            definitionsRequest.priority = -1;
+            // Essential weapon definitions outrank optional environment art.
+            definitionsRequest.priority = 0;
             yield return definitionsRequest;
             if (Ready) yield break;
             // Parse the small JSON catalog away from its native completion
