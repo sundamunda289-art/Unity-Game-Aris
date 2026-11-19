@@ -2065,8 +2065,13 @@ namespace Aaris.MapReview
                 (proneRigWeight > 0.03f && proneRigWeight < 0.96f);
             // Exclusive early return-to-stand handoff: the last residual
             // prone frames must not leave both terrain solvers disabled.
+            // The motor can briefly report !isGrounded on a stair or terrain
+            // seam even though the 130ms contact grace keeps locomotion grounded.
+            // Use that same visual grace here; PlantUprightContact still requires
+            // a real walkable raycast hit per foot and releases locks on misses.
+            // Deliberate takeoff remains gated by visuallyAirborne.
             bool useUprightContact = !visuallyAirborne && graphReady &&
-                groundedNow && (lowPose < 0.02f ||
+                (lowPose < 0.02f ||
                     (!crouching && !prone && lowPose < 0.18f));
             if (!useUprightContact && ankleRigWeight > 0.005f)
             {
