@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.IO;
 using UnityEngine;
+using Unity.Profiling;
 using UnityEngine.Profiling;
 #if UNITY_ANDROID && !UNITY_EDITOR
 using System.Threading.Tasks;
@@ -15,6 +16,10 @@ namespace Aaris.MapReview
     [DisallowMultipleComponent, DefaultExecutionOrder(-300)]
     public sealed class AarisMobileRuntime : MonoBehaviour
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private static readonly ProfilerMarker k_DiagnosticsRecord =
+            new ProfilerMarker("Aaris.Diagnostics.Record");
+#endif
         [SerializeField] private Terrain[] terrains;
         [SerializeField] private bool releaseTerrainPaintCpuCopies = false;
         [SerializeField] private int targetFrameRate = 60;
@@ -928,6 +933,9 @@ namespace Aaris.MapReview
         private int warningCount;
         private void Record(string reason)
         {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            using var profilerScope = k_DiagnosticsRecord.Auto();
+#endif
             if (reason == "low-memory") warningCount++;
             float total = 0;
             int framesOver50Ms = 0;
