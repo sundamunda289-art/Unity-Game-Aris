@@ -164,7 +164,8 @@ namespace Aaris.MapReview
                         // GetTreeInstance avoids allocating a managed array for
                         // the entire native forest. Android bounds native reads
                         // to 1024 entries per frame, then resumes next frame.
-                        for (int i = 0; i < data.treeInstanceCount; i++)
+                        int treeCount = data.treeInstanceCount;
+                        for (int i = 0; i < treeCount; i++)
                         {
                             TreeInstance tree = data.GetTreeInstance(i);
                             float x = origin.x + tree.position.x * size.x;
