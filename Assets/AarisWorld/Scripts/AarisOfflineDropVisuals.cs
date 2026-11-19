@@ -17,6 +17,19 @@ namespace Aaris.MapReview
         // One runtime-only copy per aircraft finish keeps the saved assets untouched.
         private static Material hullDaylightFinish, wingDaylightFinish;
         private static Mesh cachedPropellerMesh, cachedPropellerBlurMesh;
+        // One-time cold-start timings. Resolve, instantiate and material setup
+        // have different mitigation strategies; do not guess from APK size.
+        internal static float PlaneModelResolveMs { get; private set; } = -1f;
+        internal static float PlaneInstantiateMs { get; private set; } = -1f;
+        internal static float PlaneTotalCreationMs { get; private set; } = -1f;
+        internal static bool PlaneHighDetailSelected { get; private set; }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetPlaneTimings()
+        {
+            PlaneModelResolveMs = PlaneInstantiateMs = PlaneTotalCreationMs = -1f;
+            PlaneHighDetailSelected = false;
+        }
 
         private static Material Paint(ref Material cached, Color color)
         {
@@ -269,16 +282,27 @@ namespace Aaris.MapReview
         internal static GameObject CreatePlane(Vector3 position, Quaternion rotation,
             out Transform[] propellers)
         {
+            // Three cold-start clocks isolate Resources resolution vs native
+            // prefab creation vs visual setup. Time is measured only once at
+            // aircraft creation; never in LateUpdate/rotor animation.
+            double totalStartedAt = Time.realtimeSinceStartupAsDouble;
+            double lookupStartedAt = totalStartedAt;
             // Prefer the vendored CC0 flight-state twin turboprop. Keep the
             // original lightweight transport as an offline/mobile fallback.
             var prefab = Resources.Load<GameObject>("AarisDrop/CargoPlaneRealistic");
             bool highDetailTwin = prefab != null;
             if (!highDetailTwin)
                 prefab = Resources.Load<GameObject>("AarisDrop/CargoPlane");
+            PlaneModelResolveMs = (float)((Time.realtimeSinceStartupAsDouble -
+                lookupStartedAt) * 1000d);
+            PlaneHighDetailSelected = highDetailTwin;
             GameObject root;
             if (prefab != null)
             {
+                double instantiateStartedAt = Time.realtimeSinceStartupAsDouble;
                 root = UnityEngine.Object.Instantiate(prefab, position, rotation);
+                PlaneInstantiateMs = (float)((Time.realtimeSinceStartupAsDouble -
+                    instantiateStartedAt) * 1000d);
                 // Prefer the five serialized URP/Lit aircraft finishes. Unlike
                 // flat procedural paints, these preserve authored PBR surface
                 // properties and any future texture maps without per-frame work.
@@ -329,6 +353,7 @@ namespace Aaris.MapReview
             }
             else
             {
+                PlaneInstantiateMs = -1f; // No imported model to instantiate.
                 Debug.LogError("AARIS_CARGO_PLANE_MODEL_NOT_IMPORTED: using emergency offline placeholder.");
                 root = new GameObject("Aaris_OriginalCargoAircraft");
                 root.transform.SetPositionAndRotation(position, rotation);
@@ -398,6 +423,8 @@ namespace Aaris.MapReview
             }
             AddAircraftMarkerLights(root.transform);
             root.name = "Aaris_CargoPlane";
+            PlaneTotalCreationMs = (float)((Time.realtimeSinceStartupAsDouble -
+                totalStartedAt) * 1000d);
             return root;
         }
 
