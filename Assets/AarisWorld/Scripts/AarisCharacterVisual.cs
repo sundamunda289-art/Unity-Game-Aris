@@ -41,6 +41,19 @@ namespace Aaris.MapReview
         private readonly Dictionary<string, AnimationClip[]> androidClipGroups =
             new Dictionary<string, AnimationClip[]>(StringComparer.Ordinal);
         private AnimationClip[] androidNaturalClips;
+        // One-time diagnostic observations for synchronous LoadAll subasset
+        // hydration. They cannot be replaced by LoadAsync<AnimationClip>
+        // without risking loss of multi-clip FBX animation variants.
+        internal static float AndroidMocapGroupLoadMs { get; private set; } = -1f;
+        internal static float AndroidMaxClipGroupLoadMs { get; private set; } = -1f;
+        internal static int AndroidClipGroupLoadCount { get; private set; }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetAndroidClipLoadEvidence()
+        {
+            AndroidMocapGroupLoadMs = AndroidMaxClipGroupLoadMs = -1f;
+            AndroidClipGroupLoadCount = 0;
+        }
 #endif
 
         [SerializeField, Range(-180f, 180f)] private float modelYawOffset;
@@ -252,8 +265,13 @@ namespace Aaris.MapReview
             if (candidate == PrimaryModel || candidate == PreviousPrimaryModel)
             {
                 if (!isActiveAndEnabled) yield break;
+                double mocapStarted = Time.realtimeSinceStartupAsDouble;
                 androidNaturalClips =
                     Resources.LoadAll<AnimationClip>(MocapLocomotion);
+                float mocapMs = (float)((Time.realtimeSinceStartupAsDouble -
+                    mocapStarted) * 1000d);
+                AndroidMocapGroupLoadMs = Mathf.Max(AndroidMocapGroupLoadMs, mocapMs);
+                AndroidClipGroupLoadCount++;
                 naturalSetComplete =
                     FindMocapClip(androidNaturalClips, "mocap_walk") != null &&
                     FindMocapClip(androidNaturalClips, "mocap_jog") != null &&
@@ -270,8 +288,13 @@ namespace Aaris.MapReview
                      clipName == "crouch_walk"))
                     continue; // SetupAnimations selects original natural clips.
                 string location = prefix + clipName;
+                double clipStarted = Time.realtimeSinceStartupAsDouble;
                 androidClipGroups[location] =
                     Resources.LoadAll<AnimationClip>(location);
+                float clipMs = (float)((Time.realtimeSinceStartupAsDouble -
+                    clipStarted) * 1000d);
+                AndroidMaxClipGroupLoadMs = Mathf.Max(AndroidMaxClipGroupLoadMs, clipMs);
+                AndroidClipGroupLoadCount++;
                 yield return null;
             }
         }
