@@ -186,8 +186,39 @@ internal static class StreamingAdmissionTests
             "Optional work overlapped reserved rig frame");
         Frame(3);
         Check(Load() != null, "Reservation did not expire");
+        Configure(6144);
+        Check(AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialAircraft(),
+            "Constrained aircraft frame not protected");
+        // Reservation affects only the following frame: loading/updating the
+        // aircraft remains essential and is not queued behind optional models.
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Aircraft reservation blocked its own preparation frame");
+        Frame(2);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() && Load() == null,
+            "Optional model overlapped high-detail aircraft Instantiate");
+        Check(Resources.requests == 0, "Aircraft frame dispatched a native optional import");
+        Frame(3);
+        Check(Load() != null, "Aircraft reservation starved future models");
+        // When a second essential system reserves the next frame during a
+        // first reservation, both fences must survive independently.
+        Configure(6144);
+        Check(AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialRig(),
+            "Character rig reservation missing");
+        Frame(2);
+        Check(AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialAircraft(),
+            "Overlapping aircraft reservation missing");
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Aircraft overwrote current character-rig reservation");
+        Frame(3);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Character-rig reservation overwrote aircraft reservation");
+        Frame(4);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Consecutive essential frames kept optional admission blocked");
         Configure(8192, "Adreno 730");
         Check(!AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialRig(), "Fast rig delayed");
+        Check(!AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialAircraft(),
+            "Fast aircraft unnecessarily reserved a frame");
         Check(AarisMobileStreamingFrameGate.ImportDeferredAttempts == 0 &&
               AarisMobileStreamingFrameGate.ImportSettleDeferredAttempts == 0 &&
               AarisMobileStreamingFrameGate.PressureDeferredFrames == 0 &&
