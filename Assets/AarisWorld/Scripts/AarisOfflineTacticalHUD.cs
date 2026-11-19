@@ -20,6 +20,9 @@ namespace Aaris.MapReview
         [SerializeField, Range(25f, 100f)] private float medicalHealing = 75f;
         private const int MaxMedicalVisuals = 8;
         private const int MaxMedicalSpawnProbesPerFrame = 2;
+        // Even rejected/distant sites consume CPU. Budget all candidate
+        // visits on Android, not only expensive physics/visual spawn probes.
+        private const int MaxMobileMedicalCandidateChecksPerFrame = 48;
         private sealed class MedicalSite
         {
             public Vector3 position;
@@ -472,9 +475,18 @@ namespace Aaris.MapReview
 
             if (medicalSpawnCursor < 0) return;
             int probes = 0;
+            int candidateChecks = 0;
+            bool budgetCandidateChecks = Application.platform == RuntimePlatform.Android;
             while (medicalSpawnCursor < medicalSites.Count && activeMedicalSites.Count < MaxMedicalVisuals)
             {
+                // Check BEFORE advancing the cursor: no authored site is lost.
+                // Continue the same scan on the next rendered frame, while
+                // retaining the separate two-physics-probe budget.
+                if (budgetCandidateChecks &&
+                    candidateChecks >= MaxMobileMedicalCandidateChecksPerFrame)
+                    return;
                 var site = medicalSites[medicalSpawnCursor++];
+                candidateChecks++;
                 if (site.taken || site.visual != null || now < site.retry) continue;
                 float dx = site.position.x - playerPosition.x;
                 float dz = site.position.z - playerPosition.z;
