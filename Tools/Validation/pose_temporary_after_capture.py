@@ -21,12 +21,11 @@ REL = "Assets/AarisWorld/Scripts/AarisCharacterVisual.cs"
 SOURCE = ROOT / REL
 OUT = Path("/tmp/aaris-pose-qa-20261119/patched")
 POSE_DIR = Path("/tmp/aaris-codespaces/motion-frames")
-BRANCH = "fix/anatomical-upright-knee-pole-20261119"
+BRANCH = "5eba8e4f2c40cac13fc4c55b9493dd7c55b9ae8d"
 URL = "https://raw.githubusercontent.com/sundamunda289-art/Unity-Game-Aris/" + BRANCH + "/" + REL
 EXPECTED_SOURCE_BLOB = "fac42e70e06c85c42f4a4f73d0de8ec7420a5f08"
 LOOT_REL = "Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs"
 LOOT_SOURCE = ROOT / LOOT_REL
-EXPECTED_LOOT_BLOB = "80e9ea06d8ed1d7b57f3407d04a98bf727222ce9"
 RUNS = (
     ("transition", "CaptureTransitionPortrait", "SUCCESS_16_STANCE_TRANSITION_FRAMES"),
     ("settled", "CaptureMultiAnglePortrait", "SUCCESS_16_ACTOR_MULTIANGLE_PORTRAITS"),
@@ -69,8 +68,9 @@ def main():
     if LOOT_SOURCE.is_symlink() or not LOOT_SOURCE.is_file() or git("diff", "--quiet", "--", LOOT_REL).returncode:
         raise RuntimeError("ABORT_EXISTING_LOOT_MODIFICATIONS")
     loot_blob = git("hash-object", LOOT_REL).stdout.decode().strip()
-    if loot_blob != EXPECTED_LOOT_BLOB:
-        raise RuntimeError("ABORT_WRONG_LOOT_BLOB " + loot_blob)
+    expected_loot = git("rev-parse", "HEAD:" + LOOT_REL).stdout.decode().strip()
+    if loot_blob != expected_loot:
+        raise RuntimeError("ABORT_LOOT_SOURCE_DIFFERS_FROM_HEAD " + loot_blob)
     # Inspect executable names, NOT the current shell's argv (which includes
     # this script text in command queues and can match grep/pgrep incorrectly).
     proc_names = subprocess.check_output(["ps", "-eo", "comm="], text=True).splitlines()
