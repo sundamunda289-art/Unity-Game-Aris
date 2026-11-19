@@ -10,6 +10,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 WORLD = (ROOT / "Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs").read_text()
 HUD = (ROOT / "Assets/AarisWorld/Scripts/AarisOfflineTacticalHUD.cs").read_text()
+CATALOG = (ROOT / "Assets/AarisWorld/Scripts/AarisWeaponCatalog.cs").read_text()
 
 
 def simulate(shared_load_finished_at, first_ground_frame, end_frame=20):
@@ -77,6 +78,35 @@ class SharedLootCandidateImport(unittest.TestCase):
         self.assertIn("#else\n            try { doc = AarisLootDocument.Load(); }", init)
         self.assertIn("if (doc == null || doc.schema != 1 || doc.sizeMetres != 2000 ||", init)
         self.assertIn("enabled = false;", init)
+
+    def test_weapon_catalog_definitions_are_async_before_model_prewarm(self):
+        android_loader = CATALOG.split("internal static IEnumerator LoadForMatchAsync()", 1)[1].split(
+            "public static GameObject ModelFor(", 1)[0]
+        self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", android_loader)
+        self.assertIn("ResourceRequest definitionsRequest = Resources.LoadAsync<TextAsset>(", android_loader)
+        self.assertIn('"AarisWeapons/weapon_catalog"', android_loader)
+        self.assertIn("definitionsRequest.priority = -1;", android_loader)
+        self.assertIn("yield return definitionsRequest;", android_loader)
+        self.assertIn("if (Ready) yield break;", android_loader)
+        self.assertIn("var definitions = ReadDefinitions(", android_loader)
+        self.assertIn("definitionsRequest.asset as TextAsset, false", android_loader)
+        self.assertLess(android_loader.index("yield return definitionsRequest;"),
+                        android_loader.index("yield return null;"))
+        self.assertLess(android_loader.index("yield return null;"),
+                        android_loader.index("definitionsRequest.asset as TextAsset, false"))
+        self.assertLess(android_loader.index("definitionsRequest.asset as TextAsset, false"),
+                        android_loader.index("Resources.LoadAsync<GameObject>(spec.modelResource)"))
+        # Failing a ResourceRequest is not a reason to synchronously reimport
+        # an asset on the very next Android frame.
+        read_defs = CATALOG.split("private static AarisWeaponSpec[] ReadDefinitions(", 1)[1].split(
+            "private static void AddUsableModel(", 1)[0]
+        self.assertIn("TextAsset asset = null, bool allowSynchronousFallback = true", read_defs)
+        self.assertIn("if (asset == null && allowSynchronousFallback)", read_defs)
+        self.assertIn('asset = Resources.Load<TextAsset>("AarisWeapons/weapon_catalog");', read_defs)
+        self.assertIn('if (asset == null)', read_defs)
+        self.assertIn('throw new FormatException("Duplicate weapon identifier.")', read_defs)
+        self.assertIn("AddUsableModel(spec, prefab, available);", android_loader)
+        self.assertIn("CommitModels(available);", android_loader)
 
     def test_landing_before_or_after_manifest_completion_preserves_sites(self):
         for load_frame in (2, 4, 8, 15):
