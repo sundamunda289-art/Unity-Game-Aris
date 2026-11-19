@@ -80,6 +80,23 @@ class BikeRecycling(unittest.TestCase):
         for id_ in ("ARIS_BIKE_1", "ARIS_BIKE_9", "village", ""):
             self.assertEqual(paint_index(id_), paint_index(id_))
 
+    def test_low_memory_releases_only_hidden_bikes_and_pauses_pooling(self):
+        self.assertIn("private void OnEnable() { Application.lowMemory += OnLowMemory; }", CODE)
+        self.assertIn("private void OnDisable() { Application.lowMemory -= OnLowMemory; }", CODE)
+        callback = CODE.split("private void OnLowMemory()", 1)[1].split(
+            "private void Update()", 1)[0]
+        self.assertIn("lowMemoryPending = true;", callback)
+        self.assertNotIn("Destroy(", callback)
+        update = CODE.split("private void Update()", 1)[1].split(
+            "private GameObject ReuseBike(", 1)[0]
+        self.assertIn("poolAllowedAt = Time.unscaledTime + 60f;", update)
+        self.assertIn("while (parkedBikePool.Count > 0)", update)
+        self.assertIn("bikeVisuals.Remove(inactiveBike);", update)
+        self.assertIn("Destroy(inactiveBike);", update)
+        self.assertIn("Time.unscaledTime >= poolAllowedAt &&", update)
+        self.assertNotIn("Destroy(plan.visible);", update)
+        self.assertNotIn("Destroy(parkedVictim.visible);", update)
+
     def test_recycling_never_exceeds_three_original_model_instances(self):
         rng = random.Random(20261119)
         capacity = 3
