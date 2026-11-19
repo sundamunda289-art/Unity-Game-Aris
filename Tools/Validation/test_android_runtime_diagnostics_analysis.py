@@ -105,6 +105,35 @@ class RuntimeDiagnosticEvidence(unittest.TestCase):
         self.assertNotIn(secret, json.dumps(result))
         self.assertEqual(result["previous_process_exit_reason_codes_observed"], [3])
 
+    def test_android_exit_reason_classes_distinguish_anr_memory_and_native_crash(self):
+        result = report(
+            {"reason": "previous-process-exit", "previousExitReasonCode": 3},
+            {"reason": "sample", "previousExitReasonCode": 5},
+            {"reason": "sample", "previousExitReasonCode": 6},
+            {"reason": "sample", "previousExitReasonCode": 99})
+        self.assertEqual(result["previous_process_exit_reason_codes_observed"],
+                         [3, 5, 6, 99])
+        self.assertEqual(result["previous_process_exit_reason_labels_observed"],
+                         ["low-memory-kill", "native-crash", "anr", "other"])
+        signals = " ".join(result["signals_to_investigate"]).lower()
+        self.assertIn("low-memory kill", signals)
+        self.assertIn("anr", signals)
+        self.assertIn("native crash", signals)
+        self.assertIn("before inferring a graphics-driver fault", signals)
+        self.assertNotIn("confirmed gpu driver deadlock", signals)
+
+    def test_signaled_exit_cannot_be_misidentified_as_low_memory(self):
+        result = report(
+            {"reason": "previous-process-exit", "previousExitReasonCode": 2},
+            {"reason": "sample", "previousExitReasonCode": -1},
+            {"reason": "sample", "previousExitReasonCode": float("inf")})
+        self.assertEqual(result["previous_process_exit_reason_codes_observed"], [2])
+        self.assertEqual(result["previous_process_exit_reason_labels_observed"],
+                         ["signaled"])
+        signals = " ".join(result["signals_to_investigate"]).lower()
+        self.assertIn("ambiguous", signals)
+        self.assertNotIn("previous low-memory kill", signals)
+
     def test_input_limit_is_reported_not_silently_ignored(self):
         original_limit = MOD.MAX_EVENTS
         try:
