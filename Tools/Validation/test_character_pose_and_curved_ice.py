@@ -127,7 +127,7 @@ assert 'turningFast || transitioningStance)' in visual
 assert 'bool transitioningLowStance =' in visual
 assert '(crouchRigWeight > 0.03f && crouchRigWeight < 0.96f)' in visual
 assert '(proneRigWeight > 0.03f && proneRigWeight < 0.96f)' in visual
-assert visual.count('kneeClearance, kneePoleStrength);') == 2
+assert visual.count('kneeClearance, kneePoleStrength,') == 2
 assert visual.count('planar, yawRate, ankleRigWeight, transitioningLowStance,') == 2
 for yaw_rate, moving, weight, crouch_weight, prone_weight, should_release in (
     (0.0, 0.0, 1.0, 1.0, 0.0, False),
@@ -163,7 +163,62 @@ assert 'UprightPlantEnterGapMetres = 0.065f' in visual
 assert 'UprightPlantReleaseGapMetres = 0.115f' in visual
 assert 'UprightPlantBreakDistanceMetres = 0.18f' in visual
 assert 'plantWorld - foot.position, transform.up' in visual
-assert 'PlantLegToTarget(thigh, shin, foot, targetFoot, transform.forward,' in visual
+assert 'PlantLegToTarget(thigh, shin, foot, targetFoot, kneeForward,' in visual
+# Standing's IK must bend along the imported skeleton rather than the
+# CharacterController forward (the Bamen/Tactical pelvis can be yaw-offset).
+assert 'private Vector3 AnatomicalKneeForward()' in visual
+anatomical = visual.split('private Vector3 AnatomicalKneeForward()', 1)[1].split(
+    'private void CorrectReversedSwingKnee(', 1)[0]
+assert 'rightThigh.position - leftThigh.position' in anatomical
+assert 'Vector3.Cross(hipRight.normalized, Vector3.up).normalized' in anatomical
+swing = visual.split('private void CorrectReversedSwingKnee(', 1)[1].split(
+    'private static Vector3 ResolveLowStanceFootContact(', 1)[0]
+assert 'Vector3.ProjectOnPlane(kneeForward, axis)' in swing
+assert 'foot.position, kneeForward, 1f' in swing
+assert visual.count('CorrectReversedSwingKnee(thigh, shin, foot, kneeForward);') == 2
+assert 'Vector3 uprightKneeForward = AnatomicalKneeForward();' in visual
+assert visual.count('uprightContactWeight, uprightKneeForward,') == 2
+
+# Visual Play Mode evidence (2026-11-19) found mid-transition ankle spread
+# 0.702m entering prone and 0.769m leaving it, while steady prone was 0.495m.
+# Correct extreme spread before existing per-ankle support queries (no new rays).
+assert 'Vector3 stanceSeparation = Vector3.ProjectOnPlane(' in visual
+assert 'rightGoal - leftGoal, Vector3.up' in visual
+assert 'stanceSpread > 0.57f && guard > 0.001f' in visual
+assert 'Mathf.Min(' in visual and '(stanceSpread - 0.57f) * 0.5f, 0.12f' in visual
+assert 'leftGoal += inward;' in visual and 'rightGoal -= inward;' in visual
+# A 32% intermediate prone knee pole worsened return-to-standing lateral
+# knee metrics in real Unity playback (frame 1: 0.103m to 0.330m).
+# Preserve the original pole interpolation and limit only excessive feet.
+assert 'Mathf.Lerp(0.32f, 1f, proneKneeSettle)' not in visual
+assert 'float pronePoleStrength = proneKneeShare * proneKneeSettle *' in visual
+assert visual.index('Vector3 stanceSeparation =') < visual.index('if (correction < 0.001f) return;')
+assert visual.count('float leftAnkleY = SupportedAnkleY(') == 1
+assert visual.count('float rightAnkleY = SupportedAnkleY(') == 1
+import math
+def smooth(t):
+    t = max(0.0, min(1.0, t))
+    return t*t*(3.0-2.0*t)
+def guarded_spread(spread, low_pose, speed, solve_weight):
+    stationary=1.0-smooth((speed-.07)/(.38-.07))
+    guard=stationary*smooth((low_pose-.18)/(.65-.18))
+    per_shoe=min(max(spread-.57,0.0)*.5,.12)*guard
+    return spread-2*per_shoe*solve_weight
+assert guarded_spread(.702,.98,0.0,.806)<.62
+assert guarded_spread(.769,.65,0.0,.654)<.70
+assert abs(guarded_spread(.702,0.0,0.0,1.0)-.702)<1e-9
+assert abs(guarded_spread(.702,1.0,.5,1.0)-.702)<1e-9
+assert abs(guarded_spread(.40,1.0,0.0,1.0)-.40)<1e-9
+
+# Cross(hipRight, worldUp) preserves the forward axis of a yaw-rotated
+# imported rig: controller-facing +Z must not replace anatomical facing.
+for hip_right, expected_forward in (
+    ((1, 0, 0), (0, 0, 1)),
+    ((0, 0, 1), (-1, 0, 0)),
+    ((-1, 0, 0), (0, 0, -1)),
+):
+    derived = (-hip_right[2], 0, hip_right[0])
+    assert derived == expected_forward
 assert 'leftUprightPlantLocked = false;' in visual
 assert 'rightUprightPlantLocked = false;' in visual
 assert 'ProneAnkleClearanceMetres' in visual
@@ -898,4 +953,53 @@ assert 'Physics.' not in pose_solver and 'new List<' not in pose_solver
 for knee_y, minimum, should_repair in ((0.12,0.15,True),(0.16,0.15,False),
                                       (-0.03,0.10,True),(0.22,0.10,False)):
     assert (knee_y < minimum) == should_repair
+# Crossfade knee-plane regression: the native PlayMode showed an entering-prone
+# frame with lateral knee offset 0.526m even after ankle spread was bounded.
+# Constrain the exact two-bone bend CIRCLE without forcing an early prone
+# pole on return-to-standing (which previously regressed knee alignment).
+for guard in (
+    'Vector3 anatomicalSideAxis = default(Vector3)',
+    'float maximumKneeSideMetres = 0f',
+    'float maximumSideTurnDegrees = 0f',
+    'if (Mathf.Abs(kneeSide) > maximumKneeSideMetres)',
+    'lateralBasis /= sideAxisLength;',
+    'float desiredSide = Mathf.Clamp(',
+    'otherBend.normalized * Mathf.Sqrt(Mathf.Max(',
+    'Vector3.RotateTowards(',
+    'maximumSideTurnDegrees * Mathf.Deg2Rad, 0f);',
+    'if (candidateKnee.y >= minimumKneeWorldY - 0.002f)',
+    'if (prone && groundedNow && !visuallyAirborne &&',
+    'transitioningLowStance && authoredProne &&',
+    'leftThigh != null && rightThigh != null',
+    'entryKneeSideTurn = 38f * entry * settle *',
+    'kneeSideAxis, 0.29f, entryKneeSideTurn);',
+):
+    assert guard in visual, guard
+assert visual.count('kneeSideAxis, 0.29f, entryKneeSideTurn);') == 2
+# Both limbs share the same anatomical axis, and zero means no control.
+assert visual.index('Vector3 kneeSideAxis = leftThigh') > visual.index(
+    'float pronePoleStrength = proneKneeShare')
+assert visual.index('if (prone && groundedNow') < visual.index('leftFootGoal = ResolveLowStanceFootContact(')
+assert 'if (actions.Stance == AarisBattleActions.PlayerStance.Standing)' not in visual
+# Solve a synthetic planar two-bone circle, rotating only the lateral bend
+# while preserving the hip-to-ankle reach. Cap angular change at 38 degrees.
+import math
+def limited_knee_side(start_side, along_side, across, cap, radians):
+    # Use a bend vector in the lateral/up basis. The side-coordinate
+    # projection is continuous and cannot exceed the original offset.
+    start = max(-1., min(1., (start_side - along_side) / across))
+    target = max(-.995, min(.995, (
+        max(-cap, min(cap, start_side)) - along_side) / across))
+    start_angle = math.asin(start)
+    goal_angle = math.asin(target)
+    moved = max(-radians, min(radians, goal_angle - start_angle))
+    return along_side + across * math.sin(start_angle + moved)
+for original_side in (-.526,.366,-.24,.0):
+    adjusted = limited_knee_side(original_side, -.08, .50, .29, math.radians(38))
+    assert abs(adjusted) <= abs(original_side) + 1e-6
+    if abs(original_side) > .29:
+        assert abs(adjusted) < abs(original_side)
+assert limited_knee_side(-.526,-.08,.50,.29,0.) < -.525
+print('PASS: entering prone knee circle limit and transition-only guard')
+
 print('PASS: pose-aware knee clearance and prone pelvis')
