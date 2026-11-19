@@ -36,7 +36,7 @@ class SharedLootCandidateImport(unittest.TestCase):
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", doc)
         self.assertIn("ResourceRequest request = Resources.LoadAsync<TextAsset>(", warm)
         self.assertIn('"AarisWeapons/loot_candidates"', warm)
-        self.assertIn("request.priority = -1;", warm)
+        self.assertIn("request.priority = 0;", warm)
         self.assertLess(warm.index("yield return request;"),
                         warm.index("yield return null;"))
         self.assertLess(warm.index("yield return null;"),
@@ -85,7 +85,7 @@ class SharedLootCandidateImport(unittest.TestCase):
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", android_loader)
         self.assertIn("ResourceRequest definitionsRequest = Resources.LoadAsync<TextAsset>(", android_loader)
         self.assertIn('"AarisWeapons/weapon_catalog"', android_loader)
-        self.assertIn("definitionsRequest.priority = -1;", android_loader)
+        self.assertIn("definitionsRequest.priority = 0;", android_loader)
         self.assertIn("yield return definitionsRequest;", android_loader)
         self.assertIn("if (Ready) yield break;", android_loader)
         self.assertIn("var definitions = ReadDefinitions(", android_loader)
