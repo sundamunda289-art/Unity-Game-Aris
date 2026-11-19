@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.Profiling;
 
 namespace Aaris.MapReview
 {
@@ -9,6 +10,10 @@ namespace Aaris.MapReview
     [DisallowMultipleComponent, DefaultExecutionOrder(-250)]
     public sealed class AarisNearbyColliders : MonoBehaviour
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private static readonly ProfilerMarker k_ColliderGridIndex =
+            new ProfilerMarker("Aaris.Startup.ColliderGridItem");
+#endif
         [SerializeField] private Transform target;
         [SerializeField] private Collider[] obstacles;
         [SerializeField] private float activationDistance = 55;
@@ -94,6 +99,9 @@ namespace Aaris.MapReview
 
         private void IndexCollider(int i)
         {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            using var profilerScope = k_ColliderGridIndex.Auto();
+#endif
             Collider c = obstacles[i];
             if (c == null || !c.enabled) return;
             // Intentionally disabled authored colliders must stay off.
