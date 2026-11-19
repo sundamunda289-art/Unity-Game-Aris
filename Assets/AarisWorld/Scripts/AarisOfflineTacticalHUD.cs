@@ -112,14 +112,19 @@ namespace Aaris.MapReview
             medicalTerrains = Terrain.activeTerrains;
             medicalNearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
             if (motor == null || gloo == null) { enabled = false; return; }
+            // Preprocessor directives cannot split an else branch without
+            // confusing C# syntax validation. Keep this guard well formed in
+            // Editor and Android configurations while preserving the original
+            // flight-only deferred HUD construction behavior.
+            bool deferTacticalHud = false;
 #if UNITY_ANDROID && !UNITY_EDITOR
-            // The tactical buttons are unusable while inside the aircraft.
-            // Do not build their uGUI hierarchy in the scene's first render
-            // frame alongside the essential player and battle HUD.
             if (drop != null && !drop.HasLanded)
+            {
+                deferTacticalHud = true;
                 StartCoroutine(BuildAfterAndroidFlightFrames());
-            else
+            }
 #endif
+            if (!deferTacticalHud)
             {
                 Build();
                 initialized = true;
