@@ -109,6 +109,11 @@ namespace Aaris.MapReview
         private float nextRefresh, requestPickupUntil, nextStarterRetryAt;
         private float starterUnarmedSince = -1f;
         private int streamFramesRemaining;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // GPU/RAM classification is checked once during match initialization;
+        // never allocate device-name strings from the streaming hot path.
+        private bool budgetAndroidLootStreaming;
+#endif
         private int nextDropId = -1;
         // Only the one match-start fallback may auto-equip like authored loot.
         // Never auto-pick player-dropped or exchanged negative-ID guns.
@@ -198,6 +203,15 @@ namespace Aaris.MapReview
                 enabled = false;
                 return;
             }
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Match the low-memory/budget-GPU policy used for vehicles.
+            // A slow frame should not instantiate two separate full-quality
+            // weapon models before the next screen update.
+            int ramMB = SystemInfo.systemMemorySize;
+            budgetAndroidLootStreaming =
+                (ramMB > 0 && ramMB <= 4096) ||
+                AarisMobileRuntime.UseConstrainedGpuStreamingBudget();
+#endif
             // Different each match; deterministic once seed is chosen. A
             // future authoritative server can provide this seed to clients.
             matchSeed = unchecked((uint)DateTime.UtcNow.Ticks) ^
@@ -1002,6 +1016,17 @@ namespace Aaris.MapReview
             if (active.Count >= streamLimit) return false;
             float loadSquared = ActivationMetres * ActivationMetres;
             int buildAttempts = 0;
+            int modelBuildBudget = MaximumBuildAttemptsPerFrame;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Keep both build slots on healthy frames; when Android is already
+            // CPU/GPU pressured, use at most one native model integration per
+            // frame to avoid back-to-back render/rig initialization spikes.
+            // Never use zero: existing drops, planned pickup visuals and the
+            // reserved starter path must keep progressing after landing.
+            if (budgetAndroidLootStreaming &&
+                Time.smoothDeltaTime > (1f / 45f))
+                modelBuildBudget = 1;
+#endif
 
             // Stream dropped guns first; they retain ammo and do not reroll.
             foreach (var record in dropped)
@@ -1011,7 +1036,7 @@ namespace Aaris.MapReview
                 float dist = (record.position - playerPosition).sqrMagnitude;
                 if (dist > loadSquared) continue;
                 if (active.Count >= streamLimit) return false;
-                if (buildAttempts == MaximumBuildAttemptsPerFrame) return true;
+                if (buildAttempts >= modelBuildBudget) return true;
                 buildAttempts++;
                 var root = new GameObject("Dropped " + record.state.Spec.displayName);
                 root.transform.SetParent(transform, false);
@@ -1041,7 +1066,7 @@ namespace Aaris.MapReview
                 float dx = c.x - playerPosition.x, dz = c.z - playerPosition.z;
                 if (dx * dx + dz * dz >= loadSquared) continue;
                 if (IsCurrentlyActive(i)) continue;
-                if (buildAttempts == MaximumBuildAttemptsPerFrame ||
+                if (buildAttempts >= modelBuildBudget ||
                     probes == MaximumCandidateProbesPerFrame) return true;
 
                 probes++;
@@ -1080,7 +1105,7 @@ namespace Aaris.MapReview
             }
 
             // Leave a starter fallback for a frame with a construction slot.
-            return buildAttempts == MaximumBuildAttemptsPerFrame;
+            return buildAttempts >= modelBuildBudget;
         }
 
         private void EnsureStarterLoot(Vector3 playerPosition)
