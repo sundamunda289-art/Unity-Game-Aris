@@ -30,6 +30,23 @@ class AndroidPlaneStartupRegression(unittest.TestCase):
         self.assertIn("out propellers, source, highDetail, true", load)
         self.assertLess(load.index("yield return request;"), load.index("CompleteFlightSetup();"))
 
+    def test_essential_aircraft_frame_reserved_before_native_integration(self):
+        load = section(DROP, "private IEnumerator LoadPlaneAndBeginFlight()",
+                       "private void CompleteFlightSetup()")
+        marker = "AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialAircraft();"
+        self.assertEqual(load.count(marker), 1)
+        # Existing single-frame separation must remain in front of the real
+        # authored aircraft creation, with no extra coroutine startup delay.
+        self.assertLess(load.index("PrewarmAircraftFinishes()"), load.index(marker))
+        self.assertLess(load.index(marker), load.index("yield return null;", load.index(marker)))
+        self.assertLess(load.index("yield return null;", load.index(marker)),
+                        load.index("AarisOfflineDropVisuals.CreatePlane("))
+        gate = (SCRIPTS / "AarisMobileStreamingFrameGate.cs").read_text()
+        self.assertIn("essentialAircraftFrame = Time.frameCount + 1;", gate)
+        self.assertIn("Time.frameCount == essentialAircraftFrame", gate)
+        self.assertIn("essentialAircraftFrame = -1;", gate)
+        self.assertIn("IsConstrainedDevice()", gate)
+
     def test_flight_cannot_run_until_model_ready(self):
         self.assertIn("private bool planeReady;", DROP)
         self.assertIn("if (!planeReady || phase == DropPhase.Landed || view == null) return;", DROP)
