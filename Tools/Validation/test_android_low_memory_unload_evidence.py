@@ -47,7 +47,10 @@ class AssetUnloadEvidence(unittest.TestCase):
         for name in ("assetUnloadStartedCount", "assetUnloadCompletedCount",
                      "assetUnloadSuppressedCount", "assetUnloadInProgress"):
             self.assertIn(name, sample)
+        for name in ("assetUnloadStartedCount", "assetUnloadCompletedCount",
+                     "assetUnloadSuppressedCount"):
             self.assertIn(name + " = " + name, record)
+        self.assertIn("assetUnloadInProgress = unloading != null && !unloading.isDone", record)
         self.assertIn("public float lastAssetUnloadElapsedMs = -1f;", sample)
         self.assertIn("lastAssetUnloadElapsedMs = lastAssetUnloadElapsedMs,", record)
         self.assertIn("it is NOT a measurement of CPU time", SOURCE)
