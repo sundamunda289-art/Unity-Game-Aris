@@ -29,9 +29,15 @@ class TimeSlicedNativeLoot(unittest.TestCase):
         self.assertIn("yield return AppendNativeTreeCoverBatched(allCandidates, true);", self.begin)
         self.assertIn("CompleteInitialization(allCandidates);", self.begin)
         self.assertIn("AppendNativeTreeCover(allCandidates);", self.begin)
+        # The Editor path correctly completes synchronously *before* the
+        # Android coroutine declaration. Assert ordering within the coroutine,
+        # not against the earlier desktop method invocation.
+        android = self.begin.split(
+            "private IEnumerator CompleteAndroidInitialization(", 1
+        )[1]
         self.assertLess(
-            self.begin.index("yield return AppendNativeTreeCoverBatched(allCandidates, true);"),
-            self.begin.index("CompleteInitialization(allCandidates);")
+            android.index("yield return AppendNativeTreeCoverBatched(allCandidates, true);"),
+            android.index("CompleteInitialization(allCandidates);")
         )
         self.assertIn("candidates = allCandidates.ToArray();", self.finish)
         self.assertNotIn("candidates = allCandidates.ToArray();", self.begin)
