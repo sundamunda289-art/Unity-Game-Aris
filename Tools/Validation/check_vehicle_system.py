@@ -172,6 +172,34 @@ def test():
     battle=script("AarisBattleHUD")
     nearby=script("AarisNearbyColliders")
 
+    // WheelCollider visuals remain full-rate for the driven car and
+    // for any body seen by a camera. Only offscreen, unoccupied
+    // rolling cars can time-slice cosmetic updates (four phases).
+    late = motor.split("private void LateUpdate()", 1)[1].split(
+        "private void OnEnable()", 1)[0]
+    assert "representativeBodyRenderer" in motor
+    assert "bodyModel.GetComponentsInChildren<Renderer>()" in motor
+    assert "offscreenVisualFramePhase = GetInstanceID() & 3;" in motor
+    assert "if (!parkedSleeping && driver == null && !bodyNeedsToSettle &&" in late
+    assert "!representativeBodyRenderer.isVisible" in late
+    assert "(Time.frameCount & 3) != offscreenVisualFramePhase" in late
+    assert late.index("!representativeBodyRenderer.isVisible") < late.index(
+        "SyncVisibleWheels();")
+    assert "wheels[i].GetWorldPose(out Vector3 worldPosition," in motor
+    for occupied in (False, True):
+        for body_visible in (False, True):
+            for sleeping in (False, True):
+                for settling in (False, True):
+                    for frame in range(8):
+                        throttled = (not occupied and not sleeping and
+                                     not settling and not body_visible and
+                                     (frame & 3) != 1)
+                        if occupied or body_visible or sleeping or settling:
+                            assert not throttled
+                        if not occupied and not body_visible and not sleeping and not settling:
+                            assert throttled == ((frame & 3) != 1)
+
+
     # Bound 2km car plans, floor/bridge/mountain and wall clearance.
     assert "TargetVehicles = 44" in world
     assert "file.hubCount != 45" in world
