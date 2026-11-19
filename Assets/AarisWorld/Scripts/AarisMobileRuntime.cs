@@ -61,6 +61,11 @@ namespace Aaris.MapReview
         // a later frame; record the completion counters immediately.
         private bool assetUnloadCompletionReportPending;
         private int assetUnloadCompletionObservedFrame = -1;
+        // The low-memory callback can destroy pools and launch native asset
+        // reclamation. Defer the full profiler/JSON snapshot rather than adding
+        // that nonessential work to the same overloaded Android frame.
+        private bool lowMemoryReportPending;
+        private int lowMemoryReportObservedFrame = -1;
         private Task<string> pendingLogWrite;
         // One prior-process OS report only, never queried during a hot frame.
         private AarisAndroidExitHistory.Snapshot previousExitSnapshot;
@@ -769,7 +774,12 @@ namespace Aaris.MapReview
                 }
                 else
                     assetUnloadSuppressedCount++;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                lowMemoryReportPending = true;
+                lowMemoryReportObservedFrame = Time.frameCount;
+#else
                 Record("low-memory");
+#endif
             }
 #if UNITY_ANDROID && !UNITY_EDITOR
             // Avoid two diagnostic snapshots in the same frame. If a low-memory
@@ -781,6 +791,16 @@ namespace Aaris.MapReview
             {
                 assetUnloadCompletionReportPending = false;
                 Record("asset-unload-complete");
+            }
+            // Critical-memory cleanup gets the entire notification frame.
+            // Keep the event queued if a prior snapshot used this frame, so
+            // completion diagnostics and low-memory evidence both survive.
+            if (lowMemoryReportPending &&
+                Time.frameCount != lowMemoryReportObservedFrame &&
+                CanRecordPeriodicDiagnostics())
+            {
+                lowMemoryReportPending = false;
+                Record("low-memory");
             }
             // The regular 15-second ring no longer contains the opening frames.
             // Keep three bounded snapshots for comparing cold and warm launches.
@@ -808,7 +828,11 @@ namespace Aaris.MapReview
             // An urgent event or earlier startup snapshot already used this
             // frame. Keep periodic evidence pending until the next frame,
             // rather than scheduling another profiler/JSON/IO task now.
-            return Time.frameCount != lastDiagnosticFrame;
+            // Both notification and native-unload completion frames are
+            // reserved for reclamation, even if no report ran on them.
+            return Time.frameCount != lastDiagnosticFrame &&
+                   Time.frameCount != lowMemoryReportObservedFrame &&
+                   Time.frameCount != assetUnloadCompletionObservedFrame;
 #else
             return true;
 #endif
