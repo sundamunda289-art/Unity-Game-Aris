@@ -2034,8 +2034,10 @@ namespace Aaris.MapReview
                 // prone->standing. Constrain the knee circle only while the
                 // requested stance is Prone, at very low speed, while the
                 // actual prone pose enters. Fade in and out across the blend.
-                Vector3 kneeSideAxis = Vector3.ProjectOnPlane(
-                    rightThigh.position - leftThigh.position, Vector3.up);
+                Vector3 kneeSideAxis = leftThigh != null && rightThigh != null
+                    ? Vector3.ProjectOnPlane(
+                        rightThigh.position - leftThigh.position, Vector3.up)
+                    : Vector3.zero;
                 float entryKneeSideTurn = 0f;
                 if (prone && groundedNow && !visuallyAirborne &&
                     transitioningLowStance && authoredProne &&
