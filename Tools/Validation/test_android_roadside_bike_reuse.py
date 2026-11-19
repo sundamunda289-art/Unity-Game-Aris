@@ -27,7 +27,7 @@ class BikeRecycling(unittest.TestCase):
         self.assertIn('new Stack<GameObject>(MaximumVisibleBikes);', CODE)
         self.assertIn('if (parkedBikePool.Count < MaximumVisibleBikes)', CODE)
         self.assertIn('parkedBikePool.Push(retired);', CODE)
-        self.assertIn('ReuseBike(parkedVictim.visible, nearest.point, spot)', CODE)
+        self.assertIn('ReuseBike(previous, nearest.point, spot)', CODE)
         self.assertIn('ReuseBike(parkedBikePool.Pop(), nearest.point, spot)', CODE)
 
     def test_collision_validation_precedes_any_relocation_or_recycle(self):
