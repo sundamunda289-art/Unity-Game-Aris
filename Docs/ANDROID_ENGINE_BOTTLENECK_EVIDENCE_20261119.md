@@ -14,3 +14,15 @@ Target: Unity 6000.3.26f1 / URP 17.3.0 / Snapdragon 680 / Adreno 610 / 4 GB RAM.
 Obtain cold-launch and extended-match Unity Profiler main/render/GPU frame times, physics FixedUpdate counts, texture residency, Android PSS and peak graphics memory; capture `adb logcat`, system ANR traces, low-memory kill records and vendor GPU reset/tombstone evidence where available. Compare baseline vs patched APK on the same handset. The headless Unity Editor may not compile without a valid owner-activated Editor license; static tests are not compilation or gameplay proof.
 
 Relevant official Unity docs: physics fixed timestep and Maximum Allowed Timestep; Android Graphics API selection; audio clip load types; URP mobile rendering configuration.
+
+## Follow-up: low-overhead runtime evidence without rendering changes
+
+The existing 15-second JSON diagnostics now include `peakFixedStepsPerRender` and `fixedStepsInSample`: a single no-allocation `FixedUpdate` counter is read and reset during each `Update`. This helps confirm whether the bounded physics catch-up guard is being exercised after stalls, without touching physics frequency, navigation, collision objects, scene assets, or visuals.
+
+On Android `sample` reports only, `estimatedGraphicsDriverBytes` records `Profiler.GetAllocatedMemoryForGraphicsDriver()`, documented by Unity as an estimate of graphics allocations. It is initialized to `-1` for startup, low-memory, pause and stall events, so those urgent paths do not perform the graphics allocation query. **Do not interpret this as Android PSS, actual GPU VRAM consumption, or proof of a low-memory kill.** Collect Android OS kill traces separately.
+
+The water ShaderGraph has both `UnityEditor.ShaderGraph.SceneColorNode` and `SceneDepthNode`, therefore disabling Opaque/Depth textures blindly can break saved water rendering. Keep both enabled until a proper scene-level rendering comparison and shader dependency audit verifies an alternative. Unity 6 documentation recommends disabling these textures only if unused. The 8 readable imported rock/foliage FBX models and 1 readable noise TGA were not changed; some MeshCollider and Terrain Detail Mesh pipelines require source mesh readability.
+
+Evidence limits: `FrameTimingManager` on OpenGL ES can report incomplete GPU/render-thread timing, so missing GPU timing is not evidence of absent GPU pressure. Graphics-driver memory estimate and physics tick count are complementary indicators, not replacements for Android logcat, LMK/ANR records and on-device Unity Profiler captures. Unity Editor licensing remains unverified; source tests do not mean Android compilation is proven.
+
+Unity documentation: https://docs.unity.com/en-us/engine/6000.3/manual/analysis/graphics-performance-profiling/profile-rendering/frame-timing-manager/manager ; https://docs.unity.com/en-us/engine/6000.3/script-reference/unityengine/profiling/profiler/getallocatedmemoryforgraphicsdriver ; https://docs.unity.com/en-us/engine/6000.3/manual/render-pipelines/universal-render-pipeline/introduction/configure-for-better-performance .

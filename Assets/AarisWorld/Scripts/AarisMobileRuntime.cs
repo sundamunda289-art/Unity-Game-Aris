@@ -51,6 +51,8 @@ namespace Aaris.MapReview
         private float originalMaximumDeltaTime, appliedMaximumDeltaTime;
         private bool modifiedMaximumDeltaTime;
         private float nextLongFrameReportAt;
+        // Two counters only: no allocations or hierarchy queries per physics tick.
+        private int physicsStepsBeforeRender, peakFixedStepsInWindow, fixedStepsInWindow;
         // Begin at native sharpness and adapt only after sustained FPS misses.
         private UniversalRenderPipelineAsset androidPipeline;
         private float originalRenderScale = 1f;
@@ -646,9 +648,23 @@ namespace Aaris.MapReview
         }
 #endif
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private void FixedUpdate()
+        {
+            physicsStepsBeforeRender++;
+        }
+#endif
+
         private void Update()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
+            // Count catch-up steps actually run between two rendered frames.
+            // A zero is normal; a burst helps distinguish physics overload.
+            int physicsTicks = physicsStepsBeforeRender;
+            physicsStepsBeforeRender = 0;
+            fixedStepsInWindow += physicsTicks;
+            if (physicsTicks > peakFixedStepsInWindow)
+                peakFixedStepsInWindow = physicsTicks;
             SampleMobileFrameTiming();
 #endif
             float dt = Time.unscaledDeltaTime;
@@ -836,6 +852,9 @@ namespace Aaris.MapReview
             public bool weaponCatalogReady;
             public float processSeconds, maxFrameMs;
             public float fixedPhysicsStepMs, maxPhysicsCatchupMs;
+            public int peakFixedStepsPerRender, fixedStepsInSample;
+            // Unity's graphics allocation estimate is not Android process PSS.
+            public long estimatedGraphicsDriverBytes;
             public float effectiveTargetFps;
             public int gpuTimingSamples, gpuLimitedSamples, cpuLimitedSamples;
             public float meanGpuFrameMs, meanCpuMainMs, meanCpuRenderMs;
@@ -876,6 +895,7 @@ namespace Aaris.MapReview
                 maxFrameMs = frameCount > 0 ? sortedTimes[frameCount - 1] * 1000 : 0,
                 fixedPhysicsStepMs = Time.fixedDeltaTime * 1000f,
                 maxPhysicsCatchupMs = Time.maximumDeltaTime * 1000f,
+                estimatedGraphicsDriverBytes = -1L,
                 weaponCatalogReady = AarisWeaponCatalog.Ready,
                 unityAllocatedBytes = Profiler.GetTotalAllocatedMemoryLong(), unityReservedBytes = Profiler.GetTotalReservedMemoryLong(),
                 managedBytes = GC.GetTotalMemory(false), textureBytes = Texture.currentTextureMemory,
@@ -893,6 +913,8 @@ namespace Aaris.MapReview
             // device profiler supplies process PSS when diagnosing OOM/LMK.
             // -1 explicitly means unavailable, not zero memory usage.
             s.androidPssKB = -1;
+            s.peakFixedStepsPerRender = peakFixedStepsInWindow;
+            s.fixedStepsInSample = fixedStepsInWindow;
             if (startupDrop != null) s.dropPhase = startupDrop.Phase.ToString();
             s.lowMemoryWindZonesDisabled = suppressedWindZones;
             s.lowMemoryGrassTilesDisabled = suppressedGrassTiles;
@@ -909,6 +931,12 @@ namespace Aaris.MapReview
             }
             if (reason == "sample")
             {
+                // Query the estimated GPU allocation only once per 15-second
+                // report, never during startup, low-memory or a frame stall.
+                // This is a Unity estimate, NOT Android PSS or exact GPU RAM.
+                s.estimatedGraphicsDriverBytes =
+                    Profiler.GetAllocatedMemoryForGraphicsDriver();
+                peakFixedStepsInWindow = fixedStepsInWindow = 0;
                 if (frameCount >= 30) TuneAndroidResolution(s);
                 timingSamples = gpuLimitedSamples = cpuLimitedSamples = 0;
                 gpuFrameTimeTotalMs = cpuMainTimeTotalMs = cpuRenderTimeTotalMs = 0d;
