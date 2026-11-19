@@ -113,9 +113,15 @@ namespace Aaris.MapReview
             }
         }
 
-        private static AarisWeaponSpec[] ReadDefinitions()
+        private static AarisWeaponSpec[] ReadDefinitions(
+            TextAsset asset = null, bool allowSynchronousFallback = true)
         {
-            TextAsset asset = Resources.Load<TextAsset>("AarisWeapons/weapon_catalog");
+            // Editor/essential synchronous callers retain their old route.
+            // Android match prewarm supplies the resolved TextAsset directly:
+            // on a missing async asset it must fail closed, not trigger a
+            // blocking Resources.Load retry on the next rendered frame.
+            if (asset == null && allowSynchronousFallback)
+                asset = Resources.Load<TextAsset>("AarisWeapons/weapon_catalog");
             if (asset == null)
             {
                 Debug.LogError("Aaris: missing embedded AarisWeapons/weapon_catalog.json.");
@@ -189,7 +195,20 @@ namespace Aaris.MapReview
         internal static IEnumerator LoadForMatchAsync()
         {
             if (Ready) yield break;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            ResourceRequest definitionsRequest = Resources.LoadAsync<TextAsset>(
+                "AarisWeapons/weapon_catalog");
+            definitionsRequest.priority = -1;
+            yield return definitionsRequest;
+            if (Ready) yield break;
+            // Parse the small JSON catalog away from its native completion
+            // and the first heavy weapon prefab import frame.
+            yield return null;
+            var definitions = ReadDefinitions(
+                definitionsRequest.asset as TextAsset, false);
+#else
             var definitions = ReadDefinitions();
+#endif
             if (definitions == null) yield break;
             var available = new List<AarisWeaponSpec>(definitions.Length);
             foreach (var spec in definitions)
