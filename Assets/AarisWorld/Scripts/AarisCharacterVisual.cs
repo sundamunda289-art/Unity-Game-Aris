@@ -240,21 +240,33 @@ namespace Aaris.MapReview
             string prefix = candidate == FallbackModel ? KenneyClips : PrimaryClips;
             // Separate completed model-asset integration from clip hydration.
             yield return null;
-            foreach (string clipName in AndroidAnimationNames)
-            {
-                if (!isActiveAndEnabled) yield break;
-                string location = prefix + clipName;
-                androidClipGroups[location] =
-                    Resources.LoadAll<AnimationClip>(location);
-                yield return null;
-            }
-            // Only the two actual calibrated soldier rigs use the complete
-            // 100STYLE mocap dataset; keep its exact all-or-nothing selection.
+            // The two calibrated rigs can use the complete 100STYLE group.
+            // Probe it first so we do not retain five unused legacy FBXs on
+            // memory-constrained devices when all four natural motions exist.
+            bool naturalSetComplete = false;
             if (candidate == PrimaryModel || candidate == PreviousPrimaryModel)
             {
                 if (!isActiveAndEnabled) yield break;
                 androidNaturalClips =
                     Resources.LoadAll<AnimationClip>(MocapLocomotion);
+                naturalSetComplete =
+                    FindMocapClip(androidNaturalClips, "mocap_walk") != null &&
+                    FindMocapClip(androidNaturalClips, "mocap_jog") != null &&
+                    FindMocapClip(androidNaturalClips, "mocap_run") != null &&
+                    FindMocapClip(androidNaturalClips, "mocap_crouch") != null;
+                yield return null;
+            }
+            foreach (string clipName in AndroidAnimationNames)
+            {
+                if (!isActiveAndEnabled) yield break;
+                if (naturalSetComplete &&
+                    (clipName == "run" || clipName == "walk" ||
+                     clipName == "sprint" || clipName == "crouch" ||
+                     clipName == "crouch_walk"))
+                    continue; // SetupAnimations selects original natural clips.
+                string location = prefix + clipName;
+                androidClipGroups[location] =
+                    Resources.LoadAll<AnimationClip>(location);
                 yield return null;
             }
         }
