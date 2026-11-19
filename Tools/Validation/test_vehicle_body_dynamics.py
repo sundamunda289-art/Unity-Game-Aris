@@ -101,12 +101,16 @@ class VehicleBodyDynamics(unittest.TestCase):
             "private void EnsureRoadHeadlight()", 1)[0]
         self.assertIn(
             "visualBodyPivot != null ? visualBodyPivot : transform", cfg)
+        # Cosmetic LOD adds a single child under the swaying body pivot.
+        # All lights must still follow the body, never physics wheel roots.
+        self.assertIn("lampDetailRoot.transform.SetParent(lampChassis, false);", cfg)
+        self.assertIn("Transform lampMount = lampDetailRoot.transform;", cfg)
         for term in (
-            'CreateLampLens(lampChassis, "Headlight Bezel "',
-            'CreateLampLens(lampChassis, "Taillight Bezel "',
-            "frontLamps[side] = CreateLampLens(lampChassis,",
-            "rearLamps[side] = CreateLampLens(lampChassis,",
-            "reversingLamps[side] = CreateLampLens(lampChassis,",
+            'CreateLampLens(lampMount, "Headlight Bezel "',
+            'CreateLampLens(lampMount, "Taillight Bezel "',
+            "frontLamps[side] = CreateLampLens(lampMount,",
+            "rearLamps[side] = CreateLampLens(lampMount,",
+            "reversingLamps[side] = CreateLampLens(lampMount,",
         ):
             self.assertIn(term, cfg)
         lamp = MOTOR.split("private void EnsureRoadHeadlight()", 1)[1].split(
