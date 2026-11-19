@@ -57,8 +57,10 @@ namespace Aaris.MapReview
             yield return new WaitForSecondsRealtime(2f);
             if (!grenadePrefabLookupComplete)
             {
-                ResourceRequest model = Resources.LoadAsync<GameObject>("AarisCombat/FragGrenade");
-                model.priority = -1;
+                ResourceRequest model;
+                while ((model = AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(
+                           "AarisCombat/FragGrenade")) == null)
+                    yield return null;
                 yield return model;
                 if (!grenadePrefabLookupComplete)
                 {
@@ -67,19 +69,22 @@ namespace Aaris.MapReview
                 }
             }
             if (cachedGrenadePrefab == null || grenadeFinishesLoaded) yield break;
-            ResourceRequest shell = Resources.LoadAsync<Material>(
-                "AarisCombat/Materials/FragGrenade-OliveShell");
-            shell.priority = -1;
+            ResourceRequest shell;
+            while ((shell = AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<Material>(
+                       "AarisCombat/Materials/FragGrenade-OliveShell")) == null)
+                yield return null;
             yield return shell;
             yield return null;
-            ResourceRequest light = Resources.LoadAsync<Material>(
-                "AarisCombat/Materials/FragGrenade-OliveLight");
-            light.priority = -1;
+            ResourceRequest light;
+            while ((light = AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<Material>(
+                       "AarisCombat/Materials/FragGrenade-OliveLight")) == null)
+                yield return null;
             yield return light;
             yield return null;
-            ResourceRequest metal = Resources.LoadAsync<Material>(
-                "AarisCombat/Materials/FragGrenade-DarkMetal");
-            metal.priority = -1;
+            ResourceRequest metal;
+            while ((metal = AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<Material>(
+                       "AarisCombat/Materials/FragGrenade-DarkMetal")) == null)
+                yield return null;
             yield return metal;
             if (!grenadeFinishesLoaded)
             {
