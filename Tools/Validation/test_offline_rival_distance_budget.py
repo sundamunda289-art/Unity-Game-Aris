@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Regression for cheaper distant AI without slowing real-time gameplay."""
 from pathlib import Path
+import math
 import unittest
 
 SOURCE = (Path(__file__).resolve().parents[2] /
@@ -22,6 +23,28 @@ def simulate(fps, seconds, distance, speed=2.85):
         pos += dt * speed
         frames += 1
     return pos, frames
+
+
+def simulate_six_phase_ticks(fps, seconds):
+    """Model 6 far rivals sharing 10Hz phase slots, rounded to phone frames."""
+    phases = [index * (.1 / 6.) for index in range(6)]
+    due = [0.] * 6
+    updates_per_frame = []
+    total_per_bot = [0] * 6
+    for frame in range(1, round(fps * seconds) + 1):
+        now = frame / fps
+        updates = 0
+        for index in range(6):
+            if now + 1e-9 < due[index]:
+                continue
+            updates += 1
+            total_per_bot[index] += 1
+            next_tick = (math.floor((now - phases[index]) / .1) + 1) * .1 + phases[index]
+            if next_tick <= now + .0001:
+                next_tick += .1
+            due[index] = next_tick
+        updates_per_frame.append(updates)
+    return updates_per_frame, total_per_bot
 
 
 class FarRivalBudget(unittest.TestCase):
@@ -47,6 +70,27 @@ class FarRivalBudget(unittest.TestCase):
                 self.assertAlmostEqual(far_pos, near_pos, delta=.42)
                 self.assertLess(far_frames, near_frames)
                 self.assertGreater(far_frames, 60)
+
+    def test_android_far_tick_phases_spread_cpu_and_physics(self):
+        bot = SOURCE.split("internal sealed class AarisOfflineRival", 1)[1]
+        self.assertIn("private const int RivalCount = 6;", SOURCE)
+        self.assertIn("rival.Initialize(this, health, player, playerHealth, index);", SOURCE)
+        self.assertIn("farSimulationPhase = encounterSlot * (FarSimulationInterval / 6f);", bot)
+        self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", bot)
+        self.assertIn("Mathf.Floor((Time.time - farSimulationPhase) /", bot)
+        self.assertIn("if (nextTick <= Time.time + 0.0001f)", bot)
+        self.assertIn("nextFarSimulation = nextTick;", bot)
+        self.assertIn("nextFarSimulation = Time.time; // First distant update remains immediate.", bot)
+        self.assertIn("nextFarSimulation = Time.time + FarSimulationInterval;", bot)
+        for fps, max_per_frame in ((15, 4), (30, 2), (60, 1), (90, 1)):
+            with self.subTest(fps=fps):
+                collisions, totals = simulate_six_phase_ticks(fps, 10)
+                # First frame models all six as newly spawned; actual match
+                # creates one rival per 500 ms, not all six in a frame.
+                self.assertLessEqual(max(collisions[1:]), max_per_frame)
+                for ticks in totals:
+                    self.assertGreaterEqual(ticks, 98)
+                    self.assertLessEqual(ticks, 102)
 
     def test_near_bot_is_full_frame_rate(self):
         for fps in (15, 30, 60, 120):
