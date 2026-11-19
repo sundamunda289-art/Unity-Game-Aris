@@ -155,5 +155,53 @@ class RuntimeDiagnosticEvidence(unittest.TestCase):
             result["memory_recovery"]["asset_unloads_started_cumulative_max"], 1_000_000)
 
 
+class AndroidAssetUnloadCompletionPacing(unittest.TestCase):
+    """Source contract for native cleanup frame pacing, not Unity FPS."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.source = (Path(__file__).resolve().parents[2] /
+                      "Assets/AarisWorld/Scripts/AarisMobileRuntime.cs").read_text()
+
+    def test_completion_counters_are_immediate_but_full_report_is_deferred(self):
+        source = self.source
+        update = source.split("private void Update()", 1)[1].split(
+            "private bool CanRecordPeriodicDiagnostics()", 1)[0]
+        completion = update.split(
+            "if (assetUnloadStartedRealtime >= 0f", 1)[1].split(
+                "if (lowMemoryPending)", 1)[0]
+        self.assertIn("assetUnloadCompletedCount++;", completion)
+        self.assertIn("assetUnloadStartedRealtime = -1f;", completion)
+        self.assertIn("assetUnloadCompletionReportPending = true;", completion)
+        self.assertIn("assetUnloadCompletionObservedFrame = Time.frameCount;", completion)
+        self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", completion)
+        self.assertIn('#else\n                Record("asset-unload-complete");', completion)
+        self.assertLess(completion.index("assetUnloadCompletedCount++;"),
+                        completion.index("assetUnloadCompletionReportPending = true;"))
+
+        later = update.split(
+            "// Avoid two diagnostic snapshots in the same frame.", 1)[1].split(
+                "// The regular 15-second ring", 1)[0]
+        self.assertIn("if (assetUnloadCompletionReportPending &&", later)
+        self.assertIn("Time.frameCount != assetUnloadCompletionObservedFrame &&", later)
+        self.assertIn("CanRecordPeriodicDiagnostics())", later)
+        self.assertLess(later.index("assetUnloadCompletionReportPending = false;"),
+                        later.index('Record("asset-unload-complete");'))
+        self.assertLess(update.index('Record("low-memory");'),
+                        update.index("// Avoid two diagnostic snapshots"))
+
+    def test_cleanup_is_not_deferred_only_its_nonessential_report(self):
+        source = self.source
+        update = source.split("private void Update()", 1)[1].split(
+            "private bool CanRecordPeriodicDiagnostics()", 1)[0]
+        self.assertIn("unloading = Resources.UnloadUnusedAssets();", update)
+        self.assertIn(
+            "AarisMobileStreamingFrameGate.DeferOptionalWorkDuringAssetCleanup(unloading);",
+            update)
+        self.assertIn('Record("low-memory");', update)
+        self.assertIn("private int assetUnloadCompletionObservedFrame = -1;", source)
+        self.assertIn("private bool assetUnloadCompletionReportPending;", source)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
