@@ -576,8 +576,8 @@ def audit():
     # must not wake deliberately disabled collision shapes across the 2 km map.
     # Periodic stationary checks stay available, but at 1 Hz instead of 4 Hz.
     nearby = (SRC / "AarisNearbyColliders.cs").read_text(encoding="utf-8")
-    assert "if (c == null || !c.enabled) continue;" in nearby
-    assert "else { worldBounds[i] = c.bounds; continue; }" in nearby
+    assert "if (c == null || !c.enabled) return;" in nearby
+    assert "else { worldBounds[i] = c.bounds; return; }" in nearby
     assert "if (streamed[i] && obstacles[i] != null)" in nearby
     on_disable = nearby[nearby.index("private void OnDisable()"):]
     assert "if (obstacles == null || streamed == null) return;" in on_disable
