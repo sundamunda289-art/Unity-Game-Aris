@@ -19,7 +19,12 @@ class DeferredGlooArt(unittest.TestCase):
         self.assertIn("EnsureGhostCreated();", start)
         self.assertIn("yield return null;", start)
         self.assertIn("yield return AarisGlooWallVisuals.PrewarmAuthoredArt();", start)
-        self.assertIn("if (isActiveAndEnabled && ghost == null) EnsureGhostCreated();", start)
+        # Prewarm only the original assets; no transient preview hierarchy
+        # or imported mesh instance until the first valid BeginAim call.
+        preload = between("private IEnumerator PrepareGhostAcrossFrames()", "#endif")
+        self.assertNotIn("EnsureGhostCreated();", preload)
+        self.assertNotIn("AarisGlooWallVisuals.Create(", preload)
+        self.assertNotIn("Instantiate(", preload)
         self.assertIn('AarisGlooWallVisuals.Create("GlooWall_Ghost_Local", true)', start)
         self.assertIn("ghost.SetActive(false);", start)
 
