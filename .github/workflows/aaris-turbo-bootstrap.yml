@@ -386,6 +386,41 @@ jobs:
             -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$OIDC_AUDIENCE" |
             python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')"
+          echo "TURBO_GITHUB_OIDC_FETCH_PASS"
+          # Diagnose only claim *names*, never token bytes or actual claim values.
+          OIDC="$OIDC" python3 - <<'PYOIDCCHECK'
+          import base64,json,os,time
+          parts=os.environ["OIDC"].split(".")
+          if len(parts)!=3:
+              raise SystemExit("TURBO_OIDC_INVALID_TOKEN_FORMAT")
+          payload=parts[1]
+          claims=json.loads(base64.urlsafe_b64decode(payload+"="*(-len(payload)%4)))
+          expected={
+              "iss":"https://token.actions.githubusercontent.com",
+              "aud":"aaris-turbo-bootstrap-v1",
+              "repository_id":"1443109769",
+              "actor_id":"353065137",
+              "repository":"sundamunda289-art/Unity-Game-Aris",
+              "ref":"refs/heads/main",
+              "workflow_ref":"sundamunda289-art/Unity-Game-Aris/.github/workflows/aaris-turbo-bootstrap.yml@refs/heads/main",
+          }
+          mismatches=[key for key,value in expected.items()
+                      if str(claims.get(key))!=value]
+          if claims.get("event_name") not in ("issue_comment","workflow_dispatch"):
+              mismatches.append("event_name")
+          now=time.time()
+          for key in ("iat","exp"):
+              if not isinstance(claims.get(key),(int,float)):
+                  mismatches.append(key)
+          if isinstance(claims.get("iat"),(int,float)) and claims["iat"]>now+60:
+              mismatches.append("iat_future")
+          if isinstance(claims.get("exp"),(int,float)) and not now<claims["exp"]<=now+1800:
+              mismatches.append("exp_window")
+          if mismatches:
+              print("TURBO_OIDC_CLAIM_MISMATCH_KEYS="+",".join(mismatches))
+              raise SystemExit(28)
+          print("TURBO_OIDC_EXPECTED_CLAIMS_MATCH")
+          PYOIDCCHECK
           python3 - "$CODESPACE" > "$RUNNER_TEMP/turbo-request.json" <<'PY'
           import json,sys
           print(json.dumps({"machine":sys.argv[1]}))
