@@ -44,6 +44,20 @@ CapturePortrait();
 // 16-angle settled-pose QA unchanged; this mode inspects the interpolation
 // at four steps during crouch, prone and return-to-standing.
 public static void CaptureTransitionPortrait(){
+SessionState.SetFloat("pose.transitionYawDegrees",90f);
+SessionState.SetBool("pose.transitions",true);
+CapturePortrait();
+}
+// Keep the exact same time samples but use additional *fixed* camera angles.
+// Four pose frames viewed from four angles at different times can hide a
+// transitional left/right knee flare; each of these runs retains one angle.
+public static void CaptureTransitionFrontPortrait(){
+SessionState.SetFloat("pose.transitionYawDegrees",0f);
+SessionState.SetBool("pose.transitions",true);
+CapturePortrait();
+}
+public static void CaptureTransitionBackPortrait(){
+SessionState.SetFloat("pose.transitionYawDegrees",180f);
 SessionState.SetBool("pose.transitions",true);
 CapturePortrait();
 }
@@ -313,6 +327,7 @@ SessionState.EraseBool("pose.stanceJump");
 SessionState.EraseBool("pose.portrait");
 SessionState.EraseBool("pose.multiangle");
 SessionState.EraseBool("pose.transitions");
+SessionState.SetFloat("pose.transitionYawDegrees",90f);
 EditorApplication.delayCall+=()=>EditorApplication.Exit(code);
 }
 }
@@ -443,7 +458,9 @@ Vector3 target=p.transform.position+Vector3.up*eye;
 Vector3 viewDirection=orbitStance
  ?Quaternion.AngleAxis(90f*count,Vector3.up)*p.transform.forward
  :transitionFrames
- ?Quaternion.AngleAxis(90f,Vector3.up)*p.transform.forward
+ ?Quaternion.AngleAxis(
+    SessionState.GetFloat("pose.transitionYawDegrees",90f),Vector3.up)*
+    p.transform.forward
  :p.transform.forward;
 Vector3 photoPosition=target+viewDirection*3.0f+Vector3.up*0.42f;
 cam.transform.position=photoPosition;
@@ -483,7 +500,8 @@ cam.targetTexture=old;RenderTexture.active=active;
 UnityEngine.Object.DestroyImmediate(image);RenderTexture.ReleaseTemporary(rt);}
 SessionState.SetInt("pose.count",count+1);
 Log("FRAME "+Names[n]+" "+count+" stance="+b.Stance+
-" viewDegrees="+(orbitStance?90*count:transitionFrames?90:0)+
+" viewDegrees="+(orbitStance?90*count:transitionFrames?
+SessionState.GetFloat("pose.transitionYawDegrees",90f):0)+
 " air="+p.IsInAir+" pos="+p.transform.position.ToString("F2"));
 if(transitionFrames)LogTransitionContact(p,b,count);
 if(count==0)LogPhysicalHeight(p,b);
