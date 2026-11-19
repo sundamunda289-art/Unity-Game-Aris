@@ -58,4 +58,4 @@ A real 4 GB Adreno 610 phone remains the gate for:
   any actual Android crash/LMK records
 
 Deterministic Python/source checks are **not** Unity compilation or measured
-performance. Keep PR draft until device acceptance. 
+performance. Keep PR draft until device acceptance.
