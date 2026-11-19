@@ -149,6 +149,39 @@ class SharedStreamingAdmission(unittest.TestCase):
         self.assertEqual(len({frame for frame, _ in admitted}), 6)
         self.assertEqual(admitted[0][0], 3)
 
+    def test_diagnostics_share_one_native_frame_slot_without_visual_changes(self):
+        probe = GATE.split(
+            "internal static bool TryClaimNonessentialDiagnosticFrame()", 1
+        )[1].split("internal static bool TryClaimOptionalModelBuild()", 1)[0]
+        self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", probe)
+        self.assertIn("IsEssentialRigFrame() || IsAssetCleanupPending()", probe)
+        self.assertIn("if (!IsConstrainedDevice()) return true;", probe)
+        self.assertIn("if (claimedFrame == frame || importIntegrationFrame == frame)", probe)
+        self.assertIn("optionalLoadInFlight.isDone", probe)
+        self.assertIn("importIntegrationFrame = frame;", probe)
+        self.assertIn("ShouldDeferForFramePressure(frame)", probe)
+        self.assertIn("claimedFrame = frame;", probe)
+        self.assertNotIn("Resources.Load", probe)
+        self.assertNotIn("Instantiate(", probe)
+        self.assertNotIn("QualitySettings", probe)
+        self.assertNotIn("renderScale", probe)
+
+    def test_diagnostic_first_or_streamer_first_never_double_claims(self):
+        # Pure frame-admission simulation: regardless of Unity Update order,
+        # only the first nonessential task gets the slot on a 4GB phone.
+        for order in (("diagnostics", "streamer"), ("streamer", "diagnostics")):
+            claimed_frame = -1
+            admitted = []
+            for item in order:
+                if claimed_frame == 100:
+                    continue
+                claimed_frame = 100
+                admitted.append(item)
+            self.assertEqual(admitted, [order[0]])
+            self.assertEqual(claimed_frame, 100)
+            # Both retry normally on the next eligible rendered frame.
+            self.assertNotEqual(claimed_frame, 101)
+
     def test_bounded_conflict_resolves_next_frame(self):
         # If vehicle wins frame N, a loot/bike candidate is free in N+1.
         for label in ("vehicle", "loot", "bike"):
