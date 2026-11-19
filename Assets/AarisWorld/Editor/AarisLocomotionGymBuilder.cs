@@ -153,6 +153,11 @@ namespace Aaris.MapReview.Editor
             PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android,
                 "com.aaris.locomotiongym");
             PlayerSettings.productName = "Aaris Locomotion Gym";
+            PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
+            PlayerSettings.allowedAutorotateToLandscapeLeft = true;
+            PlayerSettings.allowedAutorotateToLandscapeRight = true;
+            PlayerSettings.allowedAutorotateToPortrait = false;
+            PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
             PlayerSettings.bundleVersion = "0.1.0";
             PlayerSettings.Android.bundleVersionCode = 1;
             PlayerSettings.Android.minSdkVersion =

@@ -16,7 +16,7 @@ UNITY_BIN=/opt/unity/Editor/Unity bash Tools/CI/build_locomotion_gym.sh
 Find `/tmp/aaris-locomotion-gym-output/AarisLocomotionGym.apk` and
 `unity-gym-build.log`. The command stages a filtered Unity project under
 `/tmp`, preserving dirty original files and expensive native map assets.
-The staging project contains only runtime/editor C# code, one shared player
+The staging project reuses a stable cache directory, serializes builds, and contains only runtime/editor C# code, one shared player
 prefab, character + locomotion Resources, and tiny URP settings; it excludes
 map terrain, buildings, vehicles and other optional Resource assets.
 **Mono backend and ARM64-only** are intentionally used for quick testing;

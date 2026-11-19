@@ -8,9 +8,20 @@ BIN="${UNITY_BIN:-/opt/unity/Editor/Unity}"
 [[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]] || {
   echo "Workspace has tracked edits; building from checked-in files is preferred." >&2
 }
-STAGE="$(mktemp -d /tmp/aaris-locomotion-gym.XXXXXX)"
+STAGE="${AARIS_GYM_STAGE_DIR:-/tmp/aaris-locomotion-gym-project}"
 OUT="${AARIS_GYM_OUTPUT_DIR:-/tmp/aaris-locomotion-gym-output}"
 mkdir -p "$OUT"
+# Single Unity build per staging directory: no parallel editor/file races.
+exec 9>"$OUT/.build.lock"
+if ! flock -n 9; then
+  echo "Another movement-gym build is already running." >&2
+  exit 6
+fi
+if pgrep -x Unity >/dev/null 2>&1; then
+  echo "Unity Editor already running. Not starting a competing Editor." >&2
+  exit 7
+fi
+mkdir -p "$STAGE"
 echo "Isolated Unity project: $STAGE"
 echo "Output directory: $OUT"
 mkdir -p "$STAGE/Assets/AarisWorld" "$STAGE/Assets/Resources" \
@@ -48,4 +59,4 @@ echo "Starting Unity Android Gym build (scene only, filtered Resources)."
 test -s "$AARIS_GYM_APK_PATH"
 sha256sum "$AARIS_GYM_APK_PATH" > "$OUT/AarisLocomotionGym.sha256"
 echo "AARIS_LOCOMOTION_GYM_READY=$AARIS_GYM_APK_PATH"
-echo "Project staging remains at $STAGE for diagnostics/cache reuse; remove when safe."
+echo "Reusable isolated project/cache at $STAGE (no source map changes)."
