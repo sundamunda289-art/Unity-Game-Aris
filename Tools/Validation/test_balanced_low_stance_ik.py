@@ -104,6 +104,12 @@ assert "requiredY / Mathf.Max(upwardBend.y, 0.0001f)" in solver
 assert "Vector3 tangent = bend - upwardBend * currentUp;" in solver
 assert "bend = upwardBend * requiredUp + tangent *" in solver
 assert "Vector3.Slerp(bend, upwardBend" not in solver
+assert "Vector3 upBasis = Vector3.ProjectOnPlane(" in solver
+assert "float requiredUp = Mathf.Clamp(" in solver
+assert "candidateBend = upBasis * requiredUp +" in solver
+assert "float correctedSide = Vector3.Dot(" in solver
+assert "Mathf.Abs(correctedSide) <" in solver
+assert "Mathf.Abs(kneeSide) - 0.001f" in solver
 
 assert "float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);" in visual
 assert "float crouchPoleStrength = (1f - proneKneeShare) * 0.90f;" in visual
