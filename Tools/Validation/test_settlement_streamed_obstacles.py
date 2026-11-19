@@ -38,7 +38,11 @@ class StreamedSettlementSafety(unittest.TestCase):
         self.assertIn("worldBounds[i].Intersects(probe)", probe)
         self.assertIn("if (probeVisited[i] == probeStamp) continue;", probe)
         self.assertNotIn(".enabled = true", probe)
-        self.assertIn("for (int xCell = Cell(bounds.min.x);", STREAMER)
+        # The oversized-collider safety guard now uses long-index iteration
+        # and a non-grid fallback. Preserve both physical cover paths.
+        self.assertIn("for (long xCell = firstX; xCell <= lastX; xCell++)", STREAMER)
+        self.assertIn("width * depth > MaxCellsPerCollider", STREAMER)
+        self.assertIn("foreach (int i in oversizedIndices)", probe)
 
     def test_relocation_remains_bounded_and_validated(self):
         code = EXPANSION[EXPANSION.index("private bool TryRelocateInteractiveSite("):
