@@ -204,11 +204,32 @@ namespace Aaris.MapReview
                 unchecked((uint)Environment.TickCount) ^ 0x59371FA3u;
             rng = matchSeed;
 
-            // 4 tiles hold around 7,500 native trees. Sample just a few
-            // distributed tree cover nodes ONCE at match boot, never every
-            // frame and never one loot item for every vegetation instance.
+            // 4 tiles hold around 7,500 native trees. Sampling stays seeded
+            // and bounded. On Android, spread the native tree probes over
+            // several rendered frames instead of one post-model-load frame.
             var allCandidates = new List<AarisLootCandidate>(doc.candidates);
+#if UNITY_ANDROID && !UNITY_EDITOR
+            StartCoroutine(CompleteAndroidInitialization(allCandidates));
+#else
             AppendNativeTreeCover(allCandidates);
+            CompleteInitialization(allCandidates);
+#endif
+        }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private IEnumerator CompleteAndroidInitialization(List<AarisLootCandidate> allCandidates)
+        {
+            // Exactly the same candidate order/RNG as desktop; only when
+            // each native Terrain tree query runs is different. Do not
+            // publish half-populated candidates or cell indexes to Update.
+            yield return AppendNativeTreeCoverBatched(allCandidates, true);
+            if (!isActiveAndEnabled) yield break;
+            CompleteInitialization(allCandidates);
+        }
+#endif
+
+        private void CompleteInitialization(List<AarisLootCandidate> allCandidates)
+        {
             candidates = allCandidates.ToArray();
             consumed = new bool[candidates.Length];
             nextCandidateProbeAt = new float[candidates.Length];
@@ -327,8 +348,17 @@ namespace Aaris.MapReview
 
         private void AppendNativeTreeCover(List<AarisLootCandidate> result)
         {
+            // Editor/Desktop preserve synchronous initialization exactly.
+            // Execute the shared iterator to completion without frame yields.
+            IEnumerator iterator = AppendNativeTreeCoverBatched(result, false);
+            while (iterator.MoveNext()) { }
+        }
+
+        private IEnumerator AppendNativeTreeCoverBatched(
+            List<AarisLootCandidate> result, bool timeSlice)
+        {
             // Only tree slots participate in the spacing rule. Keep the same
-            // sampled order and seed without rescanning every building/road slot.
+            // sampled order and RNG; only scheduling changes on Android.
             var treePoints = new List<Vector2>(192);
             foreach (var candidate in result)
                 if (candidate != null && candidate.kind == "tree")
@@ -346,10 +376,19 @@ namespace Aaris.MapReview
                 int treeCount = data.treeInstanceCount;
                 if (treeCount <= 0) continue;
                 int accepted = 0, attempts = 0;
+                int examinedThisFrame = 0;
                 Vector3 origin = terrain.transform.position;
                 Vector3 size = data.size;
                 while (accepted < 48 && attempts++ < 240)
                 {
+                    // A failed spacing/water candidate still costs a native
+                    // TerrainData.GetTreeInstance call. Budget attempts, not
+                    // accepted sites, to avoid a dense 240-probe single frame.
+                    if (timeSlice && examinedThisFrame++ >= 32)
+                    {
+                        examinedThisFrame = 1;
+                        yield return null;
+                    }
                     int idx = (int)(AarisWeaponRandom.Next(ref rng) % (uint)treeCount);
                     TreeInstance instance = data.GetTreeInstance(idx);
                     Vector3 tree = origin + Vector3.Scale(instance.position, size);
@@ -377,6 +416,9 @@ namespace Aaris.MapReview
                     treePoints.Add(new Vector2(x, z));
                     accepted++;
                 }
+                // Even an unusually sparse tile with few/no accepted trees
+                // must not integrate the next tile in the same Android frame.
+                if (timeSlice) yield return null;
             }
         }
 
