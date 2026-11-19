@@ -45,8 +45,19 @@ namespace Aaris.MapReview
         private const float ObstacleMargin = 1.25f;
 
         private readonly Collider[] obstacles = new Collider[96];
-        private readonly Dictionary<Terrain, TreeInstance[]> treeCache =
-            new Dictionary<Terrain, TreeInstance[]>();
+        // A spatial index of only trees near planned footprint/relocation cells.
+        // Never copy all four TerrainData.treeInstances arrays to managed RAM.
+        private const float TreeCellSize = 32f;
+        private const float MaxTreeClearanceMargin = 3.8f;
+        private const float MaxRelocationOffset = 26f;
+        private const int AndroidTreeSamplesPerFrame = 1024;
+        private struct TreeObstacle
+        {
+            public float x, z, margin;
+        }
+        private readonly HashSet<long> relevantTreeCells = new HashSet<long>();
+        private readonly Dictionary<Terrain, Dictionary<long, List<TreeObstacle>>> treeCache =
+            new Dictionary<Terrain, Dictionary<long, List<TreeObstacle>>>();
         private readonly List<GameObject> placed = new List<GameObject>(24);
         // The physics engine cannot query distant authored colliders while
         // the nearby streamer has disabled them. Keep its cached bounds.
@@ -137,14 +148,50 @@ namespace Aaris.MapReview
                 // Even if the match exits during the opening-frame delay, the
                 // iterator's finally releases its temporary tree cache.
                 if (mobile) yield return null;
-                // TerrainData.treeInstances creates native-to-managed arrays.
-                // Cache one tile per Android frame instead of all four during
-                // the player's very first Start frame. All four are ready
-                // before any landmark clearance or relocation check begins.
+                // Query relevant cells only. A conservative 26m relocation
+                // envelope and maximum tree margin preserve every clearance
+                // decision without retaining whole terrain tree arrays.
+                CacheRelevantTreeCells(plan);
                 foreach (Terrain t in terrains)
                 {
                     if (t != null && t.terrainData != null)
-                        treeCache[t] = t.terrainData.treeInstances;
+                    {
+                        TerrainData data = t.terrainData;
+                        Vector3 origin = t.transform.position;
+                        Vector3 size = data.size;
+                        var cells = new Dictionary<long, List<TreeObstacle>>();
+                        treeCache[t] = cells;
+                        // GetTreeInstance avoids allocating a managed array for
+                        // the entire native forest. Android bounds native reads
+                        // to 1024 entries per frame, then resumes next frame.
+                        for (int i = 0; i < data.treeInstanceCount; i++)
+                        {
+                            TreeInstance tree = data.GetTreeInstance(i);
+                            float x = origin.x + tree.position.x * size.x;
+                            float z = origin.z + tree.position.z * size.z;
+                            if (!float.IsNaN(x) && !float.IsInfinity(x) &&
+                                !float.IsNaN(z) && !float.IsInfinity(z))
+                            {
+                                long key = TreeCellKey(TreeCell(x), TreeCell(z));
+                                if (relevantTreeCells.Contains(key))
+                                {
+                                    if (!cells.TryGetValue(key, out List<TreeObstacle> list))
+                                    {
+                                        list = new List<TreeObstacle>(8);
+                                        cells.Add(key, list);
+                                    }
+                                    list.Add(new TreeObstacle
+                                    {
+                                        x = x, z = z,
+                                        margin = Mathf.Min(MaxTreeClearanceMargin,
+                                            Mathf.Max(0.5f, tree.widthScale * 1.5f))
+                                    });
+                                }
+                            }
+                            if (mobile && (i + 1) % AndroidTreeSamplesPerFrame == 0)
+                                yield return null;
+                        }
+                    }
                     if (mobile) yield return null;
                 }
                 foreach (var site in plan.sites)
@@ -234,10 +281,10 @@ namespace Aaris.MapReview
             }
             finally
             {
-                // The four native tree-instance arrays can be large. Never
-                // retain them for the rest of the match if site creation fails
-                // or the coroutine is cancelled during a scene transition.
+                // Temporary index and interest cells never survive scene
+                // teardown, failed initialization or completed placement.
                 treeCache.Clear();
+                relevantTreeCells.Clear();
             }
             Debug.Log("AARIS_EXPANSION_RESULT placed=" + placed.Count +
                 " planned=" + plan.siteCount + " terrain_skips=" + skippedTerrain +
@@ -360,33 +407,59 @@ namespace Aaris.MapReview
             return true;
         }
 
+        private static int TreeCell(float position) =>
+            Mathf.FloorToInt(position / TreeCellSize);
+
+        private static long TreeCellKey(int x, int z) =>
+            ((long)x << 32) ^ (uint)z;
+
+        private void CacheRelevantTreeCells(AarisExpansionPlan plan)
+        {
+            relevantTreeCells.Clear();
+            foreach (AarisExpansionSite site in plan.sites)
+            {
+                if (site == null || !CoordinatesValid(site)) continue;
+                FootprintHalfExtents(site, VegetationMargin, out float hx, out float hz);
+                // The candidate position may move 26m in either axis.
+                // Include 3.8m for the largest possible authored tree width.
+                float rangeX = hx + MaxTreeClearanceMargin + MaxRelocationOffset;
+                float rangeZ = hz + MaxTreeClearanceMargin + MaxRelocationOffset;
+                for (int x = TreeCell(site.x - rangeX); x <= TreeCell(site.x + rangeX); x++)
+                    for (int z = TreeCell(site.z - rangeZ); z <= TreeCell(site.z + rangeZ); z++)
+                        relevantTreeCells.Add(TreeCellKey(x, z));
+            }
+        }
+
         private bool TreesBlock(AarisExpansionSite site, Terrain[] all)
         {
-            // A footprint on the seam between native tiles must check trees
-            // from BOTH tiles, not only the tile containing its centre.
+            // Preserve the existing per-tile seam and half-open footprint tests.
+            // Each sparse cell stores the original world XZ and width margin.
             FootprintHalfExtents(site, VegetationMargin, out float hx, out float hz);
             foreach (Terrain terrain in all)
             {
                 if (terrain == null || terrain.terrainData == null ||
-                    !treeCache.TryGetValue(terrain, out TreeInstance[] trees))
+                    !treeCache.TryGetValue(terrain,
+                        out Dictionary<long, List<TreeObstacle>> cells))
                     continue;
                 Vector3 basePoint = terrain.transform.position;
                 Vector3 tileSize = terrain.terrainData.size;
-                if (site.x + hx + 3.8f < basePoint.x ||
-                    site.x - hx - 3.8f > basePoint.x + tileSize.x ||
-                    site.z + hz + 3.8f < basePoint.z ||
-                    site.z - hz - 3.8f > basePoint.z + tileSize.z)
+                if (site.x + hx + MaxTreeClearanceMargin < basePoint.x ||
+                    site.x - hx - MaxTreeClearanceMargin > basePoint.x + tileSize.x ||
+                    site.z + hz + MaxTreeClearanceMargin < basePoint.z ||
+                    site.z - hz - MaxTreeClearanceMargin > basePoint.z + tileSize.z)
                     continue;
-                for (int i = 0; i < trees.Length; i++)
-                {
-                    TreeInstance tree = trees[i];
-                    float x = basePoint.x + tree.position.x * tileSize.x;
-                    float z = basePoint.z + tree.position.z * tileSize.z;
-                    float margin = Mathf.Min(3.8f, Mathf.Max(0.5f, tree.widthScale * 1.5f));
-                    if (Mathf.Abs(x - site.x) < hx + margin &&
-                        Mathf.Abs(z - site.z) < hz + margin)
-                        return true;
-                }
+                for (int xCell = TreeCell(site.x - hx - MaxTreeClearanceMargin);
+                    xCell <= TreeCell(site.x + hx + MaxTreeClearanceMargin); xCell++)
+                    for (int zCell = TreeCell(site.z - hz - MaxTreeClearanceMargin);
+                        zCell <= TreeCell(site.z + hz + MaxTreeClearanceMargin); zCell++)
+                    {
+                        if (!cells.TryGetValue(TreeCellKey(xCell, zCell),
+                            out List<TreeObstacle> trees)) continue;
+                        foreach (TreeObstacle tree in trees)
+                            if (Mathf.Abs(tree.x - site.x) < hx + tree.margin &&
+                                Mathf.Abs(tree.z - site.z) < hz + tree.margin)
+                                return true;
+                    }
             }
             return false;
         }
