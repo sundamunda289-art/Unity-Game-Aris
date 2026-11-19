@@ -183,6 +183,10 @@ namespace Aaris.MapReview
             yield return AarisOfflineDropVisuals.PrewarmAircraftFinishes();
             if (!isActiveAndEnabled) yield break;
             // Avoid integrating materials and meshes in the async completion frame.
+            // The plane is essential: never delay its build waiting on optional
+            // cars/houses/Foley, but reserve its NEXT frame so those streamers
+            // do not add another native model/renderer integration to it.
+            AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialAircraft();
             yield return null;
             if (!isActiveAndEnabled) yield break;
             plane = AarisOfflineDropVisuals.CreatePlane(pathStart,
