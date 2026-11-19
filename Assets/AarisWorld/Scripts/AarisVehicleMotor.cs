@@ -113,6 +113,14 @@ namespace Aaris.MapReview
         // per-frame renderer traversal, allocations or custom frustum math.
         private Renderer representativeBodyRenderer;
         private int offscreenVisualFramePhase;
+        // Ten decorative meshes per car are unnecessary at distant parking
+        // spots. Keep native body PBR, tyre and lights; gate only tiny lenses.
+        private GameObject lampDetailRoot;
+        private Transform lampDetailViewer;
+        private float nextLampDetailSampleAt;
+        private bool lampDetailHidden;
+        private const float LampDetailFarDistanceSq = 68f * 68f;
+        private const float LampDetailNearDistanceSq = 52f * 52f;
         public string VehicleId { get; private set; }
         public float TopSpeedMetresPerSecond => topSpeed;
         // Camera look-ahead reads authoritative Rigidbody velocity without
@@ -609,7 +617,8 @@ namespace Aaris.MapReview
         public void ConfigureExteriorLights(Bounds fittedBounds,
             Material frontGlass, Material frontActive,
             Material backGlass, Material backBrake, Material reverseWhite,
-            Mesh sharedLensMesh, Material darkBezel)
+            Mesh sharedLensMesh, Material darkBezel,
+            Transform viewer = null)
         {
             if (frontGlass == null || frontActive == null ||
                 backGlass == null || backBrake == null || reverseWhite == null ||
@@ -640,26 +649,32 @@ namespace Aaris.MapReview
                 lampHeight * 1.32f, 1f);
             Transform lampChassis =
                 visualBodyPivot != null ? visualBodyPivot : transform;
+            // A single inactive parent removes all ten decorative mesh
+            // renderers without rebuilding materials, meshes or GameObjects.
+            lampDetailViewer = viewer;
+            lampDetailRoot = new GameObject("Mobile Vehicle Lamp Detail");
+            lampDetailRoot.transform.SetParent(lampChassis, false);
+            Transform lampMount = lampDetailRoot.transform;
             for (int side = 0; side < 2; side++)
             {
                 float x = side == 0 ? -halfTrack : halfTrack;
                 // Dark narrow bezels give the front/back glass real visual
                 // contrast without covering the detailed body textures.
-                CreateLampLens(lampChassis, "Headlight Bezel " + side,
+                CreateLampLens(lampMount, "Headlight Bezel " + side,
                     new Vector3(x, frontY, frontZ - .007f),
                     bezelSize, darkBezel, sharedLensMesh, false);
-                CreateLampLens(lampChassis, "Taillight Bezel " + side,
+                CreateLampLens(lampMount, "Taillight Bezel " + side,
                     new Vector3(x, backY, backZ + .007f),
                     bezelSize, darkBezel, sharedLensMesh, true);
-                frontLamps[side] = CreateLampLens(lampChassis,
+                frontLamps[side] = CreateLampLens(lampMount,
                     "Beveled Headlamp " + side,
                     new Vector3(x, frontY, frontZ), lampSize,
                     headlampGlass, sharedLensMesh, false);
-                rearLamps[side] = CreateLampLens(lampChassis,
+                rearLamps[side] = CreateLampLens(lampMount,
                     "Beveled Brake Lamp " + side,
                     new Vector3(x, backY, backZ), lampSize,
                     taillampGlass, sharedLensMesh, true);
-                reversingLamps[side] = CreateLampLens(lampChassis,
+                reversingLamps[side] = CreateLampLens(lampMount,
                     "Recessed Reverse Lamp " + side,
                     new Vector3(x * .68f, backY - lampHeight * .96f, backZ),
                     new Vector3(lampWidth * .38f, lampHeight * .56f, 1f),
@@ -672,6 +687,23 @@ namespace Aaris.MapReview
             // Parked cars still show the original shared URP lens materials.
             lastLampState = -1;
             RefreshExteriorLights();
+        }
+
+        // A sleeping parked car still needs to restore details when the
+        // player walks back. Sampling is time-sliced and allocation-free.
+        private void UpdateLampDetailLod()
+        {
+            if (lampDetailRoot == null || lampDetailViewer == null ||
+                Time.unscaledTime < nextLampDetailSampleAt) return;
+            nextLampDetailSampleAt = Time.unscaledTime + .4f;
+            float distanceSq = (transform.position -
+                lampDetailViewer.position).sqrMagnitude;
+            bool hide = driver == null && distanceSq >
+                (lampDetailHidden ? LampDetailNearDistanceSq :
+                    LampDetailFarDistanceSq);
+            if (hide == lampDetailHidden) return;
+            lampDetailHidden = hide;
+            lampDetailRoot.SetActive(!hide);
         }
 
         private void EnsureRoadHeadlight()
@@ -1120,6 +1152,7 @@ namespace Aaris.MapReview
         private void LateUpdate()
         {
             if (body == null) return;
+            UpdateLampDetailLod();
             // WheelCollider poses are static while an unoccupied Rigidbody sleeps.
             // Continue every-frame synchronization whenever the car is driven,
             // moving or awakened by a collision; never reduce active wheel FPS.
