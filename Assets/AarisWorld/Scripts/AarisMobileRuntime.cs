@@ -930,6 +930,8 @@ namespace Aaris.MapReview
                 planeTotalCreationMs = -1f;
             // One-time main-thread HUD glyph raster/upload cost, not GPU timing.
             public float hudAtlasBuildMs = -1f;
+            // One-time JSON decode only; excludes asynchronous native import.
+            public float lootCandidateParseMs = -1f, weaponDefinitionParseMs = -1f;
             public bool planeHighDetailSelected;
             public int assetUnloadStartedCount, assetUnloadCompletedCount, assetUnloadSuppressedCount;
             public float lastAssetUnloadElapsedMs = -1f;
@@ -1025,7 +1027,9 @@ namespace Aaris.MapReview
                 planeInstantiateMs = AarisOfflineDropVisuals.PlaneInstantiateMs,
                 planeTotalCreationMs = AarisOfflineDropVisuals.PlaneTotalCreationMs,
                 planeHighDetailSelected = AarisOfflineDropVisuals.PlaneHighDetailSelected,
-                hudAtlasBuildMs = AarisHudGlyphs.AtlasBuildMs
+                hudAtlasBuildMs = AarisHudGlyphs.AtlasBuildMs,
+                lootCandidateParseMs = AarisLootDocument.AndroidParseMs,
+                weaponDefinitionParseMs = AarisWeaponCatalog.AndroidDefinitionParseMs
             };
 #if UNITY_ANDROID && !UNITY_EDITOR
             // Android Debug.getPss() synchronously walks process memory and
