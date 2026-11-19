@@ -52,6 +52,13 @@ namespace Aaris.MapReview
         // Native mesh metadata, bounds transforms and cell inserts are split
         // across Android frames, rather than concentrated in a single Awake.
         private const int AndroidIndexUpdatesPerFrame = 96;
+        // Count budgets cannot reflect variable MeshCollider import cost.
+        // Use a soft wall-clock budget too, checking only after small batches
+        // to avoid paying for a native clock read on every indexed object.
+        private const double AndroidIndexFrameBudgetSeconds = 0.002;
+        private const int AndroidIndexClockCheckInterval = 8;
+        private const double AndroidDeactivationBudgetSeconds = 0.0015;
+        private const int AndroidDeactivationClockCheckInterval = 4;
 
         private void Awake()
         {
@@ -86,18 +93,28 @@ namespace Aaris.MapReview
             // during the first Android Awake. Untouched colliders stay solid.
             yield return null;
             int processed = 0;
+            double frameStartedAt = Time.realtimeSinceStartupAsDouble;
             while (indexCursor < obstacles.Length)
             {
                 IndexCollider(indexCursor);
                 // Advance before yielding, so disable/re-enable cannot add
                 // the same collider to the same cell more than once.
                 indexCursor++;
-                if (++processed >= AndroidIndexUpdatesPerFrame)
+                processed++;
+                if (processed >= AndroidIndexUpdatesPerFrame ||
+                    (processed % AndroidIndexClockCheckInterval == 0 &&
+                     Time.realtimeSinceStartupAsDouble - frameStartedAt >=
+                     AndroidIndexFrameBudgetSeconds))
                 {
                     processed = 0;
                     yield return null;
+                    frameStartedAt = Time.realtimeSinceStartupAsDouble;
                 }
             }
+            // The final index batch may itself take the full soft budget.
+            // Do not combine it with RefreshNow's native collider toggles
+            // and the first deferred-deactivation batch in one frame.
+            yield return null;
             deferredIndexBuild = null;
             FinishIndexBuild();
         }
@@ -190,6 +207,7 @@ namespace Aaris.MapReview
             // A distant collider remains solid until its turn. We never
             // deactivate terrain, authored-off or unsupported collider types.
             int processed = 0;
+            double frameStartedAt = Time.realtimeSinceStartupAsDouble;
             for (int i = 0; i < obstacles.Length; i++)
             {
                 if (target == null) { deferredDeactivation = null; yield break; }
@@ -206,10 +224,15 @@ namespace Aaris.MapReview
                     if (dx * dx + dz * dz > safeDistance * safeDistance)
                         c.enabled = false;
                 }
-                if (++processed >= DeferredColliderUpdatesPerFrame)
+                processed++;
+                if (processed >= DeferredColliderUpdatesPerFrame ||
+                    (processed % AndroidDeactivationClockCheckInterval == 0 &&
+                     Time.realtimeSinceStartupAsDouble - frameStartedAt >=
+                     AndroidDeactivationBudgetSeconds))
                 {
                     processed = 0;
                     yield return null;
+                    frameStartedAt = Time.realtimeSinceStartupAsDouble;
                 }
             }
             deferredDeactivation = null;
