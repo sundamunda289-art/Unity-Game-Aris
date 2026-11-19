@@ -504,7 +504,9 @@ Log("FRAME "+Names[n]+" "+count+" stance="+b.Stance+
 SessionState.GetFloat("pose.transitionYawDegrees",90f):0)+
 " air="+p.IsInAir+" pos="+p.transform.position.ToString("F2"));
 if(transitionFrames)LogTransitionContact(p,b,count);
-if(count==0)LogPhysicalHeight(p,b);
+// Measure both the first pose and its final settled multi-angle frame.
+// Editor-only QA: zero work or allocations in Android players.
+if(count==0 || (orbitStance && count==needed-1)) LogPhysicalHeight(p,b);
 }catch(Exception ex){Finish("ERROR_"+ex.GetType().Name+"_"+ex.Message);return;}
 }
 if(age>(portrait?(n==5?1.35:transitionFrames?.84:
