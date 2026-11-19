@@ -20,6 +20,17 @@ cp -a "$ROOT/Assets/AarisWorld/Scripts" "$ROOT/Assets/AarisWorld/Editor" \
   "$ROOT/Assets/AarisWorld/Player" "$STAGE/Assets/AarisWorld/"
 cp -a "$ROOT/Assets/Resources/AarisCharacters" \
   "$ROOT/Assets/Resources/AarisMocap" "$STAGE/Assets/Resources/"
+# Keep only neutral locomotion motions, not unrelated animation content.
+ANIMS="$STAGE/Assets/Resources/AarisCharacters/Primary/Animations"
+if [[ -d "$ANIMS" ]]; then
+  for f in "$ANIMS"/*.fbx; do
+    [[ -f "$f" ]] || continue
+    case "${f##*/}" in
+      idle.fbx|walk.fbx|run.fbx|sprint.fbx|crouch.fbx|crouch_walk.fbx|prone.fbx|crawl.fbx|jump.fbx|jump_start.fbx|jump_land.fbx|fall.fbx) ;;
+      *) rm -f "$f" "$f.meta" ;;
+    esac
+  done
+fi
 cp -a "$ROOT/Assets/TerrainDemoScene_URP/Settings/URP" \
   "$STAGE/Assets/TerrainDemoScene_URP/Settings/"
 # Fail fast if Unity would import 100-byte LFS pointers rather than actual FBX assets.

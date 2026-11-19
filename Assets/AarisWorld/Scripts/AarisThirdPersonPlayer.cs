@@ -45,6 +45,7 @@ namespace Aaris.MapReview
         private bool hasPendingAerialLook;
         private float uiScale = 1f, travelSpeed;
         private bool running, previousSimulateMouse, inputConfigured;
+        private bool isLocomotionGym;
         private int moveFinger = -1, lookFinger = -1;
         private Vector2 moveInput;
         private Vector3 lastMouse;
@@ -203,6 +204,7 @@ namespace Aaris.MapReview
         private void Awake()
         {
             EnforceNaturalLocomotionPace();
+            isLocomotionGym = GetComponent<AarisLocomotionGymMarker>() != null;
             controller = GetComponent<CharacterController>();
             // Resolve normal gameplay components once. Optional components added
             // later are still discovered by a bounded retry in Update.
@@ -249,7 +251,7 @@ namespace Aaris.MapReview
             if (!enabled) return;
             // Gym is a movement-only scene: retain the identical production
             // motor/stance/visual, but never bootstrap unrelated game systems.
-            if (GetComponent<AarisLocomotionGymMarker>() != null)
+            if (isLocomotionGym)
             {
                 AarisCharacterVisual.EnsureForPlayer(this);
                 characterVisual = GetComponent<AarisCharacterVisual>();
@@ -794,6 +796,17 @@ namespace Aaris.MapReview
 
         private float GroundHeight(Vector3 position)
         {
+            if (isLocomotionGym)
+            {
+                // The isolated QA scene deliberately has no Terrain component.
+                // Probe only near the feet, so a low overhead test roof cannot
+                // be mistaken for the supporting floor.
+                if (Physics.Raycast(position + Vector3.up * 0.45f,
+                    Vector3.down, out RaycastHit gymSupport, 2.0f,
+                    WorldMask, QueryTriggerInteraction.Ignore))
+                    return gymSupport.point.y;
+                return seaLevel - 10f;
+            }
             float ground = seaLevel - 10f;
             foreach (Terrain t in terrains)
             {
