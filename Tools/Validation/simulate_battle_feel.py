@@ -125,9 +125,11 @@ def assert_regression() -> None:
     assert "HasPunchLineOfSight(origin, nearest, receiver, mask)" in ACTION
     assert "if (count >= punchRayHits.Length)" in ACTION
     assert "Physics.RaycastAll(origin, delta / length, length," in ACTION
-    assert "if (count >= rayHits.Length)" in GUN
-    assert "candidates = Physics.RaycastAll(ray, range," in GUN
-    assert "count = candidates.Length;" in GUN
+    query_buffer = (ROOT / "Assets/AarisWorld/Scripts/AarisPhysicsHitBuffer.cs").read_text()
+    assert "AarisPhysicsHitBuffer.Raycast(ray, range," in GUN
+    assert "if (count >= retained.Length)" in query_buffer
+    assert "hits = Physics.RaycastAll(ray, distance," in query_buffer
+    assert "count = hits.Length;" in query_buffer
     assert "candidates[i].distance" in GUN
     assert "if (saturated) return false;" not in GUN
     assert "SameTarget" in GUN

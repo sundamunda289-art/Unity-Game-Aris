@@ -27,9 +27,11 @@ assert "contactLocked = false;" in resolve_code
 assert "Vector3 targetFoot = resolvedFootWorld;" in plant_code
 assert "targetFoot.y = ankleWorldY;" in plant_code
 assert "Vector3 origin = sampleWorld + Vector3.up * 0.70f;" in support_code
-assert "QueryTriggerInteraction.Ignore" in support_code
+query_buffer = (Path(__file__).resolve().parents[2] /
+                "Assets/AarisWorld/Scripts/AarisPhysicsHitBuffer.cs").read_text()
+assert "QueryTriggerInteraction.Ignore" in query_buffer
 assert "hit.collider.transform.IsChildOf(transform)" in support_code
-assert support_code.count("Physics.RaycastNonAlloc(") == 1
+assert support_code.count("AarisPhysicsHitBuffer.Raycast(") == 1
 
 low = source[source.index("if (!useUprightContact && ankleRigWeight > 0.005f)"):
              source.index("// Standing/walk/run need world-space contact too.")]

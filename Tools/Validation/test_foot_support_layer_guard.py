@@ -13,8 +13,9 @@ assert "int worldMask = Physics.DefaultRaycastLayers;" in method
 assert "& ~(1 << gameObject.layer)" not in method
 assert "hit.collider.transform.IsChildOf(transform)" in method
 assert "hit.normal.y < minWalkableNormalY" in method
-assert "Physics.RaycastNonAlloc(" in method
-assert "QueryTriggerInteraction.Ignore" in method
+assert "AarisPhysicsHitBuffer.Raycast(" in method
+query_buffer = (ROOT / "Assets/AarisWorld/Scripts/AarisPhysicsHitBuffer.cs").read_text()
+assert "QueryTriggerInteraction.Ignore" in query_buffer
 # DefaultRaycastLayers includes layer 0 but excludes Unity Ignore Raycast (2).
 mask = 0xFFFFFFFF & ~(1 << 2)
 assert mask & (1 << 0)

@@ -226,7 +226,7 @@ def check() -> None:
     assert gun.count("owner.GetComponent<AarisBattleActions>()") == 1
     assert gun.count("owner.GetComponent<AarisThirdPersonPlayer>()") == 1
     assert "cachedMotor.ApplyWeaponRecoil" in gun
-    assert "Physics.RaycastNonAlloc" in gun
+    assert "AarisPhysicsHitBuffer.Raycast" in gun
     assert "IAarisDamageable" in gun
     assert "Animator.applyRootMotion = false" not in state
     assert "animator.applyRootMotion = false" in visual

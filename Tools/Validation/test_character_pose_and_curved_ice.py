@@ -114,7 +114,7 @@ assert 'float capsuleTop = transform.TransformPoint(controller.center +' in visu
 assert 'Mathf.Min(excess, 1.00f) * lowPose' in visual
 assert 'private float SupportedAnkleY(Transform foot, float clearance,' in visual
 assert 'Ray ray = new Ray(origin, Vector3.down);' in visual
-assert 'Physics.RaycastNonAlloc(ray,' in visual
+assert 'AarisPhysicsHitBuffer.Raycast(ray, 1.70f, worldMask,' in visual
 assert 'hit.collider.transform.IsChildOf(transform)' in visual
 assert 'PlantCrouchLeg(leftThigh, leftShin, leftFootBone,' in visual
 # Turning on the spot in crouch/prone must release stale foot anchors, just

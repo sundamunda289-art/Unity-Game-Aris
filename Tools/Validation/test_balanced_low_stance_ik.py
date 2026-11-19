@@ -82,7 +82,7 @@ support = visual[visual.index("private float SupportedAnkleY("):
                  visual.index("private void PlantUprightContact(")]
 assert "out Vector3 supportNormal, Vector3 sampleWorld)" in support
 assert "Vector3 origin = sampleWorld + Vector3.up * 0.70f;" in support
-assert support.count("Physics.RaycastNonAlloc(") == 1
+assert support.count("AarisPhysicsHitBuffer.Raycast(") == 1
 assert "float floor = float.NaN;" in support
 assert "hit.collider.transform.IsChildOf(transform)" in support
 assert "hit.normal.y < minWalkableNormalY" in support

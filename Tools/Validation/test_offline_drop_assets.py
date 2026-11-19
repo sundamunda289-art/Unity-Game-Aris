@@ -553,8 +553,10 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         # Upright foot planting stays allocation-free normally, but a saturated
         # unordered NonAlloc result must fall back to a complete query so dense
         # props/bridge colliders cannot hide the nearest walkable surface.
-        self.assertIn("if (count >= ankleSupportHits.Length)", source)
-        self.assertIn("hits = Physics.RaycastAll(ray, 1.70f, worldMask,", source)
+        query_buffer = (SCRIPTS / "AarisPhysicsHitBuffer.cs").read_text()
+        self.assertIn("ref ankleSupportHits, 128, out RaycastHit[] hits", source)
+        self.assertIn("if (count >= retained.Length)", query_buffer)
+        self.assertIn("hits = Physics.RaycastAll(ray, distance,", query_buffer)
         self.assertIn("RaycastHit hit = hits[i];", source)
         self.assertIn("LoopPlayable(runPlayable, runClip, locomotionPhase + runPhaseOffset);", source)
         self.assertIn("LoopPlayable(sprintPlayable, sprintClip, locomotionPhase + sprintPhaseOffset);", source)
@@ -656,7 +658,7 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("CollectNearbyCandidateIndices(playerPosition);", world)
         self.assertIn("damageScratch.Clear();", combat)
         self.assertIn("node.GetComponents(damageScratch)", combat)
-        self.assertIn("Physics.RaycastNonAlloc", combat)
+        self.assertIn("AarisPhysicsHitBuffer.Raycast", combat)
         self.assertNotIn("node.GetComponents<MonoBehaviour>()", combat)
         self.assertNotIn("Vector3[] attempts =", world)
 
@@ -913,15 +915,17 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         camera = drop.split("private Vector3 CameraSafePosition(", 1)[1].split(
             "private Vector3 ClampCameraAboveTerrain(", 1)[0]
         self.assertIn("new RaycastHit[64]", drop)
-        self.assertIn("Physics.SphereCastNonAlloc(", camera)
-        self.assertIn("if (n >= cameraHits.Length)", camera)
-        self.assertIn("hits = Physics.SphereCastAll(", camera)
-        self.assertIn("n = hits.Length;", camera)
+        query_buffer = (SCRIPTS / "AarisPhysicsHitBuffer.cs").read_text()
+        self.assertIn("AarisPhysicsHitBuffer.SphereCast(", camera)
+        self.assertIn("ref cameraHits, 256,", camera)
+        self.assertIn("if (count >= retained.Length)", query_buffer)
+        self.assertIn("hits = Physics.SphereCastAll(", query_buffer)
+        self.assertIn("count = hits.Length;", query_buffer)
         self.assertIn("var hit = hits[i];", camera)
         self.assertIn("hit.collider.transform.IsChildOf(transform)", camera)
         self.assertIn("hit.collider.transform.IsChildOf(plane.transform)", camera)
         self.assertNotIn("return focus + direction * 0.35f", camera)
-        self.assertLess(camera.index("hits = Physics.SphereCastAll("),
+        self.assertLess(camera.index("AarisPhysicsHitBuffer.SphereCast("),
                         camera.index("float allowed = distance;"))
         # The solver always chooses the nearest valid hit, irrespective of
         # the unordered output from the physics engine.

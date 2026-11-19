@@ -61,8 +61,8 @@ namespace Aaris.MapReview
         private int lookFinger = -1;
         private Vector3 previousMouse;
         private DropPhase phase = DropPhase.InPlane;
-        private readonly RaycastHit[] groundHits = new RaycastHit[72];
-        private readonly RaycastHit[] cameraHits = new RaycastHit[64];
+        private RaycastHit[] groundHits = new RaycastHit[72];
+        private RaycastHit[] cameraHits = new RaycastHit[64];
         private Terrain[] flightTerrains;
         private const float InitialCanopyScale = 0.30f;
         private const float SeaSurfaceHeight = -38.07552f;
@@ -687,19 +687,9 @@ namespace Aaris.MapReview
                 }
 
             Ray groundRay = new Ray(position + Vector3.up * 0.75f, Vector3.down);
-            int n = Physics.RaycastNonAlloc(groundRay,
-                groundHits, rayLength, Physics.DefaultRaycastLayers,
-                QueryTriggerInteraction.Ignore);
-            RaycastHit[] supportHits = groundHits;
-            if (n >= groundHits.Length)
-            {
-                // Full NonAlloc buffers are unordered and incomplete. Resolve
-                // all contacts only on rare saturation, rather than disabling
-                // parachute landing on crowded ground or bridge geometry.
-                supportHits = Physics.RaycastAll(groundRay, rayLength,
-                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                n = supportHits.Length;
-            }
+            int n = AarisPhysicsHitBuffer.Raycast(groundRay, rayLength,
+                Physics.DefaultRaycastLayers, ref groundHits, 256,
+                out RaycastHit[] supportHits);
             for (int i = 0; i < n; i++)
             {
                 RaycastHit h = supportHits[i];
@@ -836,21 +826,9 @@ namespace Aaris.MapReview
             float distance = delta.magnitude;
             if (distance < 0.1f) return goal;
             Vector3 direction = delta / distance;
-            int n = Physics.SphereCastNonAlloc(new Ray(focus, direction), 0.17f,
-                cameraHits, distance, Physics.DefaultRaycastLayers,
-                QueryTriggerInteraction.Ignore);
-            RaycastHit[] hits = cameraHits;
-            if (n >= cameraHits.Length)
-            {
-                // A saturated NonAlloc buffer has no guaranteed nearest hit.
-                // Never collapse the camera to 35 cm just because foliage or
-                // nearby geometry fills it. Allocate only on the rare overflow
-                // and still exclude the player and departing aircraft.
-                hits = Physics.SphereCastAll(new Ray(focus, direction), 0.17f,
-                    distance, Physics.DefaultRaycastLayers,
-                    QueryTriggerInteraction.Ignore);
-                n = hits.Length;
-            }
+            int n = AarisPhysicsHitBuffer.SphereCast(new Ray(focus, direction),
+                0.17f, distance, Physics.DefaultRaycastLayers, ref cameraHits, 256,
+                out RaycastHit[] hits);
             float allowed = distance;
             for (int i = 0; i < n; i++)
             {

@@ -102,7 +102,7 @@ namespace Aaris.MapReview
         private SkinnedMeshRenderer bodySkin;
         private bool groundedRigCalibrated;
         private float standingShoeOffset;
-        private readonly RaycastHit[] ankleSupportHits = new RaycastHit[12];
+        private RaycastHit[] ankleSupportHits = new RaycastHit[12];
         // Stance-foot world locks remove visible contact-foot skating while
         // preserving authored swing motion and CharacterController authority.
         private Vector3 leftUprightPlantWorld, rightUprightPlantWorld;
@@ -1335,18 +1335,8 @@ namespace Aaris.MapReview
             // filters only colliders belonging to this character.
             int worldMask = Physics.DefaultRaycastLayers;
             Ray ray = new Ray(origin, Vector3.down);
-            int count = Physics.RaycastNonAlloc(ray,
-                ankleSupportHits, 1.70f, worldMask, QueryTriggerInteraction.Ignore);
-            RaycastHit[] hits = ankleSupportHits;
-            if (count >= ankleSupportHits.Length)
-            {
-                // A full NonAlloc buffer is unordered and may omit the nearest
-                // bridge/step surface. Allocate only on rare saturation rather
-                // than letting a crowded prop cluster make the boot float.
-                hits = Physics.RaycastAll(ray, 1.70f, worldMask,
-                    QueryTriggerInteraction.Ignore);
-                count = hits.Length;
-            }
+            int count = AarisPhysicsHitBuffer.Raycast(ray, 1.70f, worldMask,
+                ref ankleSupportHits, 128, out RaycastHit[] hits);
             float closest = float.PositiveInfinity;
             float floor = float.NaN;
             // Plant only on surfaces the authoritative CharacterController can

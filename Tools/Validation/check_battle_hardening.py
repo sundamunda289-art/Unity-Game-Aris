@@ -160,9 +160,11 @@ def audit() -> None:
     assert "muzzleHit" in gun
     # The fixed NonAlloc ray buffer can saturate inside dense buildings.
     # A full unsorted buffer is never enough to decide the nearest impact.
-    assert "if (count >= rayHits.Length)" in gun
-    assert "candidates = Physics.RaycastAll(ray, range," in gun
-    assert "count = candidates.Length;" in gun
+    query_buffer = source("AarisPhysicsHitBuffer.cs")
+    assert "AarisPhysicsHitBuffer.Raycast(ray, range," in gun
+    assert "if (count >= retained.Length)" in query_buffer
+    assert "hits = Physics.RaycastAll(ray, distance," in query_buffer
+    assert "count = hits.Length;" in query_buffer
     assert "candidates[i].distance" in gun
     assert "if (saturated) continue" not in gun
 

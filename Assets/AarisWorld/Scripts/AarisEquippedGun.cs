@@ -41,7 +41,7 @@ namespace Aaris.MapReview
     [DisallowMultipleComponent]
     public sealed class AarisEquippedGun : MonoBehaviour
     {
-        private readonly RaycastHit[] rayHits = new RaycastHit[48];
+        private RaycastHit[] rayHits = new RaycastHit[48];
         // Reuse one scratch list during repeated shotgun damage traces.
         // Unity gameplay/Physics events are dispatched on the main thread.
         private static readonly List<MonoBehaviour> damageScratch =
@@ -447,17 +447,9 @@ namespace Aaris.MapReview
             out RaycastHit nearest)
         {
             nearest = default(RaycastHit);
-            int count = Physics.RaycastNonAlloc(ray, rayHits, range,
-                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            RaycastHit[] candidates = rayHits;
-            if (count >= rayHits.Length)
-            {
-                // A full unsorted NonAlloc buffer can omit the nearest wall or
-                // enemy. Fall back to an exhaustive query only on saturation.
-                candidates = Physics.RaycastAll(ray, range,
-                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                count = candidates.Length;
-            }
+            int count = AarisPhysicsHitBuffer.Raycast(ray, range,
+                Physics.DefaultRaycastLayers, ref rayHits, 256,
+                out RaycastHit[] candidates);
             float minDistance = float.PositiveInfinity;
             bool found = false;
             for (int i = 0; i < count; i++)
