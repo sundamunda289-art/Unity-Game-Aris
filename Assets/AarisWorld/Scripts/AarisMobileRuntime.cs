@@ -930,6 +930,10 @@ namespace Aaris.MapReview
                 planeTotalCreationMs = -1f;
             // One-time main-thread HUD glyph raster/upload cost, not GPU timing.
             public float hudAtlasBuildMs = -1f;
+            // Native FBX LoadAll<AnimationClip> work; measured only while
+            // prewarming clips, never by the per-frame render loop.
+            public float characterMocapGroupLoadMs = -1f, characterMaxClipGroupLoadMs = -1f;
+            public int characterClipGroupLoadCount;
             // One-time JSON decode only; excludes asynchronous native import.
             public float lootCandidateParseMs = -1f, weaponDefinitionParseMs = -1f;
             public bool planeHighDetailSelected;
@@ -1075,6 +1079,9 @@ namespace Aaris.MapReview
                 timingSamples = gpuLimitedSamples = cpuLimitedSamples = 0;
                 gpuFrameTimeTotalMs = cpuMainTimeTotalMs = cpuRenderTimeTotalMs = 0d;
             }
+            s.characterMocapGroupLoadMs = AarisCharacterVisual.AndroidMocapGroupLoadMs;
+            s.characterMaxClipGroupLoadMs = AarisCharacterVisual.AndroidMaxClipGroupLoadMs;
+            s.characterClipGroupLoadCount = AarisCharacterVisual.AndroidClipGroupLoadCount;
             s.optionalStreamCleanupDeferrals =
                 AarisMobileStreamingFrameGate.CleanupDeferredAttempts;
             s.optionalStreamFrameDeferrals =
