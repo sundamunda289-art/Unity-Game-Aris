@@ -38,6 +38,8 @@ namespace Aaris.MapReview
         // The cleanup itself is never blocked; essential scene/gameplay work
         // never enters this optional admission gate.
         private static AsyncOperation unusedAssetCleanup;
+        // Fence the native asset cleanup completion frame before optional integration.
+        private static int cleanupCompletionFrame = -1;
         // Monotonic attempted-admission counters. Reading these ints only
         // during existing 15-second diagnostics does not allocate, poll native
         // hierarchies, or add logging to the model-streaming hot path.
@@ -53,11 +55,14 @@ namespace Aaris.MapReview
 
         private static bool IsAssetCleanupPending()
         {
-            if (unusedAssetCleanup == null) return false;
-            if (!unusedAssetCleanup.isDone) return true;
-            // Do not hold a completed Unity operation or block work forever.
-            unusedAssetCleanup = null;
-            return false;
+            if (unusedAssetCleanup != null)
+            {
+                if (!unusedAssetCleanup.isDone) return true;
+                // The native completion frame may already be saturated.
+                unusedAssetCleanup = null;
+                cleanupCompletionFrame = Time.frameCount;
+            }
+            return cleanupCompletionFrame == Time.frameCount;
         }
 
         private static bool IsOptionalImportBusy()
@@ -110,6 +115,7 @@ namespace Aaris.MapReview
             RigReservedDeferredAttempts = 0;
             optionalLoadInFlight = null;
             unusedAssetCleanup = null;
+            cleanupCompletionFrame = -1;
             CleanupDeferredAttempts = SameFrameDeferredAttempts = ImportDeferredAttempts = 0;
         }
 #endif
