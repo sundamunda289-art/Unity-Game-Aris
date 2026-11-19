@@ -22,12 +22,14 @@ namespace Aaris.MapReview
         private static AarisLootDocument cached;
         internal static AarisLootDocument AndroidCached => cached;
         internal static bool AndroidWarmupFinished { get; private set; }
+        internal static float AndroidParseMs { get; private set; } = -1f;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetCache()
         {
             cached = null;
             AndroidWarmupFinished = false;
+            AndroidParseMs = -1f;
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -51,10 +53,18 @@ namespace Aaris.MapReview
             TextAsset source = request.asset as TextAsset;
             if (source != null)
             {
+                double parsingStarted = Time.realtimeSinceStartupAsDouble;
                 try { cached = JsonUtility.FromJson<AarisLootDocument>(source.text); }
                 catch (Exception e)
                 {
                     Debug.LogError("Aaris: invalid loot candidates JSON: " + e.Message);
+                }
+                finally
+                {
+                    // This is only the one-time JSON decode on the main thread,
+                    // not native Resources import time or ongoing streaming.
+                    AndroidParseMs = (float)((Time.realtimeSinceStartupAsDouble -
+                        parsingStarted) * 1000d);
                 }
             }
             else Debug.LogError("Aaris: missing embedded AarisWeapons/loot_candidates.json.");
