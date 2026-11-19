@@ -26,6 +26,13 @@ echo "Isolated Unity project: $STAGE"
 echo "Output directory: $OUT"
 mkdir -p "$STAGE/Assets/AarisWorld" "$STAGE/Assets/Resources" \
   "$STAGE/Assets/TerrainDemoScene_URP/Settings"
+# Keep Unity's expensive Library cache but remove stale staged source assets.
+# Only disposable staging paths are touched; the original working tree is safe.
+rm -rf "$STAGE/Assets/AarisWorld/Scripts" \
+  "$STAGE/Assets/AarisWorld/Editor" \
+  "$STAGE/Assets/AarisWorld/Player" \
+  "$STAGE/Assets/Resources/AarisCharacters" \
+  "$STAGE/Assets/Resources/AarisMocap"
 cp -a "$ROOT/ProjectSettings" "$ROOT/Packages" "$STAGE/"
 cp -a "$ROOT/Assets/AarisWorld/Scripts" "$ROOT/Assets/AarisWorld/Editor" \
   "$ROOT/Assets/AarisWorld/Player" "$STAGE/Assets/AarisWorld/"
