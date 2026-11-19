@@ -19,11 +19,10 @@ import tempfile
 ROOT = Path.cwd()
 REL = "Assets/AarisWorld/Scripts/AarisCharacterVisual.cs"
 SOURCE = ROOT / REL
-OUT = Path("/tmp/aaris-pose-qa-20261119/patched")
+OUT = Path("/tmp/aaris-pose-qa-20261119/knee-review-v1")
 POSE_DIR = Path("/tmp/aaris-codespaces/motion-frames")
-BRANCH = "5eba8e4f2c40cac13fc4c55b9493dd7c55c9ae8d"
+BRANCH = "193634097e3e226df866a411957396f380d1f086"
 URL = "https://raw.githubusercontent.com/sundamunda289-art/Unity-Game-Aris/" + BRANCH + "/" + REL
-EXPECTED_SOURCE_BLOB = "fac42e70e06c85c42f4a4f73d0de8ec7420a5f08"
 LOOT_REL = "Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs"
 LOOT_SOURCE = ROOT / LOOT_REL
 RUNS = (
@@ -63,8 +62,9 @@ def main():
     if SOURCE.is_symlink() or not SOURCE.is_file() or git("diff", "--quiet", "--", REL).returncode:
         raise RuntimeError("ABORT_EXISTING_VISUAL_MODIFICATIONS")
     blob = git("hash-object", REL).stdout.decode().strip()
-    if blob != EXPECTED_SOURCE_BLOB:
-        raise RuntimeError("ABORT_WRONG_CHARACTER_VISUAL_BLOB " + blob)
+    expected_source = git("rev-parse", "HEAD:" + REL).stdout.decode().strip()
+    if blob != expected_source:
+        raise RuntimeError("ABORT_CHARACTER_VISUAL_DIFFERS_FROM_HEAD " + blob)
     if LOOT_SOURCE.is_symlink() or not LOOT_SOURCE.is_file() or git("diff", "--quiet", "--", LOOT_REL).returncode:
         raise RuntimeError("ABORT_EXISTING_LOOT_MODIFICATIONS")
     loot_blob = git("hash-object", LOOT_REL).stdout.decode().strip()
@@ -80,7 +80,9 @@ def main():
     if not editor.is_file():
         raise RuntimeError("UNITY_EDITOR_NOT_FOUND")
     patch = subprocess.check_output(["curl", "-fsSL", "--max-time", "45", URL])
-    if b"stanceSpread > 0.57f" not in patch or b"AnatomicalKneeForward()" not in patch:
+    if (b"stanceSpread > 0.57f" not in patch or
+        b"AnatomicalKneeForward()" not in patch or
+        b"maximumKneeSideMetres" not in patch):
         raise RuntimeError("WRONG_PATCH")
     original = SOURCE.read_bytes()
     original_hash, patch_hash = digest(original), digest(patch)
