@@ -928,6 +928,8 @@ namespace Aaris.MapReview
             // One-time airplane startup phases, not recurring GPU frame times.
             public float planeModelResolveMs = -1f, planeInstantiateMs = -1f,
                 planeTotalCreationMs = -1f;
+            // One-time main-thread HUD glyph raster/upload cost, not GPU timing.
+            public float hudAtlasBuildMs = -1f;
             public bool planeHighDetailSelected;
             public int assetUnloadStartedCount, assetUnloadCompletedCount, assetUnloadSuppressedCount;
             public float lastAssetUnloadElapsedMs = -1f;
@@ -1022,7 +1024,8 @@ namespace Aaris.MapReview
                 planeModelResolveMs = AarisOfflineDropVisuals.PlaneModelResolveMs,
                 planeInstantiateMs = AarisOfflineDropVisuals.PlaneInstantiateMs,
                 planeTotalCreationMs = AarisOfflineDropVisuals.PlaneTotalCreationMs,
-                planeHighDetailSelected = AarisOfflineDropVisuals.PlaneHighDetailSelected
+                planeHighDetailSelected = AarisOfflineDropVisuals.PlaneHighDetailSelected,
+                hudAtlasBuildMs = AarisHudGlyphs.AtlasBuildMs
             };
 #if UNITY_ANDROID && !UNITY_EDITOR
             // Android Debug.getPss() synchronously walks process memory and
