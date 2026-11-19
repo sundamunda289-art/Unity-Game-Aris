@@ -804,11 +804,12 @@ namespace Aaris.MapReview
             }
             // The regular 15-second ring no longer contains the opening frames.
             // Keep three bounded snapshots for comparing cold and warm launches.
-            if (startupSampleIndex < 3 && CanRecordPeriodicDiagnostics())
+            if (startupSampleIndex < 3)
             {
                 float seconds = Time.unscaledTime - startupTime;
                 float threshold = startupSampleIndex == 0 ? 1f : startupSampleIndex == 1 ? 3f : 8f;
-                if (seconds >= threshold)
+                // A failed due check must not reserve the streamer's slot.
+                if (seconds >= threshold && CanRecordPeriodicDiagnostics())
                 {
                     startupSampleIndex++;
                     Record("startup");
@@ -832,7 +833,8 @@ namespace Aaris.MapReview
             // reserved for reclamation, even if no report ran on them.
             return Time.frameCount != lastDiagnosticFrame &&
                    Time.frameCount != lowMemoryReportObservedFrame &&
-                   Time.frameCount != assetUnloadCompletionObservedFrame;
+                   Time.frameCount != assetUnloadCompletionObservedFrame &&
+                   AarisMobileStreamingFrameGate.TryClaimNonessentialDiagnosticFrame();
 #else
             return true;
 #endif
