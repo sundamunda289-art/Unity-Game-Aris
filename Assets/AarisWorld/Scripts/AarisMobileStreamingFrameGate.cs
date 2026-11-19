@@ -49,8 +49,17 @@ namespace Aaris.MapReview
 
         internal static void DeferOptionalWorkDuringAssetCleanup(AsyncOperation cleanup)
         {
-            if (cleanup != null && !cleanup.isDone)
-                unusedAssetCleanup = cleanup;
+            if (cleanup == null) return;
+            // Unity can finish UnloadUnusedAssets synchronously on the frame
+            // that starts it. That frame still belongs to native cleanup and
+            // must not accept an optional FBX/material import or hierarchy.
+            if (cleanup.isDone)
+            {
+                unusedAssetCleanup = null;
+                cleanupCompletionFrame = Time.frameCount;
+                return;
+            }
+            unusedAssetCleanup = cleanup;
         }
 
         private static bool IsAssetCleanupPending()
