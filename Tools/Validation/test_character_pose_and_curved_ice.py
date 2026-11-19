@@ -978,21 +978,23 @@ for guard in (
     'Vector3.RotateTowards(',
     'maximumSideTurnDegrees * Mathf.Deg2Rad, 0f);',
     'if (candidateKnee.y >= minimumKneeWorldY - 0.002f)',
-    'if (prone && groundedNow && !visuallyAirborne &&',
+    'if (groundedNow && !visuallyAirborne &&',
+    'float crouchEntry = crouching',
+    'transitionKneeSideTurn = 80f *',
     'transitioningLowStance && authoredProne &&',
     'leftThigh != null && rightThigh != null',
-    'entryKneeSideTurn = 55f * entry * settle *',
-    'kneeSideAxis, 0.26f, entryKneeSideTurn);',
+    'float proneTransition = Mathf.SmoothStep(0f, 1f,',
+    'kneeSideAxis, 0.23f, transitionKneeSideTurn);',
 ):
     assert guard in visual, guard
-assert visual.count('kneeSideAxis, 0.26f, entryKneeSideTurn);') == 2
+assert visual.count('kneeSideAxis, 0.23f, transitionKneeSideTurn);') == 2
 # Both limbs share the same anatomical axis, and zero means no control.
 assert visual.index('Vector3 kneeSideAxis = leftThigh') > visual.index(
     'float pronePoleStrength = proneKneeShare')
-assert visual.index('if (prone && groundedNow') < visual.index('leftFootGoal = ResolveLowStanceFootContact(')
+assert visual.index('float transitionKneeSideTurn = 0f;') < visual.index('leftFootGoal = ResolveLowStanceFootContact(')
 assert 'if (actions.Stance == AarisBattleActions.PlayerStance.Standing)' not in visual
 # Solve a synthetic planar two-bone circle, rotating only the lateral bend
-# while preserving the hip-to-ankle reach. Cap angular change at 55 degrees.
+# while preserving the hip-to-ankle reach. Cap angular change at 80 degrees.
 import math
 def limited_knee_side(start_side, along_side, across, cap, radians):
     # Use a bend vector in the lateral/up basis. The side-coordinate
@@ -1005,11 +1007,20 @@ def limited_knee_side(start_side, along_side, across, cap, radians):
     moved = max(-radians, min(radians, goal_angle - start_angle))
     return along_side + across * math.sin(start_angle + moved)
 for original_side in (-.526,.366,-.24,.0):
-    adjusted = limited_knee_side(original_side, -.08, .50, .26, math.radians(55))
+    adjusted = limited_knee_side(original_side, -.08, .50, .23, math.radians(80))
     assert abs(adjusted) <= abs(original_side) + 1e-6
-    if abs(original_side) > .26:
+    if abs(original_side) > .23:
         assert abs(adjusted) < abs(original_side)
-assert limited_knee_side(-.526,-.08,.50,.26,0.) < -.525
-print('PASS: entering prone knee circle limit and transition-only guard')
+assert limited_knee_side(-.526,-.08,.50,.23,0.) < -.525
+# Prone->stand restores terrain contact without double-solving legs.
+for anchor in (
+    'float lift = standingFloor + UprightAnkleClearanceMetres -',
+    'Mathf.Min(lift, 0.24f)',
+    '(!crouching && !prone && lowPose < 0.18f)',
+    'Mathf.InverseLerp(0.025f, 0.11f, lowPose));',
+):
+    assert anchor in visual, anchor
+assert visual.count('kneeSideAxis, 0.23f, transitionKneeSideTurn);') == 2
+print('PASS: crouch/prone entry and exit knee circle limit and foot recovery')
 
 print('PASS: pose-aware knee clearance and prone pelvis')
