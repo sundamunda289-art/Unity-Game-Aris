@@ -26,6 +26,11 @@ assert '"TRANSITION_TERRAIN_FEET stance="' in editor
 assert '"TRANSITION_FOOT_BURIED"' in editor
 assert 'tile.SampleHeight(pos)' in editor
 assert 'worstGroundGap< -0.15f' in editor
+assert 'worstGroundGap>0.28f' in editor
+assert 'RETURN_TO_STAND_FOOT_FLOAT' in editor
+assert 'spread>0.62f' in editor
+assert 'Mathf.Abs(lSide)>0.25f' in editor
+assert 'RETURN_TO_STAND_LEG_SPLAY' in editor
 assert 'float headroomDrop = Mathf.Min(excess, 1.00f) * lowPose;' in visual
 assert 'lowestShoeY - (capsuleFloor + 0.02f)' in visual
 assert 'headroomDrop = Mathf.Min(headroomDrop, safeDown);' in visual

@@ -936,6 +936,32 @@ for fps in (10,20,30,60,120):
     assert not low_contact(True,anchor,.25,0,1)[0]
 print('PASS: stationary crouch world-contact anchors')
 
+# Return-to-stand must start whole-rig foot recovery *before* the
+# last 1% of the prone blend. True prone/crouch and real jumps still use
+# their original stance/air gates; there is only one lower-foot support
+# sample and the existing bounded accumulation rate.
+assert 'bool returningFromProne = actions != null &&' in visual
+assert 'actions.Stance == AarisBattleActions.PlayerStance.Standing &&' in visual
+assert 'effectiveProneBlend >= 0.01f &&' in visual
+assert 'effectiveProneBlend < 0.35f;' in visual
+assert 'effectiveCrouchBlend < 0.08f &&' in visual
+assert 'effectiveProneBlend < 0.01f) || returningFromProne);' in visual
+assert 'standingShoeOffset + adjustment' in visual
+# 1D simulated correction stays bounded, continuously approaches the
+# supporting plane, and never pushes the visual beyond the clamp.
+def correct_ankle_gap(gap, dt, iterations):
+    offset = 0.0
+    for _ in range(iterations):
+        error = -gap
+        move = max(-0.35, min(0.18, error)) * min(1.0, dt * 14.0)
+        updated = max(-1.4, min(0.3, offset + move))
+        delta = updated - offset
+        offset = updated
+        gap += delta
+    return gap
+assert abs(correct_ankle_gap(0.705, 1.0 / 30.0, 9)) < 0.06
+assert correct_ankle_gap(0.705, 1.0 / 30.0, 1) > 0.0
+
 # Grounded two-bone solver preserves physical floor contact without touching
 # the capsule; settled prone uses its own upward hint while transitions fade.
 # The floor correction solves the analytic bend circle instead of using Slerp.
