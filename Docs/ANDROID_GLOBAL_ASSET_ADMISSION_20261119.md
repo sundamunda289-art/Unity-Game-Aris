@@ -47,9 +47,11 @@ inspect Unity-imported/compressed allocations before drawing conclusions.
 
 ## Verification
 
-Pass: static Python regression tests for global optional admission,
+Pass: 30 focused Python regression tests for global optional admission,
 pre-existing frame gate, vehicle fallback preload, motorcycle prewarm,
-rival model and animation prewarm (30 test cases total) and git diff --check.
+rival model and animation prewarm. The complete Android source-regression
+suite passed 199 tests via `python3 -m unittest discover -s Tools/Validation
+-p 'test_android_*.py'`; `git diff --check main...HEAD` passed.
 These tests validate source-level contracts, not Unity binary/visual execution.
 No Editor/APK build or Android device playtest was run for this change.
 
