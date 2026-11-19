@@ -16,7 +16,10 @@ class AndroidFlightTacticalHud(unittest.TestCase):
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", start)
         self.assertIn("if (drop != null && !drop.HasLanded)", start)
         self.assertIn("StartCoroutine(BuildAfterAndroidFlightFrames());", start)
-        self.assertIn("else\n#endif\n            {\n                Build();\n                initialized = true;", start)
+        self.assertIn("else\n                BuildImmediately();\n#else\n            BuildImmediately();", start)
+        self.assertIn("private void BuildImmediately()", start)
+        self.assertIn("Build();\n            initialized = true;", start)
+        self.assertNotIn("else\n#endif", start)
         self.assertIn("if (motor == null || gloo == null) { enabled = false; return; }", start)
 
     def test_at_least_two_frames_before_optional_build(self):
