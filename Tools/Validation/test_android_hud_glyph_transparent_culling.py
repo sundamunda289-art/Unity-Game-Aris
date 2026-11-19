@@ -12,9 +12,9 @@ from pathlib import Path
 SOURCE = (Path(__file__).resolve().parents[2] /
           "Assets/AarisWorld/Scripts/AarisHudGlyphs.cs").read_text()
 GLYPHS = ("Fire", "Jump", "Crouch", "Prone", "Sprint")
-FLOAT = r"([0-9]*\\.?[0-9]+)f"
-CIRCLE_RE = re.compile(r"Circle\\(p,\\s*" + r",\\s*".join([FLOAT] * 3) + r"\\)")
-LINE_RE = re.compile(r"Line\\(p,\\s*" + r",\\s*".join([FLOAT] * 5) + r"\\)")
+FLOAT = r"([0-9]*\.?[0-9]+)f"
+CIRCLE_RE = re.compile(r"Circle\(p,\s*" + r",\s*".join([FLOAT] * 3) + r"\)")
+LINE_RE = re.compile(r"Line\(p,\s*" + r",\s*".join([FLOAT] * 5) + r"\)")
 
 
 def primitive_source(glyph):
@@ -38,9 +38,9 @@ def shapes(glyph):
 def cull_rect(glyph):
     body = SOURCE.split("private static bool OutsideGlyphInk(", 1)[1].split(
         "private static float Circle(", 1)[0]
-    pat = (r"case Glyph\\." + glyph + r":\\s*return p\\.x < ([0-9.]+)f "
-           r"\\|\\| p\\.x > ([0-9.]+)f \\|\\| p\\.y < ([0-9.]+)f "
-           r"\\|\\| p\\.y > ([0-9.]+)f;")
+    pat = (r"case Glyph\." + glyph + r":\s*return p\.x < ([0-9.]+)f "
+           r"\|\| p\.x > ([0-9.]+)f \|\| p\.y < ([0-9.]+)f "
+           r"\|\| p\.y > ([0-9.]+)f;")
     match = re.search(pat, body)
     assert match, glyph
     return tuple(map(float, match.groups()))
