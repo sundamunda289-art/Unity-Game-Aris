@@ -26,7 +26,8 @@ class PriorExitHistory(unittest.TestCase):
         async_code = BRIDGE.split("internal static Task<Snapshot> QueryAsync()", 1)[1]
         self.assertIn("return Task.Run(() => QueryOnAttachedWorker(activity));", async_code)
         worker = BRIDGE.split("private static Snapshot QueryOnAttachedWorker(", 1)[1]
-        self.assertIn("AndroidJNI.AttachCurrentThread();", worker)
+        self.assertIn("if (AndroidJNI.AttachCurrentThread() < 0)", worker)
+        self.assertIn('Snapshot.Unknown("jni-attach-failed")', worker)
         self.assertIn("AndroidJNI.DetachCurrentThread();", worker)
         self.assertIn("if (attached) AndroidJNI.DetachCurrentThread();", worker)
         self.assertIn("catch (AndroidJavaException)", worker)
@@ -60,6 +61,8 @@ class PriorExitHistory(unittest.TestCase):
         self.assertIn("previousExitReasonCode = -1", RUNTIME)
         self.assertIn("s.androidPssKB = -1;", RUNTIME)
         self.assertIn('result.state = "available"', BRIDGE)
+        self.assertIn("lastPss > 0 ? lastPss : -1L;", BRIDGE)
+        self.assertIn("lastRss > 0 ? lastRss : -1L;", BRIDGE)
         self.assertIn('Snapshot.Unknown("no-history")', BRIDGE)
         self.assertIn('Snapshot.Unknown("unsupported-api")', BRIDGE)
         self.assertNotIn('Call<long>("getPss")', RUNTIME)
