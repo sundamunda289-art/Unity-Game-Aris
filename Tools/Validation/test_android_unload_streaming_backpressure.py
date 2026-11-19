@@ -50,7 +50,12 @@ class CriticalMemoryBackpressure(unittest.TestCase):
     def test_native_cleanup_has_global_admission_priority(self):
         self.assertIn("private static AsyncOperation unusedAssetCleanup;", GATE)
         self.assertIn("internal static void DeferOptionalWorkDuringAssetCleanup(", GATE)
-        self.assertIn("if (cleanup != null && !cleanup.isDone)", GATE)
+        # The modern gate handles instant completion as well as an in-flight
+        # unload; both paths reserve the native completion frame.
+        self.assertIn("if (cleanup == null) return;", GATE)
+        self.assertIn("if (cleanup.isDone)", GATE)
+        self.assertLess(GATE.index("if (cleanup.isDone)"),
+                        GATE.index("unusedAssetCleanup = cleanup;"))
         self.assertIn("private static bool IsAssetCleanupPending()", GATE)
         self.assertIn("if (!unusedAssetCleanup.isDone) return true;", GATE)
         self.assertIn("unusedAssetCleanup = null;", GATE)
