@@ -47,7 +47,7 @@ class AndroidDiagnosticFramePacing(unittest.TestCase):
         self.assertIn("Time.frameCount != lastDiagnosticFrame &&", gate)
         self.assertIn("Time.frameCount != lowMemoryReportObservedFrame &&", gate)
         self.assertIn("Time.frameCount != assetUnloadCompletionObservedFrame;", gate)
-        self.assertIn("#else\n            return true;", gate)
+        self.assertIn("#else\n                Record(\"low-memory\");\n#endif", cleanup)
         record = SRC.split("private void Record(string reason)", 1)[1].split(
             "private static string InitializeLogFile", 1)[0]
         self.assertIn("lastDiagnosticFrame = Time.frameCount;", record)
