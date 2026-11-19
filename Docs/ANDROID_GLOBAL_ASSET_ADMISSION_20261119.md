@@ -271,12 +271,49 @@ Unity project settings. The new markers are intended to distinguish
 single-frame FBX subasset hydration from native GPU/URP stalls on a real
 device; they do not establish the root cause by themselves.
 
+## Ninth pass: protect the essential character-rig integration frame
+
+Source inspection found an unavoidable main-thread cluster in
+`AarisCharacterVisual.TryInstantiateCharacter` and
+`TryPrepareAnimatedBody`: instantiate a multi-part Humanoid prefab,
+configure the Animator/retargeted skeleton and `PlayableGraph`, evaluate
+the first pose, then `SkinnedMeshRenderer.BakeMesh` to validate actual
+skinned vertex positions before replacing the saved original player model.
+The BakeMesh check is **not decorative**: it rejects bogus imported bind
+geometry and prevents the player appearing metres/kilometres away from the
+CharacterController. It was deliberately **not removed**.
+
+On RAM-constrained Android (`SystemInfo.systemMemorySize` 1–4608 MB),
+after all existing animation-clip prewarm steps, the rig coroutine now
+calls `AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialRig()`.
+If reservation is accepted, it yields exactly one frame before constructing
+that essential rig. During the reserved frame, **new optional**
+model/material hierarchy builds and new optional native asset imports
+(car, bike, rivals, houses, Foley) are denied and retry later. Existing
+in-flight requests are not cancelled; player movement, ground collision,
+camera, original placeholder visibility and essential audio/loot remain
+unblocked. Larger-RAM devices have no additional frame delay.
+
+Existing Android diagnostics now expose:
+- `characterRigInstantiateMs`: native `Instantiate(source, ...)` cost
+- `characterRigGraphSetupMs`: setup and initial PlayableGraph evaluation
+- `characterRigBakeMeshMs`: native CPU skinned-mesh validation cost
+- `optionalStreamRigFrameDeferrals`: optional admission attempts refused
+  on the reserved frame (not elapsed milliseconds or unique jobs)
+
+These timers run only while attempting the player rig and preserve its
+fallback selection, first-pose validation, animation clips, weights,
+mesh scale, foot IK and URP materials. Six regression tests confirm the
+constrained-only reservation, optional retry behavior, unchanged original
+geometry checks and diagnostics. No GPU driver, shader variants,
+`QualitySettings` or serialized URP settings were modified.
+
 ## Verification
 
 Pass: 30 focused Python regression tests for global optional admission,
 pre-existing frame gate, vehicle fallback preload, motorcycle prewarm,
 rival model and animation prewarm. The complete Android source-regression
-suite passed **241 tests** via `python3 -m unittest discover -s Tools/Validation
+suite passed **247 tests** via `python3 -m unittest discover -s Tools/Validation
 -p 'test_android_*.py'`; settlement source/integrity suite passed **13 tests**
 via `python3 Tools/Validation/test_settlement_expansion.py`;
 `git diff --check main...HEAD` passed.
