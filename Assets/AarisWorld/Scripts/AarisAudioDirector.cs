@@ -169,42 +169,58 @@ namespace Aaris.MapReview
             yield return LoadOptionalFoleyAcrossFrames();
         }
 
-        // Only one optional audio request integrates per frame; gameplay cues
-        // already have a fully loaded base fallback with unchanged audio assets.
+        // The thirty authored base cues remain essential and are prewarmed
+        // in their original order. Only OPTIONAL CC0 Foley variants compete
+        // with car, bike, rival and house native imports on low-RAM Android.
+        // A blocked request is retried rather than deleting the sound.
+        private enum FoleyGroup { Grass, Concrete, Punch, SoftLanding, MetalImpact }
+
+        private IEnumerator LoadOptionalFoleyAsset(
+            string path, FoleyGroup group, int index = 0)
+        {
+            ResourceRequest request = null;
+            while (isActiveAndEnabled && request == null)
+            {
+                request = AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<AudioClip>(
+                    path);
+                if (request == null) yield return null;
+            }
+            if (!isActiveAndEnabled) yield break;
+            yield return request;
+            if (!isActiveAndEnabled) yield break;
+            AudioClip clip = request.asset as AudioClip;
+            switch (group)
+            {
+                case FoleyGroup.Grass: grassFoley[index] = clip; break;
+                case FoleyGroup.Concrete: concreteFoley[index] = clip; break;
+                case FoleyGroup.Punch: punchFoley[index] = clip; break;
+                case FoleyGroup.SoftLanding: softLandingFoley = clip; break;
+                case FoleyGroup.MetalImpact: metalImpactFoley = clip; break;
+            }
+            // Even a completed native audio request must not be followed by
+            // another optional import during the same rendered frame.
+            yield return null;
+        }
+
         private IEnumerator LoadOptionalFoleyAcrossFrames()
         {
             yield return null;
             for (int i = 0; i < grassFoley.Length; i++)
             {
                 string number = i.ToString("000");
-                ResourceRequest grass = Resources.LoadAsync<AudioClip>(
-                    "SFX/CC0/footstep_grass_" + number);
-                yield return grass;
-                grassFoley[i] = grass.asset as AudioClip;
-                yield return null;
-                ResourceRequest concrete = Resources.LoadAsync<AudioClip>(
-                    "SFX/CC0/footstep_concrete_" + number);
-                yield return concrete;
-                concreteFoley[i] = concrete.asset as AudioClip;
-                yield return null;
+                yield return LoadOptionalFoleyAsset(
+                    "SFX/CC0/footstep_grass_" + number, FoleyGroup.Grass, i);
+                yield return LoadOptionalFoleyAsset(
+                    "SFX/CC0/footstep_concrete_" + number, FoleyGroup.Concrete, i);
             }
             for (int i = 0; i < punchFoley.Length; i++)
-            {
-                ResourceRequest impact = Resources.LoadAsync<AudioClip>(
-                    "SFX/CC0/impactPunch_medium_" + i.ToString("000"));
-                yield return impact;
-                punchFoley[i] = impact.asset as AudioClip;
-                yield return null;
-            }
-            ResourceRequest landing = Resources.LoadAsync<AudioClip>(
-                "SFX/CC0/impactSoft_heavy_000");
-            yield return landing;
-            softLandingFoley = landing.asset as AudioClip;
-            yield return null;
-            ResourceRequest metal = Resources.LoadAsync<AudioClip>(
-                "SFX/CC0/impactMetal_light_000");
-            yield return metal;
-            metalImpactFoley = metal.asset as AudioClip;
+                yield return LoadOptionalFoleyAsset(
+                    "SFX/CC0/impactPunch_medium_" + i.ToString("000"),
+                    FoleyGroup.Punch, i);
+            yield return LoadOptionalFoleyAsset(
+                "SFX/CC0/impactSoft_heavy_000", FoleyGroup.SoftLanding);
+            yield return LoadOptionalFoleyAsset(
+                "SFX/CC0/impactMetal_light_000", FoleyGroup.MetalImpact);
         }
 #endif
 
