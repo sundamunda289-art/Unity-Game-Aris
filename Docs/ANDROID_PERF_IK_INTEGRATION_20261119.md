@@ -19,7 +19,7 @@ This is a **source-grounded compile fix**, not a claim that the complete Unity E
 ## Gameplay and quality invariants
 
 - `AarisCharacterVisual.LoadCharacterAsynchronously` still stages the **full-resolution** authored rig and the original multi-clip FBX animations, then reserves one 4GB-class Android frame against *new optional* imports/hierarchy builds before instantiating the essential humanoid.
-- The same class retains `AnatomicalKneeForward`, symmetric per-shoe transition splay correction capped at **0.12m**, and the entry-prone knee bend-circle guard with original floor/leg-length constraints. Standing and prone keyframed source clips, motion/collision authority and existing stance-foot support rays are unchanged.
+- The same class retains `AnatomicalKneeForward`, symmetric per-shoe transition splay correction capped at **0.16m**, and the entry-prone knee bend-circle guard with original floor/leg-length constraints. Standing and prone keyframed source clips, motion/collision authority and existing stance-foot support rays are unchanged.
 - Original `PlayableGraph`, pose evaluation and `SkinnedMeshRenderer.BakeMesh` validation are retained. Android JSON reports provide the one-off rig instantiation, graph preparation and BakeMesh durations.
 - No direct changes to `ProjectSettings`, original terrain/trees, URP pipeline graphics, model art, or texture quality relative to `427083c`.
 
@@ -39,6 +39,24 @@ Checked a **standalone source snapshot** produced from the immutable integration
 | `git diff --check 427083c..integration` | **PASS** |
 
 These suites overlap; totals are per suite. They are source/simulation/invariant checks and are **not** Android FPS measurements, Unity C# compilation or fresh camera screenshots.
+
+## Latest main IK reconciliation before final merge
+
+On 19 November the latest main branch advanced with further native-reviewed
+pose tuning. This integration PR adopts those **current main** guard values
+instead of reverting them to the previous PR #736 values:
+
+- Stationary transition foot splay begins at **0.50 m** and is trimmed
+  symmetrically by at most **0.16 m per foot**.
+- Entry-prone knee bend-circle turn limit is **55°**, with an anatomical
+  lateral allowance of **0.26 m**.
+- Existing tests for these exact values and the independent one-frame Android
+  essential rig admission are retained together.
+- Obsolete CI source-pattern checks were amended to follow the authored
+  shared model gate and separate Android JSON decode paths.
+
+These are source-level merge conflict resolutions. They are **not** new live
+Unity pose screenshots, Android FPS tests or evidence of pixel-perfect IK.
 
 ## Native acceptance still required before merging
 
