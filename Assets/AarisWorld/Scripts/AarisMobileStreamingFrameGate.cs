@@ -12,6 +12,12 @@ namespace Aaris.MapReview
     {
 #if UNITY_ANDROID && !UNITY_EDITOR
         private static int claimedFrame = -1;
+        // Essential player rig construction is one high-cost main-thread
+        // operation (Instantiate + PlayableGraph + validation BakeMesh).
+        // Reserve its NEXT frame before yielding; optional models/materials
+        // must not begin another import or hierarchy build on that frame.
+        private static int essentialRigFrame = -1;
+        internal static int RigReservedDeferredAttempts { get; private set; }
         // One shared native import slot across optional model prewarmers.
         // Completed requests release the slot even when a coroutine stops.
         private static ResourceRequest optionalLoadInFlight;
@@ -47,15 +53,47 @@ namespace Aaris.MapReview
         private static void Reset()
         {
             claimedFrame = -1;
+            essentialRigFrame = -1;
+            RigReservedDeferredAttempts = 0;
             optionalLoadInFlight = null;
             unusedAssetCleanup = null;
             CleanupDeferredAttempts = SameFrameDeferredAttempts = ImportDeferredAttempts = 0;
         }
 #endif
 
+        // Called by the essential player visual AFTER animation imports,
+        // immediately before its final one-frame yield. False on larger RAM
+        // devices retains their current full-speed behavior.
+        internal static bool ReserveNextFrameForEssentialRig()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            int ramMb = SystemInfo.systemMemorySize;
+            if (ramMb > 0 && ramMb <= 4608)
+            {
+                essentialRigFrame = Time.frameCount + 1;
+                return true;
+            }
+#endif
+            return false;
+        }
+
+        private static bool IsEssentialRigFrame()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return Time.frameCount == essentialRigFrame;
+#else
+            return false;
+#endif
+        }
+
         internal static bool TryClaimOptionalModelBuild()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
+            if (IsEssentialRigFrame())
+            {
+                RigReservedDeferredAttempts++;
+                return false;
+            }
             // Even a larger phone can report critical memory: keep all optional
             // native hierarchy construction off the unused-asset cleanup pass.
             if (IsAssetCleanupPending())
@@ -93,6 +131,11 @@ namespace Aaris.MapReview
             if (IsAssetCleanupPending())
             {
                 CleanupDeferredAttempts++;
+                return null;
+            }
+            if (IsEssentialRigFrame())
+            {
+                RigReservedDeferredAttempts++;
                 return null;
             }
             if (constrained)
