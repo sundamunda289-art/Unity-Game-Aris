@@ -673,8 +673,11 @@ def audit():
     vehicle = (SRC / "AarisVehicleWorld.cs").read_text(encoding="utf-8")
     stream = vehicle[vehicle.index("private void Update()"):
                      vehicle.index("private void OnDestroy()")]
-    quality = vehicle[vehicle.index("private void Awake()"):
-                      vehicle.index("[RuntimeInitializeOnLoadMethod")]
+    # The shared vehicle manifest has its own earlier subsystem-reset hook.
+    # Bound this slice at the FIRST hook *after* Awake, not the first in file.
+    awake_start = vehicle.index("private void Awake()")
+    quality = vehicle[awake_start:
+                      vehicle.index("[RuntimeInitializeOnLoadMethod", awake_start)]
     assert "private int spawnBudgetPerPoll = 2;" in vehicle
     assert "private int unloadBudgetPerPoll = 4;" in vehicle
     assert "#if UNITY_ANDROID && !UNITY_EDITOR" in quality
@@ -710,9 +713,16 @@ def audit():
     # memory at boot. Prewarm one nearby type per 300 ms poll through Unity's
     # resource preload manager while preserving the same high-detail model.
     assert "AuthoredPrewarmRadius = 150f" in vehicle
-    assert "Resources.LoadAsync<GameObject>(item.authoredModelResource)" in vehicle
-    assert "request.priority = -1;" in vehicle
-    assert "fallback.priority = -1;" in vehicle
+    # Both full-detail authored and fallback FBXs are admitted through the
+    # shared global optional-load gate, which owns -1 priority and retries.
+    gate = (SRC / "AarisMobileStreamingFrameGate.cs").read_text(encoding="utf-8")
+    assert "AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(" in vehicle
+    assert "item.authoredModelResource" in vehicle
+    assert "item.fallbackAuthoredModelResource" in vehicle
+    assert "Resources.LoadAsync<T>(path)" in gate
+    assert "request.priority = -1;" in gate
+    assert "if (request == null) return false;" in vehicle
+    assert "if (fallback == null) continue;" in vehicle
     assert "int closestType = -1;" in stream
     assert stream.count("StartAuthoredBodyPrewarm(") == 1
     assert "closestDistanceSq = AuthoredPrewarmRadius * AuthoredPrewarmRadius" in stream
