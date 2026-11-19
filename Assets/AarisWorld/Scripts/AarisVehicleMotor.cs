@@ -108,6 +108,11 @@ namespace Aaris.MapReview
         private ParticleSystem exhaustParticles;
         // Stop native wheel pose queries only after a parked car truly sleeps.
         private bool sleepingWheelPoseCurrent;
+        // Cache the broadest visible body renderer once at spawn. The native
+        // isVisible flag considers all cameras (and shadow passes), avoiding
+        // per-frame renderer traversal, allocations or custom frustum math.
+        private Renderer representativeBodyRenderer;
+        private int offscreenVisualFramePhase;
         public string VehicleId { get; private set; }
         public float TopSpeedMetresPerSecond => topSpeed;
         // Camera look-ahead reads authoritative Rigidbody velocity without
@@ -764,6 +769,22 @@ namespace Aaris.MapReview
             pivot.transform.localScale = Vector3.one;
             bodyModel.SetParent(pivot.transform, true);
             visualBodyPivot = pivot.transform;
+            // The chassis may consist of many panels. Use the largest active
+            // renderer so an invisible badge/trim piece never throttles a car
+            // whose body is actually on screen. This is spawn-only work.
+            float largestBodyBounds = 0f;
+            foreach (var candidate in bodyModel.GetComponentsInChildren<Renderer>())
+            {
+                if (candidate == null || !candidate.enabled ||
+                    candidate.forceRenderingOff) continue;
+                float sizeSquared = candidate.bounds.size.sqrMagnitude;
+                if (sizeSquared <= largestBodyBounds) continue;
+                largestBodyBounds = sizeSquared;
+                representativeBodyRenderer = candidate;
+            }
+            // Spread the cosmetic-only work across four frames for the
+            // maximum ten nearby cars instead of updating all in lockstep.
+            offscreenVisualFramePhase = GetInstanceID() & 3;
             previousPhysicsVelocity = body != null ? body.linearVelocity :
                 Vector3.zero;
             hasPreviousPhysicsVelocity = body != null;
@@ -1110,6 +1131,17 @@ namespace Aaris.MapReview
                     Quaternion.identity) > .10f ||
                  Mathf.Abs(visualBodyPivot.localPosition.y) > .0015f);
             if (parkedSleeping && sleepingWheelPoseCurrent && !bodyNeedsToSettle)
+                return;
+            // A driverless, *offscreen* rolling car needs full-rate physics,
+            // but its visual wheel poses/body animation need not cost four
+            // native WheelCollider.GetWorldPose calls every render frame.
+            // Always update occupied, visible, waking/settling cars at full
+            // cadence. On entering any camera's view the next LateUpdate
+            // immediately restores full-rate visuals with no stale pose cache.
+            if (!parkedSleeping && driver == null && !bodyNeedsToSettle &&
+                representativeBodyRenderer != null &&
+                !representativeBodyRenderer.isVisible &&
+                (Time.frameCount & 3) != offscreenVisualFramePhase)
                 return;
             if (!parkedSleeping || !sleepingWheelPoseCurrent)
                 SyncVisibleWheels();
