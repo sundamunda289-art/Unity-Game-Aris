@@ -46,6 +46,18 @@ The production `AarisTreeClearanceIndex.cs` compiled with the installed Unity
   prewarm and profiler marker checks passed. All 36 gameplay C# files parsed;
   38 frame callbacks passed the blocking-call guard.
 
+Native Unity 6000.3.26f1 additionally compiled all 36 gameplay scripts in an
+isolated scripts-only project: Editor exit **0**, zero C# errors and a real
+`Assembly-CSharp.dll`. The two changed source blobs matched the published PR.
+This did not load the native map or run Play Mode.
+
+The separate Android Release script-compile attempt did **not** pass. This
+Editor's `PlaybackEngines/AndroidPlayer` module is absent; Unity's Burst editor
+package reports `CS0234` for missing `UnityEditor.Android.AndroidExternalToolsSettings`.
+Do not classify this tooling failure as a handset crash or claim an Android
+assembly/APK was produced. No Editor/module reinstall or original-project
+rewrite was performed to hide the result.
+
 The settlement CI now compiles and executes the production C# index. Run:
 
 ```bash
