@@ -1147,15 +1147,32 @@ namespace Aaris.MapReview
             foot.rotation = footRotation;
         }
 
+        // Humanoid FBXs are not guaranteed to face the CharacterController's
+        // local forward. Use the actual left/right hip axis for the knee pole,
+        // matching the anatomical basis already used by low stances. This
+        // prevents a sideways imported pelvis from flipping standing knees
+        // when a shoe loses support at a ledge or during a swing.
+        private Vector3 AnatomicalKneeForward()
+        {
+            if (leftThigh != null && rightThigh != null)
+            {
+                Vector3 hipRight = Vector3.ProjectOnPlane(
+                    rightThigh.position - leftThigh.position, Vector3.up);
+                if (hipRight.sqrMagnitude > 0.02f)
+                    return Vector3.Cross(hipRight.normalized, Vector3.up).normalized;
+            }
+            return transform.forward;
+        }
+
         private void CorrectReversedSwingKnee(Transform thigh, Transform shin,
-            Transform foot)
+            Transform foot, Vector3 kneeForward)
         {
             Vector3 axis = (foot.position - thigh.position).normalized;
-            Vector3 forwardBend = Vector3.ProjectOnPlane(transform.forward, axis);
+            Vector3 forwardBend = Vector3.ProjectOnPlane(kneeForward, axis);
             if (forwardBend.sqrMagnitude < 0.01f) return;
             Vector3 bend = Vector3.ProjectOnPlane(shin.position - thigh.position, axis);
             if (Vector3.Dot(bend, forwardBend.normalized) < -0.015f)
-                PlantLegToTarget(thigh, shin, foot, foot.position, transform.forward, 1f);
+                PlantLegToTarget(thigh, shin, foot, foot.position, kneeForward, 1f);
         }
 
         // Calculate the eventual low-stance X/Z contact BEFORE sampling the
@@ -1374,7 +1391,8 @@ namespace Aaris.MapReview
 
         private void PlantUprightContact(Transform thigh, Transform shin,
             Transform foot, float planarSpeed, float turnDegreesPerSecond,
-            float uprightWeight, AnkleSupportSample coarseSupport,
+            float uprightWeight, Vector3 kneeForward,
+            AnkleSupportSample coarseSupport,
             ref bool plantLocked, ref Vector3 plantWorld)
         {
             if (thigh == null || shin == null || foot == null ||
@@ -1397,7 +1415,7 @@ namespace Aaris.MapReview
             if (float.IsNaN(supportY))
             {
                 plantLocked = false;
-                CorrectReversedSwingKnee(thigh, shin, foot);
+                CorrectReversedSwingKnee(thigh, shin, foot, kneeForward);
                 return;
             }
 
@@ -1408,7 +1426,7 @@ namespace Aaris.MapReview
             if (contactWeight <= 0.001f)
             {
                 plantLocked = false;
-                CorrectReversedSwingKnee(thigh, shin, foot);
+                CorrectReversedSwingKnee(thigh, shin, foot, kneeForward);
                 return;
             }
 
@@ -1459,7 +1477,7 @@ namespace Aaris.MapReview
                 }
             }
 
-            PlantLegToTarget(thigh, shin, foot, targetFoot, transform.forward,
+            PlantLegToTarget(thigh, shin, foot, targetFoot, kneeForward,
                 finalWeight);
             AlignFootToSupport(foot, supportNormal, finalWeight, 32f, 0.85f);
         }
@@ -1972,12 +1990,15 @@ namespace Aaris.MapReview
             if (useUprightContact)
             {
                 float uprightContactWeight = Mathf.Clamp01(1f - lowPose * 4f);
+                // One cached hip-axis evaluation serves both legs. No extra
+                // raycasts, allocations or additional Transform writes.
+                Vector3 uprightKneeForward = AnatomicalKneeForward();
                 PlantUprightContact(leftThigh, leftShin, leftFootBone,
-                    planar, yawRate, uprightContactWeight, coarseSupport, ref leftUprightPlantLocked,
-                    ref leftUprightPlantWorld);
+                    planar, yawRate, uprightContactWeight, uprightKneeForward,
+                    coarseSupport, ref leftUprightPlantLocked, ref leftUprightPlantWorld);
                 PlantUprightContact(rightThigh, rightShin, rightFootBone,
-                    planar, yawRate, uprightContactWeight, coarseSupport, ref rightUprightPlantLocked,
-                    ref rightUprightPlantWorld);
+                    planar, yawRate, uprightContactWeight, uprightKneeForward,
+                    coarseSupport, ref rightUprightPlantLocked, ref rightUprightPlantWorld);
             }
             else
             {
