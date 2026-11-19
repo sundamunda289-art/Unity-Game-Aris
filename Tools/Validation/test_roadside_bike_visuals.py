@@ -62,7 +62,7 @@ class BikeVisuals(unittest.TestCase):
                        "nextPoll = now + .4f", "Physics.RaycastNonAlloc(",
                        "Physics.OverlapBoxNonAlloc(", "HasPotentialInactiveObstacle(",
                        "root.AddComponent<BoxCollider>()",
-                       "Resources.LoadAsync<GameObject>(ModelResource)",
+                       "AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(ModelResource)",
                        "Destroy(material);"):
             self.assertIn(marker, code)
         self.assertNotIn("AddComponent<Rigidbody>", code)
