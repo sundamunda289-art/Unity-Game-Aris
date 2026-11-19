@@ -724,6 +724,12 @@ namespace Aaris.MapReview
             if (lowMemoryPending)
             {
                 lowMemoryPending = false;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // Reclaim inactive pooled 3D/physics roots before requesting
+                // Unity's unused-asset pass. Active grenades keep their
+                // original lifetime/appearance and gameplay behavior.
+                AarisOfflineFragGrenade.ReleaseInactivePooledGrenades();
+#endif
                 // Keep Unity's critical-memory cleanup. Never force GC or
                 // block for completion; repeated signals honor cooldown.
                 if (Time.unscaledTime >= unloadAfter && (unloading == null || unloading.isDone))
