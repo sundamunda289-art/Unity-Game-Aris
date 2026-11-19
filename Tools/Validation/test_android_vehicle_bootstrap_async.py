@@ -51,7 +51,7 @@ class BudgetAndroidVehicleWarmup(unittest.TestCase):
 
     def test_original_validation_and_vehicles_kept(self):
         self.assertIn("if (!world.Setup()) { Destroy(obj); return; }", self.bootstrap)
-        self.assertIn("if (!Setup()) { Destroy(gameObject); yield break; }", self.bootstrap)
+        self.assertIn("if (!Setup(preloadedPoints, text)) { Destroy(gameObject); yield break; }", self.bootstrap)
         self.assertIn("AttachSessionAndHud(motor, this);", self.bootstrap)
         self.assertIn("AttachSessionAndHud(motor, world);", self.bootstrap)
         self.assertIn("private const int TargetVehicles = 44;", SOURCE)
