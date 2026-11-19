@@ -1090,7 +1090,9 @@ namespace Aaris.MapReview
         // bounded world-space stance-foot locking. No collision queries or heap allocation.
         private static void PlantLegToTarget(Transform thigh, Transform shin,
             Transform foot, Vector3 desiredFootWorld, Vector3 forward, float weight,
-            float minimumKneeWorldY = -10000f, float kneePoleStrength = 0.90f)
+            float minimumKneeWorldY = -10000f, float kneePoleStrength = 0.90f,
+            Vector3 anatomicalSideAxis = default(Vector3),
+            float maximumKneeSideMetres = 0f, float maximumSideTurnDegrees = 0f)
         {
             if (thigh == null || shin == null || foot == null || weight <= 0f) return;
             Vector3 hip = thigh.position;
@@ -1186,6 +1188,61 @@ namespace Aaris.MapReview
                 }
             }
             Vector3 kneeGoal = hip + axis * along + bend * across;
+            // Native PlayMode revealed a 52.6cm sideways knee excursion in
+            // the *entering-prone* crossfade. Keep the precise two-bone
+            // lengths/ankle contact, and trim only the excess knee lateral
+            // component on that bend circle. This leaves upright, settled
+            // crouch/prone, turning, running and prone->stand untouched.
+            // Rotation is limited per solve; no extra raycast or allocation.
+            if (maximumSideTurnDegrees > 0.001f &&
+                maximumKneeSideMetres > 0.05f && across > 0.01f &&
+                anatomicalSideAxis.sqrMagnitude > 0.25f)
+            {
+                float kneeSide = Vector3.Dot(kneeGoal - hip, anatomicalSideAxis);
+                if (Mathf.Abs(kneeSide) > maximumKneeSideMetres)
+                {
+                    Vector3 lateralBasis = Vector3.ProjectOnPlane(
+                        anatomicalSideAxis, axis);
+                    float sideAxisLength = lateralBasis.magnitude;
+                    if (sideAxisLength > 0.10f)
+                    {
+                        lateralBasis /= sideAxisLength;
+                        float oldSide = Vector3.Dot(bend, lateralBasis);
+                        float desiredSide = Mathf.Clamp(
+                            (Mathf.Clamp(kneeSide, -maximumKneeSideMetres,
+                                maximumKneeSideMetres) -
+                             along * Vector3.Dot(axis, anatomicalSideAxis)) /
+                            (across * sideAxisLength), -0.995f, 0.995f);
+                        Vector3 otherBend = bend - lateralBasis * oldSide;
+                        if (otherBend.sqrMagnitude < 0.0001f)
+                        {
+                            // Deterministic tangent for a knee exactly on
+                            // the lateral axis; prefer the already-safe up.
+                            otherBend = Vector3.ProjectOnPlane(
+                                Vector3.up, axis);
+                            otherBend -= lateralBasis *
+                                Vector3.Dot(otherBend, lateralBasis);
+                        }
+                        if (otherBend.sqrMagnitude > 0.0001f)
+                        {
+                            Vector3 desiredBend = lateralBasis * desiredSide +
+                                otherBend.normalized * Mathf.Sqrt(Mathf.Max(
+                                    0f, 1f - desiredSide * desiredSide));
+                            Vector3 candidateBend = Vector3.RotateTowards(
+                                bend, desiredBend,
+                                maximumSideTurnDegrees * Mathf.Deg2Rad, 0f);
+                            Vector3 candidateKnee = hip + axis * along +
+                                candidateBend * across;
+                            // Do not undo the floor-safe bend-circle solve.
+                            if (candidateKnee.y >= minimumKneeWorldY - 0.002f)
+                            {
+                                bend = candidateBend;
+                                kneeGoal = candidateKnee;
+                            }
+                        }
+                    }
+                }
+            }
             Vector3 oldUpper = shin.position - thigh.position;
             Vector3 newUpper = kneeGoal - thigh.position;
             if (oldUpper.sqrMagnitude < 0.0001f ||
@@ -1202,15 +1259,32 @@ namespace Aaris.MapReview
             foot.rotation = footRotation;
         }
 
+        // Humanoid FBXs are not guaranteed to face the CharacterController's
+        // local forward. Use the actual left/right hip axis for the knee pole,
+        // matching the anatomical basis already used by low stances. This
+        // prevents a sideways imported pelvis from flipping standing knees
+        // when a shoe loses support at a ledge or during a swing.
+        private Vector3 AnatomicalKneeForward()
+        {
+            if (leftThigh != null && rightThigh != null)
+            {
+                Vector3 hipRight = Vector3.ProjectOnPlane(
+                    rightThigh.position - leftThigh.position, Vector3.up);
+                if (hipRight.sqrMagnitude > 0.02f)
+                    return Vector3.Cross(hipRight.normalized, Vector3.up).normalized;
+            }
+            return transform.forward;
+        }
+
         private void CorrectReversedSwingKnee(Transform thigh, Transform shin,
-            Transform foot)
+            Transform foot, Vector3 kneeForward)
         {
             Vector3 axis = (foot.position - thigh.position).normalized;
-            Vector3 forwardBend = Vector3.ProjectOnPlane(transform.forward, axis);
+            Vector3 forwardBend = Vector3.ProjectOnPlane(kneeForward, axis);
             if (forwardBend.sqrMagnitude < 0.01f) return;
             Vector3 bend = Vector3.ProjectOnPlane(shin.position - thigh.position, axis);
             if (Vector3.Dot(bend, forwardBend.normalized) < -0.015f)
-                PlantLegToTarget(thigh, shin, foot, foot.position, transform.forward, 1f);
+                PlantLegToTarget(thigh, shin, foot, foot.position, kneeForward, 1f);
         }
 
         // Calculate the eventual low-stance X/Z contact BEFORE sampling the
@@ -1251,7 +1325,8 @@ namespace Aaris.MapReview
         private static void PlantCrouchLeg(Transform thigh, Transform shin,
             Transform foot, float ankleWorldY, Vector3 forward, float weight,
             Vector3 resolvedFootWorld, float kneeClearance,
-            float kneePoleStrength)
+            float kneePoleStrength, Vector3 anatomicalSideAxis,
+            float kneeLateralMaxMetres, float maxKneeSideTurnDegrees)
         {
             if (foot == null || float.IsNaN(ankleWorldY) || weight <= 0.005f)
                 return;
@@ -1261,13 +1336,15 @@ namespace Aaris.MapReview
             targetFoot.y = ankleWorldY;
             float kneeFloor = ankleWorldY + kneeClearance;
             PlantLegToTarget(thigh, shin, foot, targetFoot, forward, weight,
-                kneeFloor, kneePoleStrength);
+                kneeFloor, kneePoleStrength, anatomicalSideAxis,
+                kneeLateralMaxMetres, maxKneeSideTurnDegrees);
         }
 
         // Crouching should keep feet within a compact, balanced footprint;
         // prone legs should extend behind the hips instead of frog-splaying
-        // sideways. Retarget only *settled* low stances. Traversal, jumps and
-        // transitions retain the authored animation. No Unity allocations.
+        // sideways. Preserve authored locomotion, but gently clamp excessive
+        // stationary transition spread; full heel retargeting remains settled-only.
+        // No additional physics queries, allocations or collision changes.
         private void PlanBalancedLowStanceFeet(float proneShare,
             float lowPose, float dominantRigWeight, float planarSpeed,
             out Vector3 leftGoal, out Vector3 rightGoal,
@@ -1299,6 +1376,27 @@ namespace Aaris.MapReview
                 Mathf.InverseLerp(0.68f, 0.96f, lowPose));
             float stationary = 1f - Mathf.SmoothStep(0f, 1f,
                 Mathf.InverseLerp(0.07f, 0.38f, planarSpeed));
+            // Native four-step Play Mode capture exposed 70.2cm ankle
+            // separation while entering prone, and 76.9cm when standing up.
+            // The late-only full stance solver does not constrain those
+            // brief crossfades. Symmetrically trim ONLY excess horizontal
+            // splay, by <=12cm per shoe, before the existing ground rays
+            // sample those resolved target positions. At speed, in air or
+            // at upright idle the correction vanishes naturally.
+            Vector3 stanceSeparation = Vector3.ProjectOnPlane(
+                rightGoal - leftGoal, Vector3.up);
+            float stanceSpread = stanceSeparation.magnitude;
+            float guard = stationary * Mathf.SmoothStep(0f, 1f,
+                Mathf.InverseLerp(0.18f, 0.65f, lowPose));
+            if (stanceSpread > 0.57f && guard > 0.001f)
+            {
+                float eachShoeMetres = Mathf.Min(
+                    (stanceSpread - 0.57f) * 0.5f, 0.12f) * guard;
+                Vector3 inward = stanceSeparation *
+                    (eachShoeMetres / stanceSpread);
+                leftGoal += inward;
+                rightGoal -= inward;
+            }
             // A crouch->prone crossfade can have lowPose=1 with BOTH
             // individual stance weights around 0.5. That is not settled:
             // a full reach correction there can yank heels by 52-74cm and
@@ -1429,7 +1527,8 @@ namespace Aaris.MapReview
 
         private void PlantUprightContact(Transform thigh, Transform shin,
             Transform foot, float planarSpeed, float turnDegreesPerSecond,
-            float uprightWeight, AnkleSupportSample coarseSupport,
+            float uprightWeight, Vector3 kneeForward,
+            AnkleSupportSample coarseSupport,
             ref bool plantLocked, ref Vector3 plantWorld)
         {
             if (thigh == null || shin == null || foot == null ||
@@ -1452,7 +1551,7 @@ namespace Aaris.MapReview
             if (float.IsNaN(supportY))
             {
                 plantLocked = false;
-                CorrectReversedSwingKnee(thigh, shin, foot);
+                CorrectReversedSwingKnee(thigh, shin, foot, kneeForward);
                 return;
             }
 
@@ -1463,7 +1562,7 @@ namespace Aaris.MapReview
             if (contactWeight <= 0.001f)
             {
                 plantLocked = false;
-                CorrectReversedSwingKnee(thigh, shin, foot);
+                CorrectReversedSwingKnee(thigh, shin, foot, kneeForward);
                 return;
             }
 
@@ -1514,7 +1613,7 @@ namespace Aaris.MapReview
                 }
             }
 
-            PlantLegToTarget(thigh, shin, foot, targetFoot, transform.forward,
+            PlantLegToTarget(thigh, shin, foot, targetFoot, kneeForward,
                 finalWeight);
             AlignFootToSupport(foot, supportNormal, finalWeight, 32f, 0.85f);
         }
@@ -1973,12 +2072,40 @@ namespace Aaris.MapReview
                 float kneeTurnStability = 1f - Mathf.SmoothStep(0f, 1f,
                     Mathf.InverseLerp(65f, 140f, Mathf.Abs(yawRate)));
                 float crouchPoleStrength = (1f - proneKneeShare) * 0.90f;
+                // Native before/after frames showed that forcing a prone
+                // pole early improved no entry-prone knee lateral offset,
+                // but made return-to-standing knees up to 23cm more lateral.
+                // Keep the original settled-only pole. The independent
+                // symmetric foot-spread guard handles the real splay safely.
                 float pronePoleStrength = proneKneeShare * proneKneeSettle *
                     kneeStillness * kneeTurnStability;
                 Vector3 kneeForward = crouchKneeForward * crouchPoleStrength +
                     Vector3.up * pronePoleStrength;
                 float kneePoleStrength = Mathf.Clamp01(
                     crouchPoleStrength + pronePoleStrength);
+                // An early prone knee can flare sideways while its clip
+                // retargets the previous crouch leg axis. Do not force an
+                // early pole in both directions: PlayMode proved that harms
+                // prone->standing. Constrain the knee circle only while the
+                // requested stance is Prone, at very low speed, while the
+                // actual prone pose enters. Fade in and out across the blend.
+                Vector3 kneeSideAxis = leftThigh != null && rightThigh != null
+                    ? Vector3.ProjectOnPlane(
+                        rightThigh.position - leftThigh.position, Vector3.up)
+                    : Vector3.zero;
+                float entryKneeSideTurn = 0f;
+                if (prone && groundedNow && !visuallyAirborne &&
+                    transitioningLowStance && authoredProne &&
+                    kneeSideAxis.sqrMagnitude > 0.02f)
+                {
+                    kneeSideAxis.Normalize();
+                    float entry = Mathf.SmoothStep(0f, 1f,
+                        Mathf.InverseLerp(0.35f, 0.65f, effectiveProneBlend));
+                    float settle = 1f - Mathf.SmoothStep(0f, 1f,
+                        Mathf.InverseLerp(0.84f, 0.98f, effectiveProneBlend));
+                    entryKneeSideTurn = 38f * entry * settle *
+                        kneeStillness * kneeTurnStability;
+                }
                 // Resolve X/Z BEFORE sampling Y. This keeps the one existing
                 // Physics query per foot on the actual locked point, rather
                 // than on a different goal across a ramp or stair lip.
@@ -1995,12 +2122,14 @@ namespace Aaris.MapReview
                 if (!float.IsNaN(leftAnkleY))
                     PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
                         leftAnkleY, kneeForward, ankleRigWeight,
-                        leftFootGoal, kneeClearance, kneePoleStrength);
+                        leftFootGoal, kneeClearance, kneePoleStrength,
+                        kneeSideAxis, 0.29f, entryKneeSideTurn);
                 else leftLowPlantLocked = false;
                 if (!float.IsNaN(rightAnkleY))
                     PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
                         rightAnkleY, kneeForward, ankleRigWeight,
-                        rightFootGoal, kneeClearance, kneePoleStrength);
+                        rightFootGoal, kneeClearance, kneePoleStrength,
+                        kneeSideAxis, 0.29f, entryKneeSideTurn);
                 else rightLowPlantLocked = false;
                 // Crouch/prone used to correct only ankle height, leaving the
                 // sole visually cutting through a sloped road or bridge deck.
@@ -2027,12 +2156,15 @@ namespace Aaris.MapReview
             if (useUprightContact)
             {
                 float uprightContactWeight = Mathf.Clamp01(1f - lowPose * 4f);
+                // One cached hip-axis evaluation serves both legs. No extra
+                // raycasts, allocations or additional Transform writes.
+                Vector3 uprightKneeForward = AnatomicalKneeForward();
                 PlantUprightContact(leftThigh, leftShin, leftFootBone,
-                    planar, yawRate, uprightContactWeight, coarseSupport, ref leftUprightPlantLocked,
-                    ref leftUprightPlantWorld);
+                    planar, yawRate, uprightContactWeight, uprightKneeForward,
+                    coarseSupport, ref leftUprightPlantLocked, ref leftUprightPlantWorld);
                 PlantUprightContact(rightThigh, rightShin, rightFootBone,
-                    planar, yawRate, uprightContactWeight, coarseSupport, ref rightUprightPlantLocked,
-                    ref rightUprightPlantWorld);
+                    planar, yawRate, uprightContactWeight, uprightKneeForward,
+                    coarseSupport, ref rightUprightPlantLocked, ref rightUprightPlantWorld);
             }
             else
             {
