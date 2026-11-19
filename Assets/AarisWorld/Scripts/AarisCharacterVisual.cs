@@ -1958,12 +1958,12 @@ namespace Aaris.MapReview
                 float kneeTurnStability = 1f - Mathf.SmoothStep(0f, 1f,
                     Mathf.InverseLerp(65f, 140f, Mathf.Abs(yawRate)));
                 float crouchPoleStrength = (1f - proneKneeShare) * 0.90f;
-                // Keep a weak but nonzero sagittal knee pole during the
-                // prone crossfade. Letting it collapse near zero caused a
-                // 52.7cm sideways knee flare in the native transition frames.
-                // It still ramps smoothly to the original full settled pole.
-                float pronePoleStrength = proneKneeShare *
-                    Mathf.Lerp(0.32f, 1f, proneKneeSettle) *
+                // Native before/after frames showed that forcing a prone
+                // pole early improved no entry-prone knee lateral offset,
+                // but made return-to-standing knees up to 23cm more lateral.
+                // Keep the original settled-only pole. The independent
+                // symmetric foot-spread guard handles the real splay safely.
+                float pronePoleStrength = proneKneeShare * proneKneeSettle *
                     kneeStillness * kneeTurnStability;
                 Vector3 kneeForward = crouchKneeForward * crouchPoleStrength +
                     Vector3.up * pronePoleStrength;
