@@ -119,12 +119,12 @@ assert "float poleCos = Mathf.Clamp(Vector3.Dot(bend, pole), -1f, 1f);" in visua
 assert "Mathf.Atan2(poleSin, poleCos) * Mathf.Rad2Deg;" in visual
 assert "poleAngle * Mathf.Clamp01(kneePoleStrength), axis) * bend;" in visual
 assert "Vector3.Lerp(bend, forwardBend.normalized," not in visual
-assert "kneeFloor, kneePoleStrength);" in visual
+assert "kneeFloor, kneePoleStrength, anatomicalSideAxis," in visual
 assert visual.count("planar, yawRate, ankleRigWeight, transitioningLowStance,") == 2
 assert visual.count("PlanBalancedLowStanceFeet(") == 2
-assert "leftFootGoal, kneeClearance, kneePoleStrength);" in visual
+assert "leftFootGoal, kneeClearance, kneePoleStrength," in visual
 assert "ref leftLowPlantLocked, ref leftLowPlantWorld);" in visual
-assert "rightFootGoal, kneeClearance, kneePoleStrength);" in visual
+assert "rightFootGoal, kneeClearance, kneePoleStrength," in visual
 assert "ref rightLowPlantLocked, ref rightLowPlantWorld);" in visual
 # The summed pose weight can remain 1.0 during an interrupted crouch/prone
 # crossfade even though neither pose is settled. Dominant-stance confidence
