@@ -934,6 +934,11 @@ namespace Aaris.MapReview
             // prewarming clips, never by the per-frame render loop.
             public float characterMocapGroupLoadMs = -1f, characterMaxClipGroupLoadMs = -1f;
             public int characterClipGroupLoadCount;
+            // One-time essential rig stage durations. Values are actual
+            // native/main-thread costs, not GPU frame rendering timings.
+            public float characterRigInstantiateMs = -1f;
+            public float characterRigGraphSetupMs = -1f;
+            public float characterRigBakeMeshMs = -1f;
             // One-time JSON decode only; excludes asynchronous native import.
             public float lootCandidateParseMs = -1f, weaponDefinitionParseMs = -1f;
             public bool planeHighDetailSelected;
@@ -970,6 +975,7 @@ namespace Aaris.MapReview
             public int optionalStreamCleanupDeferrals;
             public int optionalStreamFrameDeferrals;
             public int optionalStreamImportDeferrals;
+            public int optionalStreamRigFrameDeferrals;
             // Previous Android 11+ process exit, not current usage or proof
             // that this launch crashed. -1 means unobserved/unavailable.
             public string previousExitEvidence = "pending";
@@ -1082,6 +1088,11 @@ namespace Aaris.MapReview
             s.characterMocapGroupLoadMs = AarisCharacterVisual.AndroidMocapGroupLoadMs;
             s.characterMaxClipGroupLoadMs = AarisCharacterVisual.AndroidMaxClipGroupLoadMs;
             s.characterClipGroupLoadCount = AarisCharacterVisual.AndroidClipGroupLoadCount;
+            s.characterRigInstantiateMs = AarisCharacterVisual.AndroidRigInstantiateMs;
+            s.characterRigGraphSetupMs = AarisCharacterVisual.AndroidRigGraphSetupMs;
+            s.characterRigBakeMeshMs = AarisCharacterVisual.AndroidRigBakeMeshMs;
+            s.optionalStreamRigFrameDeferrals =
+                AarisMobileStreamingFrameGate.RigReservedDeferredAttempts;
             s.optionalStreamCleanupDeferrals =
                 AarisMobileStreamingFrameGate.CleanupDeferredAttempts;
             s.optionalStreamFrameDeferrals =
