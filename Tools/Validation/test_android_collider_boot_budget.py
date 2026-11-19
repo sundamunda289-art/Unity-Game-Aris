@@ -33,7 +33,7 @@ class AndroidColliderBudget(unittest.TestCase):
         self.assertIn("IndexCollider(indexCursor);", routine)
         self.assertIn("indexCursor++;", routine)
         self.assertLess(routine.index("indexCursor++;"),
-                        routine.index("if (++processed >= AndroidIndexUpdatesPerFrame)"))
+                        routine.index("if (processed >= AndroidIndexUpdatesPerFrame ||"))
         self.assertLess(routine.index("yield return null;"),
                         routine.index("IndexCollider(indexCursor);"))
         self.assertIn("FinishIndexBuild();", routine)
@@ -44,7 +44,7 @@ class AndroidColliderBudget(unittest.TestCase):
         task = CODE[CODE.index("private IEnumerator DeactivateDistantAcrossFrames()"):
                     CODE.index("private int Cell")]
         self.assertIn("DeferredColliderUpdatesPerFrame = 24", CODE)
-        self.assertIn("if (++processed >= DeferredColliderUpdatesPerFrame)", task)
+        self.assertIn("if (processed >= DeferredColliderUpdatesPerFrame ||", task)
         self.assertIn("yield return null;", task)
         self.assertIn("Vector3 position = target.position;", task)
         self.assertIn("ColliderReleaseMargin;", task)
