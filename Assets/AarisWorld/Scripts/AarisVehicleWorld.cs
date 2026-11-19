@@ -20,6 +20,41 @@ namespace Aaris.MapReview
         public AarisVehiclePoint[] candidates;
     }
 
+    // Cars and parked motorcycles both consume the same authored road plan.
+    // Coalesce their Android reads into ONE in-flight Unity resource request.
+    // Editor tools retain synchronous Resources.Load and untouched source JSON.
+    internal static class AarisVehiclePointManifest
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private static ResourceRequest pending;
+        private static TextAsset cached;
+
+        internal static TextAsset AndroidCached => cached;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void Reset()
+        {
+            pending = null;
+            cached = null;
+        }
+
+        internal static IEnumerator LoadAndroidAsync()
+        {
+            if (cached != null) yield break;
+            if (pending == null)
+            {
+                pending = Resources.LoadAsync<TextAsset>(
+                    "AarisVehicles/vehicle_candidates");
+                // These are gameplay road positions, not optional decoration:
+                // let their tiny document load ahead of cosmetic model imports.
+                pending.priority = 0;
+            }
+            yield return pending;
+            if (cached == null) cached = pending.asset as TextAsset;
+        }
+#endif
+    }
+
     [Serializable]
     internal sealed class AarisVehicleType
     {
@@ -328,9 +363,16 @@ namespace Aaris.MapReview
         {
             // The scene should render before catalogue/mesh integrations begin.
             yield return null;
+            // The nearby-bike system can request these same road positions
+            // during Start(). Join its in-flight load instead of issuing a
+            // second native import or later doing a synchronous lookup.
+            yield return AarisVehiclePointManifest.LoadAndroidAsync();
+            if (motor == null || player == null) { Destroy(gameObject); yield break; }
+            TextAsset preloadedPoints = AarisVehiclePointManifest.AndroidCached;
+            yield return null; // keep JSON/native request integration off the next import
             ResourceRequest catalogueRequest =
                 Resources.LoadAsync<TextAsset>("AarisVehicles/vehicle_catalog");
-            catalogueRequest.priority = -1;
+            catalogueRequest.priority = 0; // gameplay car types, not scenery
             yield return catalogueRequest;
 
             TextAsset text = catalogueRequest.asset as TextAsset;
@@ -376,17 +418,24 @@ namespace Aaris.MapReview
                 yield return null;
             // All original validation, authored-asset fallback, car placement,
             // material quality and gameplay rules are still performed here.
-            if (!Setup()) { Destroy(gameObject); yield break; }
+            if (!Setup(preloadedPoints, text)) { Destroy(gameObject); yield break; }
             AttachSessionAndHud(motor, this);
         }
 #endif
 
+        // Preserve the original immediate Editor/non-constrained route.
         private bool Setup()
         {
-            // Read the saved static-collider streamer once, never per car/frame.
+            return Setup(
+                Resources.Load<TextAsset>("AarisVehicles/vehicle_candidates"),
+                Resources.Load<TextAsset>("AarisVehicles/vehicle_catalog"));
+        }
+
+        private bool Setup(TextAsset points, TextAsset catalog)
+        {
+            // On constrained Android both manifests are preloaded, so do NOT
+            // re-open them synchronously after long model prewarm.
             nearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
-            TextAsset points = Resources.Load<TextAsset>("AarisVehicles/vehicle_candidates");
-            TextAsset catalog = Resources.Load<TextAsset>("AarisVehicles/vehicle_catalog");
             if (points == null || catalog == null)
             {
                 Debug.LogError("Aaris vehicles: authored offline candidates/catalog are missing.");
