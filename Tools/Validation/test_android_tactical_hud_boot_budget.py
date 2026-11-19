@@ -49,7 +49,12 @@ class AndroidFlightTacticalHud(unittest.TestCase):
                       'CreateAction("Medkit"', 'CreateAction("Helmet durability"',
                       "StartCoroutine(AarisOfflineFragGrenade.PrewarmGrenadeAssets());"):
             self.assertIn(token, TACTICAL)
-        self.assertIn("private void OnDisable() => CancelTacticalInput();", TACTICAL)
+        # The low-memory eviction patch extends OnDisable to unsubscribe
+        # from Application.lowMemory, but cancellation remains mandatory.
+        disable = TACTICAL.split("private void OnDisable()", 1)[1].split(
+            "private void OnApplicationPause(", 1)[0]
+        self.assertIn("Application.lowMemory -= OnLowMemory;", disable)
+        self.assertIn("CancelTacticalInput();", disable)
 
     def test_weapon_hud_cached_by_flight_unchanged(self):
         self.assertIn("weaponCanvas = weaponHud != null ? weaponHud.GetComponentInChildren<Canvas>(true) : null;", DROP)
