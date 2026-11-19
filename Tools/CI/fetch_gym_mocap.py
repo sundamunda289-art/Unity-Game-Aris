@@ -130,6 +130,9 @@ def main():
         print("AARIS_ACCAD_SOURCE_PASS",
               manifest["accad"]["total_files"],
               len(manifest["accad"]["candidate_stance_movements"]), flush=True)
+        for candidate in manifest["accad"]["candidate_stance_movements"]:
+            print("AARIS_ACCAD_STANCE_CANDIDATE",
+                  candidate["file"], candidate["bytes"], flush=True)
     (out / "source-manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     print("AARIS_NEW_MOCAP_NINE_CLIPS_VERIFIED")
