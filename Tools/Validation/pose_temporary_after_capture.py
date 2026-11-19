@@ -2,8 +2,9 @@
 """Isolated temporary C# overlay for real Unity pose QA on the existing Codespace.
 
 The user's active Git branch, native assets and uncommitted work are retained.
-The only temporary source replacement is a verified clean CharacterVisual.cs;
-it is restored in a finally block, with a content/HEAD conflict guard.
+The only temporary changes are a verified clean CharacterVisual.cs and an
+Editor-only guard around the concurrent Android-loot coroutine. Both files
+are restored in a finally block with content/HEAD conflict guards.
 Never use this while another Unity Editor instance is running.
 """
 import hashlib
@@ -23,6 +24,9 @@ POSE_DIR = Path("/tmp/aaris-codespaces/motion-frames")
 BRANCH = "fix/anatomical-upright-knee-pole-20261119"
 URL = "https://raw.githubusercontent.com/sundamunda289-art/Unity-Game-Aris/" + BRANCH + "/" + REL
 EXPECTED_SOURCE_BLOB = "fac42e70e06c85c42f4a4f73d0de8ec7420a5f08"
+LOOT_REL = "Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs"
+LOOT_SOURCE = ROOT / LOOT_REL
+EXPECTED_LOOT_BLOB = "80e9ea06d8ed1d7b57f3407d04a98bf727222ce9"
 RUNS = (
     ("transition", "CaptureTransitionPortrait", "SUCCESS_16_STANCE_TRANSITION_FRAMES"),
     ("settled", "CaptureMultiAnglePortrait", "SUCCESS_16_ACTOR_MULTIANGLE_PORTRAITS"),
@@ -37,15 +41,15 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def atomic_replace(data, mode):
-    fd, name = tempfile.mkstemp(prefix=".aaris-pose-qa-", dir=str(SOURCE.parent))
+def atomic_replace(path, data, mode):
+    fd, name = tempfile.mkstemp(prefix=".aaris-pose-qa-", dir=str(path.parent))
     try:
         with os.fdopen(fd, "wb") as stream:
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
         os.chmod(name, mode)
-        os.replace(name, SOURCE)
+        os.replace(name, path)
     finally:
         if os.path.exists(name):
             os.unlink(name)
@@ -62,6 +66,11 @@ def main():
     blob = git("hash-object", REL).stdout.decode().strip()
     if blob != EXPECTED_SOURCE_BLOB:
         raise RuntimeError("ABORT_WRONG_CHARACTER_VISUAL_BLOB " + blob)
+    if LOOT_SOURCE.is_symlink() or not LOOT_SOURCE.is_file() or git("diff", "--quiet", "--", LOOT_REL).returncode:
+        raise RuntimeError("ABORT_EXISTING_LOOT_MODIFICATIONS")
+    loot_blob = git("hash-object", LOOT_REL).stdout.decode().strip()
+    if loot_blob != EXPECTED_LOOT_BLOB:
+        raise RuntimeError("ABORT_WRONG_LOOT_BLOB " + loot_blob)
     # Inspect executable names, NOT the current shell's argv (which includes
     # this script text in command queues and can match grep/pgrep incorrectly).
     proc_names = subprocess.check_output(["ps", "-eo", "comm="], text=True).splitlines()
@@ -78,14 +87,31 @@ def main():
     mode = SOURCE.stat().st_mode & 0o777
     (OUT / "original_character_visual.cs").write_bytes(original)
     (OUT / "patched_character_visual.cs").write_bytes(patch)
+    # The in-progress performance branch has an Android-only method correctly
+    # declared behind a player define, but its caller method is not similarly
+    # guarded. Keep the exact Android behavior; exclude only that unreachable
+    # coroutine from the Editor compile while rendering these QA screenshots.
+    original_loot = LOOT_SOURCE.read_bytes()
+    marker_begin = b"        private IEnumerator InitializeAndroid()\n"
+    marker_end = b"        private void Initialize()\n"
+    if original_loot.count(marker_begin) != 1 or original_loot.count(marker_end) != 1:
+        raise RuntimeError("LOOT_PREPROCESSOR_MARKERS_MISSING")
+    patched_loot = original_loot.replace(
+        marker_begin, b"#if UNITY_ANDROID && !UNITY_EDITOR\n" + marker_begin).replace(
+        marker_end, b"#endif\n\n" + marker_end)
+    original_loot_hash, patched_loot_hash = digest(original_loot), digest(patched_loot)
+    loot_mode = LOOT_SOURCE.stat().st_mode & 0o777
+    (OUT / "original_loot.cs").write_bytes(original_loot)
+    (OUT / "editor_only_loot.cs").write_bytes(patched_loot)
     original_head = git("rev-parse", "HEAD").stdout.decode().strip()
     proc = None
     passed = False
     try:
-        atomic_replace(patch, mode)
-        if digest(SOURCE.read_bytes()) != patch_hash:
+        atomic_replace(SOURCE, patch, mode)
+        atomic_replace(LOOT_SOURCE, patched_loot, loot_mode)
+        if digest(SOURCE.read_bytes()) != patch_hash or digest(LOOT_SOURCE.read_bytes()) != patched_loot_hash:
             raise RuntimeError("PATCH_WRITE_RACE")
-        print("PATCH_TEMPORARILY_APPLIED originalHead=" + original_head[:12], flush=True)
+        print("PATCH_TEMPORARILY_APPLIED_EDITOR_ONLY_LOOT_GUARD originalHead=" + original_head[:12], flush=True)
         for label, method, marker in RUNS:
             folder = OUT / label
             folder.mkdir(parents=True, exist_ok=True)
@@ -119,7 +145,7 @@ def main():
             ) or not phase.is_file() or phase.read_text().strip() != "07_COMPLETE":
                 raise RuntimeError(f"POSE_{label}_FAIL exit={exit_code} frames={len(images)}")
             print("NATIVE_" + label.upper() + "_SUCCESS 16_REAL_FRAMES", flush=True)
-            if digest(SOURCE.read_bytes()) != patch_hash:
+            if digest(SOURCE.read_bytes()) != patch_hash or digest(LOOT_SOURCE.read_bytes()) != patched_loot_hash:
                 raise RuntimeError("SOURCE_CHANGED_DURING_CAPTURE")
         passed = True
     finally:
@@ -136,17 +162,22 @@ def main():
                 except ProcessLookupError:
                     pass
                 proc.wait()
-        current = digest(SOURCE.read_bytes())
-        committed = git("show", "HEAD:" + REL)
-        if current == patch_hash and committed.returncode == 0 and committed.stdout == original:
-            atomic_replace(original, mode)
-            print("ORIGINAL_CHARACTER_VISUAL_RESTORED", flush=True)
-        elif current == original_hash:
-            print("ORIGINAL_CHARACTER_VISUAL_ALREADY_RESTORED", flush=True)
-        else:
-            print("WARNING_SOURCE_CHANGED_EXTERNALLY_RESTORATION_SKIPPED", flush=True)
-        clean = digest(SOURCE.read_bytes()) == original_hash
-        print(f"QA_RESULT success={passed} original_restored={clean}", flush=True)
+        clean = True
+        for path, rel, prior, applied, saved_mode in (
+            (LOOT_SOURCE, LOOT_REL, original_loot, patched_loot, loot_mode),
+            (SOURCE, REL, original, patch, mode),
+        ):
+            current = digest(path.read_bytes())
+            committed = git("show", "HEAD:" + rel)
+            if current == digest(applied) and committed.returncode == 0 and committed.stdout == prior:
+                atomic_replace(path, prior, saved_mode)
+                print("RESTORED " + rel, flush=True)
+            elif current == digest(prior):
+                print("ALREADY_RESTORED " + rel, flush=True)
+            else:
+                print("WARNING_EXTERNAL_CHANGE_RESTORATION_SKIPPED " + rel, flush=True)
+            clean = clean and digest(path.read_bytes()) == digest(prior)
+        print(f"QA_RESULT success={passed} originals_restored={clean}", flush=True)
         if not clean:
             raise RuntimeError("RESTORATION_REQUIRES_MANUAL_REVIEW")
 
