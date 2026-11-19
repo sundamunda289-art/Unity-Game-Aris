@@ -45,8 +45,23 @@ namespace Aaris.MapReview
         private const float ObstacleMargin = 1.25f;
 
         private readonly Collider[] obstacles = new Collider[96];
-        private readonly Dictionary<Terrain, TreeInstance[]> treeCache =
-            new Dictionary<Terrain, TreeInstance[]>();
+        // Three floats per tree are sufficient for exact placement clearance.
+        // Avoid retaining the much larger native TreeInstance structs in managed memory.
+        private struct TreeClearanceSample
+        {
+            internal readonly float x, z, margin;
+
+            internal TreeClearanceSample(float x, float z, float margin)
+            {
+                this.x = x;
+                this.z = z;
+                this.margin = margin;
+            }
+        }
+
+        private const int AndroidTreeProbeBudgetPerFrame = 256;
+        private readonly Dictionary<Terrain, List<TreeClearanceSample>> treeCache =
+            new Dictionary<Terrain, List<TreeClearanceSample>>();
         private readonly List<GameObject> placed = new List<GameObject>(24);
         // The physics engine cannot query distant authored colliders while
         // the nearby streamer has disabled them. Keep its cached bounds.
@@ -137,14 +152,35 @@ namespace Aaris.MapReview
                 // Even if the match exits during the opening-frame delay, the
                 // iterator's finally releases its temporary tree cache.
                 if (mobile) yield return null;
-                // TerrainData.treeInstances creates native-to-managed arrays.
-                // Cache one tile per Android frame instead of all four during
-                // the player's very first Start frame. All four are ready
-                // before any landmark clearance or relocation check begins.
+                // TerrainData.treeInstances copies an entire native tree array to
+                // managed memory at once. On Android, read bounded individual
+                // records instead; Unity 6 GetTreeInstance avoids that copy.
+                // Cache only world X/Z and the original clearance margin. This
+                // retains every tree, including those beside tile seams and
+                // possible interactive-house relocation sites.
                 foreach (Terrain t in terrains)
                 {
-                    if (t != null && t.terrainData != null)
-                        treeCache[t] = t.terrainData.treeInstances;
+                    if (t == null || t.terrainData == null) continue;
+                    TerrainData data = t.terrainData;
+                    Vector3 origin = t.transform.position;
+                    Vector3 size = data.size;
+                    var samples = new List<TreeClearanceSample>();
+                    treeCache.Add(t, samples);
+                    int processed = 0;
+                    for (int i = 0; i < data.treeInstanceCount; i++)
+                    {
+                        TreeInstance tree = data.GetTreeInstance(i);
+                        float x = origin.x + tree.position.x * size.x;
+                        float z = origin.z + tree.position.z * size.z;
+                        float margin = Mathf.Min(3.8f,
+                            Mathf.Max(0.5f, tree.widthScale * 1.5f));
+                        samples.Add(new TreeClearanceSample(x, z, margin));
+                        if (mobile && ++processed >= AndroidTreeProbeBudgetPerFrame)
+                        {
+                            processed = 0;
+                            yield return null;
+                        }
+                    }
                     if (mobile) yield return null;
                 }
                 foreach (var site in plan.sites)
@@ -234,8 +270,8 @@ namespace Aaris.MapReview
             }
             finally
             {
-                // The four native tree-instance arrays can be large. Never
-                // retain them for the rest of the match if site creation fails
+                // Release compact clearance caches when placement finishes or
+                // the coroutine is cancelled; do not retain them all match
                 // or the coroutine is cancelled during a scene transition.
                 treeCache.Clear();
             }
@@ -368,7 +404,7 @@ namespace Aaris.MapReview
             foreach (Terrain terrain in all)
             {
                 if (terrain == null || terrain.terrainData == null ||
-                    !treeCache.TryGetValue(terrain, out TreeInstance[] trees))
+                    !treeCache.TryGetValue(terrain, out List<TreeClearanceSample> trees))
                     continue;
                 Vector3 basePoint = terrain.transform.position;
                 Vector3 tileSize = terrain.terrainData.size;
@@ -379,12 +415,9 @@ namespace Aaris.MapReview
                     continue;
                 for (int i = 0; i < trees.Length; i++)
                 {
-                    TreeInstance tree = trees[i];
-                    float x = basePoint.x + tree.position.x * tileSize.x;
-                    float z = basePoint.z + tree.position.z * tileSize.z;
-                    float margin = Mathf.Min(3.8f, Mathf.Max(0.5f, tree.widthScale * 1.5f));
-                    if (Mathf.Abs(x - site.x) < hx + margin &&
-                        Mathf.Abs(z - site.z) < hz + margin)
+                    TreeClearanceSample tree = trees[i];
+                    if (Mathf.Abs(tree.x - site.x) < hx + tree.margin &&
+                        Mathf.Abs(tree.z - site.z) < hz + tree.margin)
                         return true;
                 }
             }
