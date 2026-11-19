@@ -37,6 +37,7 @@ def number(record, key, *, minimum=0.0):
 def analyze(lines):
     reasons = Counter()
     invalid = valid = oversized = 0
+    truncated = False
     max_frame = max_p95 = None
     max_unload_ms = None
     max_plane_resolve = max_plane_instantiate = max_plane_total = None
@@ -51,6 +52,7 @@ def analyze(lines):
 
     for index, line in enumerate(lines):
         if index >= MAX_EVENTS:
+            truncated = True
             break
         if len(line) > MAX_LINE_CHARS:
             oversized += 1
@@ -121,6 +123,7 @@ def analyze(lines):
         "valid_records": valid,
         "invalid_records": invalid,
         "oversized_records_skipped": oversized,
+        "input_truncated_at_record_limit": truncated,
         "event_counts": dict(sorted(reasons.items())),
         "frame_windows": {
             "explicit_stall_reports": reasons["frame-stall"],
