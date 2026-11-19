@@ -950,7 +950,9 @@ for needle in (
     'Vector3 tangent = bend - upwardBend * currentUp;',
     'bend = upwardBend * requiredUp + tangent *',
 
-    'Mathf.Min(pelvisShortfall, helmetRoom), 0f, 0.21f',
+    'Mathf.InverseLerp(0.90f, 0.99f, effectiveProneBlend)',
+    'float maxPelvisLift = Mathf.Lerp(0.21f, 0.33f, settledProneLift);',
+    'Mathf.Min(pelvisShortfall, helmetRoom), 0f, maxPelvisLift)',
     'visualRoot.localPosition += Vector3.up * pelvisLift;'
 ):
     assert needle in visual, needle
