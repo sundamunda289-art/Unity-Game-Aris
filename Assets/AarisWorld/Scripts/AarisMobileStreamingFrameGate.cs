@@ -193,6 +193,37 @@ namespace Aaris.MapReview
 #endif
         }
 
+        /// <summary>
+        /// A nonessential profiler/JSON snapshot must compete with the same
+        /// native-main-thread slot as optional FBX integration. Called only
+        /// when a report is actually due, not on every rendered frame.
+        /// This does not defer memory cleanup, gameplay or Android visuals.
+        /// </summary>
+        internal static bool TryClaimNonessentialDiagnosticFrame()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (IsEssentialRigFrame() || IsAssetCleanupPending()) return false;
+            if (!IsConstrainedDevice()) return true;
+            int frame = Time.frameCount;
+            // An admitted hierarchy/import or an observed native completion
+            // owns this frame. Conversely, a diagnostic claim reserves it
+            // against any streamer that runs later in the Unity Update order.
+            if (claimedFrame == frame || importIntegrationFrame == frame)
+                return false;
+            if (optionalLoadInFlight != null && optionalLoadInFlight.isDone)
+            {
+                optionalLoadInFlight = null;
+                importIntegrationFrame = frame;
+                return false;
+            }
+            // Use the existing bounded 2-frame pressure recovery. A long
+            // sequence of slow frames must not suppress telemetry forever.
+            if (ShouldDeferForFramePressure(frame)) return false;
+            claimedFrame = frame;
+#endif
+            return true;
+        }
+
         internal static bool TryClaimOptionalModelBuild()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
