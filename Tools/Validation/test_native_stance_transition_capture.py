@@ -28,6 +28,9 @@ assert 'tile.SampleHeight(pos)' in editor
 assert 'worstGroundGap< -0.15f' in editor
 assert 'sampleIndex>=1&&worstGroundGap>0.24f' in editor
 assert 'RETURN_TO_STAND_FOOT_FLOAT' in editor
+assert 'RETURN_TO_STAND_KNEE_FLARE' in editor
+assert 'sampleIndex==0&&transitioning&&' in editor
+assert 'Mathf.Abs(lSide)>0.34f||Mathf.Abs(rSide)>0.34f' in editor
 assert 'bool returningFromProne = !prone && !crouching &&' in visual
 assert 'effectiveProneBlend > 0.02f &&' in visual
 assert 'effectiveProneBlend < 0.70f;' in visual
