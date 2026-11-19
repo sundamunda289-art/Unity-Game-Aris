@@ -810,6 +810,7 @@ namespace Aaris.MapReview
             animations = AnimationMixerPlayable.Create(graph, 2);
             graph.Connect(AnimationClipPlayable.Create(graph, idle), 0, animations, 0);
             graph.Connect(AnimationClipPlayable.Create(graph, run), 0, animations, 1);
+            visualBlend = 0f;
             animations.SetInputWeight(0, 1f);
             animations.SetInputWeight(1, 0f);
             AnimationPlayableOutput.Create(graph, "Local rival animation", animator)
@@ -933,9 +934,7 @@ namespace Aaris.MapReview
                 realTravel.y = 0f;
                 float groundSpeed = realTravel.magnitude / Mathf.Max(0.001f, dt);
                 float wanted = Mathf.Clamp01(groundSpeed / 2.9f);
-                visualBlend = Mathf.MoveTowards(visualBlend, wanted, dt * 4f);
-                animations.SetInputWeight(0, 1f - visualBlend);
-                animations.SetInputWeight(1, visualBlend);
+                UpdateAnimationBlend(wanted, dt);
             }
             if (canSee && distance <= 38f &&
                 Vector3.Dot(transform.forward, toward) > .84f &&
@@ -946,6 +945,17 @@ namespace Aaris.MapReview
                 AarisAudioDirector.GunShot("SMG", "Rival", transform.position + Vector3.up);
                 targetHealth.ApplyDamage(6f, gameObject);
             }
+        }
+
+        private void UpdateAnimationBlend(float wanted, float dt)
+        {
+            float next = Mathf.MoveTowards(visualBlend, wanted, dt * 4f);
+            // Graph time and clip animation keep running every frame. Only
+            // skip the two native mixer writes when their exact value holds.
+            if (next == visualBlend) return;
+            visualBlend = next;
+            animations.SetInputWeight(0, 1f - visualBlend);
+            animations.SetInputWeight(1, visualBlend);
         }
 
         private bool HasSight()

@@ -18,6 +18,8 @@ on:
       - 'Tools/Validation/PhysicsHitBufferTests.cs'
       - 'Tools/Validation/*runtime_native_work*'
       - 'Tools/Validation/RuntimeNativeWorkTests.cs'
+      - 'Tools/Validation/*idle_audio_animation*'
+      - 'Tools/Validation/IdleAudioAnimationTests.cs'
       - 'Tools/Validation/check_android_hotloop_blocking_calls.py'
       - 'Tools/Validation/test_android_hotloop_blocking_calls.py'
       - 'Tools/Validation/test_android_shared_streaming_frame_gate.py'
@@ -53,6 +55,8 @@ on:
       - 'Tools/Validation/PhysicsHitBufferTests.cs'
       - 'Tools/Validation/*runtime_native_work*'
       - 'Tools/Validation/RuntimeNativeWorkTests.cs'
+      - 'Tools/Validation/*idle_audio_animation*'
+      - 'Tools/Validation/IdleAudioAnimationTests.cs'
       - 'Tools/Validation/check_android_hotloop_blocking_calls.py'
       - 'Tools/Validation/test_android_hotloop_blocking_calls.py'
       - 'Tools/Validation/test_android_shared_streaming_frame_gate.py'
@@ -130,6 +134,7 @@ jobs:
           python Tools/Validation/run_physics_hit_buffer_csharp.py
           python Tools/Validation/test_physics_hit_buffer_integration.py
           python Tools/Validation/run_runtime_native_work_csharp.py
+          python Tools/Validation/run_idle_audio_animation_csharp.py
       - name: Parse every saved AarisWorld C# gameplay script
         run: |
           python - <<'PY'

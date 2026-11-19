@@ -954,7 +954,7 @@ def audit():
 
     # An already-converged audio loop must make zero native volume/pitch
     # writes. Changed targets preserve MoveTowards's bounded fades and snap.
-    loop = audio[audio.index("private static void AdjustLoop("):
+    loop = audio[audio.index("private static bool AdjustLoop("):
                  audio.index("private void LateUpdate()")]
     assert "float nextVolume = Mathf.MoveTowards(currentVolume, volume" in loop
     assert "float nextPitch = Mathf.MoveTowards(currentPitch, pitch" in loop

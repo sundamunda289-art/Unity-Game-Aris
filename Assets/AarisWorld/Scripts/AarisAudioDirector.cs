@@ -55,6 +55,10 @@ namespace Aaris.MapReview
         private AudioSource planeLoop, windLoop, engineLoop;
         private AarisOfflineDrop.DropPhase lastDropPhase;
         private bool hasDropPhase, wasDriving;
+        // These three loop sources are owned only by this director. Once
+        // a silent fade has fully settled, avoid native getters every frame.
+        // Entering flight/driving invalidates the matching settled state.
+        private bool dropLoopsSettled = true, engineLoopSettled = true;
         private float previousY, previousJump = -10f, previousLand = -10f;
         private float stepDistance, lastSkidAt = -10f, lastCrashAt = -10f;
         private AarisBattleActions.PlayerStance lastFootstepStance = AarisBattleActions.PlayerStance.Standing;
@@ -417,9 +421,9 @@ namespace Aaris.MapReview
             source.Play();
         }
 
-        private static void AdjustLoop(AudioSource source, float volume, float pitch, float dt)
+        private static bool AdjustLoop(AudioSource source, float volume, float pitch, float dt)
         {
-            if (source == null || source.clip == null) return;
+            if (source == null || source.clip == null) return true;
             // A steady loop already at its target should not issue two
             // managed-to-native AudioSource property writes every frame.
             // Preserve the exact MoveTowards result, including the final snap.
@@ -431,6 +435,9 @@ namespace Aaris.MapReview
             if (nextPitch != currentPitch) source.pitch = nextPitch;
             if (nextVolume <= 0.001f && volume <= 0f && source.isPlaying)
                 source.Stop();
+            // Do not retire a fade at the audible-stop threshold: finish
+            // the exact zero-volume and pitch targets before caching silence.
+            return volume <= 0f && nextVolume == 0f && nextPitch == pitch;
         }
 
         private void LateUpdate()
@@ -481,11 +488,18 @@ namespace Aaris.MapReview
                     // prevent a second generic walking landing in this frame.
                     if (player != null) previousLand = player.LastLandingTime;
                 }
-                AdjustLoop(planeLoop, 0f, 1f, dt);
-                AdjustLoop(windLoop, 0f, 1f, dt);
+                if (!dropLoopsSettled)
+                {
+                    // Both calls must run: short-circuit && would starve
+                    // the second loop's fade while the first is settling.
+                    bool planeSettled = AdjustLoop(planeLoop, 0f, 1f, dt);
+                    bool windSettled = AdjustLoop(windLoop, 0f, 1f, dt);
+                    dropLoopsSettled = planeSettled && windSettled;
+                }
                 hasDropPhase = false;
                 return;
             }
+            dropLoopsSettled = false;
             var phase = drop.Phase;
             if (!hasDropPhase || phase != lastDropPhase)
             {
@@ -530,9 +544,11 @@ namespace Aaris.MapReview
             {
                 if (wasDriving) wasDriving = false;
                 vehicleGear = 1;
-                AdjustLoop(engineLoop, 0f, 0.85f, dt);
+                if (!engineLoopSettled)
+                    engineLoopSettled = AdjustLoop(engineLoop, 0f, 0.85f, dt);
                 return;
             }
+            engineLoopSettled = false;
             if (!wasDriving)
             {
                 OneShot("car_start", car.transform.position, 0.8f);
