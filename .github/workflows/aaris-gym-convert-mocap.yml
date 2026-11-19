@@ -19,7 +19,7 @@ jobs:
       - name: Install Blender
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends blender
+          sudo apt-get install -y --no-install-recommends blender python3-numpy
       - name: Fetch verified public movement-only source recordings
         run: python3 Tools/CI/fetch_gym_mocap.py --output /tmp/aaris-new-mocap --inspect-accad
       - name: Convert skeletal motions to Unity FBX candidates
