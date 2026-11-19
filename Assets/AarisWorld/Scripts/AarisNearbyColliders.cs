@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -17,6 +18,7 @@ namespace Aaris.MapReview
         // Other collider types must remain enabled across disable/enable cycles.
         private bool[] streamed;
         private bool restoredOnDisable;
+        private Coroutine deferredDeactivation;
         private readonly Dictionary<long, List<int>> cells = new Dictionary<long, List<int>>();
         private List<int> active, nextActive;
         private int[] visited, wanted, probeVisited;
@@ -32,6 +34,8 @@ namespace Aaris.MapReview
         // A 55m activation radius is much wider than the player's 3m refresh
         // step. Avoid rescanning ~1.5k static author colliders every 2m.
         private const float RefreshTravelSquared = 9f;
+        // Bound native collider state changes during Android cold start.
+        private const int DeferredColliderUpdatesPerFrame = 24;
 
         private void Awake()
         {
@@ -74,10 +78,47 @@ namespace Aaris.MapReview
                         { entries = new List<int>(); cells.Add(key, entries); }
                         entries.Add(i);
                     }
-                c.enabled = false;
+                // Keep original solid physics while the initial grid is built.
             }
             RefreshNow();
+            BeginDeferredDeactivation();
         }
+        private void BeginDeferredDeactivation()
+        {
+            if (deferredDeactivation != null) StopCoroutine(deferredDeactivation);
+            deferredDeactivation = StartCoroutine(DeactivateDistantAcrossFrames());
+        }
+
+        private IEnumerator DeactivateDistantAcrossFrames()
+        {
+            // A distant collider remains solid until its turn. We never
+            // deactivate terrain, authored-off or unsupported collider types.
+            int processed = 0;
+            for (int i = 0; i < obstacles.Length; i++)
+            {
+                if (target == null) { deferredDeactivation = null; yield break; }
+                Collider c = obstacles[i];
+                if (streamed[i] && c != null && c.enabled)
+                {
+                    // Recheck the *live* target; a teleport or moving player
+                    // must retain all buildings within the 55m safety region.
+                    Vector3 position = target.position;
+                    Vector3 nearest = worldBounds[i].ClosestPoint(position);
+                    float dx = nearest.x - position.x, dz = nearest.z - position.z;
+                    float safeDistance = Mathf.Max(0f, activationDistance) +
+                        ColliderReleaseMargin;
+                    if (dx * dx + dz * dz > safeDistance * safeDistance)
+                        c.enabled = false;
+                }
+                if (++processed >= DeferredColliderUpdatesPerFrame)
+                {
+                    processed = 0;
+                    yield return null;
+                }
+            }
+            deferredDeactivation = null;
+        }
+
         private int Cell(float value) => Mathf.FloorToInt(value / cellSize);
         private static long Key(int x, int z) => ((long)x << 32) ^ (uint)z;
         private void Start()
@@ -220,17 +261,21 @@ namespace Aaris.MapReview
                 streamed == null || active == null || nextActive == null ||
                 obstacles == null) return;
             restoredOnDisable = false;
-            for (int i = 0; i < obstacles.Length; i++)
-                if (streamed[i] && obstacles[i] != null)
-                    obstacles[i].enabled = false;
             active.Clear();
             nextActive.Clear();
-            // Restore nearby collisions immediately before the next player Move.
+            // OnDisable restored the original solid world. Rebuild only the
+            // near active set now, then gate distant physics incrementally.
             RefreshNow();
+            BeginDeferredDeactivation();
         }
 
         private void OnDisable()
         {
+            if (deferredDeactivation != null)
+            {
+                StopCoroutine(deferredDeactivation);
+                deferredDeactivation = null;
+            }
             if (obstacles == null || streamed == null) return;
             restoredOnDisable = active != null;
             // Only restore colliders that this streamer disabled itself.

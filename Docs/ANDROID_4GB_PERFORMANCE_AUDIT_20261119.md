@@ -52,3 +52,23 @@ build Android and run on Snapdragon 680 / 4GB. Capture cold boot and match
 logcat + ApplicationExitInfo / lmkd / ANR traces, device peak PSS, GPU
 memory, and p50/p95/p99 frame times. Only then tune further loading,
 rendering, foliage and collider scheduling without compromising sharpness.
+
+## Follow-up: bounded collider deactivation
+
+A read-only scan of the native scene found **295 serialized collider
+references** in AarisNearbyColliders. Previously Awake() built the spatial
+index and disabled distant enabled colliders in the same opening frame.
+This is a plausible native broadphase cost, **not** a proven freeze cause.
+
+The follow-up preserves every originally solid collider while it builds the
+index, installs the near-player active set, and deactivates distant entries
+in batches of at most **24 per frame**. Every batch rechecks the live player
+position and release margin; a disabled streamer cancels its pending
+coroutine and restores the original enabled collider state. Terrain,
+vegetation, visuals, URP, authored scene and activation radius are unchanged.
+
+Regressions: test_android_collider_boot_budget.py,
+test_player_streamer_lifecycle.py, test_settlement_streamed_obstacles.py and
+check_mobile_hotpaths.py. Static tests cannot demonstrate actual FPS gains,
+Unity compilation or a crash fix. Compare cold-start physics/CPU Profiler
+spikes, memory and ANR/LMK records on the 4GB Snapdragon 680 Android handset.
