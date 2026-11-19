@@ -356,8 +356,9 @@ namespace Aaris.MapReview
                         {
                             if (string.IsNullOrEmpty(path) || !visited.Add(path))
                                 continue;
-                            ResourceRequest request = Resources.LoadAsync<GameObject>(path);
-                            request.priority = -1;
+                            ResourceRequest request;
+                            while ((request = AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(path)) == null)
+                                yield return null;
                             yield return request;
                             // Space out Unity main-thread integration and URP
                             // object initialization, even for tiny fallback kits.
@@ -1082,11 +1083,17 @@ namespace Aaris.MapReview
             {
                 var request = authoredBodyRequests[i];
                 if (request == null || !request.isDone) continue;
-                authoredBodyRequests[i] = null;
                 var body = request.asset as GameObject;
                 if (body != null &&
                     body.GetComponentInChildren<Renderer>(true) != null)
                 {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                    // A finished async import can still spike renderer/material
+                    // binding. Defer its optional native integration to a free frame.
+                    if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                        continue;
+#endif
+                    authoredBodyRequests[i] = null;
                     CommitAuthoredBody(i, body);
                     authoredBodyResolved[i] = true;
                     continue;
@@ -1095,13 +1102,19 @@ namespace Aaris.MapReview
                 if (!authoredBodyLoadingFallback[i] &&
                     !string.IsNullOrEmpty(item.fallbackAuthoredModelResource))
                 {
-                    authoredBodyLoadingFallback[i] = true;
-                    var fallback = Resources.LoadAsync<GameObject>(
+                    // Keep the first request until the fallback is admitted.
+                    // Otherwise a busy frame would silently lose this vehicle.
+                    var fallback = AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(
                         item.fallbackAuthoredModelResource);
-                    fallback.priority = -1;
+                    if (fallback == null) continue;
+                    authoredBodyLoadingFallback[i] = true;
                     authoredBodyRequests[i] = fallback;
                 }
-                else authoredBodyResolved[i] = true; // keep legacy fail-safe
+                else
+                {
+                    authoredBodyRequests[i] = null;
+                    authoredBodyResolved[i] = true; // keep legacy fail-safe
+                }
             }
         }
 
@@ -1123,8 +1136,9 @@ namespace Aaris.MapReview
                 authoredBodyResolved[i] = true;
                 return false;
             }
-            var request = Resources.LoadAsync<GameObject>(item.authoredModelResource);
-            request.priority = -1;
+            var request = AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(
+                item.authoredModelResource);
+            if (request == null) return false;
             authoredBodyRequests[i] = request;
             authoredBodyLoadingFallback[i] = false;
             return true;
