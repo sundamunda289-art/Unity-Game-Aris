@@ -231,12 +231,52 @@ requests, single native import admission, Android no-sync handoff, Editor
 fallback and the preserved 2km road-plan validation. These are not real
 Unity frame-time measurements.
 
+## Eighth pass: optional Foley admission and FBX clip-load evidence
+
+An audit found that the Android sound pipeline already loads the six
+aircraft/drop cues synchronously before the first playable frame, then
+imports the remaining thirty authored base cues sequentially with
+`Resources.LoadAsync<AudioClip>`. Those **gameplay cues are unchanged**.
+The remaining fifteen CC0 *optional Foley variants* (five grass footsteps,
+five concrete footsteps, three punch impacts, soft landing and metal impact)
+used independent async requests that could overlap car, bike, rival,
+settlement or grenade native imports and a critical-memory
+`Resources.UnloadUnusedAssets` pass.
+
+`AarisAudioDirector.LoadOptionalFoleyAsset` now uses the shared Android
+`TryStartOptionalLoadAsync<AudioClip>` gate. If admission is denied, the
+coroutine yields and **retries the identical variant** without losing its
+slot or changing resource path. The original base `SFX/` cue remains the
+fallback until its optional CC0 variant is available. The extra prewarm
+runs only after all base sounds, and after each request completes it yields
+one frame before starting another. A disabled/destroyed audio component
+cannot continue starting new cosmetic imports.
+
+The player rig's Android bootstrap still uses the original
+`Resources.LoadAll<AnimationClip>` calls because authored FBX animation
+sources may contain multiple imported clips. Converting that API to a
+single `Resources.LoadAsync<AnimationClip>` could drop animations.
+Instead two small, **read-only stopwatch measurements** now wrap the
+existing synchronous loads: `characterMocapGroupLoadMs` (largest natural
+mocap source load), `characterMaxClipGroupLoadMs` (largest individual
+clip-source load), plus `characterClipGroupLoadCount` in the existing
+Android JSON diagnostics. All values reset on subsystem registration;
+-1 means no such import yet. The timing calls run only when an animation
+clip group actually loads, **not per render frame**, and are *not*
+GPU-skinned animation playback time or measured overall startup duration.
+
+No changes to sound samples/codecs, animation names, motion retargeting,
+foot IK, material/mesh art, player steering, world visuals, skinning or
+Unity project settings. The new markers are intended to distinguish
+single-frame FBX subasset hydration from native GPU/URP stalls on a real
+device; they do not establish the root cause by themselves.
+
 ## Verification
 
 Pass: 30 focused Python regression tests for global optional admission,
 pre-existing frame gate, vehicle fallback preload, motorcycle prewarm,
 rival model and animation prewarm. The complete Android source-regression
-suite passed **238 tests** via `python3 -m unittest discover -s Tools/Validation
+suite passed **241 tests** via `python3 -m unittest discover -s Tools/Validation
 -p 'test_android_*.py'`; settlement source/integrity suite passed **13 tests**
 via `python3 Tools/Validation/test_settlement_expansion.py`;
 `git diff --check main...HEAD` passed.
