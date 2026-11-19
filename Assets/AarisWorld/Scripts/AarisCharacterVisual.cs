@@ -2013,8 +2013,19 @@ namespace Aaris.MapReview
                     locomotionHipsBone.position.y;
                 float helmetRoom = capsuleCeiling - 0.20f -
                     proneHeadBone.position.y - 0.03f;
+                // The settled tactical soldier's authored prone pelvis rests
+                // around 4-5 cm below real terrain even after the old 21 cm
+                // lift cap. Grant up to 12 cm more only after the prone clip
+                // has fully settled; the existing helmet ceiling remains an
+                // independent hard upper bound. Transition frames keep their
+                // original support and shoe contact, avoiding entry/exit pops.
+                // This is a visual-only root correction: no extra raycasts,
+                // allocations, colliders or changes to the motor.
+                float settledProneLift = Mathf.SmoothStep(0f, 1f,
+                    Mathf.InverseLerp(0.90f, 0.99f, effectiveProneBlend));
+                float maxPelvisLift = Mathf.Lerp(0.21f, 0.33f, settledProneLift);
                 float pelvisLift = Mathf.Clamp(
-                    Mathf.Min(pelvisShortfall, helmetRoom), 0f, 0.21f) *
+                    Mathf.Min(pelvisShortfall, helmetRoom), 0f, maxPelvisLift) *
                     Mathf.Clamp01(effectiveProneBlend);
                 if (pelvisLift > 0.001f)
                     visualRoot.localPosition += Vector3.up * pelvisLift;
