@@ -19,9 +19,9 @@ verified in source; a 3–30-second freeze from this source is NOT verified.
   materials. Only existing original assets are used.
 - If the player begins aiming before asynchronous loading completes,
   `BeginAim()` calls `EnsureGhostCreated()` synchronously to preserve
-  immediate red/blue preview and unchanged player control. The deferred
-  coroutine checks whether the preview already exists before creating it:
-  no duplicate preview hierarchies.
+  immediate red/blue preview and unchanged player control. Only
+  `BeginAim()` constructs that preview in Android builds; subsequent
+  aiming reuses it without duplicate hierarchies.
 - The authored prefab and two finishes are reused through a
   session-scoped cache. Ghost preview no longer synchronously loads the
   two deployed-only finish materials. Desktop and Editor still construct
