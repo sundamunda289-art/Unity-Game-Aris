@@ -214,7 +214,26 @@ Log("CROUCH_KNEE_ALIGNMENT leftLateral="+leftLateral.ToString("F3")+
 if(Mathf.Abs(leftLateral)>0.25f||Mathf.Abs(rightLateral)>0.25f||
  kneeHeightDelta>0.12f)
 throw new InvalidOperationException("CROUCH_KNEE_SIDEWAYS_OR_MISALIGNED");
-}}
+}
+// Only the settled prone orbit sample is an appropriate foot-contact gate:
+// the first frame deliberately captures the transition from crouching.
+if(b.Stance==AarisBattleActions.PlayerStance.Prone&&terrainFound&&
+ SessionState.GetInt("pose.count",0)>=4){
+float leftAnkle=leftFoot.position.y-terrainY;
+float rightAnkle=rightFoot.position.y-terrainY;
+float leftKneeHeight=leftKnee.position.y-terrainY;
+float rightKneeHeight=rightKnee.position.y-terrainY;
+Log("SETTLED_PRONE_CONTACT leftAnkle="+leftAnkle.ToString("F3")+
+" rightAnkle="+rightAnkle.ToString("F3")+
+" leftKnee="+leftKneeHeight.ToString("F3")+
+" rightKnee="+rightKneeHeight.ToString("F3"));
+if(leftAnkle<0.04f||leftAnkle>0.18f||
+ rightAnkle<0.04f||rightAnkle>0.18f)
+throw new InvalidOperationException("SETTLED_PRONE_BOOT_CONTACT_INVALID");
+if(leftKneeHeight>0.33f||rightKneeHeight>0.33f)
+throw new InvalidOperationException("SETTLED_PRONE_KNEE_TOO_HIGH");
+}
+}
 HumanBodyBones[] bones={HumanBodyBones.Hips,HumanBodyBones.Chest,
 HumanBodyBones.Head,HumanBodyBones.LeftFoot,HumanBodyBones.RightFoot,
 HumanBodyBones.LeftHand,HumanBodyBones.RightHand,
