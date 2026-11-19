@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 namespace Aaris.MapReview
@@ -75,10 +76,33 @@ namespace Aaris.MapReview
 
         private void Start()
         {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Keep the heavy authored ice preview off the first terrain
+            // frame; a very early valid input can still create it immediately.
+            StartCoroutine(PrepareGhostAcrossFrames());
+#else
+            EnsureGhostCreated();
+#endif
+        }
+
+        private void EnsureGhostCreated()
+        {
+            if (ghost != null) return;
             ghost = AarisGlooWallVisuals.Create("GlooWall_Ghost_Local", true);
             ghostRenderers = ghost.GetComponentsInChildren<Renderer>();
             ghost.SetActive(false);
         }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private IEnumerator PrepareGhostAcrossFrames()
+        {
+            yield return null;
+            yield return AarisGlooWallVisuals.PrewarmAuthoredArt();
+            // An early WALL tap may have already built the preview. Never
+            // instantiate a second hierarchy or overwrite its renderer cache.
+            if (isActiveAndEnabled && ghost == null) EnsureGhostCreated();
+        }
+#endif
 
         private void Update()
         {
@@ -94,6 +118,9 @@ namespace Aaris.MapReview
         public void BeginAim()
         {
             if (!CanUse || Time.time < nextDeployment) return;
+            // Gameplay controls do not wait for optional async art. Even on
+            // the first eligible frame the blue/red hologram remains visible.
+            EnsureGhostCreated();
             aiming = true;
             placementValid = false;
             UpdatePlacement();
@@ -369,7 +396,77 @@ namespace Aaris.MapReview
         internal static readonly Vector3 CoverSize = new Vector3(3.78f, 2.30f, 0.84f);
 
         private static Material solid, preview;
+        private static GameObject cachedAuthoredPrefab;
+        private static bool prefabResolved;
+        private static Material cachedIce, cachedFrost;
+        private static bool finishesResolved;
         private static readonly MaterialPropertyBlock block = new MaterialPropertyBlock();
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetAuthoredArtCache()
+        {
+            cachedAuthoredPrefab = null;
+            cachedIce = cachedFrost = null;
+            prefabResolved = finishesResolved = false;
+        }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        internal static IEnumerator PrewarmAuthoredArt()
+        {
+            // Requests are sequential and low priority. Unity still performs
+            // asset integration on its main thread, but not in scene Start().
+            if (!prefabResolved)
+            {
+                ResourceRequest model = Resources.LoadAsync<GameObject>("AarisCombat/GlooWall");
+                model.priority = -1;
+                yield return model;
+                if (!prefabResolved)
+                {
+                    cachedAuthoredPrefab = model.asset as GameObject;
+                    prefabResolved = true;
+                }
+            }
+            if (cachedAuthoredPrefab == null || finishesResolved) yield break;
+            yield return null;
+            ResourceRequest ice = Resources.LoadAsync<Material>(
+                "AarisCombat/Materials/GlooWall-ArcticBlue");
+            ice.priority = -1;
+            yield return ice;
+            yield return null;
+            ResourceRequest frost = Resources.LoadAsync<Material>(
+                "AarisCombat/Materials/GlooWall-FrostHighlight");
+            frost.priority = -1;
+            yield return frost;
+            if (!finishesResolved)
+            {
+                cachedIce = ice.asset as Material;
+                cachedFrost = frost.asset as Material;
+                finishesResolved = true;
+            }
+        }
+#endif
+
+        private static GameObject AuthoredPrefab()
+        {
+            if (!prefabResolved)
+            {
+                cachedAuthoredPrefab = Resources.Load<GameObject>("AarisCombat/GlooWall");
+                prefabResolved = true;
+            }
+            return cachedAuthoredPrefab;
+        }
+
+        private static void AuthoredFinishes(out Material ice, out Material frost)
+        {
+            if (!finishesResolved)
+            {
+                cachedIce = Resources.Load<Material>("AarisCombat/Materials/GlooWall-ArcticBlue");
+                cachedFrost = Resources.Load<Material>("AarisCombat/Materials/GlooWall-FrostHighlight");
+                finishesResolved = true;
+            }
+            ice = cachedIce;
+            frost = cachedFrost;
+        }
 
         private static Material Material(bool ghost)
         {
@@ -405,7 +502,7 @@ namespace Aaris.MapReview
             var visual = new GameObject("VisualRoot");
             visual.transform.SetParent(root.transform, false);
             Material material = Material(ghost);
-            var authoredModel = Resources.Load<GameObject>("AarisCombat/GlooWall");
+            var authoredModel = AuthoredPrefab();
             if (authoredModel != null)
             {
                 var art = Object.Instantiate(authoredModel, visual.transform, false);
@@ -417,8 +514,8 @@ namespace Aaris.MapReview
                 }
                 // The OBJ contains ArcticBlue and FrostHighlight submeshes.
                 // Using one opaque material erased its authored ice contrast.
-                var ice = Resources.Load<Material>("AarisCombat/Materials/GlooWall-ArcticBlue");
-                var frost = Resources.Load<Material>("AarisCombat/Materials/GlooWall-FrostHighlight");
+                Material ice = null, frost = null;
+                if (!ghost) AuthoredFinishes(out ice, out frost);
                 foreach (var renderer in art.GetComponentsInChildren<Renderer>(true))
                 {
                     var slots = renderer.sharedMaterials;
