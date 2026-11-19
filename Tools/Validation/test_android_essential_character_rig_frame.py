@@ -32,7 +32,10 @@ class EssentialCharacterRigFrame(unittest.TestCase):
         self.assertIn("essentialRigFrame = Time.frameCount + 1;", reserve)
         self.assertIn("return true;", reserve)
         self.assertIn("return false;", reserve)
-        self.assertIn("return Time.frameCount == essentialRigFrame;", GATE)
+        self.assertIn("return Time.frameCount == essentialRigFrame ||", GATE)
+        self.assertIn("Time.frameCount == essentialAircraftFrame;", GATE)
+        self.assertIn("essentialAircraftFrame = Time.frameCount + 1;", reserve)
+        self.assertIn("essentialAircraftFrame = -1;", GATE)
         self.assertIn("essentialRigFrame = -1;", GATE)
         self.assertIn("RigReservedDeferredAttempts = 0;", GATE)
 
