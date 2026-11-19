@@ -19,6 +19,9 @@ namespace Aaris.MapReview
         private bool[] streamed;
         private bool restoredOnDisable;
         private Coroutine deferredDeactivation;
+        private Coroutine deferredIndexBuild;
+        private int indexCursor;
+        private bool indexReady;
         private readonly Dictionary<long, List<int>> cells = new Dictionary<long, List<int>>();
         private List<int> active, nextActive;
         private int[] visited, wanted, probeVisited;
@@ -36,6 +39,9 @@ namespace Aaris.MapReview
         private const float RefreshTravelSquared = 9f;
         // Bound native collider state changes during Android cold start.
         private const int DeferredColliderUpdatesPerFrame = 24;
+        // Native mesh metadata, bounds transforms and cell inserts are split
+        // across Android frames, rather than concentrated in a single Awake.
+        private const int AndroidIndexUpdatesPerFrame = 96;
 
         private void Awake()
         {
@@ -46,43 +52,86 @@ namespace Aaris.MapReview
             probeVisited = new int[obstacles.Length];
             active = new List<int>(obstacles.Length); nextActive = new List<int>(obstacles.Length);
             cellSize = Mathf.Max(32, cellSize);
-            for (int i = 0; i < obstacles.Length; i++)
+            if (Application.platform == RuntimePlatform.Android)
             {
-                Collider c = obstacles[i];
-                if (c == null || !c.enabled) continue;
-                // Preserve intentionally disabled authored colliders: never
-                // revive them through streaming, lifecycle, or teardown.
-                // Collider.bounds is empty while disabled. Read only local bounds metadata;
-                // never temporarily enable/cook every distant building just to cache bounds.
-                Bounds local;
-                if (c is MeshCollider mc && mc.sharedMesh != null) local = mc.sharedMesh.bounds;
-                else if (c is BoxCollider box) local = new Bounds(box.center, box.size);
-                else { worldBounds[i] = c.bounds; continue; }
-                streamed[i] = true;
-                Matrix4x4 m = c.transform.localToWorldMatrix;
-                Vector3 e = local.extents;
-                Vector3 x = m.MultiplyVector(new Vector3(e.x, 0, 0));
-                Vector3 y = m.MultiplyVector(new Vector3(0, e.y, 0));
-                Vector3 z = m.MultiplyVector(new Vector3(0, 0, e.z));
-                Vector3 worldSize = 2 * new Vector3(Mathf.Abs(x.x) + Mathf.Abs(y.x) + Mathf.Abs(z.x),
-                    Mathf.Abs(x.y) + Mathf.Abs(y.y) + Mathf.Abs(z.y), Mathf.Abs(x.z) + Mathf.Abs(y.z) + Mathf.Abs(z.z));
-                worldBounds[i] = new Bounds(m.MultiplyPoint3x4(local.center), worldSize);
-                Bounds bounds = worldBounds[i];
-                // An object belongs to EVERY cell touched by its bounds, not just its pivot.
-                // This keeps long piers and buildings collidable across cell boundaries.
-                for (int xCell = Cell(bounds.min.x); xCell <= Cell(bounds.max.x); xCell++)
-                    for (int zCell = Cell(bounds.min.z); zCell <= Cell(bounds.max.z); zCell++)
-                    {
-                        long key = Key(xCell, zCell);
-                        if (!cells.TryGetValue(key, out List<int> entries))
-                        { entries = new List<int>(); cells.Add(key, entries); }
-                        entries.Add(i);
-                    }
-                // Keep original solid physics while the initial grid is built.
+                // Keep the original solid world active until every collider
+                // has been indexed. Never allow partial-grid streaming.
+                BeginDeferredGridBuild();
+                return;
             }
+            for (int i = 0; i < obstacles.Length; i++)
+                IndexCollider(i);
+            FinishIndexBuild();
+        }
+
+        private void BeginDeferredGridBuild()
+        {
+            if (deferredIndexBuild != null) StopCoroutine(deferredIndexBuild);
+            deferredIndexBuild = StartCoroutine(BuildGridAcrossFrames());
+        }
+
+        private IEnumerator BuildGridAcrossFrames()
+        {
+            // Don't compete with scene activation, player rig and URP state
+            // during the first Android Awake. Untouched colliders stay solid.
+            yield return null;
+            int processed = 0;
+            while (indexCursor < obstacles.Length)
+            {
+                IndexCollider(indexCursor);
+                // Advance before yielding, so disable/re-enable cannot add
+                // the same collider to the same cell more than once.
+                indexCursor++;
+                if (++processed >= AndroidIndexUpdatesPerFrame)
+                {
+                    processed = 0;
+                    yield return null;
+                }
+            }
+            deferredIndexBuild = null;
+            FinishIndexBuild();
+        }
+
+        private void IndexCollider(int i)
+        {
+            Collider c = obstacles[i];
+            if (c == null || !c.enabled) return;
+            // Intentionally disabled authored colliders must stay off.
+            // Collider.bounds is empty if its collider is disabled.
+            Bounds local;
+            if (c is MeshCollider mc && mc.sharedMesh != null) local = mc.sharedMesh.bounds;
+            else if (c is BoxCollider box) local = new Bounds(box.center, box.size);
+            else { worldBounds[i] = c.bounds; return; }
+            streamed[i] = true;
+            Matrix4x4 m = c.transform.localToWorldMatrix;
+            Vector3 e = local.extents;
+            Vector3 x = m.MultiplyVector(new Vector3(e.x, 0, 0));
+            Vector3 y = m.MultiplyVector(new Vector3(0, e.y, 0));
+            Vector3 z = m.MultiplyVector(new Vector3(0, 0, e.z));
+            Vector3 worldSize = 2 * new Vector3(Mathf.Abs(x.x) + Mathf.Abs(y.x) + Mathf.Abs(z.x),
+                Mathf.Abs(x.y) + Mathf.Abs(y.y) + Mathf.Abs(z.y), Mathf.Abs(x.z) + Mathf.Abs(y.z) + Mathf.Abs(z.z));
+            worldBounds[i] = new Bounds(m.MultiplyPoint3x4(local.center), worldSize);
+            Bounds bounds = worldBounds[i];
+            // A long pier or building belongs to every intersected cell.
+            for (int xCell = Cell(bounds.min.x); xCell <= Cell(bounds.max.x); xCell++)
+                for (int zCell = Cell(bounds.min.z); zCell <= Cell(bounds.max.z); zCell++)
+                {
+                    long key = Key(xCell, zCell);
+                    if (!cells.TryGetValue(key, out List<int> entries))
+                    { entries = new List<int>(); cells.Add(key, entries); }
+                    entries.Add(i);
+                }
+        }
+
+        private void FinishIndexBuild()
+        {
+            // Only a complete grid can gate physics and answer inactive
+            // collider probes. Start live-player deactivation afterwards.
+            indexReady = true;
             RefreshNow();
             BeginDeferredDeactivation();
         }
+
         private void BeginDeferredDeactivation()
         {
             if (deferredDeactivation != null) StopCoroutine(deferredDeactivation);
@@ -136,6 +185,7 @@ namespace Aaris.MapReview
                 enabled = false;
                 return;
             }
+            if (!indexReady) return;
             // Scene-load bootstraps can attach the flight component AFTER
             // this streamer's Start. Retry no more than once per unscaled
             // second until present, then avoid repeated native lookups.
@@ -159,12 +209,13 @@ namespace Aaris.MapReview
             // disabled. OnDisable restored the original solid colliders;
             // do not secretly gate them again while Update is inactive.
             if (!isActiveAndEnabled) return;
+            if (!indexReady) return;
             RefreshNow(true);
         }
 
         private void RefreshNow(bool forcePhysicsSync)
         {
-            if (target == null || worldBounds == null) return;
+            if (!indexReady || target == null || worldBounds == null) return;
             lastPosition = target.position;
             nextCheck = Time.unscaledTime + 1f;
             float enterDistance = Mathf.Max(0f, activationDistance);
@@ -214,6 +265,7 @@ namespace Aaris.MapReview
         internal bool HasPotentialInactiveObstacle(Vector3 center,
             Vector3 halfExtents, Quaternion rotation)
         {
+            if (!indexReady) return false;
             if (!isActiveAndEnabled || obstacles == null || streamed == null ||
                 worldBounds == null) return false;
             Vector3 right = rotation * (Vector3.right * halfExtents.x);
@@ -261,6 +313,13 @@ namespace Aaris.MapReview
                 streamed == null || active == null || nextActive == null ||
                 obstacles == null) return;
             restoredOnDisable = false;
+            if (!indexReady)
+            {
+                // An interrupted Android index resumes from its saved cursor.
+                // No collider was gated while indexing was incomplete.
+                BeginDeferredGridBuild();
+                return;
+            }
             active.Clear();
             nextActive.Clear();
             // OnDisable restored the original solid world. Rebuild only the
@@ -271,6 +330,11 @@ namespace Aaris.MapReview
 
         private void OnDisable()
         {
+            if (deferredIndexBuild != null)
+            {
+                StopCoroutine(deferredIndexBuild);
+                deferredIndexBuild = null;
+            }
             if (deferredDeactivation != null)
             {
                 StopCoroutine(deferredDeactivation);
