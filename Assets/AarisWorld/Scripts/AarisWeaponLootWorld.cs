@@ -20,9 +20,49 @@ namespace Aaris.MapReview
         public AarisLootCandidate[] candidates;
 
         private static AarisLootDocument cached;
+        internal static AarisLootDocument AndroidCached => cached;
+        internal static bool AndroidWarmupFinished { get; private set; }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetCache() => cached = null;
+        private static void ResetCache()
+        {
+            cached = null;
+            AndroidWarmupFinished = false;
+        }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        internal static IEnumerator LoadForAndroidAsync()
+        {
+            if (cached != null)
+            {
+                AndroidWarmupFinished = true;
+                yield break;
+            }
+            // The tactical medical HUD and gun loot share these same authored
+            // candidates. Load them once off the opening-frame synchronous
+            // Resources.Load path, then publish the complete immutable document.
+            ResourceRequest request = Resources.LoadAsync<TextAsset>(
+                "AarisWeapons/loot_candidates");
+            request.priority = -1;
+            yield return request;
+            // Avoid parsing JSON in the same rendered frame as native
+            // ResourceRequest completion or the weapon catalog import.
+            yield return null;
+            TextAsset source = request.asset as TextAsset;
+            if (source != null)
+            {
+                try { cached = JsonUtility.FromJson<AarisLootDocument>(source.text); }
+                catch (Exception e)
+                {
+                    Debug.LogError("Aaris: invalid loot candidates JSON: " + e.Message);
+                }
+            }
+            else Debug.LogError("Aaris: missing embedded AarisWeapons/loot_candidates.json.");
+            // Even a failed import finishes: HUD stops retrying on every frame,
+            // while the weapon world fails closed on its original schema checks.
+            AndroidWarmupFinished = true;
+        }
+#endif
 
         internal static AarisLootDocument Load()
         {
@@ -177,7 +217,12 @@ namespace Aaris.MapReview
         private IEnumerator InitializeAndroid()
         {
             yield return null; // Render the aircraft before loading ground-only models.
+            // Prewarm the single authored candidate document before either
+            // weapon placement or medical-site discovery needs to inspect it.
+            yield return AarisLootDocument.LoadForAndroidAsync();
+            if (!isActiveAndEnabled) yield break;
             yield return AarisWeaponCatalog.LoadForMatchAsync();
+            if (!isActiveAndEnabled) yield break;
             Initialize();
         }
 
@@ -189,6 +234,12 @@ namespace Aaris.MapReview
                 return;
             }
             AarisLootDocument doc;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // A missing/bad async document must never force a synchronous
+            // retry in the first gameplay frame. The original validation
+            // below disables loot safely if the cached document is absent.
+            doc = AarisLootDocument.AndroidCached;
+#else
             try { doc = AarisLootDocument.Load(); }
             catch (Exception e)
             {
@@ -196,6 +247,7 @@ namespace Aaris.MapReview
                 enabled = false;
                 return;
             }
+#endif
             if (doc == null || doc.schema != 1 || doc.sizeMetres != 2000 ||
                 doc.candidates == null || doc.candidates.Length < 50)
             {
