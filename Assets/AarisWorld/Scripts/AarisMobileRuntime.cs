@@ -943,7 +943,8 @@ namespace Aaris.MapReview
             public bool urpRequiresDepthTexture, urpRequiresOpaqueTexture, urpSupportsHdr;
             // These count denied admission *attempts*, not unique jobs or
             // milliseconds of work. Source of truth is the native GPU profiler.
-            public int optionalStreamCleanupDeferrals, optionalStreamFrameDeferrals;
+            public int optionalStreamCleanupDeferrals;
+            public int optionalStreamFrameDeferrals;
             public int optionalStreamImportDeferrals;
             // Previous Android 11+ process exit, not current usage or proof
             // that this launch crashed. -1 means unobserved/unavailable.
