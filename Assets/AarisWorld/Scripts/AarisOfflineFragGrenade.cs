@@ -25,8 +25,30 @@ namespace Aaris.MapReview
         private static readonly Stack<AarisOfflineFragGrenade> idleGrenades =
             new Stack<AarisOfflineFragGrenade>(MaxPooledGrenades);
 
+        private static float poolingAllowedAt;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetPoolForPlaySession() => idleGrenades.Clear();
+        private static void ResetPoolForPlaySession()
+        {
+            idleGrenades.Clear();
+            poolingAllowedAt = 0f;
+        }
+
+        // Called from the central Android low-memory Update, not from the
+        // system notification. Active grenade bodies are never in this stack.
+        internal static int ReleaseInactivePooledGrenades()
+        {
+            poolingAllowedAt = Time.unscaledTime + 60f;
+            int released = 0;
+            while (idleGrenades.Count > 0)
+            {
+                AarisOfflineFragGrenade inactive = idleGrenades.Pop();
+                if (inactive == null || inactive.gameObject.activeInHierarchy) continue;
+                UnityEngine.Object.Destroy(inactive.gameObject);
+                released++;
+            }
+            return released;
+        }
 
         internal static IEnumerator PrewarmGrenadeAssets()
         {
@@ -269,7 +291,8 @@ namespace Aaris.MapReview
             damageableScratch.Clear();
             owner = null;
 #if UNITY_ANDROID && !UNITY_EDITOR
-            if (idleGrenades.Count < MaxPooledGrenades)
+            if (Time.unscaledTime >= poolingAllowedAt &&
+                idleGrenades.Count < MaxPooledGrenades)
             {
                 // Return the whole initialized visual+physics hierarchy.
                 // IgnoreCollision is re-applied in Launch after reactivation.
