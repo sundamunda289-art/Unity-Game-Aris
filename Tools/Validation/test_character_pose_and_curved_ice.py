@@ -953,4 +953,53 @@ assert 'Physics.' not in pose_solver and 'new List<' not in pose_solver
 for knee_y, minimum, should_repair in ((0.12,0.15,True),(0.16,0.15,False),
                                       (-0.03,0.10,True),(0.22,0.10,False)):
     assert (knee_y < minimum) == should_repair
+# Crossfade knee-plane regression: the native PlayMode showed an entering-prone
+# frame with lateral knee offset 0.526m even after ankle spread was bounded.
+# Constrain the exact two-bone bend CIRCLE without forcing an early prone
+# pole on return-to-standing (which previously regressed knee alignment).
+for guard in (
+    'Vector3 anatomicalSideAxis = default(Vector3)',
+    'float maximumKneeSideMetres = 0f',
+    'float maximumSideTurnDegrees = 0f',
+    'if (Mathf.Abs(kneeSide) > maximumKneeSideMetres)',
+    'lateralBasis /= sideAxisLength;',
+    'float desiredSide = Mathf.Clamp(',
+    'otherBend.normalized * Mathf.Sqrt(Mathf.Max(',
+    'Vector3.RotateTowards(',
+    'maximumSideTurnDegrees * Mathf.Deg2Rad, 0f);',
+    'if (candidateKnee.y >= minimumKneeWorldY - 0.002f)',
+    'if (prone && groundedNow && !visuallyAirborne &&',
+    'transitioningLowStance && authoredProne &&',
+    'leftThigh != null && rightThigh != null',
+    'entryKneeSideTurn = 38f * entry * settle *',
+    'kneeSideAxis, 0.29f, entryKneeSideTurn);',
+):
+    assert guard in visual, guard
+assert visual.count('kneeSideAxis, 0.29f, entryKneeSideTurn);') == 2
+# Both limbs share the same anatomical axis, and zero means no control.
+assert visual.index('Vector3 kneeSideAxis = leftThigh') > visual.index(
+    'float pronePoleStrength = proneKneeShare')
+assert visual.index('if (prone && groundedNow') < visual.index('leftFootGoal = ResolveLowStanceFootContact(')
+assert 'if (actions.Stance == AarisBattleActions.PlayerStance.Standing)' not in visual
+# Solve a synthetic planar two-bone circle, rotating only the lateral bend
+# while preserving the hip-to-ankle reach. Cap angular change at 38 degrees.
+import math
+def limited_knee_side(start_side, along_side, across, cap, radians):
+    # Use a bend vector in the lateral/up basis. The side-coordinate
+    # projection is continuous and cannot exceed the original offset.
+    start = max(-1., min(1., (start_side - along_side) / across))
+    target = max(-.995, min(.995, (
+        max(-cap, min(cap, start_side)) - along_side) / across))
+    start_angle = math.asin(start)
+    goal_angle = math.asin(target)
+    moved = max(-radians, min(radians, goal_angle - start_angle))
+    return along_side + across * math.sin(start_angle + moved)
+for original_side in (-.526,.366,-.24,.0):
+    adjusted = limited_knee_side(original_side, -.08, .50, .29, math.radians(38))
+    assert abs(adjusted) <= abs(original_side) + 1e-6
+    if abs(original_side) > .29:
+        assert abs(adjusted) < abs(original_side)
+assert limited_knee_side(-.526,-.08,.50,.29,0.) < -.525
+print('PASS: entering prone knee circle limit and transition-only guard')
+
 print('PASS: pose-aware knee clearance and prone pelvis')
