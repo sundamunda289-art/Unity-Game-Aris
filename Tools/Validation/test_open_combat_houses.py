@@ -47,7 +47,7 @@ class OpenCombatHouseContracts(unittest.TestCase):
                          {"cottage", "bungalow", "detached"})
         self.assertIn("GameObject originalPrefab,bool includePanels = false)",
                       modular)
-        self.assertIn("!Prepare(includePanels)", modular)
+        self.assertIn("!Prepare(originalPrefab, includePanels)", modular)
         self.assertIn("Front(t,width,depth,h,player,includePanels);", modular)
         self.assertIn("Back(t,width,depth,h,includePanels);", modular)
         self.assertIn("AarisModularHouse.Create(position, rotation", expansion)
