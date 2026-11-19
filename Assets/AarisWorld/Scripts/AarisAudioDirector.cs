@@ -87,12 +87,20 @@ namespace Aaris.MapReview
             vehicle = GetComponent<AarisVehicleSession>();
             drop = GetComponent<AarisOfflineDrop>();
             capsule = GetComponent<CharacterController>();
+            // Cold-start Android only needs the airborne/drop cues immediately.
+            // Keep their original clips ready before the first playable frame.
+            // Everything else remains identical but is loaded one request per
+            // frame after the first render, avoiding dozens of synchronous
+            // decompressions during an already busy scene boot.
             foreach (string key in Keys)
-                clips[key] = Resources.Load<AudioClip>("SFX/" + key);
-            // Preserve all base cues immediately. Optional ambience/foley
-            // variants stream after the first Android frame, with base fallback.
+            {
 #if UNITY_ANDROID && !UNITY_EDITOR
-            StartCoroutine(LoadOptionalFoleyAcrossFrames());
+                if (!IsImmediateStartupCue(key)) continue;
+#endif
+                clips[key] = Resources.Load<AudioClip>("SFX/" + key);
+            }
+#if UNITY_ANDROID && !UNITY_EDITOR
+            StartCoroutine(LoadAndroidAudioAcrossFrames());
 #else
             LoadOptionalFoleySynchronously();
 #endif
@@ -131,6 +139,32 @@ namespace Aaris.MapReview
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
+        private static bool IsImmediateStartupCue(string key)
+        {
+            return key == "plane_engine_loop" || key == "jump_whoosh" ||
+                   key == "wind_rush_loop" || key == "canopy_glide_loop" ||
+                   key == "parachute_open" || key == "parachute_land";
+        }
+
+        // One Android audio staging pipeline. Both base cues and optional
+        // variants retain their original source, codec and volume. Waiting
+        // for each request before starting the next prevents memory/I/O bursts.
+        private IEnumerator LoadAndroidAudioAcrossFrames()
+        {
+            yield return null; // let URP render the native terrain first
+            foreach (string key in Keys)
+            {
+                if (IsImmediateStartupCue(key)) continue;
+                ResourceRequest request = Resources.LoadAsync<AudioClip>(
+                    "SFX/" + key);
+                yield return request;
+                clips[key] = request.asset as AudioClip;
+                yield return null; // bound native audio integration per frame
+            }
+            // All base sounds are now ready; load extra Foley variants last.
+            yield return LoadOptionalFoleyAcrossFrames();
+        }
+
         // Only one optional audio request integrates per frame; gameplay cues
         // already have a fully loaded base fallback with unchanged audio assets.
         private IEnumerator LoadOptionalFoleyAcrossFrames()
