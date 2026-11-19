@@ -3,7 +3,19 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 [[ -f "$ROOT/Packages/manifest.json" ]] || { echo "Not Unity project root"; exit 2; }
-BIN="${UNITY_BIN:-/opt/unity/Editor/Unity}"
+# Respect an explicit editor override. Otherwise use the exact project-pinned
+# Unity 6 installation in the owner's Codespace, without reinstalling Unity.
+if [[ -n "${UNITY_BIN:-}" ]]; then
+  BIN="$UNITY_BIN"
+else
+  UNITY_VERSION="$(sed -n 's/^m_EditorVersion: //p' "$ROOT/ProjectSettings/ProjectVersion.txt" | head -n 1)"
+  CODESPACE_UNITY="$HOME/.local/share/aaris-unity-editors/$UNITY_VERSION/Editor/Unity"
+  if [[ -n "$UNITY_VERSION" && -x "$CODESPACE_UNITY" ]]; then
+    BIN="$CODESPACE_UNITY"
+  else
+    BIN="/opt/unity/Editor/Unity"
+  fi
+fi
 [[ -x "$BIN" ]] || { echo "Unity Editor missing: $BIN (set UNITY_BIN)"; exit 3; }
 [[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]] || {
   echo "Workspace has tracked edits; building from checked-in files is preferred." >&2
