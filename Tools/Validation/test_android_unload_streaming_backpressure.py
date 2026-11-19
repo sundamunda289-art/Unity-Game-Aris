@@ -77,6 +77,36 @@ class CriticalMemoryBackpressure(unittest.TestCase):
         self.assertNotIn("TerrainData", GATE)
         self.assertNotIn("renderScale", GATE)
 
+    def test_observable_reasons_for_busy_streaming_frames(self):
+        # Counters distinguish a free-frame collision, a running asset
+        # import and a critical-memory cleanup. These are attempted
+        # admissions, never elapsed GPU time or total pending jobs.
+        for token in ("CleanupDeferredAttempts", "SameFrameDeferredAttempts",
+                      "ImportDeferredAttempts"):
+            self.assertIn("internal static int " + token + " { get; private set; }", GATE)
+            self.assertIn(token + "++", GATE)
+        self.assertIn(
+            "CleanupDeferredAttempts = SameFrameDeferredAttempts = ImportDeferredAttempts = 0;",
+            GATE)
+        for field in ("optionalStreamCleanupDeferrals",
+                      "optionalStreamFrameDeferrals",
+                      "optionalStreamImportDeferrals"):
+            self.assertIn("public int " + field, RUNTIME)
+            self.assertIn("s." + field + " =", RUNTIME)
+
+    def test_actual_urp_state_is_reported_without_mutating_water_passes(self):
+        for field in ("urpMsaaSamples", "urpShadowCascades",
+                      "urpMainLightShadowmapResolution", "urpShadowDistance",
+                      "urpRequiresDepthTexture", "urpRequiresOpaqueTexture",
+                      "urpSupportsHdr"):
+            self.assertIn(field, RUNTIME)
+            self.assertIn("s." + field + " =", RUNTIME)
+        self.assertIn("pipeline.mainLightShadowmapResolution", RUNTIME)
+        self.assertIn("pipeline.supportsCameraDepthTexture", RUNTIME)
+        self.assertIn("pipeline.supportsCameraOpaqueTexture", RUNTIME)
+        self.assertNotIn("pipeline.supportsCameraDepthTexture =", RUNTIME)
+        self.assertNotIn("pipeline.supportsCameraOpaqueTexture =", RUNTIME)
+
     def test_water_shader_graph_requires_scene_color_and_depth_copies(self):
         # The map contains a water Shader Graph with *both* scene texture
         # inputs: switching off the URP passes without verifying scene usage
