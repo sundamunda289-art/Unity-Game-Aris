@@ -393,7 +393,7 @@ def audit() -> None:
     assert "private void OnEnable()" in nearby
     assert "streamed[i] && obstacles[i] != null" in nearby
     assert "restoredOnDisable = active != null;" in nearby
-    assert "if (c == null || !c.enabled) continue;" in nearby
+    assert "if (c == null || !c.enabled) return;" in nearby
     assert "active.Clear();" in nearby and "nextActive.Clear();" in nearby
     assert "RefreshNow();" in nearby
     assert (6.5 * (1.0 + 0.15)) < 55 - 2.0
