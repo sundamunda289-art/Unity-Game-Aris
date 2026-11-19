@@ -247,6 +247,14 @@ namespace Aaris.MapReview
         private void Start()
         {
             if (!enabled) return;
+            // Gym is a movement-only scene: retain the identical production
+            // motor/stance/visual, but never bootstrap unrelated game systems.
+            if (GetComponent<AarisLocomotionGymMarker>() != null)
+            {
+                AarisCharacterVisual.EnsureForPlayer(this);
+                characterVisual = GetComponent<AarisCharacterVisual>();
+                return;
+            }
             AarisBattleHUD.EnsureForPlayer(this);
             AarisWeaponHUD.EnsureForPlayer(this);
             AarisWeaponLootWorld.EnsureForPlayer(this);

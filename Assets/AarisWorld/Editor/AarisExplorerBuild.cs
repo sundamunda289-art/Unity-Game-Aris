@@ -22,6 +22,10 @@ namespace Aaris.MapReview.Editor
 
         public void OnPreprocessBuild(BuildReport report)
         {
+            // Movement QA uses an independent one-scene Android test APK.
+            // Never run native-map validation or rewrite the gym's build settings.
+            if (AarisLocomotionGymBuilder.IsIsolatedGymBuild(
+                    report.summary.outputPath)) return;
             if (buildSceneValidated) return;
             Configure();
             ValidateSavedScene();
