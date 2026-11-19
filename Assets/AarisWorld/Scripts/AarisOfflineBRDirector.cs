@@ -239,7 +239,8 @@ namespace Aaris.MapReview
         private static void Boot()
         {
             var actor = FindFirstObjectByType<AarisThirdPersonPlayer>();
-            if (actor == null || FindFirstObjectByType<AarisOfflineBRDirector>() != null) return;
+            if (actor == null || actor.GetComponent<AarisLocomotionGymMarker>() != null ||
+                FindFirstObjectByType<AarisOfflineBRDirector>() != null) return;
             var root = new GameObject("Aaris Offline Battle Royale Director");
             var director = root.AddComponent<AarisOfflineBRDirector>();
             director.player = actor.transform;

@@ -42,6 +42,18 @@ class LocomotionGymTests(unittest.TestCase):
         self.assertIn('AarisLocomotionGymBuilder.IsIsolatedGymBuild', explorer)
         self.assertIn('Configure();', explorer)
 
+    def test_no_other_systems_boot_in_gym(self):
+        excluded = (
+            "AarisBattleHUD.cs", "AarisWeaponHUD.cs",
+            "AarisOfflineDrop.cs", "AarisOfflineBRDirector.cs",
+            "AarisRoadsideBikeScenery.cs", "AarisOfflineTacticalHUD.cs",
+        )
+        for script in excluded:
+            data = self.read("Assets/AarisWorld/Scripts/" + script)
+            self.assertIn('GetComponent<AarisLocomotionGymMarker>()', data, script)
+        motor = self.read("Assets/AarisWorld/Scripts/AarisThirdPersonPlayer.cs")
+        self.assertIn("!isLocomotionGym && GetComponent<AarisAudioDirector>()", motor)
+
     def test_filtered_staging_and_no_full_map(self):
         shell = self.read("Tools/CI/build_locomotion_gym.sh")
         self.assertIn('Assets/Resources/AarisCharacters', shell)

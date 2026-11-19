@@ -87,7 +87,9 @@ namespace Aaris.MapReview
 
         internal static void EnsureForPlayer(AarisThirdPersonPlayer player)
         {
-            if (player != null && player.GetComponent<AarisOfflineDrop>() == null)
+            if (player != null &&
+                player.GetComponent<AarisLocomotionGymMarker>() == null &&
+                player.GetComponent<AarisOfflineDrop>() == null)
                 player.gameObject.AddComponent<AarisOfflineDrop>();
         }
 

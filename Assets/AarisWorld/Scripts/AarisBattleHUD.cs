@@ -35,7 +35,8 @@ namespace Aaris.MapReview
 
         internal static void EnsureForPlayer(AarisThirdPersonPlayer existing)
         {
-            if (existing == null || FindFirstObjectByType<AarisBattleHUD>() != null) return;
+            if (existing == null || existing.GetComponent<AarisLocomotionGymMarker>() != null ||
+                FindFirstObjectByType<AarisBattleHUD>() != null) return;
 
             var state = existing.GetComponent<AarisBattleActions>();
             if (state == null) state = existing.gameObject.AddComponent<AarisBattleActions>();

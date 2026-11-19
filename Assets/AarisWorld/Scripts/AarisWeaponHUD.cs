@@ -35,7 +35,8 @@ namespace Aaris.MapReview
 
         internal static void EnsureForPlayer(AarisThirdPersonPlayer player)
         {
-            if (player == null || FindFirstObjectByType<AarisWeaponHUD>() != null) return;
+            if (player == null || player.GetComponent<AarisLocomotionGymMarker>() != null ||
+                FindFirstObjectByType<AarisWeaponHUD>() != null) return;
             var inv = player.GetComponent<AarisWeaponInventory>();
             if (inv == null) inv = player.gameObject.AddComponent<AarisWeaponInventory>();
             var go = new GameObject("Aaris Weapon Utility HUD");

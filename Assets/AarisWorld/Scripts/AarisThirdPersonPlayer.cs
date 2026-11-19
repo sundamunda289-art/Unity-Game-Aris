@@ -240,7 +240,7 @@ namespace Aaris.MapReview
             lastMouse = Input.mousePosition;
             PlaceCamera(true);
             // The saved player and any later player spawn use the same audio setup.
-            if (GetComponent<AarisAudioDirector>() == null)
+            if (!isLocomotionGym && GetComponent<AarisAudioDirector>() == null)
                 gameObject.AddComponent<AarisAudioDirector>();
         }
 
