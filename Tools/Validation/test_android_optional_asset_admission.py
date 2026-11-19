@@ -66,7 +66,7 @@ class OptionalAssetAdmission(unittest.TestCase):
             "private bool Setup()", 1)[0]
         self.assertLess(
             boot.index("while (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())"),
-            boot.index("if (!Setup())"))
+            boot.index("if (!Setup(preloadedPoints, text))"))
         self.assertIn("yield return null;", boot)
         self.assertIn("AttachSessionAndHud(motor, this);", boot)
 
