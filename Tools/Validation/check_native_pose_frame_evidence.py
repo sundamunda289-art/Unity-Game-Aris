@@ -78,7 +78,11 @@ def read_bones(lines):
                 "Invalid bone position " + stance + "/" + name)
         height = float(clearance)
         require(math.isfinite(height), "Invalid bone clearance " + stance + "/" + name)
-        poses.setdefault(stance, {}).setdefault(name, (xyz, height))
+        # Real native orbit reports include entry and fully settled samples.
+        # The final record for each bone is the settled (frame 3) posture,
+        # not the first transition frame (frame 0). Synthetic fixtures have
+        # one record per bone and remain compatible.
+        poses.setdefault(stance, {})[name] = (xyz, height)
     return poses
 
 
@@ -91,6 +95,8 @@ def audit_capture(directory):
     require("REAL_UNITY_CAMERA_TEST" in lines, "Not a native Unity camera report")
     require("SUCCESS_16_ACTOR_MULTIANGLE_PORTRAITS" in lines,
             "Native 16-angle Play Mode success marker missing")
+    require(any(s.startswith("SETTLED_PRONE_CONTACT ") for s in lines),
+            "Missing settled prone contact sample")
 
     expected = {
         "{}_f{}.jpg".format(name, frame)
