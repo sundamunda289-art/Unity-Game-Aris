@@ -1325,7 +1325,7 @@ namespace Aaris.MapReview
             // separation while entering prone, and 76.9cm when standing up.
             // The late-only full stance solver does not constrain those
             // brief crossfades. Symmetrically trim ONLY excess horizontal
-            // splay, by <=12cm per shoe, before the existing ground rays
+            // splay, by <=16cm per shoe, before the existing ground rays
             // sample those resolved target positions. At speed, in air or
             // at upright idle the correction vanishes naturally.
             Vector3 stanceSeparation = Vector3.ProjectOnPlane(
@@ -1333,10 +1333,10 @@ namespace Aaris.MapReview
             float stanceSpread = stanceSeparation.magnitude;
             float guard = stationary * Mathf.SmoothStep(0f, 1f,
                 Mathf.InverseLerp(0.18f, 0.65f, lowPose));
-            if (stanceSpread > 0.57f && guard > 0.001f)
+            if (stanceSpread > 0.50f && guard > 0.001f)
             {
                 float eachShoeMetres = Mathf.Min(
-                    (stanceSpread - 0.57f) * 0.5f, 0.12f) * guard;
+                    (stanceSpread - 0.50f) * 0.5f, 0.16f) * guard;
                 Vector3 inward = stanceSeparation *
                     (eachShoeMetres / stanceSpread);
                 leftGoal += inward;
@@ -2048,7 +2048,7 @@ namespace Aaris.MapReview
                         Mathf.InverseLerp(0.35f, 0.65f, effectiveProneBlend));
                     float settle = 1f - Mathf.SmoothStep(0f, 1f,
                         Mathf.InverseLerp(0.84f, 0.98f, effectiveProneBlend));
-                    entryKneeSideTurn = 38f * entry * settle *
+                    entryKneeSideTurn = 55f * entry * settle *
                         kneeStillness * kneeTurnStability;
                 }
                 // Resolve X/Z BEFORE sampling Y. This keeps the one existing
@@ -2068,13 +2068,13 @@ namespace Aaris.MapReview
                     PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
                         leftAnkleY, kneeForward, ankleRigWeight,
                         leftFootGoal, kneeClearance, kneePoleStrength,
-                        kneeSideAxis, 0.29f, entryKneeSideTurn);
+                        kneeSideAxis, 0.26f, entryKneeSideTurn);
                 else leftLowPlantLocked = false;
                 if (!float.IsNaN(rightAnkleY))
                     PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
                         rightAnkleY, kneeForward, ankleRigWeight,
                         rightFootGoal, kneeClearance, kneePoleStrength,
-                        kneeSideAxis, 0.29f, entryKneeSideTurn);
+                        kneeSideAxis, 0.26f, entryKneeSideTurn);
                 else rightLowPlantLocked = false;
                 // Crouch/prone used to correct only ankle height, leaving the
                 // sole visually cutting through a sloped road or bridge deck.
