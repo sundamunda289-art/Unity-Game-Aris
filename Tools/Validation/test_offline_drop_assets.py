@@ -1047,7 +1047,13 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         loot = (SCRIPTS / "AarisWeaponLootWorld.cs").read_text("utf-8")
         self.assertIn("var doc = AarisLootDocument.Load();", script)
         self.assertIn('Resources.Load<TextAsset>("AarisWeapons/loot_candidates")', loot)
-        self.assertEqual(loot.count("JsonUtility.FromJson<AarisLootDocument>("), 1)
+        # Desktop uses the historical cached synchronous decoder. Android
+        # now decodes the SAME authored manifest once after native async
+        # import (a separate preprocessor branch), not once per pickup.
+        self.assertEqual(loot.count("JsonUtility.FromJson<AarisLootDocument>("), 2)
+        self.assertIn('yield return AarisLootDocument.LoadForAndroidAsync();', loot)
+        self.assertIn('if (cached != null) return cached;', loot)
+        self.assertIn("var doc = AarisLootDocument.AndroidCached;", script)
         self.assertIn('if (c == null || c.kind != "open" || i % 5 != 0', script)
         self.assertIn("site.taken = true;", script)
         self.assertIn("CanCollectMedical(site)", script)
