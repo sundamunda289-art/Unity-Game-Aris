@@ -37,6 +37,8 @@ namespace Aaris.MapReview
         private GameObject bikeSource;
         private ResourceRequest bikePrewarm;
         private float nextPoll;
+        private bool lowMemoryPending;
+        private float poolAllowedAt;
 
         private sealed class BikePlan
         {
@@ -159,8 +161,28 @@ namespace Aaris.MapReview
             }
         }
 
+        private void OnEnable() { Application.lowMemory += OnLowMemory; }
+        private void OnDisable() { Application.lowMemory -= OnLowMemory; }
+        // Android can report low memory during a heavy frame. Release pooled
+        // scenery only from Update, never inside the notification callback.
+        private void OnLowMemory() { lowMemoryPending = true; }
+
         private void Update()
         {
+            if (lowMemoryPending)
+            {
+                lowMemoryPending = false;
+                poolAllowedAt = Time.unscaledTime + 60f;
+                // Only inactive cached rigs are released. Visible motorcycles
+                // and all original source assets remain in the live scene.
+                while (parkedBikePool.Count > 0)
+                {
+                    GameObject inactiveBike = parkedBikePool.Pop();
+                    if (inactiveBike == null) continue;
+                    bikeVisuals.Remove(inactiveBike);
+                    Destroy(inactiveBike);
+                }
+            }
             if (player == null || !enabled) return;
             float now = Time.unscaledTime;
             if (now < nextPoll) return;
@@ -205,7 +227,8 @@ namespace Aaris.MapReview
                     retired.SetActive(false);
                     // Invariant: visible + pooled never exceeds the original
                     // three-model cap; keep a defensive bound for scene edits.
-                    if (parkedBikePool.Count < MaximumVisibleBikes)
+                    if (Time.unscaledTime >= poolAllowedAt &&
+                        parkedBikePool.Count < MaximumVisibleBikes)
                         parkedBikePool.Push(retired);
                     else
                     {
