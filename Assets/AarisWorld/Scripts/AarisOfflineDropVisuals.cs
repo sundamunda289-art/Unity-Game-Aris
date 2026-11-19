@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.Profiling;
 
 namespace Aaris.MapReview
 {
@@ -11,6 +12,10 @@ namespace Aaris.MapReview
     /// </summary>
     internal static class AarisOfflineDropVisuals
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private static readonly ProfilerMarker k_PlaneCreate =
+            new ProfilerMarker("Aaris.Startup.PlaneCreate");
+#endif
         private static Material hull, dark, wingPanels, engineDark, safetyAccent, rotorPaint,
             propellerBlur, navRed, navGreen, navWhite,
             canopyBlue, canopyWhite, canopyOrange, rope;
@@ -306,6 +311,9 @@ namespace Aaris.MapReview
         internal static GameObject CreatePlane(Vector3 position, Quaternion rotation,
             out Transform[] propellers)
         {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            using var profilerScope = k_PlaneCreate.Auto();
+#endif
             // Three cold-start clocks isolate Resources resolution vs native
             // prefab creation vs visual setup. Time is measured only once at
             // aircraft creation; never in LateUpdate/rotor animation.
