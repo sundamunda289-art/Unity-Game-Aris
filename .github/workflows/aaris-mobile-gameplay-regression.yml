@@ -12,6 +12,7 @@ on:
       - 'Packages/manifest.json'
       - 'Tools/Validation/check_battle_hud.py'
       - 'Tools/Validation/check_battle_hardening.py'
+      - 'Tools/Validation/test_android_medical_pool_low_memory.py'
       - 'Tools/Validation/check_mobile_hotpaths.py'
       - 'Tools/Validation/check_android_hotloop_blocking_calls.py'
       - 'Tools/Validation/test_android_hotloop_blocking_calls.py'
@@ -41,6 +42,7 @@ on:
       - 'Packages/manifest.json'
       - 'Tools/Validation/check_battle_hud.py'
       - 'Tools/Validation/check_battle_hardening.py'
+      - 'Tools/Validation/test_android_medical_pool_low_memory.py'
       - 'Tools/Validation/check_mobile_hotpaths.py'
       - 'Tools/Validation/check_android_hotloop_blocking_calls.py'
       - 'Tools/Validation/test_android_hotloop_blocking_calls.py'
@@ -99,6 +101,7 @@ jobs:
           python Tools/Validation/test_native_stance_transition_capture.py
           python Tools/Validation/test_character_pose_and_curved_ice.py
           python Tools/Validation/check_battle_hardening.py
+          python Tools/Validation/test_android_medical_pool_low_memory.py
           python Tools/Validation/test_open_combat_houses.py
           python Tools/Validation/test_house_facade_details.py
           python Tools/Validation/test_house_facade_lod_texture.py
