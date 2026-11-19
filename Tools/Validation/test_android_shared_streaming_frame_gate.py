@@ -32,7 +32,9 @@ class SharedStreamingAdmission(unittest.TestCase):
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", GATE)
         self.assertIn("if (ramMb > 0 && ramMb <= 4608)", GATE)
         self.assertIn("int frame = Time.frameCount;", GATE)
-        self.assertIn("if (claimedFrame == frame) return false;", GATE)
+        self.assertRegex(GATE,
+                         r"if \(claimedFrame == frame\)\s*\{\s*"
+                         r"SameFrameDeferredAttempts\+\+;\s*return false;\s*\}")
         self.assertIn("claimedFrame = frame;", GATE)
         self.assertEqual(simulate_admission(4096, [1, 1, 2, 2, 3]),
                          [True, False, True, False, True])
