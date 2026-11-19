@@ -40,9 +40,14 @@ class OfflineWeaponPauseAndLandingAuthority(unittest.TestCase):
         self.assertLess(update.index("StopHealing();"), update.index("StreamMedicalSites();"))
         cancel = section(TACTICAL, "private void CancelTacticalInput()", "private void OnDestroy()")
         for token in ("StopHealing();", "wallTouch.CancelHold();", "gloo.CancelAim();",
-                      "OnDisable() => CancelTacticalInput();",
                       "if (paused) CancelTacticalInput();", "if (!focused) CancelTacticalInput();"):
             self.assertIn(token, cancel)
+        # Low-memory notifications need their own OnDisable unsubscribe,
+        # without weakening the existing pending input cancellation.
+        disable = section(TACTICAL, "private void OnDisable()",
+                          "private void OnApplicationPause(")
+        self.assertIn("Application.lowMemory -= OnLowMemory;", disable)
+        self.assertIn("CancelTacticalInput();", disable)
 
     def test_all_keyboard_and_hud_commands_share_on_foot_guard(self):
         authority = section(
