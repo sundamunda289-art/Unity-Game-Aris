@@ -197,12 +197,46 @@ Android diagnostics additionally report one-time JSON decode times
 attempted). These **exclude** native asset import, upload and GPU work; they
 are not an FPS number. No per-frame timing instrumentation was added.
 
+## Seventh pass: shared async car + roadside-bike plan
+
+Source audit found two gameplay systems reading the same
+`AarisVehicles/vehicle_candidates` JSON on Android: the parked-bike
+`Start()` read it synchronously during boot, while the car-world `Setup()`
+read it synchronously again **after** an asynchronous car model prewarm.
+The latter could still schedule native Resources hydration on the integration
+frame that the earlier prewarm was trying to keep light.
+
+`AarisVehiclePointManifest` now owns one Android
+`Resources.LoadAsync<TextAsset>` request and retains the completed asset.
+Both independent coroutines join that **same pending request**, including when
+they start on the same frame or in reverse order. The manifest uses normal
+gameplay priority (0), not optional model priority (-1). A missing document
+fails closed in each consumer's original validation without a repeat blocking
+read. A subsystem-registration reset prevents keeping a stale manifest across
+play sessions.
+
+The bike world now consumes that preloaded document and moves its original
+road-plan JSON parse off the first aircraft/terrain frame. It still filters
+`kind == "roadside"` and retains the same every-other-road-point selection,
+maximum three visible bikes, placement collision tests and original source
+model. The car world's constrained Android prewarm resolves the road document
+before its separate catalog/model requests, then hands the preloaded text
+assets into the **unchanged** schema/physics/renderer validation method.
+Editor / unconstrained Android retains the original synchronous `Setup()`
+wrapper, and there are no changes to authored road coordinates, 44 planned
+car slots, terrains, materials, pipeline quality, or player controls.
+
+The five new source/simulation tests cover same-frame/late/reversed
+requests, single native import admission, Android no-sync handoff, Editor
+fallback and the preserved 2km road-plan validation. These are not real
+Unity frame-time measurements.
+
 ## Verification
 
 Pass: 30 focused Python regression tests for global optional admission,
 pre-existing frame gate, vehicle fallback preload, motorcycle prewarm,
 rival model and animation prewarm. The complete Android source-regression
-suite passed **233 tests** via `python3 -m unittest discover -s Tools/Validation
+suite passed **238 tests** via `python3 -m unittest discover -s Tools/Validation
 -p 'test_android_*.py'`; settlement source/integrity suite passed **13 tests**
 via `python3 Tools/Validation/test_settlement_expansion.py`;
 `git diff --check main...HEAD` passed.
