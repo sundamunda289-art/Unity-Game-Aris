@@ -22,7 +22,16 @@ class AndroidTimeSlicedAnimations(unittest.TestCase):
         self.assertIn('AnimationClip fall = FindClip("fall", "fall");', SRC)
         self.assertIn("if (fall == null) fall = jump;", SRC)
         staged = SRC.split("private IEnumerator PrewarmAndroidAnimationGroups(", 1)[1].split("#endif", 1)[0]
-        self.assertIn("yield return null;\n            foreach", staged)
+        self.assertIn("yield return null;\n            // The two calibrated rigs", staged)
+        self.assertIn("bool naturalSetComplete = false;", staged)
+        self.assertIn("if (candidate == PrimaryModel || candidate == PreviousPrimaryModel)", staged)
+        for motion in ("walk", "jog", "run", "crouch"):
+            self.assertIn('FindMocapClip(androidNaturalClips, "mocap_' + motion + '")', staged)
+        self.assertIn("if (naturalSetComplete &&", staged)
+        for name in ("run", "walk", "sprint", "crouch", "crouch_walk"):
+            self.assertIn('clipName == "' + name + '"', staged)
+        self.assertLess(staged.index("Resources.LoadAll<AnimationClip>(MocapLocomotion)"),
+                        staged.index("foreach (string clipName in AndroidAnimationNames)"))
         self.assertIn("foreach (string clipName in AndroidAnimationNames)", staged)
         self.assertIn("Resources.LoadAll<AnimationClip>(location);\n                yield return null;", staged)
         self.assertIn('string prefix = candidate == FallbackModel ? KenneyClips : PrimaryClips;', staged)
