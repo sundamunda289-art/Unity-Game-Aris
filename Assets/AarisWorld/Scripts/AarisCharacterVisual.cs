@@ -24,6 +24,19 @@ namespace Aaris.MapReview
         private const string PrimaryClips = "AarisCharacters/Primary/Animations/";
         private const string MocapLocomotion = "AarisMocap/mocap_locomotion";
         private const float TargetHeightMetres = 1.78f;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // One imported FBX clip group per frame, never all 14 on the same
+        // rig-integration frame. Preserve every original AnimationClip.
+        private static readonly string[] AndroidAnimationNames =
+        {
+            "idle", "run", "walk", "sprint", "prone", "crawl", "jump",
+            "jump_start", "jump_land", "fall", "crouch", "crouch_walk",
+            "punch", "shoot"
+        };
+        private readonly Dictionary<string, AnimationClip[]> androidClipGroups =
+            new Dictionary<string, AnimationClip[]>(StringComparer.Ordinal);
+        private AnimationClip[] androidNaturalClips;
+#endif
 
         [SerializeField, Range(-180f, 180f)] private float modelYawOffset;
         [SerializeField, Range(0.1f, 0.8f)] private float blendResponseSeconds = 0.2f;
@@ -200,14 +213,62 @@ namespace Aaris.MapReview
                 ResourceRequest request = Resources.LoadAsync<GameObject>(candidate);
                 yield return request;
                 if (!isActiveAndEnabled) yield break;
-                if (TryInstantiateCharacter(candidate, request.asset as GameObject))
+                GameObject source = request.asset as GameObject;
+                if (source == null) continue;
+                // The model is already resident; spread subasset hydration
+                // over frames before creating its animation PlayableGraph.
+                yield return PrewarmAndroidAnimationGroups(candidate);
+                if (!isActiveAndEnabled) yield break;
+                if (TryInstantiateCharacter(candidate, source))
                 {
                     FinishVisualSetup();
+                    androidClipGroups.Clear();
+                    androidNaturalClips = null;
                     yield break;
                 }
             }
+            androidClipGroups.Clear();
+            androidNaturalClips = null;
             Debug.LogWarning("Aaris: no usable imported humanoid. Keeping original player visible.");
             enabled = false;
+        }
+
+        private IEnumerator PrewarmAndroidAnimationGroups(string candidate)
+        {
+            androidClipGroups.Clear();
+            androidNaturalClips = null;
+            string prefix = candidate == FallbackModel ? KenneyClips : PrimaryClips;
+            // Separate completed model-asset integration from clip hydration.
+            yield return null;
+            // The two calibrated rigs can use the complete 100STYLE group.
+            // Probe it first so we do not retain five unused legacy FBXs on
+            // memory-constrained devices when all four natural motions exist.
+            bool naturalSetComplete = false;
+            if (candidate == PrimaryModel || candidate == PreviousPrimaryModel)
+            {
+                if (!isActiveAndEnabled) yield break;
+                androidNaturalClips =
+                    Resources.LoadAll<AnimationClip>(MocapLocomotion);
+                naturalSetComplete =
+                    FindMocapClip(androidNaturalClips, "mocap_walk") != null &&
+                    FindMocapClip(androidNaturalClips, "mocap_jog") != null &&
+                    FindMocapClip(androidNaturalClips, "mocap_run") != null &&
+                    FindMocapClip(androidNaturalClips, "mocap_crouch") != null;
+                yield return null;
+            }
+            foreach (string clipName in AndroidAnimationNames)
+            {
+                if (!isActiveAndEnabled) yield break;
+                if (naturalSetComplete &&
+                    (clipName == "run" || clipName == "walk" ||
+                     clipName == "sprint" || clipName == "crouch" ||
+                     clipName == "crouch_walk"))
+                    continue; // SetupAnimations selects original natural clips.
+                string location = prefix + clipName;
+                androidClipGroups[location] =
+                    Resources.LoadAll<AnimationClip>(location);
+                yield return null;
+            }
         }
 #endif
 
@@ -705,7 +766,16 @@ namespace Aaris.MapReview
         {
             // Unity imports each local FBX as an AnimationClip subasset.
             string location = primaryLoaded ? PrimaryClips + name : KenneyClips + name;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // This is already resident on the normal Android startup path.
+            // Preserve synchronous fallback only for a future alternate
+            // setup route that did not run the prewarm coroutine.
+            AnimationClip[] clips = androidClipGroups.TryGetValue(
+                location, out AnimationClip[] staged)
+                ? staged : Resources.LoadAll<AnimationClip>(location);
+#else
             var clips = Resources.LoadAll<AnimationClip>(location);
+#endif
             AnimationClip fallback = null;
             foreach (var clip in clips)
             {
@@ -757,9 +827,15 @@ namespace Aaris.MapReview
             // locomotion set. Mixing one or two mocap clips with older KayKit
             // gait clips produces mismatched contacts/arm cadence, so any
             // missing or invalid Humanoid clip falls back to the reviewed set.
+#if UNITY_ANDROID && !UNITY_EDITOR
+            AnimationClip[] naturalClips = CalibratedSoldierLoaded
+                ? androidNaturalClips ?? Resources.LoadAll<AnimationClip>(MocapLocomotion)
+                : Array.Empty<AnimationClip>();
+#else
             AnimationClip[] naturalClips = CalibratedSoldierLoaded
                 ? Resources.LoadAll<AnimationClip>(MocapLocomotion)
                 : Array.Empty<AnimationClip>();
+#endif
             AnimationClip naturalWalk = FindMocapClip(naturalClips, "mocap_walk");
             AnimationClip naturalJog = FindMocapClip(naturalClips, "mocap_jog");
             AnimationClip naturalRun = FindMocapClip(naturalClips, "mocap_run");
@@ -2218,6 +2294,10 @@ namespace Aaris.MapReview
 
         private void OnDestroy()
         {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            androidClipGroups.Clear();
+            androidNaturalClips = null;
+#endif
             ReleaseAnimationGraph();
             if (runtimeSkin != null) Destroy(runtimeSkin);
             foreach (var material in realisticSkinMaterials.Values)

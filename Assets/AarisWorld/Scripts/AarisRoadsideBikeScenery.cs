@@ -26,17 +26,33 @@ namespace Aaris.MapReview
         private readonly Collider[] denseBlockingHits = new Collider[96];
         private readonly Material[] surfaces = new Material[8];
         private readonly Material[] paintVariants = new Material[4];
+        // Pool at most three original motorcycle rigs instead of destroying
+        // and re-importing their meshes every time the player changes roads.
+        private readonly Stack<GameObject> parkedBikePool =
+            new Stack<GameObject>(MaximumVisibleBikes);
+        private readonly Dictionary<GameObject, BikeVisualCache> bikeVisuals =
+            new Dictionary<GameObject, BikeVisualCache>(MaximumVisibleBikes);
         private Transform player;
         private AarisNearbyColliders nearbyColliders;
         private GameObject bikeSource;
         private ResourceRequest bikePrewarm;
         private float nextPoll;
+        private bool lowMemoryPending;
+        private float poolAllowedAt;
 
         private sealed class BikePlan
         {
             internal AarisVehiclePoint point;
             internal GameObject visible;
             internal float nextProbe;
+        }
+
+        private sealed class BikeVisualCache
+        {
+            internal Renderer[] renderers;
+            // Cached original surface slots for all four authored paint finishes.
+            // Repainting a recycled bike never instantiates a new Material.
+            internal Material[][][] paintLayouts;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -145,8 +161,28 @@ namespace Aaris.MapReview
             }
         }
 
+        private void OnEnable() { Application.lowMemory += OnLowMemory; }
+        private void OnDisable() { Application.lowMemory -= OnLowMemory; }
+        // Android can report low memory during a heavy frame. Release pooled
+        // scenery only from Update, never inside the notification callback.
+        private void OnLowMemory() { lowMemoryPending = true; }
+
         private void Update()
         {
+            if (lowMemoryPending)
+            {
+                lowMemoryPending = false;
+                poolAllowedAt = Time.unscaledTime + 60f;
+                // Only inactive cached rigs are released. Visible motorcycles
+                // and all original source assets remain in the live scene.
+                while (parkedBikePool.Count > 0)
+                {
+                    GameObject inactiveBike = parkedBikePool.Pop();
+                    if (inactiveBike == null) continue;
+                    bikeVisuals.Remove(inactiveBike);
+                    Destroy(inactiveBike);
+                }
+            }
             if (player == null || !enabled) return;
             float now = Time.unscaledTime;
             if (now < nextPoll) return;
@@ -187,7 +223,18 @@ namespace Aaris.MapReview
                 if ((plan.visible.transform.position - position).sqrMagnitude >
                     UnloadRadius * UnloadRadius && unloaded == 0)
                 {
-                    Destroy(plan.visible);
+                    GameObject retired = plan.visible;
+                    retired.SetActive(false);
+                    // Invariant: visible + pooled never exceeds the original
+                    // three-model cap; keep a defensive bound for scene edits.
+                    if (Time.unscaledTime >= poolAllowedAt &&
+                        parkedBikePool.Count < MaximumVisibleBikes)
+                        parkedBikePool.Push(retired);
+                    else
+                    {
+                        bikeVisuals.Remove(retired);
+                        Destroy(retired);
+                    }
                     plan.visible = null;
                     unloaded++;
                 }
@@ -227,16 +274,46 @@ namespace Aaris.MapReview
             // The parked model stays until the new bay and real mesh validate.
             nearest.nextProbe = now + 3f;
             if (!TryParkingSpot(nearest.point, out Vector3 spot)) return;
-            GameObject candidate = CreateBike(nearest.point, spot);
+            // A parking candidate is fully validated BEFORE moving any bike.
+            // Reposition one of the same three original meshes with its
+            // deterministic destination paint instead of Instantiate/Destroy.
+            GameObject previous = parkedVictim != null ? parkedVictim.visible : null;
+            GameObject candidate = parkedVictim != null
+                ? ReuseBike(previous, nearest.point, spot)
+                : parkedBikePool.Count > 0
+                    ? ReuseBike(parkedBikePool.Pop(), nearest.point, spot)
+                    : CreateBike(nearest.point, spot);
             if (candidate == null) return;
             if (parkedVictim != null)
             {
-                if (parkedVictim.visible != null)
-                    Destroy(parkedVictim.visible);
                 parkedVictim.visible = null;
                 parkedVictim.nextProbe = now + 3f;
             }
             nearest.visible = candidate;
+        }
+
+        private GameObject ReuseBike(GameObject root, AarisVehiclePoint point,
+            Vector3 position)
+        {
+            if (root == null || !bikeVisuals.TryGetValue(root, out BikeVisualCache cache))
+                return null;
+            // Disabling first unregisters the BoxCollider. Reposition while
+            // inactive, then enable at the already validated ground position.
+            // No global Physics.SyncTransforms and no per-swap mesh import.
+            root.SetActive(false);
+            root.name = "Aaris parked motorcycle " + point.id;
+            root.transform.SetPositionAndRotation(position,
+                Quaternion.Euler(0f, point.yaw, 0f));
+            int color = StablePaintIndex(point.id);
+            for (int i = 0; i < cache.renderers.Length; i++)
+            {
+                Renderer renderer = cache.renderers[i];
+                Material[] layout = cache.paintLayouts[color][i];
+                if (renderer != null && layout != null)
+                    renderer.sharedMaterials = layout;
+            }
+            root.SetActive(true);
+            return root;
         }
 
         private bool TryParkingSpot(AarisVehiclePoint point, out Vector3 spot)
@@ -402,18 +479,29 @@ namespace Aaris.MapReview
             // order: Tyre, Rim, Engine, Seat, Paint, Amber, Headlamp, TailLamp.
             int[] fallbackOrder = {1,2,3,4,0,7,5,6};
             int paintIndex = StablePaintIndex(point.id);
-            foreach (var renderer in renderers)
+            var layouts = new Material[paintVariants.Length][][];
+            for (int paint = 0; paint < paintVariants.Length; paint++)
+                layouts[paint] = new Material[renderers.Length][];
+            for (int r = 0; r < renderers.Length; r++)
             {
+                Renderer renderer = renderers[r];
                 Material[] source = renderer.sharedMaterials;
                 if (source == null || source.Length == 0) continue;
-                Material[] converted = new Material[source.Length];
+                var kinds = new int[source.Length];
                 for (int i = 0; i < source.Length; i++)
-                {
-                    int kind = SurfaceIndex(source[i],
+                    kinds[i] = SurfaceIndex(source[i],
                         fallbackOrder[Mathf.Min(i, fallbackOrder.Length - 1)]);
-                    converted[i] = kind == 0 ? paintVariants[paintIndex] : surfaces[kind];
+                for (int paint = 0; paint < paintVariants.Length; paint++)
+                {
+                    Material[] converted = new Material[source.Length];
+                    for (int i = 0; i < source.Length; i++)
+                    {
+                        int kind = kinds[i];
+                        converted[i] = kind == 0 ? paintVariants[paint] : surfaces[kind];
+                    }
+                    layouts[paint][r] = converted;
                 }
-                renderer.sharedMaterials = converted;
+                renderer.sharedMaterials = layouts[paintIndex][r];
 #if UNITY_ANDROID && !UNITY_EDITOR
                 // On low-RAM phones, eight motorcycle material slots do not
                 // need eight additional realtime shadow-pass submissions.
@@ -433,6 +521,9 @@ namespace Aaris.MapReview
             var collider = root.AddComponent<BoxCollider>();
             collider.center = new Vector3(0f, .76f, 0f);
             collider.size = new Vector3(.96f, 1.47f, 2.27f);
+            bikeVisuals.Add(root, new BikeVisualCache {
+                renderers = renderers, paintLayouts = layouts
+            });
             return root;
         }
 

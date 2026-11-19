@@ -89,8 +89,41 @@ namespace Aaris.MapReview
         private void Start()
         {
             spawnPending = false;
-            var planAsset = Resources.Load<TextAsset>("AarisExpansion/WorldExpansionPlan");
-            var catalog = Resources.Load<AarisExpansionCatalog>("AarisExpansion/AarisExpansionCatalog");
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Keep the expansion catalog and its referenced prefab imports
+            // away from the initial terrain/player frame on budget Android.
+            StartCoroutine(LoadExpansionCatalogAcrossFrames());
+#else
+            InitializeExpansion(
+                Resources.Load<TextAsset>("AarisExpansion/WorldExpansionPlan"),
+                Resources.Load<AarisExpansionCatalog>("AarisExpansion/AarisExpansionCatalog"));
+#endif
+        }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private IEnumerator LoadExpansionCatalogAcrossFrames()
+        {
+            yield return null;
+            ResourceRequest plan = Resources.LoadAsync<TextAsset>(
+                "AarisExpansion/WorldExpansionPlan");
+            plan.priority = -1;
+            yield return plan;
+            if (!isActiveAndEnabled) yield break;
+            // Never integrate the two different Resources objects in one
+            // scripted frame. Existing tree/site budgets still apply later.
+            yield return null;
+            ResourceRequest catalog = Resources.LoadAsync<AarisExpansionCatalog>(
+                "AarisExpansion/AarisExpansionCatalog");
+            catalog.priority = -1;
+            yield return catalog;
+            if (!isActiveAndEnabled) yield break;
+            InitializeExpansion(plan.asset as TextAsset,
+                catalog.asset as AarisExpansionCatalog);
+        }
+#endif
+
+        private void InitializeExpansion(TextAsset planAsset, AarisExpansionCatalog catalog)
+        {
             if (planAsset == null || catalog == null)
             {
                 Debug.LogError("AARIS_EXPANSION_LOCAL_CATALOG_MISSING");

@@ -892,6 +892,10 @@ namespace Aaris.MapReview
         {
             public string reason, utc, version, device, gpu, api, lastError;
             public int systemRamMB, targetFps, warningCount, framesOver50Ms, frameSamples;
+            // One-time airplane startup phases, not recurring GPU frame times.
+            public float planeModelResolveMs = -1f, planeInstantiateMs = -1f,
+                planeTotalCreationMs = -1f;
+            public bool planeHighDetailSelected;
             public int assetUnloadStartedCount, assetUnloadCompletedCount, assetUnloadSuppressedCount;
             public float lastAssetUnloadElapsedMs = -1f;
             public bool assetUnloadInProgress;
@@ -962,7 +966,11 @@ namespace Aaris.MapReview
                 assetUnloadCompletedCount = assetUnloadCompletedCount,
                 assetUnloadSuppressedCount = assetUnloadSuppressedCount,
                 lastAssetUnloadElapsedMs = lastAssetUnloadElapsedMs,
-                assetUnloadInProgress = unloading != null && !unloading.isDone
+                assetUnloadInProgress = unloading != null && !unloading.isDone,
+                planeModelResolveMs = AarisOfflineDropVisuals.PlaneModelResolveMs,
+                planeInstantiateMs = AarisOfflineDropVisuals.PlaneInstantiateMs,
+                planeTotalCreationMs = AarisOfflineDropVisuals.PlaneTotalCreationMs,
+                planeHighDetailSelected = AarisOfflineDropVisuals.PlaneHighDetailSelected
             };
 #if UNITY_ANDROID && !UNITY_EDITOR
             // Android Debug.getPss() synchronously walks process memory and
