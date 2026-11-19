@@ -100,8 +100,8 @@ class OversizedColliderGrid(unittest.TestCase):
         self.assertIn("if (!indexReady) return;", SOURCE)
         self.assertIn("if (!indexReady) return false;", SOURCE)
         self.assertIn("BeginDeferredGridBuild();", SOURCE)
-        self.assertIn("if (++processed >= AndroidIndexUpdatesPerFrame)", SOURCE)
-        self.assertIn("if (++processed >= DeferredColliderUpdatesPerFrame)", SOURCE)
+        self.assertIn("if (processed >= AndroidIndexUpdatesPerFrame ||", SOURCE)
+        self.assertIn("if (processed >= DeferredColliderUpdatesPerFrame ||", SOURCE)
         self.assertIn("obstacles[i].enabled = true;", SOURCE)
         self.assertIn("streamed[i] && c != null && c.enabled", SOURCE)
 
