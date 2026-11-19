@@ -11,11 +11,12 @@ The preview is only needed when aiming a wall. A main-thread startup risk is
 verified in source; a 3–30-second freeze from this source is NOT verified.
 
 ## Change
-- On **Android player builds**, the original preview initialization moves
-  behind one rendered frame and **sequential low-priority** async asset
-  prewarm. The original ice prefab is requested first, then the ArcticBlue
-  and FrostHighlight material assets. Only the existing original assets
-  are used.
+- On **Android player builds**, the original preview assets are
+  **sequentially prewarmed after the first rendered frame** at low priority,
+  but the inactive preview GameObject, imported mesh instance and renderers
+  are not constructed until the first valid WALL aim. The original ice
+  prefab is requested first, followed by ArcticBlue and FrostHighlight
+  materials. Only existing original assets are used.
 - If the player begins aiming before asynchronous loading completes,
   `BeginAim()` calls `EnsureGhostCreated()` synchronously to preserve
   immediate red/blue preview and unchanged player control. The deferred
