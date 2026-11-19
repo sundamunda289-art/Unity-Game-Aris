@@ -49,7 +49,8 @@ class BikeVisuals(unittest.TestCase):
         self.assertIn("paintVariants[i] = new Material(surfaces[0])", source)
         self.assertIn("StablePaintIndex(point.id)", source)
         self.assertIn("hash = (hash ^ c) * 16777619u;", source)
-        self.assertIn("kind == 0 ? paintVariants[paintIndex] : surfaces[kind]", source)
+        self.assertIn("kind == 0 ? paintVariants[paint] : surfaces[kind]", source)
+        self.assertIn("renderer.sharedMaterials = layouts[paintIndex][r];", source)
         self.assertIn("for (int i = 1; i < paintVariants.Length; i++)", source)
         self.assertNotIn("new Material(surfaces[0])", source.split(
             "private GameObject CreateBike(", 1)[1])
@@ -95,11 +96,12 @@ class BikeVisuals(unittest.TestCase):
         update = SCRIPT.read_text().split("private void Update()", 1)[1].split(
             "private bool TryParkingSpot(", 1)[0]
         self.assertLess(update.index("if (!TryParkingSpot("),
-                        update.index("GameObject candidate = CreateBike("))
+                        update.index("GameObject candidate = parkedVictim != null"))
         self.assertLess(update.index("if (candidate == null) return;"),
-                        update.index("Destroy(parkedVictim.visible);"))
-        self.assertLess(update.index("Destroy(parkedVictim.visible);"),
+                        update.index("parkedVictim.visible = null;"))
+        self.assertLess(update.index("parkedVictim.visible = null;"),
                         update.index("nearest.visible = candidate;"))
+        self.assertNotIn("Destroy(parkedVictim.visible);", update)
         self.assertIn("parkedVictim.nextProbe = now + 3f;", update)
 
     def test_automotive_coat_is_paint_only_and_variants_shared(self):
