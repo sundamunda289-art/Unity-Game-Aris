@@ -178,6 +178,34 @@ assert 'foot.position, kneeForward, 1f' in swing
 assert visual.count('CorrectReversedSwingKnee(thigh, shin, foot, kneeForward);') == 2
 assert 'Vector3 uprightKneeForward = AnatomicalKneeForward();' in visual
 assert visual.count('uprightContactWeight, uprightKneeForward,') == 2
+
+# Visual Play Mode evidence (2026-11-19) found mid-transition ankle spread
+# 0.702m entering prone and 0.769m leaving it, while steady prone was 0.495m.
+# Correct extreme spread before existing per-ankle support queries (no new rays).
+assert 'Vector3 stanceSeparation = Vector3.ProjectOnPlane(' in visual
+assert 'rightGoal - leftGoal, Vector3.up' in visual
+assert 'stanceSpread > 0.57f && guard > 0.001f' in visual
+assert 'Mathf.Min(' in visual and '(stanceSpread - 0.57f) * 0.5f, 0.12f' in visual
+assert 'leftGoal += inward;' in visual and 'rightGoal -= inward;' in visual
+assert 'Mathf.Lerp(0.32f, 1f, proneKneeSettle)' in visual
+assert visual.index('Vector3 stanceSeparation =') < visual.index('if (correction < 0.001f) return;')
+assert visual.count('float leftAnkleY = SupportedAnkleY(') == 1
+assert visual.count('float rightAnkleY = SupportedAnkleY(') == 1
+import math
+def smooth(t):
+    t = max(0.0, min(1.0, t))
+    return t*t*(3.0-2.0*t)
+def guarded_spread(spread, low_pose, speed, solve_weight):
+    stationary=1.0-smooth((speed-.07)/(.38-.07))
+    guard=stationary*smooth((low_pose-.18)/(.65-.18))
+    per_shoe=min(max(spread-.57,0.0)*.5,.12)*guard
+    return spread-2*per_shoe*solve_weight
+assert guarded_spread(.702,.98,0.0,.806)<.62
+assert guarded_spread(.769,.65,0.0,.654)<.70
+assert abs(guarded_spread(.702,0.0,0.0,1.0)-.702)<1e-9
+assert abs(guarded_spread(.702,1.0,.5,1.0)-.702)<1e-9
+assert abs(guarded_spread(.40,1.0,0.0,1.0)-.40)<1e-9
+
 # Cross(hipRight, worldUp) preserves the forward axis of a yaw-rotated
 # imported rig: controller-facing +Z must not replace anatomical facing.
 for hip_right, expected_forward in (
