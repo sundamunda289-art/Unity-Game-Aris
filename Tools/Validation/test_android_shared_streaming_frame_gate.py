@@ -9,6 +9,7 @@ GATE = (SRC / "AarisMobileStreamingFrameGate.cs").read_text()
 CARS = (SRC / "AarisVehicleWorld.cs").read_text()
 LOOT = (SRC / "AarisWeaponLootWorld.cs").read_text()
 BIKE = (SRC / "AarisRoadsideBikeScenery.cs").read_text()
+RIVALS = (SRC / "AarisOfflineBRDirector.cs").read_text()
 CLAIM = "AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()"
 
 
@@ -104,6 +105,50 @@ class SharedStreamingAdmission(unittest.TestCase):
         self.assertIn("private const int MaximumVisibleBikes = 3;", BIKE)
         for code in (CARS, LOOT, BIKE):
             self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", code)
+
+    def test_rival_humanoid_build_joins_shared_android_admission(self):
+        update = RIVALS.split("private void Update()", 1)[1].split(
+            "private bool CanAttemptRivalSpawn()", 1)[0]
+        policy = RIVALS.split("private bool CanAttemptRivalSpawn()", 1)[1].split(
+            "private void Begin()", 1)[0]
+        self.assertIn(
+            "if (!spawnComplete && Time.time >= nextSpawn &&\\n"
+            "                CanAttemptRivalSpawn())", update)
+        self.assertLess(update.index("CanAttemptRivalSpawn()"),
+                        update.index("int slot = attemptedSlots++;"))
+        self.assertIn(
+            "if (!populatedSlots[slot]) TrySpawnSlot(slot);", update)
+        self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", policy)
+        self.assertIn("attemptedSlots < RivalCount", policy)
+        self.assertIn("!populatedSlots[attemptedSlots] &&", policy)
+        self.assertIn(
+            "!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()", policy)
+        self.assertLess(policy.index("TryClaimOptionalModelBuild()"),
+                        policy.index("nextSpawn = Time.time + 0.12f;"))
+        self.assertIn("return false;", policy)
+        self.assertIn("return true;", policy)
+        # Zone, elimination and ring ticks must never wait for a cosmetic gate.
+        self.assertLess(update.index("int slot = attemptedSlots++;"),
+                        update.index("if (Time.time >= nextZoneTick)"))
+        self.assertIn("ApplyZoneDamage();", update)
+        self.assertIn("DrawBoundary();", update)
+        self.assertIn("private const int RivalCount = 6;", RIVALS)
+
+    def test_deferred_spawn_retries_same_slot_without_spawning_burst(self):
+        # Model three competing optional frames followed by all six slots.
+        slot = 0
+        admitted = []
+        blocked_frames = {1, 2, 5}
+        for frame in range(1, 20):
+            if slot >= 6:
+                break
+            if frame in blocked_frames:
+                continue
+            admitted.append((frame, slot))
+            slot += 1
+        self.assertEqual([i for _, i in admitted], list(range(6)))
+        self.assertEqual(len({frame for frame, _ in admitted}), 6)
+        self.assertEqual(admitted[0][0], 3)
 
     def test_bounded_conflict_resolves_next_frame(self):
         # If vehicle wins frame N, a loot/bike candidate is free in N+1.
