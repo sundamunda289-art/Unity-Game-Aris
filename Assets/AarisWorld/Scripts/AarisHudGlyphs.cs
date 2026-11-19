@@ -23,6 +23,12 @@ namespace Aaris.MapReview
         // One shared material is assigned once per HUD canvas, never per frame.
         private static Material overlayMaterial;
         private static bool overlayChecked;
+        // One measured cold atlas construction, not a per-pixel/per-frame timer.
+        // -1 means the HUD atlas has not yet been generated this play session.
+        internal static float AtlasBuildMs { get; private set; } = -1f;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetAtlasTiming() { AtlasBuildMs = -1f; }
 
         internal static void ApplyCanvasShader(Transform canvasRoot)
         {
@@ -172,6 +178,7 @@ namespace Aaris.MapReview
 
         private static void BuildAtlas()
         {
+            double startedAt = Time.realtimeSinceStartupAsDouble;
             const int width = Size * Columns, height = Size * 2;
             var pixels = new Color32[width * height];
             var texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
@@ -207,6 +214,7 @@ namespace Aaris.MapReview
                 Sprites[i] = Sprite.Create(texture,
                     new Rect(i % Columns * Size, i / Columns * Size, Size, Size),
                     Vector2.one * 0.5f, 100f, 0, SpriteMeshType.FullRect);
+            AtlasBuildMs = (float)((Time.realtimeSinceStartupAsDouble - startedAt) * 1000d);
         }
     }
 }
