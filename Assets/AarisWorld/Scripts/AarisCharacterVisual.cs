@@ -1233,8 +1233,54 @@ namespace Aaris.MapReview
                                 maximumSideTurnDegrees * Mathf.Deg2Rad, 0f);
                             Vector3 candidateKnee = hip + axis * along +
                                 candidateBend * across;
-                            // Do not undo the floor-safe bend-circle solve.
-                            if (candidateKnee.y >= minimumKneeWorldY - 0.002f)
+                            // Native back-view get-up captured a 42.8cm knee
+                            // flare: the original lateral candidate could
+                            // fall a little below the floor and was discarded
+                            // completely. Project it back onto the SAME
+                            // analytic two-bone circle's legal upward arc,
+                            // rather than ignoring the correction. Keep the
+                            // original bend if this would not actually reduce
+                            // lateral excursion. No raycasts, allocations,
+                            // or extra bone writes in this rare transition.
+                            if (candidateKnee.y < minimumKneeWorldY - 0.002f)
+                            {
+                                Vector3 upBasis = Vector3.ProjectOnPlane(
+                                    Vector3.up, axis);
+                                float upLength = upBasis.magnitude;
+                                if (upLength > 0.01f)
+                                {
+                                    upBasis /= upLength;
+                                    float requiredUp = Mathf.Clamp(
+                                        (minimumKneeWorldY - hip.y -
+                                         axis.y * along) /
+                                        (across * upLength), -1f, 1f);
+                                    float currentUp = Mathf.Clamp(
+                                        Vector3.Dot(candidateBend, upBasis),
+                                        -1f, 1f);
+                                    if (requiredUp > currentUp)
+                                    {
+                                        Vector3 tangent = candidateBend -
+                                            upBasis * currentUp;
+                                        if (tangent.sqrMagnitude < 0.000001f)
+                                            tangent = Vector3.ProjectOnPlane(
+                                                lateralBasis, upBasis);
+                                        if (tangent.sqrMagnitude > 0.000001f)
+                                        {
+                                            candidateBend = upBasis * requiredUp +
+                                                tangent.normalized *
+                                                Mathf.Sqrt(Mathf.Max(0f,
+                                                    1f - requiredUp * requiredUp));
+                                            candidateKnee = hip + axis * along +
+                                                candidateBend * across;
+                                        }
+                                    }
+                                }
+                            }
+                            float correctedSide = Vector3.Dot(
+                                candidateKnee - hip, anatomicalSideAxis);
+                            if (candidateKnee.y >= minimumKneeWorldY - 0.002f &&
+                                Mathf.Abs(correctedSide) <
+                                Mathf.Abs(kneeSide) - 0.001f)
                             {
                                 bend = candidateBend;
                                 kneeGoal = candidateKnee;
