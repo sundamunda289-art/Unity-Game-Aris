@@ -18,8 +18,13 @@ def simulate_cleanup_transition(cleanup_busy_by_frame, optional_jobs):
     """Models a nonblocking cleanup barrier followed by normal 1/frame pacing."""
     pending = list(optional_jobs)
     completed = []
+    needs_settle_frame = False
     for frame, busy in enumerate(cleanup_busy_by_frame, start=1):
         if busy:
+            needs_settle_frame = True
+            continue
+        if needs_settle_frame:
+            needs_settle_frame = False
             continue
         if pending:
             completed.append((frame, pending.pop(0)))
@@ -49,6 +54,9 @@ class CriticalMemoryBackpressure(unittest.TestCase):
         self.assertIn("private static bool IsAssetCleanupPending()", GATE)
         self.assertIn("if (!unusedAssetCleanup.isDone) return true;", GATE)
         self.assertIn("unusedAssetCleanup = null;", GATE)
+        self.assertIn("private static int cleanupCompletionFrame = -1;", GATE)
+        self.assertIn("cleanupCompletionFrame = Time.frameCount;", GATE)
+        self.assertIn("return cleanupCompletionFrame == Time.frameCount;", GATE)
         gate = GATE.split("internal static bool TryClaimOptionalModelBuild()", 1)[1].split(
             "internal static ResourceRequest TryStartOptionalLoadAsync", 1)[0]
         async_load = GATE.split("internal static ResourceRequest TryStartOptionalLoadAsync", 1)[1]
@@ -62,16 +70,23 @@ class CriticalMemoryBackpressure(unittest.TestCase):
                         gate.index("claimedFrame = frame;"))
         self.assertLess(async_load.index("IsAssetCleanupPending()"),
                         async_load.index("Resources.LoadAsync<T>(path)"))
-        self.assertIn("unusedAssetCleanup = null;", GATE.split("private static void Reset()", 1)[1])
+        reset = GATE.split("private static void Reset()", 1)[1]
+        self.assertIn("unusedAssetCleanup = null;", reset)
+        self.assertIn("cleanupCompletionFrame = -1;", reset)
 
     def test_busy_cleanup_delays_optional_work_but_loses_nothing(self):
         names = ["foliage-model", "distant-building", "optional-audio", "vehicle-visual"]
         completed, pending = simulate_cleanup_transition(
-            [True, True, True, False, False, False, False], names)
+            [True, True, True, False, False, False, False, False], names)
         self.assertEqual(pending, [])
         self.assertEqual([n for _, n in completed], names)
-        self.assertEqual(completed[0][0], 4)
+        self.assertEqual(completed[0][0], 5)
         self.assertEqual(len({frame for frame, _ in completed}), len(names))
+
+    def test_idle_gate_does_not_insert_extra_frame(self):
+        completed, pending = simulate_cleanup_transition([False, False], ["a", "b"])
+        self.assertEqual(completed, [(1, "a"), (2, "b")])
+        self.assertFalse(pending)
 
     def test_budget_remains_android_only_and_source_visuals_unchanged(self):
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", GATE)
