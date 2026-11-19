@@ -333,6 +333,13 @@ Log("TRANSITION_TERRAIN_FEET stance="+b.Stance+
 " frame="+sampleIndex+" worstGap="+worstGroundGap.ToString("F3"));
 if(transitioning&&worstGroundGap< -0.15f)
  throw new InvalidOperationException("TRANSITION_FOOT_BURIED");
+// All samples in this opt-in stage are stationary; the minimum of BOTH
+// actual ankle clearances must approach terrain before get-up completes.
+// A 70cm full-body float used to pass because only BURIED feet were gated.
+// Skip the first handoff sample while the authored prone clip still dominates.
+if(b.Stance==AarisBattleActions.PlayerStance.Standing&&
+ sampleIndex>=1&&worstGroundGap>0.24f)
+ throw new InvalidOperationException("RETURN_TO_STAND_FOOT_FLOAT");
 }
 Vector3 hipRight=Vector3.ProjectOnPlane(rh.position-lh.position,Vector3.up);
 if(hipRight.sqrMagnitude<0.02f)return;
