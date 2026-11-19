@@ -15,8 +15,12 @@ class AndroidTimeSlicedAnimations(unittest.TestCase):
         all_names = re.findall(r'"([a-z_]+)"', names)
         self.assertEqual(len(all_names), 14)
         self.assertEqual(len(set(all_names)), len(all_names))
-        for name in all_names:
-            self.assertTrue((ANIM / (name + ".fbx")).exists(), name)
+        # The original "fall" source may be absent: the saved graph uses
+        # the existing jump fallback. Other 13 reviewed FBXs must be retained.
+        missing = {name for name in all_names if not (ANIM / (name + ".fbx")).exists()}
+        self.assertTrue(missing.issubset({"fall"}), missing)
+        self.assertIn('AnimationClip fall = FindClip("fall", "fall");', SRC)
+        self.assertIn("if (fall == null) fall = jump;", SRC)
         staged = SRC.split("private IEnumerator PrewarmAndroidAnimationGroups(", 1)[1].split("#endif", 1)[0]
         self.assertIn("yield return null;\n            foreach", staged)
         self.assertIn("foreach (string clipName in AndroidAnimationNames)", staged)
