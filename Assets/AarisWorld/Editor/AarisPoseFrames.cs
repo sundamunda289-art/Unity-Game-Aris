@@ -333,6 +333,12 @@ Log("TRANSITION_TERRAIN_FEET stance="+b.Stance+
 " frame="+sampleIndex+" worstGap="+worstGroundGap.ToString("F3"));
 if(transitioning&&worstGroundGap< -0.15f)
  throw new InvalidOperationException("TRANSITION_FOOT_BURIED");
+// During return-to-standing at least one shoe must remain near terrain.
+// The previous camera suite accepted up to 70.5 cm visible shoe float.
+// Do not test the first residual prone sample as a fully upright pose.
+if(b.Stance==AarisBattleActions.PlayerStance.Standing&&
+ sampleIndex>=1&&worstGroundGap>0.28f)
+ throw new InvalidOperationException("RETURN_TO_STAND_FOOT_FLOAT");
 }
 Vector3 hipRight=Vector3.ProjectOnPlane(rh.position-lh.position,Vector3.up);
 if(hipRight.sqrMagnitude<0.02f)return;
@@ -346,6 +352,11 @@ Log("TRANSITION_LEGS stance="+b.Stance+" frame="+sampleIndex+
 " spread="+spread.ToString("F3")+
 " leftKneeSide="+lSide.ToString("F3")+
 " rightKneeSide="+rSide.ToString("F3"));
+// A change that fixes boot Y must not bend the legs sideways or widen
+// the stance: validate these intermediate frames, not settled idle only.
+if(b.Stance==AarisBattleActions.PlayerStance.Standing&&
+ (spread>0.62f||Mathf.Abs(lSide)>0.25f||Mathf.Abs(rSide)>0.25f))
+ throw new InvalidOperationException("RETURN_TO_STAND_LEG_SPLAY");
 }
 static void Finish(string reason){
 Log(reason);SessionState.SetString("pose.state","");Phase("07_COMPLETE");
