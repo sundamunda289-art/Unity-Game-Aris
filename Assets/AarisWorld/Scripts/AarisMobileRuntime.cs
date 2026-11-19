@@ -972,14 +972,13 @@ namespace Aaris.MapReview
         private int warningCount;
         private void Record(string reason)
         {
-#if UNITY_ANDROID && !UNITY_EDITOR
-            // Must also track the early-boot and pause/quit snapshots so a
-            // periodic sample never stacks onto an urgent event this frame.
-            // No input, gameplay or user-visible state changes here.
-            lastDiagnosticFrame = Time.frameCount;
-#endif
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             using var profilerScope = k_DiagnosticsRecord.Auto();
+#endif
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Track early-boot and pause/quit snapshots. Periodic reports
+            // yield to any urgent event already emitted this frame.
+            lastDiagnosticFrame = Time.frameCount;
 #endif
             if (reason == "low-memory") warningCount++;
             float total = 0;
