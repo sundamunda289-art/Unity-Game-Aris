@@ -1228,8 +1228,9 @@ namespace Aaris.MapReview
 
         // Crouching should keep feet within a compact, balanced footprint;
         // prone legs should extend behind the hips instead of frog-splaying
-        // sideways. Retarget only *settled* low stances. Traversal, jumps and
-        // transitions retain the authored animation. No Unity allocations.
+        // sideways. Preserve authored locomotion, but gently clamp excessive
+        // stationary transition spread; full heel retargeting remains settled-only.
+        // No additional physics queries, allocations or collision changes.
         private void PlanBalancedLowStanceFeet(float proneShare,
             float lowPose, float dominantRigWeight, float planarSpeed,
             out Vector3 leftGoal, out Vector3 rightGoal,
@@ -1261,6 +1262,27 @@ namespace Aaris.MapReview
                 Mathf.InverseLerp(0.68f, 0.96f, lowPose));
             float stationary = 1f - Mathf.SmoothStep(0f, 1f,
                 Mathf.InverseLerp(0.07f, 0.38f, planarSpeed));
+            // Native four-step Play Mode capture exposed 70.2cm ankle
+            // separation while entering prone, and 76.9cm when standing up.
+            // The late-only full stance solver does not constrain those
+            // brief crossfades. Symmetrically trim ONLY excess horizontal
+            // splay, by <=12cm per shoe, before the existing ground rays
+            // sample those resolved target positions. At speed, in air or
+            // at upright idle the correction vanishes naturally.
+            Vector3 stanceSeparation = Vector3.ProjectOnPlane(
+                rightGoal - leftGoal, Vector3.up);
+            float stanceSpread = stanceSeparation.magnitude;
+            float guard = stationary * Mathf.SmoothStep(0f, 1f,
+                Mathf.InverseLerp(0.18f, 0.65f, lowPose));
+            if (stanceSpread > 0.57f && guard > 0.001f)
+            {
+                float eachShoeMetres = Mathf.Min(
+                    (stanceSpread - 0.57f) * 0.5f, 0.12f) * guard;
+                Vector3 inward = stanceSeparation *
+                    (eachShoeMetres / stanceSpread);
+                leftGoal += inward;
+                rightGoal -= inward;
+            }
             // A crouch->prone crossfade can have lowPose=1 with BOTH
             // individual stance weights around 0.5. That is not settled:
             // a full reach correction there can yank heels by 52-74cm and
@@ -1936,7 +1958,12 @@ namespace Aaris.MapReview
                 float kneeTurnStability = 1f - Mathf.SmoothStep(0f, 1f,
                     Mathf.InverseLerp(65f, 140f, Mathf.Abs(yawRate)));
                 float crouchPoleStrength = (1f - proneKneeShare) * 0.90f;
-                float pronePoleStrength = proneKneeShare * proneKneeSettle *
+                // Keep a weak but nonzero sagittal knee pole during the
+                // prone crossfade. Letting it collapse near zero caused a
+                // 52.7cm sideways knee flare in the native transition frames.
+                // It still ramps smoothly to the original full settled pole.
+                float pronePoleStrength = proneKneeShare *
+                    Mathf.Lerp(0.32f, 1f, proneKneeSettle) *
                     kneeStillness * kneeTurnStability;
                 Vector3 kneeForward = crouchKneeForward * crouchPoleStrength +
                     Vector3.up * pronePoleStrength;
