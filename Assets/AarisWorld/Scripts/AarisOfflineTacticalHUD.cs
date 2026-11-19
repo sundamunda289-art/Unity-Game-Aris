@@ -20,6 +20,9 @@ namespace Aaris.MapReview
         [SerializeField, Range(1, 5)] private int maxMedkits = 5;
         [SerializeField, Range(25f, 100f)] private float medicalHealing = 75f;
         private const int MaxMedicalVisuals = 8;
+        // Release only inactive cached medical/helmet models on Android
+        // memory pressure. Keep the original active pickups untouched.
+        private const int MaxMedicalPoolReleasesPerFrame = 2;
         private const int MaxMedicalSpawnProbesPerFrame = 2;
         // Even rejected/distant sites consume CPU. Budget all candidate
         // visits on Android, not only expensive physics/visual spawn probes.
@@ -42,6 +45,8 @@ namespace Aaris.MapReview
             new Stack<GameObject>(MaxMedicalVisuals);
         private readonly Stack<GameObject> helmetVisualPool =
             new Stack<GameObject>(MaxMedicalVisuals);
+        private bool lowMemoryPending;
+        private float medicalPoolAllowedAt;
         private readonly Collider[] medicalHits = new Collider[20];
         private readonly RaycastHit[] medicalSightHits = new RaycastHit[24];
         private Terrain[] medicalTerrains;
@@ -171,6 +176,11 @@ namespace Aaris.MapReview
 
         private void Update()
         {
+            // Android lowMemory is an event callback: defer Unity object
+            // destruction to Update and amortize it over rendered frames.
+            // Even while the tactical HUD is not initialized or is hidden
+            // during an aerial/vehicle transition, idle caches can be freed.
+            ReleaseInactiveMedicalPoolAcrossFrames();
             if (!initialized) return;
             RefreshOptionalComponents();
             bool onFoot = (drop == null || drop.HasLanded) &&
@@ -552,8 +562,38 @@ namespace Aaris.MapReview
             site.visual = null;
             if (visual == null) return;
             visual.SetActive(false);
+            // Avoid refilling a memory-pressure cache immediately after it
+            // was drained. This never touches other active pickup visuals.
+            if (Time.unscaledTime < medicalPoolAllowedAt)
+            {
+                Destroy(visual);
+                return;
+            }
             if (site.isHelmet) helmetVisualPool.Push(visual);
             else medicalVisualPool.Push(visual);
+        }
+
+        private void OnLowMemory() { lowMemoryPending = true; }
+
+        private void ReleaseInactiveMedicalPoolAcrossFrames()
+        {
+            if (lowMemoryPending)
+            {
+                lowMemoryPending = false;
+                medicalPoolAllowedAt = Time.unscaledTime + 60f;
+            }
+            if (Time.unscaledTime >= medicalPoolAllowedAt) return;
+            int released = 0;
+            while (released < MaxMedicalPoolReleasesPerFrame &&
+                (medicalVisualPool.Count > 0 || helmetVisualPool.Count > 0))
+            {
+                // Both pools hold ONLY inactive cached roots. Keep all
+                // activeMedicalSites in place, retaining collection/range.
+                GameObject inactive = medicalVisualPool.Count > 0
+                    ? medicalVisualPool.Pop() : helmetVisualPool.Pop();
+                if (inactive != null) Destroy(inactive);
+                released++;
+            }
         }
 
         private bool CanCollectMedical(MedicalSite site)
@@ -763,7 +803,12 @@ namespace Aaris.MapReview
             else if (gloo != null) gloo.CancelAim();
         }
 
-        private void OnDisable() => CancelTacticalInput();
+        private void OnEnable() { Application.lowMemory += OnLowMemory; }
+        private void OnDisable()
+        {
+            Application.lowMemory -= OnLowMemory;
+            CancelTacticalInput();
+        }
         private void OnApplicationPause(bool paused) { if (paused) CancelTacticalInput(); }
         private void OnApplicationFocus(bool focused) { if (!focused) CancelTacticalInput(); }
 
