@@ -89,7 +89,10 @@ class ExpansionIntegrity(unittest.TestCase):
         self.assertRegex(routine, r"finally\s*\{[\s\S]*?treeCache\.Clear\(\);")
         self.assertEqual(routine.count("if (mobile) yield return null;"), 2)
         self.assertIn("foreach (Terrain t in terrains)", routine)
-        self.assertIn("treeCache[t] = t.terrainData.treeInstances;", routine)
+        self.assertIn("data.GetTreeInstance(i)", routine)
+        self.assertIn("data.treeInstanceCount", routine)
+        self.assertIn("AndroidTreeProbeBudgetPerFrame", routine)
+        self.assertNotIn("data.treeInstances", routine)
         start = source.split("private void Start()", 1)[1].split(
             "private IEnumerator PlaceSitesAcrossFrames(", 1)[0]
         self.assertNotIn("treeInstances", start)
