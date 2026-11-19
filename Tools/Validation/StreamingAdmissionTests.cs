@@ -163,6 +163,22 @@ internal static class StreamingAdmissionTests
             Frame(3);
             Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(), "Cleanup held forever");
         }
+        // An already-complete cleanup is not a no-op: its current frame
+        // may still be saturated with native asset integration. Exercise the
+        // production gate on both a fast and a constrained Android GPU.
+        foreach (string gpu in new[] { "Adreno 610", "Adreno 730" })
+        {
+            Configure(8192, gpu);
+            Frame(12);
+            var immediate = new AsyncOperation { isDone = true };
+            AarisMobileStreamingFrameGate.DeferOptionalWorkDuringAssetCleanup(immediate);
+            Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() && Load() == null,
+                "Already-complete cleanup frame admitted optional native work");
+            Check(Resources.requests == 0, "Cleanup frame dispatched a native import");
+            Frame(13);
+            Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+                "Already-complete cleanup blocked the next frame");
+        }
         Configure(6144);
         Check(AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialRig(), "6 GB rig unprotected");
         Frame(2);
