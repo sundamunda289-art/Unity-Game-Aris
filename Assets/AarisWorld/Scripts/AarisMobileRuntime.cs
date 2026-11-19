@@ -55,6 +55,9 @@ namespace Aaris.MapReview
         private bool modifiedMsaaSamples;
         private float originalMipBudgetMB, appliedMipBudgetMB;
         private bool modifiedMipBudget;
+        // Limit simultaneous texture-streaming file reads without lowering mip resolution.
+        private int originalMipFileRequests, appliedMipFileRequests;
+        private bool modifiedMipFileRequests;
         private float originalShadowDistance, appliedShadowDistance;
         private bool modifiedShadowDistance;
         // Info log stack traces cost managed/native stack walking when gameplay
@@ -284,6 +287,20 @@ namespace Aaris.MapReview
             {
                 QualitySettings.streamingMipmapsMemoryBudget = appliedMipBudgetMB;
                 modifiedMipBudget = true;
+            }
+            // On entry-level Android GPUs, 16 concurrent texture file reads can
+            // compete with terrain and model streaming during cold start. Restrict
+            // only simultaneous IO, not mip quality, texture size or vegetation.
+            // Never raise a lower user-authored limit on other devices.
+            if (constrainedGraphics)
+            {
+                originalMipFileRequests = QualitySettings.streamingMipmapsMaxFileIORequests;
+                appliedMipFileRequests = Mathf.Min(originalMipFileRequests, 8);
+                if (originalMipFileRequests > 8)
+                {
+                    QualitySettings.streamingMipmapsMaxFileIORequests = appliedMipFileRequests;
+                    modifiedMipFileRequests = true;
+                }
             }
             // The authored URP shadow distance spans 1000 m of a 2 km map.
             // Rendering distant tree/house shadow casters consumes fill,
@@ -724,6 +741,9 @@ namespace Aaris.MapReview
             if (modifiedMipBudget &&
                 Mathf.Approximately(QualitySettings.streamingMipmapsMemoryBudget, appliedMipBudgetMB))
                 QualitySettings.streamingMipmapsMemoryBudget = originalMipBudgetMB;
+            if (modifiedMipFileRequests &&
+                QualitySettings.streamingMipmapsMaxFileIORequests == appliedMipFileRequests)
+                QualitySettings.streamingMipmapsMaxFileIORequests = originalMipFileRequests;
             // Do not leave a shortened shadow range across scene reloads.
             // Nor overwrite an unrelated controller's later quality choice.
             if (modifiedShadowDistance && androidPipeline != null &&
