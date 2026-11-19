@@ -45,7 +45,9 @@ namespace Aaris.MapReview
             // Resources.Load path, then publish the complete immutable document.
             ResourceRequest request = Resources.LoadAsync<TextAsset>(
                 "AarisWeapons/loot_candidates");
-            request.priority = -1;
+            // Authored loot is gameplay-critical, unlike optional scenery.
+            // Do not downgrade this small JSON import below model streams.
+            request.priority = 0;
             yield return request;
             // Avoid parsing JSON in the same rendered frame as native
             // ResourceRequest completion or the weapon catalog import.
