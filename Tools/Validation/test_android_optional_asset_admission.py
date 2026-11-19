@@ -61,6 +61,24 @@ class OptionalAssetAdmission(unittest.TestCase):
         self.assertIn("TryStartOptionalLoadAsync<AnimationClip>(runPath)", RIVALS)
         self.assertIn("yield return request;", RIVALS)
 
+    def test_vehicle_setup_is_budgeted_after_fallback_prewarm(self):
+        boot = CARS.split("private IEnumerator SetupAfterBudgetAndroidPrewarm(", 1)[1].split(
+            "private bool Setup()", 1)[0]
+        self.assertLess(
+            boot.index("while (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())"),
+            boot.index("if (!Setup())"))
+        self.assertIn("yield return null;", boot)
+        self.assertIn("AttachSessionAndHud(motor, this);", boot)
+
+    def test_rival_prefab_native_inspection_waits_for_a_free_frame(self):
+        prewarm = RIVALS.split("private IEnumerator PrewarmRivalVisuals()", 1)[1].split(
+            "private static bool IsUsableRivalClip(", 1)[0]
+        self.assertLess(prewarm.index("GameObject candidate = request.asset as GameObject;"),
+                        prewarm.index("while (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())"))
+        self.assertLess(prewarm.index("while (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())"),
+                        prewarm.index("if (HasRenderableRivalPrefab(candidate))"))
+        self.assertIn("if (candidate != null)", prewarm)
+
     def test_essential_weapon_preload_never_waits_for_optional_gate(self):
         # The player must not lose access to gameplay-critical weapons if an
         # optional vehicle/bike/rival request is still in flight.
