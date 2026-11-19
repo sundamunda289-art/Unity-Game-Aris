@@ -28,6 +28,7 @@ def report_lines():
         "LOW_STANCE_SPREAD stance=Prone metres=0.523",
         "CROUCH_KNEE_ALIGNMENT leftLateral=0.005 rightLateral=0.003 kneeHeightDelta=0.045",
         "PRONE_KNEE_ALIGNMENT leftLateral=-0.115 rightLateral=0.010 kneeHeightDelta=0.091",
+        "SETTLED_PRONE_CONTACT leftAnkle=0.088 rightAnkle=0.093 leftKnee=0.160 rightKnee=0.140",
         "MEASURE stance=Crouching footGap=0.035 meshMin=-3.149 meshMax=-1.213 meshGap=-0.491 skins=1",
         "MEASURE stance=Prone footGap=0.035 meshMin=-4.041 meshMax=-1.803 meshGap=-1.382 skins=1",
     ])
@@ -127,6 +128,20 @@ class NativePoseEvidenceTests(unittest.TestCase):
             "stance=Prone id=RightHand pos=(1.5, 0, 0.0)")
             for l in self.lines]
         self.check_rejected("Hands detached/overlapping")
+
+    def test_missing_settled_prone_sample_is_rejected(self):
+        self.lines = [s for s in self.lines
+                      if not s.startswith("SETTLED_PRONE_CONTACT ")]
+        self.check_rejected("Missing settled prone contact sample")
+
+    def test_settled_bones_override_early_prone_transition(self):
+        self.lines.append(
+            "BONE stance=Prone id=Hips pos=(0.0, 0.0, 0.0) "
+            "heightAboveTerrain=0.180"
+        )
+        self.write_report()
+        result = audit_module.audit_capture(self.directory)
+        self.assertEqual(result["stances"]["Prone"]["pelvis_clearance_metres"], 0.180)
 
     def test_missing_real_capture_success_marker_is_rejected(self):
         self.lines.remove("SUCCESS_16_ACTOR_MULTIANGLE_PORTRAITS")
