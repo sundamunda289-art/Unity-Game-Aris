@@ -395,7 +395,13 @@ namespace Aaris.MapReview
         {
             try
             {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // Medical and weapon loot share one prewarmed document. Do
+                // not force Resources.Load/JSON parsing during landing.
+                var doc = AarisLootDocument.AndroidCached;
+#else
                 var doc = AarisLootDocument.Load();
+#endif
                 if (doc == null || doc.schema != 1 || doc.sizeMetres != 2000 ||
                     doc.candidates == null) return;
                 for (int i = 0; i < doc.candidates.Length; i++)
@@ -471,6 +477,12 @@ namespace Aaris.MapReview
         {
             if (!medicalSitesLoaded)
             {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // The gun loot world owns the one-time async candidate import.
+                // Keep controls/streaming alive, but do not synchronously
+                // fetch the document while its native load is in flight.
+                if (!AarisLootDocument.AndroidWarmupFinished) return;
+#endif
                 medicalSitesLoaded = true;
                 LoadMedicalSites();
             }
