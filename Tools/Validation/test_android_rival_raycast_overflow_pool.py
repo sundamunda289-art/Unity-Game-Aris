@@ -41,7 +41,6 @@ class RivalNonAllocOverflow(unittest.TestCase):
         self.assertIn("if (count >= crowdedSightHits.Length)", routine)
         self.assertIn("hits = Physics.RaycastAll(ray, distance,", routine)
         self.assertIn("if (hit.distance < first)", routine)
-        self.assertIn("!hit.collider.transform.IsChildOf(transform)", "!" + "hit.collider.transform.IsChildOf(transform)" if False else "!hit.collider.transform.IsChildOf(transform)")  # explicit no assumption about native ordering
         self.assertIn("hit.collider.transform.IsChildOf(transform)", routine)
         self.assertIn("closest.transform.IsChildOf(target)", routine)
         self.assertLess(routine.index("hits = crowdedSightHits;"),
@@ -49,29 +48,45 @@ class RivalNonAllocOverflow(unittest.TestCase):
 
     def test_synthetic_saturation_preserves_blockers_and_closest_hit(self):
         rng = random.Random(20261119)
+
+        def staged_query(contacts, small, large):
+            first = contacts[:small]
+            if len(first) < small:
+                return first, "small"
+            second = contacts[:large]
+            if len(second) < large:
+                return second, "pooled"
+            return contacts, "exhaustive"
+
         for count in (0, 1, 19, 20, 21, 24, 25, 70, 95, 96, 97, 127, 128, 151):
             hits = [{"distance": i * .11 + rng.random() * .03,
-                     "self": (i % 7 == 0), "target": (i % 3 == 0)}
+                     "self": i % 7 == 0, "target": i % 3 == 0}
                     for i in range(count)]
             rng.shuffle(hits)
-            # The correct answer is based on the closest non-self collider,
-            # never the arbitrary order returned by NonAlloc or an early hit.
+            selected, stage = staged_query(hits, 20, 128)
+            self.assertEqual(len(selected), count)
+            self.assertEqual(stage, "small" if count < 20 else
+                             "pooled" if count < 128 else "exhaustive")
             usable = [h for h in hits if not h["self"]]
             expected = bool(usable and min(usable, key=lambda h: h["distance"])["target"])
-            selected = (hits if count < 20 else
-                        hits if count < 128 else hits)
-            actual = (bool([h for h in selected if not h["self"]]) and
-                      min((h for h in selected if not h["self"]),
-                          key=lambda h: h["distance"])["target"])
+            observed = [h for h in selected if not h["self"]]
+            actual = bool(observed and min(observed, key=lambda h: h["distance"])["target"])
             self.assertEqual(actual, expected)
-            # Either the complete 128-sized query or exhaustive fallback is
-            # required when the first capacity could truncate arbitrary hits.
-            if count >= 20:
-                self.assertTrue(count < 128 or count >= 128)
+
             blockers = [i % 13 == 0 for i in range(count)]
-            expected_clear = not any(blockers)
-            found_clear = not any(blockers[:count])
-            self.assertEqual(found_clear, expected_clear)
+            used, overlap_stage = staged_query(blockers, 24, 96)
+            self.assertEqual(len(used), count)
+            self.assertEqual(overlap_stage, "small" if count < 24 else
+                             "pooled" if count < 96 else "exhaustive")
+            self.assertEqual(not any(used), not any(blockers))
+
+        # A saturated, unordered first buffer may omit a nearer wall.
+        dense = [{"distance": float(100 - i), "self": False, "target": True}
+                 for i in range(21)]
+        dense[-1]["target"] = False
+        selected, stage = staged_query(dense, 20, 128)
+        self.assertEqual(stage, "pooled")
+        self.assertFalse(min(selected, key=lambda h: h["distance"])["target"])
 
     def test_existing_live_frame_budget_and_native_collision_are_untouched(self):
         for token in ("FarSimulationDistance = 90f;", "FarSimulationInterval = 0.10f;",
