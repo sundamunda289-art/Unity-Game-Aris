@@ -46,6 +46,10 @@ namespace Aaris.MapReview
         // Limit main-thread async asset integration on budget Android GPUs.
         private UnityEngine.ThreadPriority originalBackgroundLoadPriority;
         private bool modifiedBackgroundLoadPriority;
+        // Bound catch-up physics bursts on small Android GPUs without changing
+        // the authored 50 Hz fixed timestep or any gameplay collision shapes.
+        private float originalMaximumDeltaTime, appliedMaximumDeltaTime;
+        private bool modifiedMaximumDeltaTime;
         private float nextLongFrameReportAt;
         // Begin at native sharpness and adapt only after sustained FPS misses.
         private UniversalRenderPipelineAsset androidPipeline;
@@ -95,6 +99,22 @@ namespace Aaris.MapReview
             Application.targetFrameRate = targetFrameRate;
 #if UNITY_ANDROID && !UNITY_EDITOR
             startupTime = Time.unscaledTime;
+            // At the authored 20 ms fixed step, the default 333 ms cap can
+            // schedule about 16 physics updates after one stalled frame.
+            // Keep at most six catch-up steps on budget GPUs with <=4 GB RAM.
+            // Normal frames still run at the exact original fixed frequency.
+            int ramMB = SystemInfo.systemMemorySize;
+            if (ramMB > 0 && ramMB <= 4608 && IsBudgetAndroidGpu())
+            {
+                originalMaximumDeltaTime = Time.maximumDeltaTime;
+                appliedMaximumDeltaTime = Mathf.Min(
+                    originalMaximumDeltaTime, Time.fixedDeltaTime * 6f);
+                if (appliedMaximumDeltaTime < originalMaximumDeltaTime)
+                {
+                    Time.maximumDeltaTime = appliedMaximumDeltaTime;
+                    modifiedMaximumDeltaTime = true;
+                }
+            }
             originalBackgroundLoadPriority = Application.backgroundLoadingPriority;
             if (IsBudgetAndroidGpu() &&
                 originalBackgroundLoadPriority != UnityEngine.ThreadPriority.Low)
@@ -729,6 +749,11 @@ namespace Aaris.MapReview
             if (modifiedBackgroundLoadPriority &&
                 Application.backgroundLoadingPriority == UnityEngine.ThreadPriority.Low)
                 Application.backgroundLoadingPriority = originalBackgroundLoadPriority;
+            // Global Time settings persist across scene switches; do not undo
+            // a later override from another active quality controller.
+            if (modifiedMaximumDeltaTime &&
+                Mathf.Approximately(Time.maximumDeltaTime, appliedMaximumDeltaTime))
+                Time.maximumDeltaTime = originalMaximumDeltaTime;
             // URP pipeline assets and QualitySettings survive scene reloads.
             // Restore only values still owned by this instance; avoid undoing
             // a deliberate change made by another quality controller.
@@ -810,6 +835,7 @@ namespace Aaris.MapReview
             public string dropPhase;
             public bool weaponCatalogReady;
             public float processSeconds, maxFrameMs;
+            public float fixedPhysicsStepMs, maxPhysicsCatchupMs;
             public float effectiveTargetFps;
             public int gpuTimingSamples, gpuLimitedSamples, cpuLimitedSamples;
             public float meanGpuFrameMs, meanCpuMainMs, meanCpuRenderMs;
@@ -848,6 +874,8 @@ namespace Aaris.MapReview
                 framesOver50Ms = framesOver50Ms, frameSamples = frameCount,
                 processSeconds = Time.realtimeSinceStartup,
                 maxFrameMs = frameCount > 0 ? sortedTimes[frameCount - 1] * 1000 : 0,
+                fixedPhysicsStepMs = Time.fixedDeltaTime * 1000f,
+                maxPhysicsCatchupMs = Time.maximumDeltaTime * 1000f,
                 weaponCatalogReady = AarisWeaponCatalog.Ready,
                 unityAllocatedBytes = Profiler.GetTotalAllocatedMemoryLong(), unityReservedBytes = Profiler.GetTotalReservedMemoryLong(),
                 managedBytes = GC.GetTotalMemory(false), textureBytes = Texture.currentTextureMemory,
