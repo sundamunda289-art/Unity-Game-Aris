@@ -119,16 +119,21 @@ namespace Aaris.MapReview
             if (drop != null && !drop.HasLanded)
                 StartCoroutine(BuildAfterAndroidFlightFrames());
             else
+                BuildImmediately();
+#else
+            BuildImmediately();
 #endif
-            {
-                Build();
-                initialized = true;
-            }
 #if UNITY_ANDROID && !UNITY_EDITOR
             // Stage the original authored grenade prefab/materials before the
             // first throw, without adding visuals or physics to scene startup.
             StartCoroutine(AarisOfflineFragGrenade.PrewarmGrenadeAssets());
 #endif
+        }
+
+        private void BuildImmediately()
+        {
+            Build();
+            initialized = true;
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
