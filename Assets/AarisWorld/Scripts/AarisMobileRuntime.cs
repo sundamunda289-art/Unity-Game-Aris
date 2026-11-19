@@ -52,6 +52,10 @@ namespace Aaris.MapReview
         private AarisOfflineDrop startupDrop;
         private float startupTime;
         private int startupSampleIndex;
+        // Diagnostics are observations, not gameplay. Preserve immediate
+        // crash/low-memory/stall evidence, but allow only one non-urgent
+        // periodic JSON/profiler snapshot in a rendered Android frame.
+        private int lastDiagnosticFrame = -1;
         private Task<string> pendingLogWrite;
         // One prior-process OS report only, never queried during a hot frame.
         private AarisAndroidExitHistory.Snapshot previousExitSnapshot;
@@ -757,7 +761,7 @@ namespace Aaris.MapReview
 #if UNITY_ANDROID && !UNITY_EDITOR
             // The regular 15-second ring no longer contains the opening frames.
             // Keep three bounded snapshots for comparing cold and warm launches.
-            if (startupSampleIndex < 3)
+            if (startupSampleIndex < 3 && CanRecordPeriodicDiagnostics())
             {
                 float seconds = Time.unscaledTime - startupTime;
                 float threshold = startupSampleIndex == 0 ? 1f : startupSampleIndex == 1 ? 3f : 8f;
@@ -768,11 +772,23 @@ namespace Aaris.MapReview
                 }
             }
 #endif
-            if (Time.unscaledTime >= sampleAt)
+            if (Time.unscaledTime >= sampleAt && CanRecordPeriodicDiagnostics())
             {
                 Record("sample");
                 sampleAt = Time.unscaledTime + ReportInterval;
             }
+        }
+
+        private bool CanRecordPeriodicDiagnostics()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // An urgent event or earlier startup snapshot already used this
+            // frame. Keep periodic evidence pending until the next frame,
+            // rather than scheduling another profiler/JSON/IO task now.
+            return Time.frameCount != lastDiagnosticFrame;
+#else
+            return true;
+#endif
         }
 
         private void OnLowMemory() { lowMemoryPending = true; }
@@ -956,6 +972,12 @@ namespace Aaris.MapReview
         private int warningCount;
         private void Record(string reason)
         {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Must also track the early-boot and pause/quit snapshots so a
+            // periodic sample never stacks onto an urgent event this frame.
+            // No input, gameplay or user-visible state changes here.
+            lastDiagnosticFrame = Time.frameCount;
+#endif
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             using var profilerScope = k_DiagnosticsRecord.Auto();
 #endif
