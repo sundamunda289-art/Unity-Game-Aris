@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -88,19 +89,13 @@ namespace Aaris.MapReview
             capsule = GetComponent<CharacterController>();
             foreach (string key in Keys)
                 clips[key] = Resources.Load<AudioClip>("SFX/" + key);
-            // Kenney Impact Sounds (publisher CC0); eagerly load once,
-            // then choose real varied footfalls without per-step allocations.
-            for (int i = 0; i < grassFoley.Length; i++)
-            {
-                string number = i.ToString("000");
-                grassFoley[i] = Resources.Load<AudioClip>("SFX/CC0/footstep_grass_" + number);
-                concreteFoley[i] = Resources.Load<AudioClip>("SFX/CC0/footstep_concrete_" + number);
-            }
-            for (int i = 0; i < punchFoley.Length; i++)
-                punchFoley[i] = Resources.Load<AudioClip>(
-                    "SFX/CC0/impactPunch_medium_" + i.ToString("000"));
-            softLandingFoley = Resources.Load<AudioClip>("SFX/CC0/impactSoft_heavy_000");
-            metalImpactFoley = Resources.Load<AudioClip>("SFX/CC0/impactMetal_light_000");
+            // Preserve all base cues immediately. Optional ambience/foley
+            // variants stream after the first Android frame, with base fallback.
+#if UNITY_ANDROID && !UNITY_EDITOR
+            StartCoroutine(LoadOptionalFoleyAcrossFrames());
+#else
+            LoadOptionalFoleySynchronously();
+#endif
             audioRoot = new GameObject("Aaris Audio Voices (12 pooled)");
             for (int i = 0; i < voices.Length; i++)
             {
@@ -119,6 +114,61 @@ namespace Aaris.MapReview
             previousY = transform.position.y;
             previousPosition = transform.position;
         }
+
+        private void LoadOptionalFoleySynchronously()
+        {
+            for (int i = 0; i < grassFoley.Length; i++)
+            {
+                string number = i.ToString("000");
+                grassFoley[i] = Resources.Load<AudioClip>("SFX/CC0/footstep_grass_" + number);
+                concreteFoley[i] = Resources.Load<AudioClip>("SFX/CC0/footstep_concrete_" + number);
+            }
+            for (int i = 0; i < punchFoley.Length; i++)
+                punchFoley[i] = Resources.Load<AudioClip>(
+                    "SFX/CC0/impactPunch_medium_" + i.ToString("000"));
+            softLandingFoley = Resources.Load<AudioClip>("SFX/CC0/impactSoft_heavy_000");
+            metalImpactFoley = Resources.Load<AudioClip>("SFX/CC0/impactMetal_light_000");
+        }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // Only one optional audio request integrates per frame; gameplay cues
+        // already have a fully loaded base fallback with unchanged audio assets.
+        private IEnumerator LoadOptionalFoleyAcrossFrames()
+        {
+            yield return null;
+            for (int i = 0; i < grassFoley.Length; i++)
+            {
+                string number = i.ToString("000");
+                ResourceRequest grass = Resources.LoadAsync<AudioClip>(
+                    "SFX/CC0/footstep_grass_" + number);
+                yield return grass;
+                grassFoley[i] = grass.asset as AudioClip;
+                yield return null;
+                ResourceRequest concrete = Resources.LoadAsync<AudioClip>(
+                    "SFX/CC0/footstep_concrete_" + number);
+                yield return concrete;
+                concreteFoley[i] = concrete.asset as AudioClip;
+                yield return null;
+            }
+            for (int i = 0; i < punchFoley.Length; i++)
+            {
+                ResourceRequest impact = Resources.LoadAsync<AudioClip>(
+                    "SFX/CC0/impactPunch_medium_" + i.ToString("000"));
+                yield return impact;
+                punchFoley[i] = impact.asset as AudioClip;
+                yield return null;
+            }
+            ResourceRequest landing = Resources.LoadAsync<AudioClip>(
+                "SFX/CC0/impactSoft_heavy_000");
+            yield return landing;
+            softLandingFoley = landing.asset as AudioClip;
+            yield return null;
+            ResourceRequest metal = Resources.LoadAsync<AudioClip>(
+                "SFX/CC0/impactMetal_light_000");
+            yield return metal;
+            metalImpactFoley = metal.asset as AudioClip;
+        }
+#endif
 
         private AudioClip GetClip(string name)
         {
