@@ -1387,7 +1387,7 @@ namespace Aaris.MapReview
                 rightGoal - leftGoal, Vector3.up);
             float stanceSpread = stanceSeparation.magnitude;
             float guard = stationary * Mathf.SmoothStep(0f, 1f,
-                Mathf.InverseLerp(0.18f, 0.65f, lowPose));
+                Mathf.InverseLerp(0.025f, 0.11f, lowPose));
             if (stanceSpread > 0.50f && guard > 0.001f)
             {
                 float eachShoeMetres = Mathf.Min(
@@ -2019,6 +2019,25 @@ namespace Aaris.MapReview
                 if (pelvisLift > 0.001f)
                     visualRoot.localPosition += Vector3.up * pelvisLift;
             }
+            // During prone-to-stand the capsule expands ahead of the crawl
+            // clip; recover ground contact without moving the collider/camera.
+            // Existing two-foot terrain IK keeps the final shoe placement.
+            if (!visuallyAirborne && graphReady && groundedNow &&
+                !prone && !crouching && effectiveProneBlend > 0.03f &&
+                leftFootBone != null && rightFootBone != null)
+            {
+                float standingFloor = transform.TransformPoint(controller.center -
+                    Vector3.up * (controller.height * 0.5f)).y;
+                float lowestAnkle = Mathf.Min(leftFootBone.position.y,
+                    rightFootBone.position.y);
+                float lift = standingFloor + UprightAnkleClearanceMetres -
+                    lowestAnkle;
+                if (lift > 0.005f)
+                    visualRoot.localPosition += Vector3.up *
+                        Mathf.Min(lift, 0.24f) * Mathf.SmoothStep(0f, 1f,
+                            Mathf.InverseLerp(0.03f, 0.35f,
+                                effectiveProneBlend));
+            }
             // Rotate the lower-body parent before terrain planting. The
             // existing analytic leg solve then restores exact shoe contact on
             // slopes/steps, so orientation compensation cannot introduce float.
@@ -2044,8 +2063,11 @@ namespace Aaris.MapReview
             bool transitioningLowStance =
                 (crouchRigWeight > 0.03f && crouchRigWeight < 0.96f) ||
                 (proneRigWeight > 0.03f && proneRigWeight < 0.96f);
+            // Exclusive early return-to-stand handoff: the last residual
+            // prone frames must not leave both terrain solvers disabled.
             bool useUprightContact = !visuallyAirborne && graphReady &&
-                groundedNow && lowPose < 0.02f;
+                groundedNow && (lowPose < 0.02f ||
+                    (!crouching && !prone && lowPose < 0.18f));
             if (!useUprightContact && ankleRigWeight > 0.005f)
             {
                 float proneShare = proneRigWeight / Mathf.Max(totalRigWeight, 0.0001f);
@@ -2093,17 +2115,26 @@ namespace Aaris.MapReview
                     ? Vector3.ProjectOnPlane(
                         rightThigh.position - leftThigh.position, Vector3.up)
                     : Vector3.zero;
-                float entryKneeSideTurn = 0f;
-                if (prone && groundedNow && !visuallyAirborne &&
+                float transitionKneeSideTurn = 0f;
+                if (groundedNow && !visuallyAirborne &&
                     transitioningLowStance && authoredProne &&
                     kneeSideAxis.sqrMagnitude > 0.02f)
                 {
                     kneeSideAxis.Normalize();
-                    float entry = Mathf.SmoothStep(0f, 1f,
-                        Mathf.InverseLerp(0.35f, 0.65f, effectiveProneBlend));
-                    float settle = 1f - Mathf.SmoothStep(0f, 1f,
-                        Mathf.InverseLerp(0.84f, 0.98f, effectiveProneBlend));
-                    entryKneeSideTurn = 55f * entry * settle *
+                    // The same crossing-knee defect occurs in crouch entry
+                    // and prone exit, not just during prone entry.
+                    float crouchEntry = crouching
+                        ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(
+                            0.20f, 0.65f, effectiveCrouchBlend)) *
+                          (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(
+                            0.96f, 0.995f, effectiveCrouchBlend)))
+                        : 0f;
+                    float proneTransition = Mathf.SmoothStep(0f, 1f,
+                        Mathf.InverseLerp(0.18f, 0.60f, effectiveProneBlend)) *
+                        (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(
+                            0.96f, 0.995f, effectiveProneBlend)));
+                    transitionKneeSideTurn = 80f *
+                        Mathf.Max(crouchEntry, proneTransition) *
                         kneeStillness * kneeTurnStability;
                 }
                 // Resolve X/Z BEFORE sampling Y. This keeps the one existing
@@ -2123,13 +2154,13 @@ namespace Aaris.MapReview
                     PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
                         leftAnkleY, kneeForward, ankleRigWeight,
                         leftFootGoal, kneeClearance, kneePoleStrength,
-                        kneeSideAxis, 0.26f, entryKneeSideTurn);
+                        kneeSideAxis, 0.23f, transitionKneeSideTurn);
                 else leftLowPlantLocked = false;
                 if (!float.IsNaN(rightAnkleY))
                     PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
                         rightAnkleY, kneeForward, ankleRigWeight,
                         rightFootGoal, kneeClearance, kneePoleStrength,
-                        kneeSideAxis, 0.26f, entryKneeSideTurn);
+                        kneeSideAxis, 0.23f, transitionKneeSideTurn);
                 else rightLowPlantLocked = false;
                 // Crouch/prone used to correct only ankle height, leaving the
                 // sole visually cutting through a sloped road or bridge deck.
