@@ -69,6 +69,11 @@ namespace Aaris.MapReview
         private static readonly int MetallicId = Shader.PropertyToID("_Metallic");
         private static readonly int SmoothnessId = Shader.PropertyToID("_Smoothness");
         public static bool Ready => specs != null && specs.Length > 0;
+        // Once per cold Android import; -1 if not yet attempted.
+        internal static float AndroidDefinitionParseMs { get; private set; } = -1f;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetAndroidImportTiming() { AndroidDefinitionParseMs = -1f; }
 
         private static void TuneFlatWeaponSurfaces(GameObject prefab)
         {
@@ -204,8 +209,11 @@ namespace Aaris.MapReview
             // Parse the small JSON catalog away from its native completion
             // and the first heavy weapon prefab import frame.
             yield return null;
+            double parseStarted = Time.realtimeSinceStartupAsDouble;
             var definitions = ReadDefinitions(
                 definitionsRequest.asset as TextAsset, false);
+            AndroidDefinitionParseMs = (float)((Time.realtimeSinceStartupAsDouble -
+                parseStarted) * 1000d);
 #else
             var definitions = ReadDefinitions();
 #endif
