@@ -184,8 +184,16 @@ def test():
     assert "LoadRadius = 105f" in world and "UnloadRadius = 160f" in world
     assert "AuthoredPrewarmRadius = 150f" in world
     assert world.index("AuthoredPrewarmRadius = 150f") < world.index("UnloadRadius = 160f")
-    assert "Resources.LoadAsync<GameObject>(item.authoredModelResource)" in world
-    assert "fallback.priority = -1;" in world and "request.priority = -1;" in world
+    # The shared Android admission gate now owns the exact native resource
+    # request and its low-priority scheduling. Raw per-car async calls here
+    # would bypass the cross-system memory/frame budget.
+    gate = script("AarisMobileStreamingFrameGate")
+    assert "AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(\n                item.authoredModelResource)" in world
+    assert "AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(\n                        item.fallbackAuthoredModelResource)" in world
+    assert "Resources.LoadAsync<T>(path)" in gate
+    assert "request.priority = -1;" in gate
+    assert "if (request == null) return false;" in world
+    assert "if (fallback == null) continue;" in world
     update = world.split("private void Update()", 1)[1].split("private void OnDestroy()", 1)[0]
     assert update.count("StartAuthoredBodyPrewarm(") == 1
     assert "if (closestType >= 0) StartAuthoredBodyPrewarm(closestType);" in update
