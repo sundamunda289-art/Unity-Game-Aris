@@ -1863,13 +1863,27 @@ namespace Aaris.MapReview
             // floated 0.75m while capsule bottom was only 0.035m above the
             // terrain. The static import fit cannot calibrate animated poses.
             // Both validated soldier rigs get this one-time runtime scale fit.
+            // Native standing-up portraits exposed a ~0.70m airborne-looking
+            // foot gap while the *motor was grounded*: upright rig calibration
+            // previously waited for the prone blend to reach <1%, although
+            // the user had already pressed Stand and the visual clip was still
+            // lifting the whole character. Reuse the existing lower-foot
+            // ground support sample during only this handoff, with the same
+            // bounded per-frame correction. No new solver, rig allocation or
+            // movement/collider authority change. At full prone/crouch and
+            // on real jumps this remains disabled.
+            bool returningFromProne = actions != null &&
+                actions.Stance == AarisBattleActions.PlayerStance.Standing &&
+                effectiveCrouchBlend < 0.08f &&
+                effectiveProneBlend >= 0.01f &&
+                effectiveProneBlend < 0.70f;
             bool uprightGroundedSoldier = CalibratedSoldierLoaded && graphReady &&
                 groundedNow && !visuallyAirborne &&
                 (aerialDrop == null || aerialDrop.HasLanded) &&
                 actions != null &&
                 actions.Stance == AarisBattleActions.PlayerStance.Standing &&
-                effectiveCrouchBlend < 0.01f &&
-                effectiveProneBlend < 0.01f;
+                ((effectiveCrouchBlend < 0.01f &&
+                    effectiveProneBlend < 0.01f) || returningFromProne);
             // Bone-span scale calibration still waits for a true idle pose.
             // Vertical shoe grounding below is safe while moving because it
             // samples the lower (stance) foot against the actual world floor.
