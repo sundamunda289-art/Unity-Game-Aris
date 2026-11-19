@@ -67,6 +67,13 @@ namespace Aaris.MapReview
         private const int AndroidTreeProbeBudgetPerFrame = 256;
         private readonly Dictionary<Terrain, List<TreeClearanceSample>> treeCache =
             new Dictionary<Terrain, List<TreeClearanceSample>>();
+        // Only clearance records near a planned site (including every possible
+        // 26m interactive relocation) can influence settlement placement.
+        // The actual native terrain trees and scene visuals remain untouched.
+        private const float TreeInterestCellMetres = 32f;
+        private const float MaximumTreeClearanceMargin = 3.8f;
+        private const float MaximumInteractiveRelocationAxis = 26f;
+        private readonly HashSet<long> treeInterestCells = new HashSet<long>();
         private readonly List<GameObject> placed = new List<GameObject>(24);
         // The physics engine cannot query distant authored colliders while
         // the nearby streamer has disabled them. Keep its cached bounds.
@@ -193,9 +200,10 @@ namespace Aaris.MapReview
                 // TerrainData.treeInstances copies an entire native tree array to
                 // managed memory at once. On Android, read bounded individual
                 // records instead; Unity 6 GetTreeInstance avoids that copy.
-                // Cache only world X/Z and the original clearance margin. This
-                // retains every tree, including those beside tile seams and
-                // possible interactive-house relocation sites.
+                // Retain only world X/Z/margin records that can affect a
+                // planned house or any safe relocated interactive house.
+                // Building the interest cells is bounded by the plan (max 32).
+                BuildTreeInterestCells(plan);
                 foreach (Terrain t in terrains)
                 {
                     if (t == null || t.terrainData == null) continue;
@@ -211,9 +219,19 @@ namespace Aaris.MapReview
                         TreeInstance tree = data.GetTreeInstance(i);
                         float x = origin.x + tree.position.x * size.x;
                         float z = origin.z + tree.position.z * size.z;
-                        float margin = Mathf.Min(3.8f,
-                            Mathf.Max(0.5f, tree.widthScale * 1.5f));
-                        samples.Add(new TreeClearanceSample(x, z, margin));
+                        // This O(1) membership check prevents storing distant
+                        // forest data that will never intersect any building.
+                        // The native tree sample budget still counts EVERY
+                        // visited tree, including those we do not retain.
+                        if (!float.IsNaN(x) && !float.IsInfinity(x) &&
+                            !float.IsNaN(z) && !float.IsInfinity(z) &&
+                            treeInterestCells.Contains(
+                                TreeInterestKey(TreeInterestCell(x), TreeInterestCell(z))))
+                        {
+                            float margin = Mathf.Min(3.8f,
+                                Mathf.Max(0.5f, tree.widthScale * 1.5f));
+                            samples.Add(new TreeClearanceSample(x, z, margin));
+                        }
                         if (mobile && ++processed >= AndroidTreeProbeBudgetPerFrame)
                         {
                             processed = 0;
@@ -313,6 +331,7 @@ namespace Aaris.MapReview
                 // the coroutine is cancelled; do not retain them all match
                 // or the coroutine is cancelled during a scene transition.
                 treeCache.Clear();
+                treeInterestCells.Clear();
             }
             Debug.Log("AARIS_EXPANSION_RESULT placed=" + placed.Count +
                 " planned=" + plan.siteCount + " terrain_skips=" + skippedTerrain +
@@ -464,6 +483,37 @@ namespace Aaris.MapReview
                 }
             }
             return false;
+        }
+
+        private static int TreeInterestCell(float coordinate) =>
+            Mathf.FloorToInt(coordinate / TreeInterestCellMetres);
+
+        private static long TreeInterestKey(int x, int z) =>
+            ((long)x << 32) | (uint)z;
+
+        private void BuildTreeInterestCells(AarisExpansionPlan plan)
+        {
+            treeInterestCells.Clear();
+            foreach (AarisExpansionSite site in plan.sites)
+            {
+                if (site == null || !CoordinatesValid(site)) continue;
+                FootprintHalfExtents(site, VegetationMargin,
+                    out float halfX, out float halfZ);
+                // Existing relocation tries +/-18m and +/-26m along each
+                // axis. Expand the initial envelope by the maximum per-axis
+                // displacement and the maximum width-based tree margin.
+                float relocation = site.interactive
+                    ? MaximumInteractiveRelocationAxis : 0f;
+                float xRange = halfX + MaximumTreeClearanceMargin + relocation;
+                float zRange = halfZ + MaximumTreeClearanceMargin + relocation;
+                int minX = TreeInterestCell(site.x - xRange);
+                int maxX = TreeInterestCell(site.x + xRange);
+                int minZ = TreeInterestCell(site.z - zRange);
+                int maxZ = TreeInterestCell(site.z + zRange);
+                for (int x = minX; x <= maxX; x++)
+                    for (int z = minZ; z <= maxZ; z++)
+                        treeInterestCells.Add(TreeInterestKey(x, z));
+            }
         }
 
         private bool CollidersBlock(AarisExpansionSite site, float y)
