@@ -45,13 +45,56 @@ URP asset is also native scale; neither asset was edited in this change.
 Large original .tif/HDR files do not establish Android runtime VRAM usage;
 inspect Unity-imported/compressed allocations before drawing conclusions.
 
+## Second-pass concurrency simulation and fixes
+
+A deterministic frame-scheduler model in
+`test_android_cross_system_hierarchy_budget.py` exercises five independent
+optional construction jobs (vehicle, weapon visual, medical, settlement and
+motorcycle) becoming ready in one frame. Before coordination, individual local
+budgets did not prevent several of those jobs being admitted together; the
+source-level model now admits at most one optional **new hierarchy** per
+low-RAM Android frame, while retaining every job to complete later. This is a
+logic model, not a measurement of real Unity native render-thread scheduling.
+
+Additional checks and code changes:
+- `AarisSettlementExpansion.PlaceSitesAcrossFrames` uses the shared gate
+  just before constructing each validated house/watchtower. All 21 planned
+  sites retain their original placement, mesh, materials, collisions and
+  existing terrain/tree clearance checks; a busy slot yields rather than
+  skipping the site.
+- `AarisOfflineTacticalHUD` applies admission only for **new** medkit and
+  helmet 3D roots after terrain/physics validation and after pool reuse.
+  Denied admission restores the medical scan cursor and retries the same
+  site on the next frame instead of incorrectly imposing its 5-second
+  invalid-ground cooldown. Existing pooled pickups never wait for admission.
+- A completed rival model's renderer inspection now waits for a free
+  integration frame. The vehicle bootstrap's synchronous Setup validation
+  also reserves an optional integration frame after sequential prewarm.
+  This closes the gap between async request completion and native rendering
+  work: a completed ResourceRequest does not guarantee a free CPU frame.
+- Optional frag grenade mesh and three visual-material prewarm requests
+  also use the same low-RAM admission. Synchronous emergency Throw fallback,
+  grenade physics, original material slots and visible model remain unchanged.
+- Core player/terrain/collision runtime, essential weapon prewarm, aircraft
+  input and base audio playback retain priority, bypassing this optional gate.
+
+**Limitations:** Native terrain rendering, shader compilation, scene bootstrap,
+physics MeshCollider cooking and Unity driver/device crashes still require
+profiling. Scheduling alone cannot eliminate an individual multi-millisecond
+house/model instantiation; the worst single hierarchy may need separate
+incremental construction or prebuilt prefabs after live profiling. The
+algorithm is intentionally non-allocating on each admission attempt, but
+Unity import engine work still happens underneath it.
+
 ## Verification
 
 Pass: 30 focused Python regression tests for global optional admission,
 pre-existing frame gate, vehicle fallback preload, motorcycle prewarm,
 rival model and animation prewarm. The complete Android source-regression
-suite passed 199 tests via `python3 -m unittest discover -s Tools/Validation
--p 'test_android_*.py'`; `git diff --check main...HEAD` passed.
+suite passed **207 tests** via `python3 -m unittest discover -s Tools/Validation
+-p 'test_android_*.py'`; settlement source/integrity suite passed **13 tests**
+via `python3 Tools/Validation/test_settlement_expansion.py`;
+`git diff --check main...HEAD` passed.
 These tests validate source-level contracts, not Unity binary/visual execution.
 No Editor/APK build or Android device playtest was run for this change.
 
