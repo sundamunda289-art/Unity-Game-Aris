@@ -277,7 +277,8 @@ namespace Aaris.MapReview
             }
 
             float elapsed = Time.time - startedAt;
-            if (!spawnComplete && Time.time >= nextSpawn)
+            if (!spawnComplete && Time.time >= nextSpawn &&
+                CanAttemptRivalSpawn())
             {
                 // Exactly one authored encounter attempt per half-second.
                 // Avoid a burst of costly Humanoid imports on 2GB phones.
@@ -326,6 +327,26 @@ namespace Aaris.MapReview
                 nextRingDraw = Time.time + 2f;
                 DrawBoundary();
             }
+        }
+
+        // A rival's first Humanoid Instantiate, collider and PlayableGraph
+        // setup are optional work after the player has landed. Do not start
+        // them in the same frame as vehicle/loot/settlement native integration.
+        // Budget rejection must NOT consume a spawn slot or retry pass: all
+        // original rivals and their authored spawn checks remain eligible.
+        private bool CanAttemptRivalSpawn()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Retry-only waves also visit already-populated slots. Those
+            // require no native build and must not monopolize the shared gate.
+            if (attemptedSlots < RivalCount && !populatedSlots[attemptedSlots] &&
+                !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+            {
+                nextSpawn = Time.time + 0.12f;
+                return false;
+            }
+#endif
+            return true;
         }
 
         private void Begin()
