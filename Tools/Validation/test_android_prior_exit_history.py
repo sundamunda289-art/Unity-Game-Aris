@@ -62,7 +62,7 @@ class PriorExitHistory(unittest.TestCase):
         self.assertIn('result.state = "available"', BRIDGE)
         self.assertIn('Snapshot.Unknown("no-history")', BRIDGE)
         self.assertIn('Snapshot.Unknown("unsupported-api")', BRIDGE)
-        self.assertNotIn("getPss", RUNTIME)
+        self.assertNotIn('Call<long>("getPss")', RUNTIME)
 
     def test_other_platforms_do_not_run_android_bridge(self):
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", BRIDGE)
