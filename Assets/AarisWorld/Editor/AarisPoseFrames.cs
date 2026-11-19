@@ -353,6 +353,13 @@ Log("TRANSITION_LEGS stance="+b.Stance+" frame="+sampleIndex+
 " spread="+spread.ToString("F3")+
 " leftKneeSide="+lSide.ToString("F3")+
 " rightKneeSide="+rSide.ToString("F3"));
+// The real BACK camera found an obvious crossing-knee silhouette in the
+// first return-to-stand frame, despite correct foot support. The settled
+// stance samples must not mask this short-lived procedural knee defect.
+if(b.Stance==AarisBattleActions.PlayerStance.Standing&&
+ sampleIndex==0&&transitioning&&
+ (Mathf.Abs(lSide)>0.34f||Mathf.Abs(rSide)>0.34f))
+ throw new InvalidOperationException("RETURN_TO_STAND_KNEE_FLARE");
 }
 static void Finish(string reason){
 Log(reason);SessionState.SetString("pose.state","");Phase("07_COMPLETE");
