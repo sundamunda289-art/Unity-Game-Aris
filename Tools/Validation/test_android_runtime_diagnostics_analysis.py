@@ -85,6 +85,18 @@ class RuntimeDiagnosticEvidence(unittest.TestCase):
         self.assertNotIn(secret, json.dumps(result))
         self.assertEqual(result["previous_process_exit_reason_codes_observed"], [3])
 
+    def test_input_limit_is_reported_not_silently_ignored(self):
+        original_limit = MOD.MAX_EVENTS
+        try:
+            MOD.MAX_EVENTS = 2
+            result = report({"reason": "start"}, {"reason": "sample"},
+                            {"reason": "frame-stall"})
+        finally:
+            MOD.MAX_EVENTS = original_limit
+        self.assertTrue(result["input_truncated_at_record_limit"])
+        self.assertEqual(result["valid_records"], 2)
+        self.assertEqual(result["frame_windows"]["explicit_stall_reports"], 0)
+
     def test_unknown_reason_not_echoed_and_rollups_are_bounded(self):
         result = report({"reason": "my-secret-marker", "warningCount": 1,
                          "assetUnloadStartedCount": 1_000_000})
