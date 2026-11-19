@@ -27,6 +27,11 @@ namespace Aaris.MapReview
         private float sampleAt, unloadAfter;
         private bool lowMemoryPending;
         private AsyncOperation unloading;
+        // Distinguish Unity asset cleanup cost from unrelated stalls or LMKs.
+        // Wall-clock duration includes frames spent waiting for completion;
+        // it is NOT a measurement of CPU time spent within the engine.
+        private float assetUnloadStartedRealtime = -1f, lastAssetUnloadElapsedMs = -1f;
+        private int assetUnloadStartedCount, assetUnloadCompletedCount, assetUnloadSuppressedCount;
         private string logPath;
         private long releasedPaintBytes;
         private string lastError = "";
@@ -706,15 +711,31 @@ namespace Aaris.MapReview
                 Record("frame-stall");
             }
 #endif
+            // Observe completion without waiting for AsyncOperation on the
+            // render thread. Report once, not every frame or every sample.
+            if (assetUnloadStartedRealtime >= 0f && unloading != null && unloading.isDone)
+            {
+                lastAssetUnloadElapsedMs = Mathf.Max(0f,
+                    (Time.realtimeSinceStartup - assetUnloadStartedRealtime) * 1000f);
+                assetUnloadStartedRealtime = -1f;
+                assetUnloadCompletedCount++;
+                Record("asset-unload-complete");
+            }
             if (lowMemoryPending)
             {
                 lowMemoryPending = false;
-                Record("low-memory");
+                // Keep Unity's critical-memory cleanup. Never force GC or
+                // block for completion; repeated signals honor cooldown.
                 if (Time.unscaledTime >= unloadAfter && (unloading == null || unloading.isDone))
                 {
+                    assetUnloadStartedRealtime = Time.realtimeSinceStartup;
                     unloading = Resources.UnloadUnusedAssets();
+                    assetUnloadStartedCount++;
                     unloadAfter = Time.unscaledTime + 30;
                 }
+                else
+                    assetUnloadSuppressedCount++;
+                Record("low-memory");
             }
 #if UNITY_ANDROID && !UNITY_EDITOR
             // The regular 15-second ring no longer contains the opening frames.
@@ -871,6 +892,9 @@ namespace Aaris.MapReview
         {
             public string reason, utc, version, device, gpu, api, lastError;
             public int systemRamMB, targetFps, warningCount, framesOver50Ms, frameSamples;
+            public int assetUnloadStartedCount, assetUnloadCompletedCount, assetUnloadSuppressedCount;
+            public float lastAssetUnloadElapsedMs = -1f;
+            public bool assetUnloadInProgress;
             public string dropPhase;
             public bool weaponCatalogReady;
             public float processSeconds, maxFrameMs;
@@ -933,7 +957,12 @@ namespace Aaris.MapReview
                 paintedTerrainTiles = paintedTiles, terrainAlphamaps = alphamapCount,
                 unsupportedTerrainMaterials = invalidTerrainMaterials,
                 terrainLitSupported = terrainLitAvailable,
-                androidPssKB = -1, warningCount = warningCount, lastError = lastError
+                androidPssKB = -1, warningCount = warningCount, lastError = lastError,
+                assetUnloadStartedCount = assetUnloadStartedCount,
+                assetUnloadCompletedCount = assetUnloadCompletedCount,
+                assetUnloadSuppressedCount = assetUnloadSuppressedCount,
+                lastAssetUnloadElapsedMs = lastAssetUnloadElapsedMs,
+                assetUnloadInProgress = unloading != null && !unloading.isDone
             };
 #if UNITY_ANDROID && !UNITY_EDITOR
             // Android Debug.getPss() synchronously walks process memory and
