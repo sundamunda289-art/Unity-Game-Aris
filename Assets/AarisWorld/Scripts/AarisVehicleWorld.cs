@@ -1783,7 +1783,8 @@ namespace Aaris.MapReview
             motor.ConfigureExteriorLights(lampBounds,
                 headlampGlassMaterial, headlampOnMaterial,
                 taillampGlassMaterial, brakeLampMaterial,
-                reverseLampMaterial, sharedLampLensMesh, lampBezelMaterial);
+                reverseLampMaterial, sharedLampLensMesh, lampBezelMaterial,
+                player);
             motor.ConfigureRearTyreTraces(skidMarkMaterial);
             motor.ConfigureExhaust(exhaustMaterial, bounds);
             motor.RestoreStreamedDamage(record.damage01);
