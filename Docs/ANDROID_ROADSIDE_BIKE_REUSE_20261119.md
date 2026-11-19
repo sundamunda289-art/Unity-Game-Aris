@@ -13,6 +13,8 @@ Target: Unity 6000.3.26f1 / URP 17.3.0 / 4GB Android, Snapdragon 680 and Adreno 
 - Once the candidate road point has passed the **unchanged ground, slope, obstacle, streamed-collider checks**, reuse the farthest existing rig when replacing it, instead of destroying it and instantiating another. An unsuccessful candidate probe never moves or removes the visible model.
 - Cache existing shared `Material[]` slot layouts for the four paint finishes only when the rig is first built. On reuse update the same renderer's `sharedMaterials` to the new plan ID's deterministic paint; metal, rubber, seating and lamps stay on the unchanged original material slots. No new Unity Material assets are allocated during swaps.
 - Temporarily deactivate the rig before moving to the new validated position, then reenable. This unregisters and reinstates its original BoxCollider without an unconditional global `Physics.SyncTransforms()` call.
+- On Android/Unity `Application.lowMemory`, flag the warning without destroying scene objects inside the callback. The following regular `Update` frees **only hidden pooled** motorcycle instances and suspends new caching for 60 seconds. All visible motorcycles remain unchanged; priority replacements can still reuse existing visible rigs without increasing memory.
+
 - Leave the existing `ResourceRequest` prewarm and `LODGroup` (0.012 threshold) untouched. Scene shutdown automatically destroys this component's child instances and only then disposes the shared runtime materials.
 
 ## Validation and caveat
