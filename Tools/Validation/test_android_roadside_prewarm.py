@@ -12,7 +12,11 @@ class RoadsideTests(unittest.TestCase):
         self.assertNotIn("SetupMaterials();", boot)
 
     def test_request_once(self):
-        self.assertEqual(CODE.count("Resources.LoadAsync<GameObject>(ModelResource)"), 1)
+        self.assertEqual(
+            CODE.count("AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(ModelResource)"), 1)
+        gate = (Path(__file__).resolve().parents[2] /
+                "Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs").read_text()
+        self.assertIn("Resources.LoadAsync<T>(path)", gate)
         self.assertIn("if (bikePrewarm == null)", CODE)
         self.assertIn("if (!bikePrewarm.isDone) return;", CODE)
         self.assertIn("bikeSource = bikePrewarm.asset as GameObject;", CODE)
