@@ -88,7 +88,7 @@ class AndroidDiagnosticFramePacing(unittest.TestCase):
         self.assertIn("lowMemoryReportPending = false;", report)
         self.assertIn('Record("low-memory");', report)
         # Android reports later; Editor retains the original immediate log.
-        self.assertIn('#else\\n                Record("low-memory");\\n#endif'.replace('\\n', '\\n'), cleanup)
+        self.assertIn("#else\\n                Record(\"low-memory\");\\n#endif", cleanup)
         self.assertNotIn("GC.Collect()", cleanup)
         self.assertNotIn("WaitForCompletion", cleanup)
 
