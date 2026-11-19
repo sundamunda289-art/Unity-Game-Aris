@@ -199,7 +199,8 @@ namespace Aaris.MapReview
                     {
                         Vector3 bay = new Vector3(plan.point.x, plan.point.y, plan.point.z);
                         if ((bay - position).sqrMagnitude > warmDistanceSq) continue;
-                        bikePrewarm = Resources.LoadAsync<GameObject>(ModelResource);
+                        bikePrewarm = AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(ModelResource);
+                        if (bikePrewarm == null) return; // optional import deferred
                         break;
                     }
                     return;
