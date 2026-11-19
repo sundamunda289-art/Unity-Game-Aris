@@ -60,16 +60,17 @@ class AndroidFragVisualPool(unittest.TestCase):
             "#endif", 1
         )[0]
         self.assertIn("WaitForSecondsRealtime(2f)", prewarm)
-        self.assertIn("Resources.LoadAsync<GameObject>", prewarm)
-        self.assertIn("Resources.LoadAsync<Material>", prewarm)
-        self.assertIn("yield return model;", prewarm)
-        self.assertIn("yield return shell;", prewarm)
-        self.assertIn("yield return light;", prewarm)
-        self.assertIn("yield return metal;", prewarm)
+        self.assertIn("TryStartOptionalLoadAsync<GameObject>(", prewarm)
+        self.assertEqual(prewarm.count("TryStartOptionalLoadAsync<Material>("), 3)
+        for request in ("model", "shell", "light", "metal"):
+            self.assertIn("yield return " + request + ";", prewarm)
         self.assertLess(prewarm.index("yield return shell;"),
-                        prewarm.index("Resources.LoadAsync<Material>(\n                \"AarisCombat/Materials/FragGrenade-OliveLight\")"))
-        self.assertIn("model.priority = -1;", prewarm)
-        self.assertIn("metal.priority = -1;", prewarm)
+                        prewarm.index('"AarisCombat/Materials/FragGrenade-OliveLight"'))
+        self.assertLess(prewarm.index("yield return light;"),
+                        prewarm.index('"AarisCombat/Materials/FragGrenade-DarkMetal"'))
+        gate = (ROOT / "Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs").read_text()
+        self.assertIn("Resources.LoadAsync<T>(path)", gate)
+        self.assertIn("request.priority = -1;", gate)
         self.assertIn("StartCoroutine(AarisOfflineFragGrenade.PrewarmGrenadeAssets());", HUD)
         self.assertIn("GameObject imported = cachedGrenadePrefab;", FRAG)
         self.assertIn('Resources.Load<GameObject>("AarisCombat/FragGrenade")', FRAG)
