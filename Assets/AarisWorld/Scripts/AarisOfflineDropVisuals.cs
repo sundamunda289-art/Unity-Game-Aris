@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -17,6 +18,29 @@ namespace Aaris.MapReview
         // One runtime-only copy per aircraft finish keeps the saved assets untouched.
         private static Material hullDaylightFinish, wingDaylightFinish;
         private static Mesh cachedPropellerMesh, cachedPropellerBlurMesh;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private static GameObject prewarmedCanopyPrefab;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetCanopyPrewarm()
+        {
+            // Static references must not outlive a Unity player domain reload.
+            prewarmedCanopyPrefab = null;
+        }
+
+        internal static IEnumerator PrewarmCanopyPrefab()
+        {
+            // The cargo aircraft and essential flight input render first.
+            // This never instantiates geometry or changes original materials.
+            yield return null;
+            if (prewarmedCanopyPrefab != null) yield break;
+            ResourceRequest request = Resources.LoadAsync<GameObject>(
+                "AarisDrop/ElongatedParachute");
+            request.priority = -1;
+            yield return request;
+            prewarmedCanopyPrefab = request.asset as GameObject;
+        }
+#endif
 
         private static Material Paint(ref Material cached, Color color)
         {
@@ -416,7 +440,16 @@ namespace Aaris.MapReview
             rig.SetParent(root.transform, false);
             rig.localPosition = Vector3.down * harnessHeight;
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Usually already loaded during aircraft flight. If the user opens
+            // immediately before prewarm finishes, retain the exact original
+            // model/fallback contract rather than showing a different canopy.
+            var imported = prewarmedCanopyPrefab != null
+                ? prewarmedCanopyPrefab
+                : Resources.Load<GameObject>("AarisDrop/ElongatedParachute");
+#else
             var imported = Resources.Load<GameObject>("AarisDrop/ElongatedParachute");
+#endif
             if (imported != null)
             {
                 var model = UnityEngine.Object.Instantiate(imported, rig, false);

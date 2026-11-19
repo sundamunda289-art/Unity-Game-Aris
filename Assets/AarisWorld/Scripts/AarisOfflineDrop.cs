@@ -153,6 +153,11 @@ namespace Aaris.MapReview
             hud = AarisOfflineDropHud.Create(this);
             hud.SetAction("EJECT", true);
             phase = DropPhase.InPlane;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Keep the authored canopy asset ready before the OPEN transition,
+            // without importing it in the initial aircraft render frame.
+            StartCoroutine(AarisOfflineDropVisuals.PrewarmCanopyPrefab());
+#endif
             // Before the first flight frame, the saved walking camera is
             // still positioned at the ground spawn. Snap it to the real
             // aircraft once instead of lerping through terrain for seconds.
