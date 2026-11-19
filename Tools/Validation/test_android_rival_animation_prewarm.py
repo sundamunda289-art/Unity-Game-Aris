@@ -18,12 +18,13 @@ class RivalAnimationPrewarm(unittest.TestCase):
         )[0]
 
     def test_async_idle_then_run_sequential(self):
-        self.assertIn('Resources.LoadAsync<AnimationClip>(idlePath)', self.boot)
-        self.assertIn('Resources.LoadAsync<AnimationClip>(runPath)', self.boot)
-        self.assertIn("idleRequest.priority = -1;", self.boot)
-        self.assertIn("runRequest.priority = -1;", self.boot)
+        self.assertIn("TryStartOptionalLoadAsync<AnimationClip>(idlePath)", self.boot)
+        self.assertIn("TryStartOptionalLoadAsync<AnimationClip>(runPath)", self.boot)
+        gate = (ROOT / "Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs").read_text()
+        self.assertIn("Resources.LoadAsync<T>(path)", gate)
+        self.assertIn("request.priority = -1;", gate)
         self.assertLess(self.boot.index("yield return idleRequest;"),
-                        self.boot.index("Resources.LoadAsync<AnimationClip>(runPath)"))
+                        self.boot.index("TryStartOptionalLoadAsync<AnimationClip>(runPath)"))
         self.assertLess(self.boot.index("yield return runRequest;"),
                         self.boot.index("rivalVisualPrewarmComplete = true;"))
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", self.boot)
