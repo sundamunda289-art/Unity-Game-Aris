@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""Isolated temporary C# overlay for real Unity pose QA on the existing Codespace.
+
+The user's active Git branch, native assets and uncommitted work are retained.
+The only temporary source replacement is a verified clean CharacterVisual.cs;
+it is restored in a finally block, with a content/HEAD conflict guard.
+Never use this while another Unity Editor instance is running.
+"""
+import hashlib
+import os
+from pathlib import Path
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+
+ROOT = Path.cwd()
+REL = "Assets/AarisWorld/Scripts/AarisCharacterVisual.cs"
+SOURCE = ROOT / REL
+OUT = Path("/tmp/aaris-pose-qa-20261119/patched")
+POSE_DIR = Path("/tmp/aaris-codespaces/motion-frames")
+BRANCH = "fix/anatomical-upright-knee-pole-20261119"
+URL = "https://raw.githubusercontent.com/sundamunda289-art/Unity-Game-Aris/" + BRANCH + "/" + REL
+EXPECTED_SOURCE_BLOB = "fac42e70e06c85c42f4a4f73d0de8ec7420a5f08"
+RUNS = (
+    ("transition", "CaptureTransitionPortrait", "SUCCESS_16_STANCE_TRANSITION_FRAMES"),
+    ("settled", "CaptureMultiAnglePortrait", "SUCCESS_16_ACTOR_MULTIANGLE_PORTRAITS"),
+)
+
+
+def git(*args):
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True)
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def atomic_replace(data, mode):
+    fd, name = tempfile.mkstemp(prefix=".aaris-pose-qa-", dir=str(SOURCE.parent))
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(name, mode)
+        os.replace(name, SOURCE)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def term(signum, frame):
+    raise KeyboardInterrupt("Pose capture interrupted; restoring original source")
+
+
+def main():
+    OUT.mkdir(parents=True, exist_ok=True)
+    if SOURCE.is_symlink() or not SOURCE.is_file() or git("diff", "--quiet", "--", REL).returncode:
+        raise RuntimeError("ABORT_EXISTING_VISUAL_MODIFICATIONS")
+    blob = git("hash-object", REL).stdout.decode().strip()
+    if blob != EXPECTED_SOURCE_BLOB:
+        raise RuntimeError("ABORT_WRONG_CHARACTER_VISUAL_BLOB " + blob)
+    # Inspect executable names, NOT the current shell's argv (which includes
+    # this script text in command queues and can match grep/pgrep incorrectly).
+    proc_names = subprocess.check_output(["ps", "-eo", "comm="], text=True).splitlines()
+    if any(name.strip() == "Unity" for name in proc_names):
+        raise RuntimeError("ABORT_EXISTING_UNITY_EDITOR")
+    editor = Path.home() / ".local/share/aaris-unity-editors/6000.3.26f1/Editor/Unity"
+    if not editor.is_file():
+        raise RuntimeError("UNITY_EDITOR_NOT_FOUND")
+    patch = subprocess.check_output(["curl", "-fsSL", "--max-time", "45", URL])
+    if b"stanceSpread > 0.57f" not in patch or b"AnatomicalKneeForward()" not in patch:
+        raise RuntimeError("WRONG_PATCH")
+    original = SOURCE.read_bytes()
+    original_hash, patch_hash = digest(original), digest(patch)
+    mode = SOURCE.stat().st_mode & 0o777
+    (OUT / "original_character_visual.cs").write_bytes(original)
+    (OUT / "patched_character_visual.cs").write_bytes(patch)
+    original_head = git("rev-parse", "HEAD").stdout.decode().strip()
+    proc = None
+    passed = False
+    try:
+        atomic_replace(patch, mode)
+        if digest(SOURCE.read_bytes()) != patch_hash:
+            raise RuntimeError("PATCH_WRITE_RACE")
+        print("PATCH_TEMPORARILY_APPLIED originalHead=" + original_head[:12], flush=True)
+        for label, method, marker in RUNS:
+            folder = OUT / label
+            folder.mkdir(parents=True, exist_ok=True)
+            print("NATIVE_" + label.upper() + "_START", flush=True)
+            command = [
+                "xvfb-run", "-a", "-s", "-screen 0 1280x720x24 +extension GLX -ac",
+                str(editor), "-batchmode", "-force-glcore",
+                "-projectPath", str(ROOT),
+                "-executeMethod", "Aaris.MapReview.Editor.AarisPoseFrames." + method,
+                "-logFile", str(folder / "editor.log"),
+            ]
+            with (folder / "launcher.log").open("wb") as log:
+                proc = subprocess.Popen(command, cwd=ROOT, stdout=log,
+                                        stderr=subprocess.STDOUT, start_new_session=True)
+                try:
+                    exit_code = proc.wait(timeout=490)
+                except subprocess.TimeoutExpired:
+                    raise RuntimeError(label + "_TIMEOUT")
+            proc = None
+            report = POSE_DIR / "report.txt"
+            phase = POSE_DIR / "phase.txt"
+            images = sorted(POSE_DIR.glob("*.jpg"))
+            if report.is_file():
+                shutil.copy2(report, folder / "report.txt")
+            if phase.is_file():
+                shutil.copy2(phase, folder / "phase.txt")
+            for img in images:
+                shutil.copy2(img, folder / img.name)
+            if exit_code != 0 or not report.is_file() or marker not in report.read_text() or (
+                len(images) != 16 or any(i.stat().st_size < 4000 for i in images)
+            ) or not phase.is_file() or phase.read_text().strip() != "07_COMPLETE":
+                raise RuntimeError(f"POSE_{label}_FAIL exit={exit_code} frames={len(images)}")
+            print("NATIVE_" + label.upper() + "_SUCCESS 16_REAL_FRAMES", flush=True)
+            if digest(SOURCE.read_bytes()) != patch_hash:
+                raise RuntimeError("SOURCE_CHANGED_DURING_CAPTURE")
+        passed = True
+    finally:
+        if proc is not None and proc.poll() is None:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                proc.wait()
+        current = digest(SOURCE.read_bytes())
+        committed = git("show", "HEAD:" + REL)
+        if current == patch_hash and committed.returncode == 0 and committed.stdout == original:
+            atomic_replace(original, mode)
+            print("ORIGINAL_CHARACTER_VISUAL_RESTORED", flush=True)
+        elif current == original_hash:
+            print("ORIGINAL_CHARACTER_VISUAL_ALREADY_RESTORED", flush=True)
+        else:
+            print("WARNING_SOURCE_CHANGED_EXTERNALLY_RESTORATION_SKIPPED", flush=True)
+        clean = digest(SOURCE.read_bytes()) == original_hash
+        print(f"QA_RESULT success={passed} original_restored={clean}", flush=True)
+        if not clean:
+            raise RuntimeError("RESTORATION_REQUIRES_MANUAL_REVIEW")
+
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, term)
+    signal.signal(signal.SIGINT, term)
+    try:
+        main()
+    except (Exception, KeyboardInterrupt) as exc:
+        print("POSE_NATIVE_RUN_FAILED " + type(exc).__name__ + " " + str(exc), flush=True)
+        sys.exit(2)
