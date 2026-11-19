@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.Profiling;
 
 namespace Aaris.MapReview
 {
@@ -82,6 +83,10 @@ namespace Aaris.MapReview
     [DefaultExecutionOrder(-70), DisallowMultipleComponent]
     public sealed class AarisVehicleWorld : MonoBehaviour
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private static readonly ProfilerMarker k_VehicleBuild =
+            new ProfilerMarker("Aaris.Streaming.VehicleBuild");
+#endif
         // Long enough to reveal parked cars before the player reaches them;
         // the 10-car active cap and 2GB Android spawn budget stay unchanged.
         private const float LoadRadius = 105f;
@@ -1507,6 +1512,9 @@ namespace Aaris.MapReview
 
         private bool Build(AarisVehicleRecord record, Vector3 pos)
         {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            using var profilerScope = k_VehicleBuild.Auto();
+#endif
             int typeIndex = TypeIndex(record.type);
             if (typeIndex < 0 || !authoredBodyResolved[typeIndex]) return false;
             GameObject source = prefabs[typeIndex];
