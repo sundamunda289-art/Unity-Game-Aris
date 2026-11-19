@@ -186,6 +186,8 @@ existing schema checks.
 The smaller `AarisWeapons/weapon_catalog` definition file is now also
 loaded by `Resources.LoadAsync<TextAsset>` in Android match prewarm, with
 its JSON validation in a separate frame before native weapon prefab loads.
+Both authored manifest loads retain **normal gameplay priority (0)** rather
+than the optional cosmetic streamers' reduced request priority (-1).
 Desktop and explicit essential synchronous callers retain the original
 fallback. Five authored gun categories, weights, match seeding,
 pickup/ground validation, physics reach, meshes and textures remain intact.
@@ -200,7 +202,7 @@ are not an FPS number. No per-frame timing instrumentation was added.
 Pass: 30 focused Python regression tests for global optional admission,
 pre-existing frame gate, vehicle fallback preload, motorcycle prewarm,
 rival model and animation prewarm. The complete Android source-regression
-suite passed **223 tests** via `python3 -m unittest discover -s Tools/Validation
+suite passed **233 tests** via `python3 -m unittest discover -s Tools/Validation
 -p 'test_android_*.py'`; settlement source/integrity suite passed **13 tests**
 via `python3 Tools/Validation/test_settlement_expansion.py`;
 `git diff --check main...HEAD` passed.
