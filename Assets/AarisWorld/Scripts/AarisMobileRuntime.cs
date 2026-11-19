@@ -56,6 +56,11 @@ namespace Aaris.MapReview
         // crash/low-memory/stall evidence, but allow only one non-urgent
         // periodic JSON/profiler snapshot in a rendered Android frame.
         private int lastDiagnosticFrame = -1;
+        // Asset-unload completion can consume the native main thread in its
+        // last frame. Defer the nonessential full profiler/JSON snapshot until
+        // a later frame; record the completion counters immediately.
+        private bool assetUnloadCompletionReportPending;
+        private int assetUnloadCompletionObservedFrame = -1;
         private Task<string> pendingLogWrite;
         // One prior-process OS report only, never queried during a hot frame.
         private AarisAndroidExitHistory.Snapshot previousExitSnapshot;
@@ -728,7 +733,15 @@ namespace Aaris.MapReview
                     (Time.realtimeSinceStartup - assetUnloadStartedRealtime) * 1000f);
                 assetUnloadStartedRealtime = -1f;
                 assetUnloadCompletedCount++;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // The completion frame is already paying for Unity's native
+                // asset reclamation. Keep telemetry from adding profiler
+                // queries, JSON serialization and a background task to it.
+                assetUnloadCompletionReportPending = true;
+                assetUnloadCompletionObservedFrame = Time.frameCount;
+#else
                 Record("asset-unload-complete");
+#endif
             }
             if (lowMemoryPending)
             {
@@ -759,6 +772,16 @@ namespace Aaris.MapReview
                 Record("low-memory");
             }
 #if UNITY_ANDROID && !UNITY_EDITOR
+            // Avoid two diagnostic snapshots in the same frame. If a low-memory
+            // notification or stall already recorded evidence, retry next
+            // frame without losing the completion event or its counters.
+            if (assetUnloadCompletionReportPending &&
+                Time.frameCount != assetUnloadCompletionObservedFrame &&
+                CanRecordPeriodicDiagnostics())
+            {
+                assetUnloadCompletionReportPending = false;
+                Record("asset-unload-complete");
+            }
             // The regular 15-second ring no longer contains the opening frames.
             // Keep three bounded snapshots for comparing cold and warm launches.
             if (startupSampleIndex < 3 && CanRecordPeriodicDiagnostics())
