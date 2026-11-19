@@ -16,7 +16,12 @@ class RivalVisualPrewarm(unittest.TestCase):
             "internal void ResolveRivalAssets", 1
         )[0]
         self.assertIn("new WaitForSecondsRealtime(2f)", body)
-        self.assertIn("Resources.LoadAsync<GameObject>(RivalVisualResourcePaths[i])", body)
+        self.assertIn(
+            "AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(",
+            body)
+        self.assertIn("RivalVisualResourcePaths[i])) == null)", body)
+        gate = (ROOT / "Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs").read_text()
+        self.assertIn("Resources.LoadAsync<T>(path)", gate)
         self.assertIn("yield return request;", body)
         self.assertIn("yield return null;", body)
         self.assertIn("rivalVisualPrewarmComplete = true;", body)
