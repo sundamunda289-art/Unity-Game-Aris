@@ -21,16 +21,18 @@ class ExpansionCatalogPrewarm(unittest.TestCase):
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", self.start)
         self.assertIn("StartCoroutine(LoadExpansionCatalogAcrossFrames());", self.start)
         self.assertIn('Resources.LoadAsync<TextAsset>(', self.start)
-        self.assertIn('Resources.LoadAsync<AarisExpansionCatalog>(', self.start)
+        self.assertIn('TryStartOptionalLoadAsync<AarisExpansionCatalog>(', self.start)
         self.assertIn('"AarisExpansion/WorldExpansionPlan"', self.start)
         self.assertIn('"AarisExpansion/AarisExpansionCatalog"', self.start)
         self.assertLess(self.start.index("yield return plan;"),
-                        self.start.index("Resources.LoadAsync<AarisExpansionCatalog>"))
+                        self.start.index("TryStartOptionalLoadAsync<AarisExpansionCatalog>"))
         self.assertLess(self.start.index("yield return catalog;"),
                         self.start.index("InitializeExpansion(plan.asset as TextAsset,"))
         self.assertIn("plan.priority = -1;", self.start)
-        self.assertIn("catalog.priority = -1;", self.start)
+        self.assertIn("while (isActiveAndEnabled && catalog == null)", self.start)
+        self.assertIn("if (catalog == null) yield return null;", self.start)
         self.assertIn("if (!isActiveAndEnabled) yield break;", self.start)
+        self.assertIn("InitializeExpansion(plan.asset as TextAsset,", self.start)
         self.assertGreaterEqual(self.start.count("yield return null;"), 2)
         self.assertNotIn("Instantiate(", self.start)
 
