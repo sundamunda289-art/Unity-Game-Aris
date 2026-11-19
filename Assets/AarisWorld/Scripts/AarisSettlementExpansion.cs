@@ -166,8 +166,9 @@ namespace Aaris.MapReview
                     Vector3 size = data.size;
                     var samples = new List<TreeClearanceSample>();
                     treeCache.Add(t, samples);
+                    int treeCount = data.treeInstanceCount;
                     int processed = 0;
-                    for (int i = 0; i < data.treeInstanceCount; i++)
+                    for (int i = 0; i < treeCount; i++)
                     {
                         TreeInstance tree = data.GetTreeInstance(i);
                         float x = origin.x + tree.position.x * size.x;
