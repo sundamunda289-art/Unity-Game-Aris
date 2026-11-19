@@ -54,6 +54,25 @@ class LocomotionGymTests(unittest.TestCase):
         motor = self.read("Assets/AarisWorld/Scripts/AarisThirdPersonPlayer.cs")
         self.assertIn("!isLocomotionGym && GetComponent<AarisAudioDirector>()", motor)
 
+    def test_codespace_editor_is_found_without_reinstall(self):
+        shell = self.read("Tools/CI/build_locomotion_gym.sh")
+        self.assertIn('UNITY_VERSION="$(sed -n', shell)
+        self.assertIn('m_EditorVersion: ', shell)
+        self.assertIn('aaris-unity-editors/$UNITY_VERSION/Editor/Unity', shell)
+        self.assertIn('if [[ -n "${UNITY_BIN:-}" ]]', shell)
+        self.assertIn('BIN="$UNITY_BIN"', shell)
+        self.assertIn('BIN="/opt/unity/Editor/Unity"', shell)
+
+    def test_stance_overlay_does_not_allocate_text_every_gui_event(self):
+        marker = self.read("Assets/AarisWorld/Scripts/AarisLocomotionGymMarker.cs")
+        gui = marker.split('private void OnGUI()', 1)[1]
+        self.assertIn('GUI.Box(new Rect(', gui)
+        self.assertIn('statusContent);', gui)
+        self.assertNotIn('stance.Stance +', gui)
+        self.assertIn('stance.Stance != lastDisplayedStance', marker)
+        self.assertIn('statusContent.text =', marker)
+        self.assertIn('new GUIContent()', marker)
+
     def test_filtered_staging_and_no_full_map(self):
         shell = self.read("Tools/CI/build_locomotion_gym.sh")
         self.assertIn('Assets/Resources/AarisCharacters', shell)
