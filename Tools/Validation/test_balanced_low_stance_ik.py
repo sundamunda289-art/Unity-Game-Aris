@@ -101,6 +101,17 @@ support = visual[visual.index("private float SupportedAnkleY("):
                  visual.index("private void PlantUprightContact(")]
 assert "out Vector3 supportNormal, Vector3 sampleWorld)" in support
 assert "Vector3 origin = sampleWorld + Vector3.up * 0.70f;" in support
+assert "float capsuleBottomWorldY = transform.TransformPoint(" in support
+assert "controller.center - Vector3.up * (controller.height * 0.5f)" in support
+assert "origin.y = Mathf.Max(origin.y, capsuleBottomWorldY + 0.80f);" in support
+# Math-only regression: when an authored low-stance ankle lies 1m below
+# the grounded capsule, the support ray must begin above the capsule floor.
+# This does NOT substitute for native Unity ray hits or Play Mode screenshots.
+for ankle_height_from_capsule_floor in (-1.0, -.8, -.6, -.2, 0.0, .15):
+    ray_start = max(ankle_height_from_capsule_floor + .70, .80)
+    assert ray_start >= .80
+    for nearby_support_delta in (-.30, -.10, 0.0, .20):
+        assert 0.0 <= ray_start - nearby_support_delta < 1.70
 assert support.count("AarisPhysicsHitBuffer.Raycast(") == 1
 assert "float floor = float.NaN;" in support
 assert "hit.collider.transform.IsChildOf(transform)" in support
