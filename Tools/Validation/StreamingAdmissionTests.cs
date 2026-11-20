@@ -75,6 +75,61 @@ internal static class StreamingAdmissionTests
     { return AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(path); }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
+    private static void PhysicsCatchupAdmission()
+    {
+        Configure(4096, "Adreno (TM) 610");
+        Frame(20);
+        AarisMobileStreamingFrameGate.ReservePhysicsCatchupFrame(2);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Normal 30 FPS physics cadence incorrectly throttled");
+
+        Frame(21);
+        AarisMobileStreamingFrameGate.ReservePhysicsCatchupFrame(3);
+        AarisMobileStreamingFrameGate.ReservePhysicsCatchupFrame(4);
+        Check(AarisMobileStreamingFrameGate.PhysicsCatchupDeferredFrames == 1,
+            "Same-frame repeated physics signal double counted");
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "First three-tick catchup was not protected");
+        Check(AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(
+            "optional-model") == null, "Model import bypassed catchup frame");
+
+        Frame(22);
+        AarisMobileStreamingFrameGate.ReservePhysicsCatchupFrame(5);
+        Check(!AarisMobileStreamingFrameGate.TryClaimNonessentialDiagnosticFrame(),
+            "Diagnostic bypassed catchup frame");
+
+        Frame(23);
+        AarisMobileStreamingFrameGate.ReservePhysicsCatchupFrame(3);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Sustained catchup starved streaming on its third frame");
+
+        Frame(24);
+        AarisMobileStreamingFrameGate.ReservePhysicsCatchupFrame(1);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Normal physics failed to recover streaming");
+
+        Frame(25);
+        AarisMobileStreamingFrameGate.ReservePhysicsCatchupFrame(3);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Recovered catchup streak did not restart safety fence");
+        Check(AarisMobileStreamingFrameGate.PhysicsCatchupDeferredFrames == 3,
+            "Catchup deferral counter drifted");
+
+        Configure(6144, "Adreno 610");
+        Frame(30);
+        AarisMobileStreamingFrameGate.ReservePhysicsCatchupFrame(3);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "6GB Adreno 610 incorrectly bypassed physics fence");
+
+        Configure(8192, "Adreno 730");
+        Frame(31);
+        AarisMobileStreamingFrameGate.ReservePhysicsCatchupFrame(6);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Fast Android GPU unexpectedly throttled");
+        Check(AarisMobileStreamingFrameGate.PhysicsCatchupDeferredFrames == 0,
+            "Subsystem reset leaked physics catchup state");
+    }
+
     private static void Hardware()
     {
         foreach (int ram in new[] { 0, -1, 4096, 6144, 8192 })
@@ -403,7 +458,7 @@ internal static class StreamingAdmissionTests
     public static void Main()
     {
 #if UNITY_ANDROID && !UNITY_EDITOR
-        Hardware(); ImportFence(); DiagnosticImportFence(); Pressure(); RefreshAwarePressure(); CleanupRigAndReset();
+        Hardware(); ImportFence(); DiagnosticImportFence(); Pressure(); RefreshAwarePressure(); PhysicsCatchupAdmission(); CleanupRigAndReset();
         Console.WriteLine("STREAMING_ADMISSION_ANDROID_PASS checks=" + checks);
 #else
         Configure();
