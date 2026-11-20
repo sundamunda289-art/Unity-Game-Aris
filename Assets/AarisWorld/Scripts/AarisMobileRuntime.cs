@@ -52,6 +52,11 @@ namespace Aaris.MapReview
         private AarisOfflineDrop startupDrop;
         private float startupTime;
         private int startupSampleIndex;
+        // Terrain metadata inspection is nonessential. It has its own native
+        // frame slot, followed by a different slot for profiler/JSON output.
+        // Never combine that cold-start scan with URP's first terrain frame.
+        private bool terrainAuditPending, terrainAuditReportPending;
+        private bool previousProcessExitReportPending;
         // Diagnostics are observations, not gameplay. Preserve immediate
         // crash/low-memory/stall evidence, but allow only one non-urgent
         // periodic JSON/profiler snapshot in a rendered Android frame.
@@ -215,16 +220,19 @@ namespace Aaris.MapReview
 #if UNITY_ANDROID && !UNITY_EDITOR
             ConfigureAndroidQuality();
 #endif
-            yield return null; // Audit after URP has drawn the first terrain frame.
+            yield return null; // Keep the opening terrain draw clear of optional audits.
 #if UNITY_ANDROID && !UNITY_EDITOR
             startupDrop = FindFirstObjectByType<AarisOfflineDrop>();
 #endif
             if (releaseTerrainPaintCpuCopies)
                 Debug.LogWarning("AARIS_TERRAIN_PAINT_RELEASE_DISABLED: preserve original alphamap GPU uploads.");
+#if UNITY_ANDROID && !UNITY_EDITOR
+            terrainAuditPending = true;
+            StartCoroutine(CollectPreviousProcessExitAfterStartup());
+#else
+            // Editor terrain verification remains synchronous for scene review.
             AuditNativeTerrain();
             Record("terrain-render-audit");
-#if UNITY_ANDROID && !UNITY_EDITOR
-            StartCoroutine(CollectPreviousProcessExitAfterStartup());
 #endif
         }
 
@@ -241,7 +249,9 @@ namespace Aaris.MapReview
             catch (Exception)
             { previousExitSnapshot = AarisAndroidExitHistory.Snapshot.Unknown("query-error"); }
             previousExitReady = true;
-            Record("previous-process-exit");
+            // Query completion is not an invitation to serialize profiler/JSON
+            // on the same frame as an optional asset or native collider import.
+            previousProcessExitReportPending = true;
         }
 #endif
 
@@ -894,6 +904,29 @@ namespace Aaris.MapReview
             {
                 frameStallReportPending = false;
                 Record("frame-stall");
+            }
+            // Do not walk four native TerrainData tiles on the first scene
+            // frame. Reserve an admitted nonessential slot after startup and
+            // report it in a different frame so the scan and JSON never stack.
+            if (terrainAuditPending && Time.unscaledTime - startupTime >= 2f &&
+                CanRecordPeriodicDiagnostics())
+            {
+                terrainAuditPending = false;
+                // The shared gate reserves this frame on budget Android; the
+                // local marker also protects fast devices from other reports.
+                lastDiagnosticFrame = Time.frameCount;
+                AuditNativeTerrain();
+                terrainAuditReportPending = true;
+            }
+            if (terrainAuditReportPending && CanRecordPeriodicDiagnostics())
+            {
+                terrainAuditReportPending = false;
+                Record("terrain-render-audit");
+            }
+            if (previousProcessExitReportPending && CanRecordPeriodicDiagnostics())
+            {
+                previousProcessExitReportPending = false;
+                Record("previous-process-exit");
             }
             if (startupReportPending && Time.unscaledTime - startupTime >= 0.5f &&
                 CanRecordPeriodicDiagnostics())
