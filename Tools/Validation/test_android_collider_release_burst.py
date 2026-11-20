@@ -76,7 +76,7 @@ class AndroidColliderReleaseBudget(unittest.TestCase):
         self.assertIn("colliderReleaseCursor++", body)
         self.assertIn("colliderReleaseQueued[i] = false;", body)
         self.assertIn("wanted[i] != query", body)
-        self.assertIn("Vector3 framePosition = target != null ? target.position : Vector3.zero;", body)
+        self.assertIn("Vector3 framePosition = target != null ? target.position : default(Vector3);", body)
         self.assertEqual(body.count("target.position"), 2)
         self.assertIn("ColliderReleaseMargin", body)
         self.assertIn("if (dx * dx + dz * dz > retainSquared)", body)
