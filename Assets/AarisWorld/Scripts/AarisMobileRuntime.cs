@@ -97,6 +97,12 @@ namespace Aaris.MapReview
         // Limit simultaneous texture-streaming file reads without lowering mip resolution.
         private int originalMipFileRequests, appliedMipFileRequests;
         private bool modifiedMipFileRequests;
+        // Unity 6's native texture/mesh upload ring remains the original 16 MB.
+        // Only its render-thread time slice is adjusted after measured stalls
+        // coincide with optional model imports, never by a per-frame poll.
+        private int originalAsyncUploadTimeSlice, appliedAsyncUploadTimeSlice;
+        private int previousImportDeferrals, asyncUploadRecoveryWindows;
+        private bool asyncUploadGovernorReady, modifiedAsyncUploadTimeSlice;
         private float originalShadowDistance, appliedShadowDistance;
         private bool modifiedShadowDistance;
         // Info log stack traces cost managed/native stack walking when gameplay
@@ -342,6 +348,15 @@ namespace Aaris.MapReview
             lastAppliedRenderScale = originalRenderScale;
             lastTargetFps = Application.targetFrameRate;
             lastEffectiveTargetFps = EffectiveAndroidTargetFps(lastTargetFps);
+            if (constrainedGraphics)
+            {
+                originalAsyncUploadTimeSlice = QualitySettings.asyncUploadTimeSlice;
+                appliedAsyncUploadTimeSlice = originalAsyncUploadTimeSlice;
+                asyncUploadGovernorReady = originalAsyncUploadTimeSlice > 1;
+                previousImportDeferrals =
+                    AarisMobileStreamingFrameGate.ImportDeferredAttempts +
+                    AarisMobileStreamingFrameGate.ImportSettleDeferredAttempts;
+            }
             // Only budget phones need extra foliage/shadow restrictions.
             // All Android phones can use the sustained-frame GPU governor.
             if (memoryMB > 3072 && !constrainedGraphics) return;
@@ -412,6 +427,57 @@ namespace Aaris.MapReview
                 }
                 ConfigureLowMemoryVegetation();
             }
+        }
+
+        // No texture mip limits, render scale, tree counts or source assets change.
+        // Unity's async upload pipeline already uses a reusable 16 MB ring.
+        // Reclaim only one millisecond of native render-thread upload time
+        // when an actual optional import coincides with sustained bad frames.
+        // A two-window hysteresis restores full throughput once frames recover.
+        private void TuneAndroidUploadBudget(Sample snapshot)
+        {
+            int current = QualitySettings.asyncUploadTimeSlice;
+            snapshot.asyncUploadTimeSliceMs = current;
+            if (!asyncUploadGovernorReady || snapshot.frameSamples < 30) return;
+            // Another controller changed the global setting: leave it alone.
+            if (current != appliedAsyncUploadTimeSlice)
+            {
+                asyncUploadGovernorReady = false;
+                return;
+            }
+            int totalDeferrals =
+                AarisMobileStreamingFrameGate.ImportDeferredAttempts +
+                AarisMobileStreamingFrameGate.ImportSettleDeferredAttempts;
+            bool importsObserved = totalDeferrals > previousImportDeferrals;
+            previousImportDeferrals = totalDeferrals;
+
+            float targetFrameMs = 1000f / Mathf.Max(1f, snapshot.effectiveTargetFps);
+            bool pressure = importsObserved && snapshot.framesOver50Ms >= 3 &&
+                snapshot.p95FrameMs > targetFrameMs * 1.4f;
+            if (pressure)
+            {
+                asyncUploadRecoveryWindows = 0;
+                if (current > 1)
+                {
+                    QualitySettings.asyncUploadTimeSlice = 1;
+                    appliedAsyncUploadTimeSlice = 1;
+                    modifiedAsyncUploadTimeSlice = true;
+                }
+            }
+            else if (current < originalAsyncUploadTimeSlice)
+            {
+                bool stable = snapshot.framesOver50Ms == 0 &&
+                    snapshot.p95FrameMs < targetFrameMs * 1.15f;
+                asyncUploadRecoveryWindows = stable
+                    ? asyncUploadRecoveryWindows + 1 : 0;
+                if (asyncUploadRecoveryWindows >= 2)
+                {
+                    QualitySettings.asyncUploadTimeSlice = originalAsyncUploadTimeSlice;
+                    appliedAsyncUploadTimeSlice = originalAsyncUploadTimeSlice;
+                    asyncUploadRecoveryWindows = 0;
+                }
+            }
+            snapshot.asyncUploadTimeSliceMs = QualitySettings.asyncUploadTimeSlice;
         }
 
         // Unity 6's frame timing API is only active on supported devices/builds.
@@ -943,6 +1009,9 @@ namespace Aaris.MapReview
             if (modifiedMipFileRequests &&
                 QualitySettings.streamingMipmapsMaxFileIORequests == appliedMipFileRequests)
                 QualitySettings.streamingMipmapsMaxFileIORequests = originalMipFileRequests;
+            if (modifiedAsyncUploadTimeSlice &&
+                QualitySettings.asyncUploadTimeSlice == appliedAsyncUploadTimeSlice)
+                QualitySettings.asyncUploadTimeSlice = originalAsyncUploadTimeSlice;
             // Do not leave a shortened shadow range across scene reloads.
             // Nor overwrite an unrelated controller's later quality choice.
             if (modifiedShadowDistance && androidPipeline != null &&
@@ -1025,6 +1094,8 @@ namespace Aaris.MapReview
             public bool planeHighDetailSelected;
             public bool optionalStreamConstrained;
             public int optionalStreamImportSettleDeferrals, optionalStreamPressureDeferredFrames;
+            // Render-thread native upload budget, not asset quality or an FPS claim.
+            public int asyncUploadTimeSliceMs;
             public int assetUnloadStartedCount, assetUnloadCompletedCount, assetUnloadSuppressedCount;
             public float lastAssetUnloadElapsedMs = -1f;
             public bool assetUnloadInProgress;
@@ -1165,6 +1236,7 @@ namespace Aaris.MapReview
                     Profiler.GetAllocatedMemoryForGraphicsDriver();
                 peakFixedStepsInWindow = fixedStepsInWindow = 0;
                 if (frameCount >= 30) TuneAndroidResolution(s);
+                TuneAndroidUploadBudget(s);
                 timingSamples = gpuLimitedSamples = cpuLimitedSamples = 0;
                 gpuFrameTimeTotalMs = cpuMainTimeTotalMs = cpuRenderTimeTotalMs = 0d;
             }
