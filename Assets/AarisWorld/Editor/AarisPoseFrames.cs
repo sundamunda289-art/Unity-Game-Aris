@@ -15,6 +15,7 @@ static double Now=>EditorApplication.timeSinceStartup;
 // Editor callbacks can tick more than once during one Play Mode game frame.
 // Each locomotion matrix sample must observe a distinct evaluated game frame.
 static int lastMotionCaptureFrame = -1;
+static double lastMotionCaptureTime = double.NegativeInfinity;
 static void Log(string s){Directory.CreateDirectory(Dir);File.AppendAllText(Dir+"/report.txt",s+"\n");Debug.Log("AARIS_POSE_FRAME "+s);}
 static void Phase(string s){File.WriteAllText(Dir+"/phase.txt",s+"\n");}
 // Native batchmode capture must open the actual Unity scene before entering Play.
@@ -147,6 +148,7 @@ SessionState.SetString("pose.state","start");SessionState.SetFloat("pose.time",(
 SessionState.SetInt("pose.step",-1);SessionState.SetInt("pose.count",0);SessionState.SetInt("pose.warp",0);
 SessionState.SetFloat("pose.air",-1f);
 lastMotionCaptureFrame = -1;
+lastMotionCaptureTime = double.NegativeInfinity;
 EditorApplication.isPlaying=true;
 }
 // Editor QA only: same open terrain coordinate on every run, not
@@ -526,7 +528,8 @@ static void ObserveMotionContacts(AarisThirdPersonPlayer p,int stage){
 static void LogMotionRigQuality(AarisThirdPersonPlayer p,
  AarisBattleActions b,int frame){
  var animator=p.GetComponentInChildren<Animator>(true);
- if(animator==null||!animator.isHuman)return;
+ if(animator==null||!animator.isHuman)
+  throw new InvalidOperationException("MOTION_HUMANOID_AVATAR_MISSING");
  var lh=animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
  var rh=animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
  var lk=animator.GetBoneTransform(HumanBodyBones.LeftLowerLeg);
@@ -536,10 +539,12 @@ static void LogMotionRigQuality(AarisThirdPersonPlayer p,
  var hips=animator.GetBoneTransform(HumanBodyBones.Hips);
  var head=animator.GetBoneTransform(HumanBodyBones.Head);
  if(lh==null||rh==null||lk==null||rk==null||
-    lf==null||rf==null||hips==null||head==null)return;
+    lf==null||rf==null||hips==null||head==null)
+  throw new InvalidOperationException("MOTION_REQUIRED_BONES_MISSING");
  Vector3 hipSide=Vector3.ProjectOnPlane(
   rh.position-lh.position,Vector3.up);
- if(hipSide.sqrMagnitude<0.01f)return;
+ if(hipSide.sqrMagnitude<0.01f)
+  throw new InvalidOperationException("MOTION_DEGENERATE_HIP_AXIS");
  hipSide.Normalize();
  // Measure real lateral separation separately from fore/aft stride.
  // Foot-to-foot distance alone is not proof of sideways skating.
@@ -602,6 +607,13 @@ static void LogMotionRigQuality(AarisThirdPersonPlayer p,
   " torsoFacingDot="+spineFacing.ToString("F3")+
   " leftFootSpeed="+leftSpeed.ToString("F3")+
   " rightFootSpeed="+rightSpeed.ToString("F3"));
+ // Fail the real Play Mode matrix if a grounded low stance has a
+ // visibly sideways knee. Jump/sprint keep their authored airborne
+ // motion; no phone gameplay code or additional physics work is added.
+ int motionStage=SessionState.GetInt("pose.step",0);
+ if(!p.IsInAir && motionStage>=4 && motionStage<=8 &&
+    Mathf.Max(Mathf.Abs(leftKneeSide),Mathf.Abs(rightKneeSide))>0.30f)
+  throw new InvalidOperationException("MOTION_GROUNDED_KNEE_SIDEWAYS_OVER_30CM");
 }
 // Native, read-only transition diagnostic: only a pose that is actually
 // blending is required to release both previous low-stance world locks.
@@ -887,7 +899,8 @@ double readyAge=portrait?(motionMatrix?(n==9?.18+count*.17:.42+count*.20):
  transitionFrames?.10+count*.18:
  orbitStance?.52+count*.22:.52):.25+count*.30;
 if(count<needed&&age>readyAge&&
- (!motionMatrix || Time.frameCount != lastMotionCaptureFrame)){
+ (!motionMatrix || (Time.frameCount != lastMotionCaptureFrame &&
+  Time.unscaledTimeAsDouble > lastMotionCaptureTime + 0.000001d))){
 try{
 Camera cam=Camera.main;if(cam==null)throw new InvalidOperationException("CAMERA_MISSING");
 int imageWidth=portrait?640:SessionState.GetBool("pose.diag",false)?640:960;
@@ -953,7 +966,10 @@ if(portraitGround!=null)UnityEngine.Object.DestroyImmediate(portraitGround);
 if(groundMaterial!=null)UnityEngine.Object.DestroyImmediate(groundMaterial);
 cam.targetTexture=old;RenderTexture.active=active;
 UnityEngine.Object.DestroyImmediate(image);RenderTexture.ReleaseTemporary(rt);}
-if(motionMatrix) lastMotionCaptureFrame = Time.frameCount;
+if(motionMatrix){
+ lastMotionCaptureFrame = Time.frameCount;
+ lastMotionCaptureTime = Time.unscaledTimeAsDouble;
+}
 SessionState.SetInt("pose.count",count+1);
 Log("FRAME "+(motionMatrix?MotionNames[n]:Names[n])+" "+count+" stance="+b.Stance+
 " viewDegrees="+(orbitStance?90*count:transitionFrames?
