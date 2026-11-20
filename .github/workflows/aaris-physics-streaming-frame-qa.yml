@@ -6,6 +6,7 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs'
       - 'Assets/AarisWorld/Scripts/AarisNearbyColliders.cs'
       - 'Tools/Validation/test_android_physics_streaming_frame_priority.py'
+      - 'Tools/Validation/test_android_collider_claim_on_change.py'
       - '.github/workflows/aaris-physics-streaming-frame-qa.yml'
   push:
     branches: [main]
@@ -13,6 +14,7 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs'
       - 'Assets/AarisWorld/Scripts/AarisNearbyColliders.cs'
       - 'Tools/Validation/test_android_physics_streaming_frame_priority.py'
+      - 'Tools/Validation/test_android_collider_claim_on_change.py'
       - '.github/workflows/aaris-physics-streaming-frame-qa.yml'
 
 permissions:
@@ -33,6 +35,7 @@ jobs:
       - name: Re-run cross-system admission and collider source regressions
         run: |
           python -m unittest discover -s Tools/Validation -p 'test_android_physics_streaming_frame_priority.py'
+          python -m unittest discover -s Tools/Validation -p 'test_android_collider_claim_on_change.py'
           python -m unittest discover -s Tools/Validation -p 'test_android_shared_streaming_frame_gate.py'
           python -m unittest discover -s Tools/Validation -p 'test_android_collider_boot_budget.py'
           python -m unittest discover -s Tools/Validation -p 'test_android_collider_wallclock_budget.py'
