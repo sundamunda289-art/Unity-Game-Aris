@@ -21,8 +21,10 @@ permissions:
 
 jobs:
   source-qa:
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # Keep Mono fixture dependencies on the supported Ubuntu 24.04 LTS
+    # instead of the moving runner image whose mirror downloads timed out.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,8 +40,8 @@ jobs:
           python Tools/Validation/test_android_shared_streaming_frame_gate.py
       - name: Compile and execute production material builder on desktop and Android C-sharp defines
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends mono-mcs
+          sudo apt-get -o Acquire::Retries=3 update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y --no-install-recommends mono-mcs
           python Tools/Validation/run_bike_material_csharp.py
       - name: Parse modified Unity C-sharp and verify whitespace
         run: |
