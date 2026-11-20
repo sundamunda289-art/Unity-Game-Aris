@@ -91,21 +91,36 @@ static void VerifyNativeSceneBindings(Scene scene)
 
     string fbxFile = Path.Combine(Application.dataPath,
         "Resources/AarisCharacters/Primary/Player.fbx");
-    bool hydrated = File.Exists(fbxFile) &&
-        new FileInfo(fbxFile).Length > 1000;
-    if (!hydrated && File.Exists(fbxFile))
+    // FileInfo.Length can describe the link itself when the hydrated LFS
+    // binary is accessed through a symlink. Read the target stream instead,
+    // and reject raw Git LFS pointer text or an unreadable/corrupt FBX.
+    bool hydrated = false;
+    long fbxBytes = 0;
+    string fbxProbe = "unreadable";
+    try
     {
-        // A Git LFS pointer is text, not an FBX; fail before Unity imports it
-        // as a character asset. Do not download or rewrite the user's model.
-        hydrated = false;
+        using (var stream = File.OpenRead(fbxFile))
+        {
+            fbxBytes = stream.Length;
+            byte[] header = new byte[18];
+            int read = stream.Read(header, 0, header.Length);
+            hydrated = fbxBytes > 1000 && read == header.Length &&
+                System.Text.Encoding.ASCII.GetString(header) ==
+                "Kaydara FBX Binary";
+            fbxProbe = "stream-opened";
+        }
     }
+    catch (IOException) { fbxProbe = "io-error"; }
+    catch (UnauthorizedAccessException) { fbxProbe = "access-denied"; }
     Debug.Log("AARIS_POSE_QA_PREFLIGHT scene=" + scene.path +
         " playerRoot=" + (player != null) +
         " rootActive=" + (player != null && player.activeInHierarchy) +
         " playerScriptClass=" + (scriptType != null ? scriptType.FullName : "null") +
         " playerBound=" + bound + " prefabBound=" + prefabBound +
         " missingRootScripts=" + missing +
-        " hydratedFBX=" + hydrated);
+        " hydratedFBX=" + hydrated +
+        " fbxBytes=" + fbxBytes + " fbxProbe=" + fbxProbe +
+        " fbxPath=" + fbxFile);
     if (!hydrated)
         throw new InvalidOperationException("QA_PLAYER_FBX_NOT_MATERIALIZED");
     if (scriptType != typeof(AarisThirdPersonPlayer) || !bound || !prefabBound)
