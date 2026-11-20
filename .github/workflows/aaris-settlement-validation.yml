@@ -14,6 +14,7 @@ on:
       - 'Tools/Validation/test_android_selective_tree_retention.py'
       - 'Tools/Validation/test_android_tree_clearance_streaming.py'
       - 'Tools/Validation/test_settlement_streamed_obstacles.py'
+      - 'Tools/Validation/test_android_settlement_relocation_frame_slice.py'
       - 'Docs/FOREST_PLANTING_PLAN.json'
       - '.github/workflows/aaris-settlement-validation.yml'
   push:
@@ -30,6 +31,7 @@ on:
       - 'Tools/Validation/test_android_selective_tree_retention.py'
       - 'Tools/Validation/test_android_tree_clearance_streaming.py'
       - 'Tools/Validation/test_settlement_streamed_obstacles.py'
+      - 'Tools/Validation/test_android_settlement_relocation_frame_slice.py'
       - 'Docs/FOREST_PLANTING_PLAN.json'
   workflow_dispatch:
 jobs:
@@ -49,6 +51,7 @@ jobs:
           python3 Tools/Validation/test_android_selective_tree_retention.py
           python3 Tools/Validation/test_android_tree_clearance_streaming.py
           python3 Tools/Validation/test_settlement_streamed_obstacles.py
+          python3 Tools/Validation/test_android_settlement_relocation_frame_slice.py
       - name: Compile and exercise the production tree-clearance index
         run: |
           sudo apt-get update -qq
