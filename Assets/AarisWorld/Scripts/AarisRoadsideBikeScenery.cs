@@ -316,19 +316,16 @@ namespace Aaris.MapReview
             }
             // A delayed import cannot expose incomplete URP surfaces on the
             // next 0.4 s poll. The 110 m predictive prewarm remains unchanged.
-            if (!bikeMaterialsReady)
-            {
 #if UNITY_ANDROID && !UNITY_EDITOR
-                // Re-enable after a partially completed build: do not leave
-                // roads empty forever and do not recreate URP materials on
-                // an unadmitted frame. Ordinary first-load behavior is intact.
-                if (bikeSource != null && bikeMaterialsBuild == null &&
-                    AarisMobileStreamingFrameGate.IsConstrainedDevice() &&
-                    AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
-                    bikeMaterialsBuild = StartCoroutine(BuildMaterialsAcrossFrames(true));
+            // Re-enable after a partially completed build: admit the first
+            // slice again rather than leaving all roadside bikes invisible.
+            if (!bikeMaterialsReady && bikeSource != null &&
+                bikeMaterialsBuild == null &&
+                AarisMobileStreamingFrameGate.IsConstrainedDevice() &&
+                AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                bikeMaterialsBuild = StartCoroutine(BuildMaterialsAcrossFrames(true));
 #endif
-                return;
-            }
+            if (!bikeMaterialsReady) return;
             // Do not hold onto a completed Unity coroutine handle.
             bikeMaterialsBuild = null;
             int visibleCount = 0, unloaded = 0;
