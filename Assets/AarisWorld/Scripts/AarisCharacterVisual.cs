@@ -100,6 +100,8 @@ namespace Aaris.MapReview
             jumpLandPlayable, punchPlayable, shootPlayable, sprintPlayable, pronePlayable, crawlPlayable;
         private AnimationClip crouchClip, crouchWalkClip, punchClip, shootClip;
         private AnimationClip sprintClip, proneClip, crawlClip;
+        // MIT VRCEasyLoco humanoid pose clips; existing FBX remains safe fallback.
+        private bool communityStanceClipsLoaded;
         private int lastVisualAttackSequence;
         private float seenTakeoff = -10f, seenTouchdown = -10f;
         private AarisBattleActions actions;
@@ -936,6 +938,26 @@ namespace Aaris.MapReview
                 (FindClip("crouch", "crouch") ?? idleClip);
             crouchWalkClip = naturalMocapLoaded ? naturalCrouch :
                 (FindClip("crouch_walk", "crouch") ?? crouchClip);
+            // Use the developer-authored Human-muscle pose clips from
+            // VRCEasyLoco (MIT), instead of our old FBX transition samples
+            // and hardcoded "hold at frame 10" crouch/prone trick. Keep all
+            // authored crawl and moving-crouch cycles; only static idle
+            // stance poses change. The standalone .anim clips have no VRC SDK
+            // dependency. A missing/non-human clip silently falls back.
+            AnimationClip communityCrouch = CalibratedSoldierLoaded
+                ? Resources.Load<AnimationClip>(
+                    "AarisCharacters/CommunityStances/IdleCrouchDefault") : null;
+            AnimationClip communityProne = CalibratedSoldierLoaded
+                ? Resources.Load<AnimationClip>(
+                    "AarisCharacters/CommunityStances/IdleProneDefault") : null;
+            communityStanceClipsLoaded = communityCrouch != null &&
+                communityProne != null && communityCrouch.humanMotion &&
+                communityProne.humanMotion;
+            if (communityStanceClipsLoaded)
+            {
+                crouchClip = communityCrouch;
+                proneClip = communityProne;
+            }
             punchClip = FindClip("punch", "punch");
             shootClip = FindClip("shoot", "shoot");
             if (punchClip == null) punchClip = idleClip;
@@ -1781,10 +1803,15 @@ namespace Aaris.MapReview
             // body needs appreciably longer than a crouch so lying down/getting
             // up reads as weight transfer instead of an 85 ms pose morph.
             // Exponential time constants preserve the same feel from 10-120 FPS.
-            float crouchAlpha = 1f - Mathf.Exp(-dt / (crouching ? 0.11f : 0.16f));
-            float proneAlpha = 1f - Mathf.Exp(-dt / (prone ? 0.17f : 0.24f));
-            crouchBlend = Mathf.Lerp(crouchBlend, crouching ? 1f : 0f, crouchAlpha);
-            proneBlend = Mathf.Lerp(proneBlend, prone ? 1f : 0f, proneAlpha);
+            // The MIT ALS-Unity InterpTo implementation drives the stance
+            // mixer weights instead of a second homegrown alpha equation.
+            // Blend speeds are tuned to the same existing response envelopes.
+            crouchBlend = ALSUnity.ALSMath.InterpTo(
+                crouchBlend, crouching ? 1f : 0f, dt,
+                crouching ? 9.1f : 6.25f);
+            proneBlend = ALSUnity.ALSMath.InterpTo(
+                proneBlend, prone ? 1f : 0f, dt,
+                prone ? 5.88f : 4.17f);
 
             bool authoredProne = proneClip != null && crawlClip != null;
             Vector3 velocity = controller.velocity;
@@ -2001,12 +2028,13 @@ namespace Aaris.MapReview
             // retargeted crouch stayed too tall. The natural mocap is already
             // physically crouched; applying that legacy drop would bury the
             // hips. Capsule headroom + real foot support remain authoritative.
-            float crouchLowering = naturalMocapLoaded ? 0f :
+            float crouchLowering = communityStanceClipsLoaded ||
+                naturalMocapLoaded ? 0f :
                 (realisticSoldierLoaded ? RealisticSoldierCrouchRigLowering :
                     CrouchRigLowering) * crouchRigWeight;
             // Source crawling hips/ankles float above the floor by about 22 cm.
-            float proneLowering = primaryLoaded && proneClip != null &&
-                crawlClip != null ?
+            float proneLowering = !communityStanceClipsLoaded &&
+                primaryLoaded && proneClip != null && crawlClip != null ?
                 (realisticSoldierLoaded ? RealisticSoldierProneRigLowering : ProneRigLowering) * effectiveProneBlend : 0f;
             // Preserve calibrated standing-ground offset through takeoff:
             // switching it off in the air would instantly teleport the model
@@ -2187,10 +2215,25 @@ namespace Aaris.MapReview
                 // Crouch knees face forward and stay above the shoe; extended
                 // prone retains the authored near-ground knee plane once feet align.
                 float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);
-                PlanBalancedLowStanceFeet(proneShare, lowPose,
-                    Mathf.Max(crouchRigWeight, proneRigWeight), planar,
-                    out Vector3 leftFootGoal, out Vector3 rightFootGoal,
-                    out Vector3 crouchKneeForward);
+                Vector3 leftFootGoal, rightFootGoal, crouchKneeForward;
+                if (communityStanceClipsLoaded)
+                {
+                    // The MIT developer-authored Humanoid clips own stance
+                    // foot X/Z. Our legacy width and 1.055m leg target
+                    // reconstruction would distort those authored poses.
+                    leftFootGoal = leftFootBone != null
+                        ? leftFootBone.position : Vector3.zero;
+                    rightFootGoal = rightFootBone != null
+                        ? rightFootBone.position : Vector3.zero;
+                    crouchKneeForward = AnatomicalKneeForward();
+                }
+                else
+                {
+                    PlanBalancedLowStanceFeet(proneShare, lowPose,
+                        Mathf.Max(crouchRigWeight, proneRigWeight), planar,
+                        out leftFootGoal, out rightFootGoal,
+                        out crouchKneeForward);
+                }
                 // The old <0.5 binary knee pole snapped from forward to none
                 // during crouch->prone. Fade the crouch hint away, then
                 // introduce an upward, sagittal-plane prone bend ONLY when
@@ -2210,7 +2253,8 @@ namespace Aaris.MapReview
                 // but made return-to-standing knees up to 23cm more lateral.
                 // Keep the original settled-only pole. The independent
                 // symmetric foot-spread guard handles the real splay safely.
-                float pronePoleStrength = proneKneeShare * proneKneeSettle *
+                float pronePoleStrength = communityStanceClipsLoaded ? 0f :
+                    proneKneeShare * proneKneeSettle *
                     kneeStillness * kneeTurnStability;
                 Vector3 kneeForward = crouchKneeForward * crouchPoleStrength +
                     Vector3.up * pronePoleStrength;
