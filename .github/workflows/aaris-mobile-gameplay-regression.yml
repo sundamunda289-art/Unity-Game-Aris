@@ -38,6 +38,8 @@ on:
       - 'Tools/Validation/test_open_combat_houses.py'
       - 'Tools/Validation/test_house_facade_details.py'
       - 'Tools/Validation/test_house_facade_lod_texture.py'
+      - 'Tools/Validation/test_android_facade_frame_admission.py'
+      - 'Tools/Validation/test_android_cross_system_hierarchy_budget.py'
       - 'Tools/Art/generate_limestone_trim.py'
       - 'Assets/Resources/AarisBuildings/ArchitecturalLimestone.png*'
       - 'Tools/Validation/test_player_streamer_lifecycle.py'
@@ -85,6 +87,8 @@ on:
       - 'Tools/Validation/test_open_combat_houses.py'
       - 'Tools/Validation/test_house_facade_details.py'
       - 'Tools/Validation/test_house_facade_lod_texture.py'
+      - 'Tools/Validation/test_android_facade_frame_admission.py'
+      - 'Tools/Validation/test_android_cross_system_hierarchy_budget.py'
       - 'Tools/Art/generate_limestone_trim.py'
       - 'Assets/Resources/AarisBuildings/ArchitecturalLimestone.png*'
       - 'Tools/Validation/test_player_streamer_lifecycle.py'
@@ -150,6 +154,8 @@ jobs:
           python Tools/Validation/test_open_combat_houses.py
           python Tools/Validation/test_house_facade_details.py
           python Tools/Validation/test_house_facade_lod_texture.py
+          python Tools/Validation/test_android_facade_frame_admission.py
+          python Tools/Validation/test_android_cross_system_hierarchy_budget.py
           python Tools/Validation/test_player_streamer_lifecycle.py
           python Tools/Validation/test_hud_pointer_orphan_recovery.py
           python Tools/Validation/test_vehicle_hud_state_restoration.py
