@@ -31,6 +31,37 @@ assert 'RETURN_TO_STAND_FOOT_FLOAT' in editor
 assert 'bool returningFromProne = !prone && !crouching &&' in visual
 assert 'effectiveProneBlend > 0.02f &&' in visual
 assert 'effectiveProneBlend < 0.70f;' in visual
+
+# Exit-prone IK gains enough authority to keep get-up knees under the pelvis
+# without changing true prone/crouch, airborne, jump, or authored gait.
+getup_begin = visual.index("float getUpFootAuthority =")
+getup_end = visual.index("ankleRigWeight = Mathf.Lerp(", getup_begin)
+getup = visual[getup_begin:getup_end]
+assert "!prone && !crouching &&" in getup
+assert "groundedNow && !visuallyAirborne && authoredProne" in getup
+assert "0.15f, 0.43f, effectiveProneBlend" in getup
+assert "0.78f, 0.96f, effectiveProneBlend" in getup
+assert "Mathf.Lerp(ankleRigWeight, 0.98f," in visual
+assert "getUpFootAuthority);" in visual
+assert "SupportedAnkleY(" not in getup
+assert "new " not in getup
+
+def smoothstep(t):
+    t = max(0.0, min(1.0, t))
+    return t*t*(3-2*t)
+
+def getup_weight(prone_blend, original_weight, eligible=True):
+    gate = (smoothstep((prone_blend-.15)/(.43-.15)) *
+            (1-smoothstep((prone_blend-.78)/(.96-.78)))) if eligible else 0
+    return original_weight + (.98-original_weight)*gate
+
+assert abs(getup_weight(.654, .654)-.98) < 1e-10
+for b in [0, .05, .1, .96, 1.0]:
+    assert getup_weight(b, b) == b
+for blend in [.1, .2, .43, .65, .78, .85, .96]:
+    w = getup_weight(blend, blend)
+    assert blend-1e-9 <= w <= .98+1e-9
+    assert getup_weight(blend, blend, eligible=False) == blend
 assert 'effectiveProneBlend < 0.01f) || returningFromProne);' in visual
 assert 'float headroomDrop = Mathf.Min(excess, 1.00f) * lowPose;' in visual
 assert 'lowestShoeY - (capsuleFloor + 0.02f)' in visual
