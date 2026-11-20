@@ -2040,8 +2040,11 @@ namespace Aaris.MapReview
                 (realisticSoldierLoaded ? RealisticSoldierCrouchRigLowering :
                     CrouchRigLowering) * crouchRigWeight;
             // Source crawling hips/ankles float above the floor by about 22 cm.
-            float proneLowering = !communityStanceClipsLoaded &&
-                primaryLoaded && proneClip != null && crawlClip != null ?
+            // Imported Humanoid muscle poses still require THIS avatar's
+            // established root-to-ground calibration. The VRChat clip has
+            // no guaranteed soldier-specific foot/world origin.
+            float proneLowering = primaryLoaded &&
+                proneClip != null && crawlClip != null ?
                 (realisticSoldierLoaded ? RealisticSoldierProneRigLowering : ProneRigLowering) * effectiveProneBlend : 0f;
             // Preserve calibrated standing-ground offset through takeoff:
             // switching it off in the air would instantly teleport the model
@@ -2223,11 +2226,12 @@ namespace Aaris.MapReview
                 // prone retains the authored near-ground knee plane once feet align.
                 float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);
                 Vector3 leftFootGoal, rightFootGoal, crouchKneeForward;
-                if (communityStanceClipsLoaded)
+                if (communityStanceClipsLoaded && proneShare < 0.05f)
                 {
-                    // The MIT developer-authored Humanoid clips own stance
-                    // foot X/Z. Our legacy width and 1.055m leg target
-                    // reconstruction would distort those authored poses.
+                    // The imported crouch pose passed native knee QA without
+                    // manual stance X/Z. Prone still needs the measured
+                    // anatomical foot support targets to adapt VR avatar
+                    // clip coordinates to this soldier's rig and terrain.
                     leftFootGoal = leftFootBone != null
                         ? leftFootBone.position : Vector3.zero;
                     rightFootGoal = rightFootBone != null
@@ -2262,8 +2266,9 @@ namespace Aaris.MapReview
                 // symmetric foot-spread guard handles the real splay safely.
                 float pronePoleStrength = proneKneeShare * proneKneeSettle *
                     kneeStillness * kneeTurnStability;
-                // Let the MIT authored Humanoid animation own knee direction.
-                if (communityStanceClipsLoaded) pronePoleStrength = 0f;
+                // Let the imported pose supply its muscles; our existing
+                // settled-only knee hint remains a floor support constraint,
+                // not a replacement animation clip.
                 Vector3 kneeForward = crouchKneeForward * crouchPoleStrength +
                     Vector3.up * pronePoleStrength;
                 float kneePoleStrength = Mathf.Clamp01(
