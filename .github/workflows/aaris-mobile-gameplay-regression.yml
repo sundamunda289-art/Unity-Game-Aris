@@ -146,6 +146,7 @@ jobs:
           python Tools/Validation/test_android_plane_async_boot.py
           python Tools/Validation/test_android_collider_release_burst.py
           python Tools/Validation/test_android_predictive_vehicle_prewarm.py
+          python Tools/Validation/test_vehicle_streaming_priority.py
           python Tools/Validation/test_vehicle_adaptive_frame_pacing.py
           python Tools/Validation/test_android_refresh_pacing_precision.py
           python Tools/Validation/test_android_bike_retirement_frame.py
