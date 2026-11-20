@@ -28,6 +28,12 @@ namespace Aaris.MapReview
         private static int cachedTargetFrameRate = int.MinValue;
         private const int ModeratePressureDeferralFrames = 1;
         private const int MaximumPressureDeferralFrames = 2;
+        // A multi-hundred-millisecond stall (often Android app resume or
+        // native upload) needs a few clean render frames before optional
+        // hierarchy construction resumes. Essential gameplay is never gated.
+        private const float LongHitchThresholdSeconds = 0.25f;
+        private const int LongHitchRecoveryFrames = 3;
+        private static int longHitchRecoveryThroughFrame = -1;
         internal static int ImportSettleDeferredAttempts { get; private set; }
         internal static int PressureDeferredFrames { get; private set; }
         // Essential player rig construction is one high-cost main-thread
@@ -157,8 +163,20 @@ namespace Aaris.MapReview
             // the authored model, tree, terrain, texture or visibility settings.
             if (pressureDecisionFrame == frame) return pressureBlockedThisFrame;
             pressureDecisionFrame = frame;
-            float budget = CurrentFrameBudgetSeconds(frame);
             float frameSeconds = Time.unscaledDeltaTime;
+            // Do not start cosmetic native integrations immediately after a
+            // resume/long hitch. This is a bounded admission delay, not a
+            // reduction in map detail, car counts or draw distances.
+            if (frameSeconds >= LongHitchThresholdSeconds)
+                longHitchRecoveryThroughFrame = frame + LongHitchRecoveryFrames;
+            if (frame <= longHitchRecoveryThroughFrame)
+            {
+                pressureBlockedThisFrame = true;
+                consecutivePressureDeferrals = 0;
+                PressureDeferredFrames++;
+                return true;
+            }
+            float budget = CurrentFrameBudgetSeconds(frame);
             // Allow 8% pacing jitter, but protect the next frame when work has
             // already missed the real hardware-specific presentation budget.
             int maxDeferrals = frameSeconds > budget * 1.5f
@@ -184,6 +202,7 @@ namespace Aaris.MapReview
             importIntegrationFrame = pressureDecisionFrame = -1;
             consecutivePressureDeferrals = 0;
             pressureBlockedThisFrame = false;
+            longHitchRecoveryThroughFrame = -1;
             effectiveFrameBudgetSeconds = FallbackFrameBudgetSeconds;
             nextFrameBudgetRefresh = -1;
             cachedTargetFrameRate = int.MinValue;
