@@ -2343,17 +2343,32 @@ namespace Aaris.MapReview
                     // The existing ground sampling and two-bone IK below
                     // remain authoritative for boot height and knee reach.
                     if (cc0CrouchLoaded && crouching && !visuallyAirborne &&
-                        leftFootBone != null && rightFootBone != null)
+                        leftFootBone != null && rightFootBone != null &&
+                        leftThigh != null && rightThigh != null)
                     {
                         float clipContact = Mathf.SmoothStep(0f, 1f,
                             Mathf.InverseLerp(0.82f, 0.99f, effectiveCrouchBlend));
                         float proneFade = 1f - Mathf.SmoothStep(0f, 1f,
                             Mathf.InverseLerp(0.02f, 0.18f, proneShare));
                         float authoredFootShare = clipContact * proneFade;
-                        leftFootGoal = Vector3.Lerp(leftFootGoal,
-                            leftFootBone.position, authoredFootShare);
-                        rightFootGoal = Vector3.Lerp(rightFootGoal,
-                            rightFootBone.position, authoredFootShare);
+                        // Keep authored crouch foot detail, but never allow
+                        // a retargeted CC0 clip to pull a boot beyond the
+                        // pelvis-scaled reach of the vetted stance footprint.
+                        // The terrain ray and two-bone solver below still
+                        // own final contact and knee bend.
+                        Vector3 pelvisRight = Vector3.ProjectOnPlane(
+                            rightThigh.position - leftThigh.position,
+                            Vector3.up);
+                        float footAllowance = Mathf.Clamp(
+                            pelvisRight.magnitude * 0.28f, 0.035f, 0.11f);
+                        Vector3 authoredLeftDelta = Vector3.ProjectOnPlane(
+                            leftFootBone.position - leftFootGoal, Vector3.up);
+                        Vector3 authoredRightDelta = Vector3.ProjectOnPlane(
+                            rightFootBone.position - rightFootGoal, Vector3.up);
+                        leftFootGoal += Vector3.ClampMagnitude(
+                            authoredLeftDelta, footAllowance) * authoredFootShare;
+                        rightFootGoal += Vector3.ClampMagnitude(
+                            authoredRightDelta, footAllowance) * authoredFootShare;
                     }
                 }
                 // The old <0.5 binary knee pole snapped from forward to none
