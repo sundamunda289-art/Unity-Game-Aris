@@ -141,6 +141,7 @@ jobs:
           python Tools/Validation/check_android_hotloop_blocking_calls.py
           python Tools/Validation/test_android_hotloop_blocking_calls.py
           python Tools/Validation/test_android_shared_streaming_frame_gate.py
+          python Tools/Validation/test_android_async_upload_governor.py
           python Tools/Validation/test_offline_rival_distance_budget.py
           python Tools/Validation/test_android_plane_async_boot.py
           python Tools/Validation/test_android_collider_release_burst.py
