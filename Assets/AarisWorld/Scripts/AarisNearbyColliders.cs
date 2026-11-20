@@ -228,6 +228,13 @@ namespace Aaris.MapReview
             if (constrainTime)
                 AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
             double frameStartedAt = constrainTime ? Time.realtimeSinceStartupAsDouble : 0d;
+            // One native Transform read per coroutine slice. Unity resumes
+            // coroutines on the main thread; no target movement can interleave
+            // with individual collider checks inside this slice.
+            Vector3 framePosition = target != null ? target.position : Vector3.zero;
+            float safeDistance = Mathf.Max(0f, activationDistance) +
+                ColliderReleaseMargin;
+            float safeDistanceSquared = safeDistance * safeDistance;
             for (int i = 0; i < obstacles.Length; i++)
             {
                 if (target == null) { deferredDeactivation = null; yield break; }
@@ -236,12 +243,10 @@ namespace Aaris.MapReview
                 {
                     // Recheck the *live* target; a teleport or moving player
                     // must retain all buildings within the 55m safety region.
-                    Vector3 position = target.position;
-                    Vector3 nearest = worldBounds[i].ClosestPoint(position);
-                    float dx = nearest.x - position.x, dz = nearest.z - position.z;
-                    float safeDistance = Mathf.Max(0f, activationDistance) +
-                        ColliderReleaseMargin;
-                    if (dx * dx + dz * dz > safeDistance * safeDistance)
+                    Vector3 nearest = worldBounds[i].ClosestPoint(framePosition);
+                    float dx = nearest.x - framePosition.x;
+                    float dz = nearest.z - framePosition.z;
+                    if (dx * dx + dz * dz > safeDistanceSquared)
                         c.enabled = false;
                 }
                 processed++;
@@ -252,6 +257,12 @@ namespace Aaris.MapReview
                 {
                     processed = 0;
                     yield return null;
+                    // A teleport/move between frames gets fresh coordinates
+                    // before any collider in the next batch is disabled.
+                    framePosition = target != null ? target.position : Vector3.zero;
+                    safeDistance = Mathf.Max(0f, activationDistance) +
+                        ColliderReleaseMargin;
+                    safeDistanceSquared = safeDistance * safeDistance;
                     if (constrainTime)
                         AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
                     if (constrainTime)
@@ -447,6 +458,12 @@ namespace Aaris.MapReview
             bool reservedReleaseFrame = false;
             int processed = 0;
             double frameStartedAt = Time.realtimeSinceStartupAsDouble;
+            // Snapshot once per rendered batch, not once for each native
+            // collider toggle. Refresh after every yield to handle teleports.
+            Vector3 framePosition = target != null ? target.position : Vector3.zero;
+            float retain = Mathf.Max(0f, activationDistance) +
+                ColliderReleaseMargin;
+            float retainSquared = retain * retain;
             while (colliderReleaseCursor < pendingColliderRelease.Count)
             {
                 int i = pendingColliderRelease[colliderReleaseCursor++];
@@ -455,12 +472,10 @@ namespace Aaris.MapReview
                 if (target != null && collider != null && collider.enabled &&
                     wanted[i] != query)
                 {
-                    Vector3 position = target.position;
-                    Vector3 closest = worldBounds[i].ClosestPoint(position);
-                    float dx = closest.x - position.x, dz = closest.z - position.z;
-                    float retain = Mathf.Max(0f, activationDistance) +
-                        ColliderReleaseMargin;
-                    if (dx * dx + dz * dz > retain * retain)
+                    Vector3 closest = worldBounds[i].ClosestPoint(framePosition);
+                    float dx = closest.x - framePosition.x;
+                    float dz = closest.z - framePosition.z;
+                    if (dx * dx + dz * dz > retainSquared)
                     {
                         if (!reservedReleaseFrame)
                         {
@@ -478,6 +493,10 @@ namespace Aaris.MapReview
                 {
                     processed = 0;
                     yield return null;
+                    framePosition = target != null ? target.position : Vector3.zero;
+                    retain = Mathf.Max(0f, activationDistance) +
+                        ColliderReleaseMargin;
+                    retainSquared = retain * retain;
                     reservedReleaseFrame = false;
                     frameStartedAt = Time.realtimeSinceStartupAsDouble;
                 }
