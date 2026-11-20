@@ -6,6 +6,8 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisRoadsideBikeScenery.cs'
       - 'Tools/Validation/test_android_bike_material_pacing.py'
       - 'Tools/Validation/run_bike_material_csharp.py'
+      - 'Tools/Validation/test_android_bike_layout_cache.py'
+      - 'Tools/Validation/run_bike_layout_cache_csharp.py'
       - 'Docs/ANDROID_ROADSIDE_MATERIAL_FRAME_PACING_20261120.md'
       - '.github/workflows/aaris-android-bike-material-pacing-qa.yml'
   push:
@@ -14,6 +16,8 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisRoadsideBikeScenery.cs'
       - 'Tools/Validation/test_android_bike_material_pacing.py'
       - 'Tools/Validation/run_bike_material_csharp.py'
+      - 'Tools/Validation/test_android_bike_layout_cache.py'
+      - 'Tools/Validation/run_bike_layout_cache_csharp.py'
       - '.github/workflows/aaris-android-bike-material-pacing-qa.yml'
 
 permissions:
@@ -36,6 +40,7 @@ jobs:
       - name: Regress staged URP palette, source import, and shared-gate ownership
         run: |
           python Tools/Validation/test_android_bike_material_pacing.py
+          python Tools/Validation/test_android_bike_layout_cache.py
           python Tools/Validation/test_android_roadside_prewarm.py
           python Tools/Validation/test_android_shared_streaming_frame_gate.py
       - name: Compile and execute production material builder on desktop and Android C-sharp defines
@@ -43,6 +48,7 @@ jobs:
           sudo apt-get -o Acquire::Retries=3 update -qq
           sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y --no-install-recommends mono-mcs
           python Tools/Validation/run_bike_material_csharp.py
+          python Tools/Validation/run_bike_layout_cache_csharp.py
       - name: Parse modified Unity C-sharp and verify whitespace
         run: |
           python -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
@@ -55,6 +61,8 @@ jobs:
               Path('Assets/AarisWorld/Scripts/AarisRoadsideBikeScenery.cs'),
               Path('Tools/Validation/test_android_bike_material_pacing.py'),
               Path('Tools/Validation/run_bike_material_csharp.py'),
+              Path('Tools/Validation/test_android_bike_layout_cache.py'),
+              Path('Tools/Validation/run_bike_layout_cache_csharp.py'),
               Path('Docs/ANDROID_ROADSIDE_MATERIAL_FRAME_PACING_20261120.md'),
           ]
           for path in paths:
