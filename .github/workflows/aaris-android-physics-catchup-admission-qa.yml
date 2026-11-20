@@ -1,0 +1,63 @@
+name: Android Physics Catchup Admission QA
+
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisMobileRuntime.cs'
+      - 'Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs'
+      - 'Tools/Validation/StreamingAdmissionTests.cs'
+      - 'Tools/Validation/test_android_physics_catchup_stream_admission.py'
+      - '.github/workflows/aaris-android-physics-catchup-admission-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisMobileRuntime.cs'
+      - 'Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs'
+      - 'Tools/Validation/StreamingAdmissionTests.cs'
+      - 'Tools/Validation/test_android_physics_catchup_stream_admission.py'
+      - '.github/workflows/aaris-android-physics-catchup-admission-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-admission:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check physics catchup source contracts and existing admission
+        run: |
+          python Tools/Validation/test_android_physics_catchup_stream_admission.py
+          python Tools/Validation/test_android_shared_streaming_frame_gate.py
+          python Tools/Validation/test_android_physics_streaming_frame_priority.py
+      - name: Compile and exercise production admission gate under Android Editor and desktop
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends mono-mcs
+          python Tools/Validation/run_streaming_admission_csharp.py
+      - name: Parse touched C-sharp and validate whitespace
+        run: |
+          python -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
+          python - <<'PY'
+          from pathlib import Path
+          from tree_sitter import Language, Parser
+          import tree_sitter_c_sharp
+          parser = Parser(Language(tree_sitter_c_sharp.language()))
+          paths = [
+              Path('Assets/AarisWorld/Scripts/AarisMobileRuntime.cs'),
+              Path('Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs'),
+              Path('Tools/Validation/StreamingAdmissionTests.cs'),
+          ]
+          for path in paths:
+              source = path.read_bytes()
+              assert not parser.parse(source).root_node.has_error, path
+              assert all(line == line.rstrip() for line in source.decode('utf8').splitlines()), path
+          print('PASS: C-sharp parser and formatting; Unity Editor/Android validation remains separate')
+          PY
