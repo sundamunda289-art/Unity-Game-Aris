@@ -14,7 +14,7 @@ assert motor.index('private void AnimateWalk(float dt)') < motor.index(
     'if (characterVisual != null && characterVisual.HasWorkingHumanoid)') < motor.index(
     'float secondsSincePunch = battle != null')
 gloo = (ROOT / 'Assets/AarisWorld/Scripts/AarisOfflineGlooWall.cs').read_text()
-assert 'crouchPlayable.SetTime(naturalMocapLoaded || alsCrouchLoaded' in visual
+assert 'crouchPlayable.SetTime(cc0CrouchLoaded || naturalMocapLoaded ||'  in visual
 assert 'pronePlayable.SetTime(proneClip != null' in visual
 assert '? 0d : crouchClip.length * (10d / 24d)' in visual
 assert 'jumpPlayable.SetTime(jump.length * 0.39d)' in visual
@@ -64,8 +64,8 @@ assert 'crouchClip = alsCrouchLoaded ? alsCrouchIdle' in visual
 assert '(naturalMocapLoaded ? naturalCrouch :' in visual
 assert 'crouchWalkClip = alsCrouchLoaded ? alsCrouchForward' in visual
 assert 'if (!naturalMocapLoaded && primaryLoaded && walkClip != runClip)' in visual
-assert 'crouchPlayable.SetTime(naturalMocapLoaded || alsCrouchLoaded' in visual
-assert 'float crouchLowering = naturalMocapLoaded || alsCrouchLoaded ||' in visual
+assert 'crouchPlayable.SetTime(cc0CrouchLoaded || naturalMocapLoaded ||'  in visual
+assert 'float crouchLowering = cc0CrouchLoaded || naturalMocapLoaded ||' in visual
 assert 'communityStanceClipsLoaded ? 0f :' in visual
 assert 'UnityWebRequest' not in visual
 # Fresh Unity imports must auto-map each FBX from its own hierarchy. Never
@@ -883,7 +883,7 @@ for import_scale in ((0.5, 0.5, 0.5), (2.0, 2.0, 2.0), (0.9, 1.2, 1.1)):
 assert 'private const float RealisticSoldierProneRigLowering = 0.64f;' in visual
 assert 'private const float RealisticSoldierCrouchRigLowering = 0.73f;' in visual
 assert 'realisticSoldierLoaded ? RealisticSoldierProneRigLowering : ProneRigLowering' in visual
-assert 'float crouchLowering = naturalMocapLoaded || alsCrouchLoaded ||' in visual
+assert 'float crouchLowering = cc0CrouchLoaded || naturalMocapLoaded ||' in visual
 assert 'communityStanceClipsLoaded ? 0f :' in visual
 assert 'realisticSoldierLoaded ? RealisticSoldierCrouchRigLowering :' in visual
 assert 'CrouchRigLowering) * crouchRigWeight;' in visual
