@@ -140,6 +140,16 @@ namespace Aaris.MapReview
         private Terrain[] terrainCache;
         private float nextTerrainRefresh;
         private float nextPoll;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // Prediction is ONLY a low-priority vehicle FBX prefetch hint.
+        // Spawn/unload distance, physical gameplay and original art stay unchanged.
+        private const float VehiclePrewarmLeadSeconds = 1f;
+        private const float VehiclePrewarmMaxSpeedMetresPerSecond = 32f;
+        private const float VehiclePrewarmTeleportSpeedMetresPerSecond = 45f;
+        private Vector3 previousPrewarmPosition;
+        private float previousPrewarmTime;
+        private bool hasPrewarmSample;
+#endif
         private uint randomState;
         private AarisVehicleType[] vehicleTypes;
         private GameObject[] prefabs;
@@ -1816,6 +1826,34 @@ namespace Aaris.MapReview
             nextPoll = now + .3f;
             // One native Transform read per poll, not one per vehicle record.
             Vector3 playerPosition = player.position;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Sample once per existing 300 ms poll; never add Update-time
+            // physics, visibility queries, allocations or predictive spawns.
+            Vector3 predictedPrewarmPosition = playerPosition;
+            if (hasPrewarmSample)
+            {
+                float elapsed = now - previousPrewarmTime;
+                if (elapsed >= 0.15f && elapsed <= 1.5f)
+                {
+                    Vector3 movement = playerPosition - previousPrewarmPosition;
+                    float teleportLimit =
+                        VehiclePrewarmTeleportSpeedMetresPerSecond * elapsed;
+                    // Treat teleports and resuming a suspended app as resets,
+                    // not as demand to import distant, invisible cars.
+                    if (movement.sqrMagnitude <= teleportLimit * teleportLimit)
+                    {
+                        Vector3 velocity = movement / elapsed;
+                        if (velocity.sqrMagnitude > 1f)
+                            predictedPrewarmPosition += Vector3.ClampMagnitude(
+                                velocity, VehiclePrewarmMaxSpeedMetresPerSecond) *
+                                VehiclePrewarmLeadSeconds;
+                    }
+                }
+            }
+            previousPrewarmPosition = playerPosition;
+            previousPrewarmTime = now;
+            hasPrewarmSample = true;
+#endif
             int active = 0, built = 0, unloaded = 0;
             int spawnProbes = 0;
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -1858,6 +1896,28 @@ namespace Aaris.MapReview
                 closestType = typeIndex;
                 closestDistanceSq = distanceSq;
             }
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Prioritize every currently nearby authored car first. Only when
+            // none needs a model may one approaching car borrow the SAME async
+            // loading slot. Real player position still exclusively controls
+            // physics, placement, visibility, load and unload distances.
+            if (closestType < 0 && predictedPrewarmPosition != playerPosition)
+            {
+                float predictedNearestSq =
+                    AuthoredPrewarmRadius * AuthoredPrewarmRadius;
+                foreach (var record in plans)
+                {
+                    float distanceSq =
+                        (record.position - predictedPrewarmPosition).sqrMagnitude;
+                    if (distanceSq > predictedNearestSq) continue;
+                    int typeIndex = TypeIndex(record.type);
+                    if (typeIndex < 0 || authoredBodyResolved[typeIndex] ||
+                        authoredBodyRequests[typeIndex] != null) continue;
+                    closestType = typeIndex;
+                    predictedNearestSq = distanceSq;
+                }
+            }
+#endif
             if (closestType >= 0) StartAuthoredBodyPrewarm(closestType);
 
             // The catalog is in match plan order, NOT player distance order.
