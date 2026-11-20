@@ -36,10 +36,10 @@ class MobilePerfOverlayContract(unittest.TestCase):
         self.assertLess(guard, advance)
         self.assertLess(advance, sorting)
         self.assertIn(
-            "#if UNITY_ANDROID && !UNITY_EDITOR\\n"
+            "#if UNITY_ANDROID && !UNITY_EDITOR\n"
             "            // Profiling and formatting", SOURCE)
         self.assertIn(
-            "if (!AarisMobileStreamingFrameGate.TryClaimNonessentialDiagnosticFrame())\\n"
+            "if (!AarisMobileStreamingFrameGate.TryClaimNonessentialDiagnosticFrame())\n"
             "                return;", SOURCE)
         self.assertIn("if (!overlayVisible && !recording)", SOURCE)
 
