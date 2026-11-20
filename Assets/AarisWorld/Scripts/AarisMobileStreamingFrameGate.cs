@@ -55,6 +55,10 @@ namespace Aaris.MapReview
         // The cleanup itself is never blocked; essential scene/gameplay work
         // never enters this optional admission gate.
         private static AsyncOperation unusedAssetCleanup;
+        // Android can signal critical memory between unrelated script Update calls.
+        // Reserve the notification frame and the next one even before this
+        // component starts Unity's nonblocking unused-asset reclamation.
+        private static int lowMemoryNotificationFrame = -1;
         // Fence the native asset cleanup completion frame before optional integration.
         private static int cleanupCompletionFrame = -1;
         // Monotonic attempted-admission counters. Reading these ints only
@@ -79,8 +83,23 @@ namespace Aaris.MapReview
             unusedAssetCleanup = cleanup;
         }
 
+        internal static void ReserveLowMemoryNotificationFrame()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            lowMemoryNotificationFrame = Time.frameCount;
+#endif
+        }
+
         private static bool IsAssetCleanupPending()
         {
+            int frame = Time.frameCount;
+            // Notification callbacks may precede this runtime's Update. Hold
+            // optional loads/instantiation for two render frames, with no wait
+            // or change to essential gameplay and no permanent throttling.
+            if (frame == lowMemoryNotificationFrame ||
+                (lowMemoryNotificationFrame >= 0 &&
+                 frame == lowMemoryNotificationFrame + 1))
+                return true;
             if (unusedAssetCleanup != null)
             {
                 if (!unusedAssetCleanup.isDone) return true;
@@ -221,6 +240,7 @@ namespace Aaris.MapReview
             RigReservedDeferredAttempts = 0;
             optionalLoadInFlight = null;
             unusedAssetCleanup = null;
+            lowMemoryNotificationFrame = -1;
             cleanupCompletionFrame = -1;
             CleanupDeferredAttempts = SameFrameDeferredAttempts = ImportDeferredAttempts = 0;
         }
