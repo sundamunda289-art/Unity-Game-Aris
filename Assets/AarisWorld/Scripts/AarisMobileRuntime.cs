@@ -66,6 +66,12 @@ namespace Aaris.MapReview
         // that nonessential work to the same overloaded Android frame.
         private bool lowMemoryReportPending;
         private int lowMemoryReportObservedFrame = -1;
+        // Heavy profiler/JSON snapshots must not extend the very frame that
+        // already stalled or the opening scene's first frame. Keep each event
+        // pending and let the shared Android streaming budget admit it later.
+        private bool startupReportPending;
+        private bool frameStallReportPending;
+        private int frameStallObservedFrame = -1;
         private Task<string> pendingLogWrite;
         // One prior-process OS report only, never queried during a hot frame.
         private AarisAndroidExitHistory.Snapshot previousExitSnapshot;
@@ -178,7 +184,14 @@ namespace Aaris.MapReview
             }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             { Debug.LogWarning("Aaris diagnostics file unavailable: " + e.Message); logPath = null; }
+            // On budget Android, opening-frame JSON/profiler reads compete with
+            // first scene rendering and native asset integration. The startup
+            // report is retained but scheduled after the opening frames.
+#if UNITY_ANDROID && !UNITY_EDITOR
+            startupReportPending = true;
+#else
             Record("start");
+#endif
         }
 
         private IEnumerator Start()
@@ -727,7 +740,10 @@ namespace Aaris.MapReview
             if (dt >= 0.75f && Time.unscaledTime >= nextLongFrameReportAt)
             {
                 nextLongFrameReportAt = Time.unscaledTime + 5f;
-                Record("frame-stall");
+                // Capture the event without measuring/serializing on the same
+                // overloaded frame. The frame-time ring already holds dt.
+                frameStallReportPending = true;
+                frameStallObservedFrame = Time.frameCount;
             }
 #endif
             // Observe completion without waiting for AsyncOperation on the
@@ -801,6 +817,22 @@ namespace Aaris.MapReview
             {
                 lowMemoryReportPending = false;
                 Record("low-memory");
+            }
+            // Urgent stall evidence has priority over optional cold-start
+            // telemetry. Use the shared frame gate so a native import or
+            // cleanup never lands on the same rendered frame as the snapshot.
+            if (frameStallReportPending &&
+                Time.frameCount != frameStallObservedFrame &&
+                CanRecordPeriodicDiagnostics())
+            {
+                frameStallReportPending = false;
+                Record("frame-stall");
+            }
+            if (startupReportPending && Time.unscaledTime - startupTime >= 0.5f &&
+                CanRecordPeriodicDiagnostics())
+            {
+                startupReportPending = false;
+                Record("start");
             }
             // The regular 15-second ring no longer contains the opening frames.
             // Keep three bounded snapshots for comparing cold and warm launches.
