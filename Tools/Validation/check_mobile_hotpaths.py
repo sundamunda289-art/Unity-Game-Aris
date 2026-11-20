@@ -679,7 +679,7 @@ def audit():
     assert "#if UNITY_ANDROID && !UNITY_EDITOR" in quality
     assert "memoryMB > 0 && memoryMB <= 3072" in quality
     assert "spawnBudgetPerPoll = 1;" in quality
-    assert "unloadBudgetPerPoll = 2;" in quality
+    assert "unloadBudgetPerPoll = 1;" in quality
     assert "private int maxConcurrentAuthoredLoads = 2;" in vehicle
     assert "maxConcurrentAuthoredLoads = 1;" in quality
     assert "if (inFlight >= maxConcurrentAuthoredLoads) return false;" in vehicle
