@@ -224,11 +224,9 @@ namespace Aaris.MapReview
             // FinishIndexBuild's RefreshNow has just synchronized live cover.
             // Avoid following that work with the first batch of native toggles
             // in the same Android render frame; Editor keeps its old cadence.
+            if (constrainTime) yield return null;
             if (constrainTime)
-            {
-                yield return null;
                 AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
-            }
             double frameStartedAt = constrainTime ? Time.realtimeSinceStartupAsDouble : 0d;
             for (int i = 0; i < obstacles.Length; i++)
             {
@@ -255,10 +253,9 @@ namespace Aaris.MapReview
                     processed = 0;
                     yield return null;
                     if (constrainTime)
-                    {
                         AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
+                    if (constrainTime)
                         frameStartedAt = Time.realtimeSinceStartupAsDouble;
-                    }
                 }
             }
             deferredDeactivation = null;
