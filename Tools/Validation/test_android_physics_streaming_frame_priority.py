@@ -50,11 +50,18 @@ class PhysicsStreamingFramePriority(unittest.TestCase):
             "private IEnumerator ReleaseDistantAcrossFrames()", 1
         )[1].split("internal bool HasPotentialInactiveObstacle(", 1)[0]
         for label, body in (
-            ("index", index), ("deactivation", deactivation), ("release", release)
+            ("index", index), ("deactivation", deactivation)
         ):
             self.assertGreaterEqual(body.count(RESERVE), 2, label)
             self.assertIn("yield return null;", body, label)
             self.assertIn("Time.realtimeSinceStartupAsDouble", body, label)
+        # Release is different: only a real native Collider.enabled transition
+        # reserves its frame. Reacquired/no-op queued entries cost no slot.
+        self.assertEqual(release.count(RESERVE), 1)
+        self.assertIn("if (!reservedReleaseFrame)", release)
+        self.assertIn("reservedReleaseFrame = false;", release)
+        self.assertLess(release.index(RESERVE), release.index("collider.enabled = false;"))
+        self.assertIn("Time.realtimeSinceStartupAsDouble", release)
 
     def test_immediate_colliders_precede_optional_admissions(self):
         refresh = COLLIDERS.split("private void RefreshNow(bool forcePhysicsSync)", 1)[1]
