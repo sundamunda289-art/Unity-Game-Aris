@@ -210,9 +210,17 @@ namespace Aaris.MapReview
                 beacon.endColor = new Color(0.35f, 0.9f, 1f, 0.04f);
                 beacon.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 beacon.receiveShadows = false;
+                beacon.alignment = LineAlignment.View;
+                // Do not draw an unverified beacon before the first camera/range poll.
+                beacon.enabled = false;
             }
             // Share the main camera reference; never search the scene every frame.
             beaconObserver = FindBeaconCamera();
+            // Spread camera-distance checks across nine small frame windows rather
+            // than refreshing all streamed items on the same Android frame.
+            // Candidate IDs are stable across unloading/reloading the loot mesh.
+            nextBeaconVisibilityCheck = Time.unscaledTime +
+                Mathf.Abs(index % 9) * 0.05f;
             activePickups.Add(this);
             return true;
         }
@@ -291,6 +299,7 @@ namespace Aaris.MapReview
         private void OnDisable()
         {
             activePickups.Remove(this);
+            if (beacon != null) beacon.enabled = false;
             // Beacon material is shared and owned by the global cache.
         }
     }
@@ -359,16 +368,34 @@ namespace Aaris.MapReview
         private static Material shared;
         internal static Material Get()
         {
-            // Resolve and allocate just ONCE for all currently streamed and
-            // later re-streamed weapons. Preserve original URP/Unlit preference
-            // and Sprites fallback when the current pipeline is unavailable.
+            // One shared material for every streamed pickup. The particles
+            // unlit path supports line vertex colours (including alpha); an
+            // opaque generic Unlit material can ignore the fade completely.
             if (shared != null) return shared;
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
             if (shader == null) shader = Shader.Find("Sprites/Default");
+            if (shader == null)
+                shader = Shader.Find("Universal Render Pipeline/Unlit");
             if (shader == null) return null;
             shared = new Material(shader) { name = "Aaris Loot Beacon Shared" };
+            // Configure a transparent fallback explicitly, with no real-time
+            // light, no instanced material for each item, and no depth writes.
+            if (shared.HasProperty("_Surface")) shared.SetFloat("_Surface", 1f);
+            if (shared.HasProperty("_Blend")) shared.SetFloat("_Blend", 0f);
+            if (shared.HasProperty("_SrcBlend"))
+                shared.SetFloat("_SrcBlend",
+                    (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            if (shared.HasProperty("_DstBlend"))
+                shared.SetFloat("_DstBlend",
+                    (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            if (shared.HasProperty("_ZWrite")) shared.SetFloat("_ZWrite", 0f);
+            shared.SetOverrideTag("RenderType", "Transparent");
+            shared.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            shared.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
             if (shared.HasProperty("_BaseColor"))
                 shared.SetColor("_BaseColor", Color.white);
+            if (shared.HasProperty("_Color"))
+                shared.SetColor("_Color", Color.white);
             return shared;
         }
     }
