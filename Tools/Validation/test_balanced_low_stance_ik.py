@@ -261,5 +261,67 @@ for start_angle in [-3.0,-2.5,-2.0,-1.5,-0.4,0.0,0.4,1.5,2.0,2.5,3.0]:
             # Preserve which side of the knee plane the old bend occupied.
             assert fixed_lateral*lateral>=-1e-9
 
+# In a crouch/prone retarget, the requested lateral knee trim can tilt the
+# exact bend circle below the grounded knee floor. The old solver rejected the
+# WHOLE correction; the bounded partial solver must keep the largest safe turn
+# and accept it only if lateral excursion decreases.
+for anchor in (
+    'candidateKnee.y < minimumKneeWorldY - 0.002f &&',
+    'kneeGoal.y >= minimumKneeWorldY - 0.002f',
+    'for (int step = 0; step < 6; step++)',
+    'Vector3 partial = Vector3.Lerp(',
+    'bend, candidateBend, middle).normalized;',
+    'candidateBend = Vector3.Lerp(',
+    'bend, candidateBend, safe).normalized;',
+    'Mathf.Abs(correctedSide) + 0.001f < Mathf.Abs(kneeSide)',
+):
+    assert anchor in solver, anchor
+
+# A 2D basis of the real 3D knee bend circle; projected world-up has
+# components (.9,.1), with its remainder along the hip-to-ankle axis.
+# The partial nlerp never changes segment lengths or target-foot contact.
+def circle_height(bend):
+    return .9 * bend[0] + .1 * bend[1]
+
+def unit_circle(v):
+    scale = hypot(*v)
+    return (v[0] / scale, v[1] / scale)
+
+def partial_floor_safe(start, end, minimum):
+    safe, unsafe = 0.0, 1.0
+    for _ in range(6):
+        middle = (safe + unsafe) * .5
+        trial = unit_circle((
+            start[0] + (end[0] - start[0]) * middle,
+            start[1] + (end[1] - start[1]) * middle))
+        if circle_height(trial) >= minimum - .002:
+            safe = middle
+        else:
+            unsafe = middle
+    return unit_circle((
+        start[0] + (end[0] - start[0]) * safe,
+        start[1] + (end[1] - start[1]) * safe))
+
+floor_conflicts = 0
+lateral_improvements = 0
+for angle in range(-180, 181, 5):
+    start = (cos(angle * pi / 180), sin(angle * pi / 180))
+    if circle_height(start) < .70:
+        continue
+    # Existing guard rotates no more than 80 degrees in this transition.
+    for step_degrees in range(-80, 81, 5):
+        target_angle = (angle + step_degrees) * pi / 180
+        end = (cos(target_angle), sin(target_angle))
+        if circle_height(end) >= .698 or abs(end[0]) >= abs(start[0]):
+            continue
+        floor_conflicts += 1
+        repaired = partial_floor_safe(start, end, .70)
+        assert circle_height(repaired) >= .697999
+        # The runtime explicitly rejects moves which worsen knee-side flare.
+        if abs(repaired[0]) + .001 < abs(start[0]):
+            lateral_improvements += 1
+            assert abs(repaired[0]) < abs(start[0])
+assert floor_conflicts > 100 and lateral_improvements > 100
+
 print("PASS: anatomy-scaled crouch/prone IK, grounded knee hint and bend-circle stability")
 print("NOT TESTED: Unity retargeted visuals, real collisions or Android FPS")
