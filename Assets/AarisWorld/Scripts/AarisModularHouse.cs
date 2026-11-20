@@ -283,64 +283,107 @@ namespace Aaris.MapReview
             roofObject.AddComponent<MeshRenderer>().sharedMaterial = roof;
         }
 
+        // Unity constructs each modular home synchronously on its main thread.
+        // Reuse the query buffers and material grouping for subsequent houses:
+        // no mesh, renderer, collision, or authored material is cached/replaced.
+        private static readonly Dictionary<Material, List<CombineInstance>> scratchGroups =
+            new Dictionary<Material, List<CombineInstance>>();
+        private static readonly List<List<CombineInstance>> scratchCombinePool =
+            new List<List<CombineInstance>>(8);
+        private static readonly List<MeshFilter> scratchFilters = new List<MeshFilter>(96);
+        private static readonly List<Material> scratchMaterials = new List<Material>(4);
+        private static readonly List<MeshRenderer> scratchOriginals = new List<MeshRenderer>(64);
+
         // The static walls, roof and trim share a handful of materials.
         // Merge by material once at spawning time, while keeping every
         // original BoxCollider and interactive door/glass renderer intact.
         // Replaces dozens of renderer submissions with a few per house.
         private static void CombineStaticSurfaces(Transform root)
         {
-            var groups = new Dictionary<Material, List<CombineInstance>>();
-            var originals = new List<MeshRenderer>(48);
-            Matrix4x4 toRoot = root.worldToLocalMatrix;
-            foreach (MeshFilter filter in root.GetComponentsInChildren<MeshFilter>(true))
+            Dictionary<Material, List<CombineInstance>> groups = scratchGroups;
+            List<MeshRenderer> originals = scratchOriginals;
+            groups.Clear();
+            originals.Clear();
+            scratchFilters.Clear();
+            scratchMaterials.Clear();
+            int groupsUsed = 0;
+            try
             {
-                MeshRenderer renderer = filter.GetComponent<MeshRenderer>();
-                Mesh source = filter.sharedMesh;
-                if (renderer == null || !renderer.enabled || source == null ||
-                    !source.isReadable ||
-                    filter.GetComponentInParent<AarisBreakablePanel>() != null)
-                    continue;
-                Material[] materials = renderer.sharedMaterials;
-                if (materials.Length != 1 || materials[0] == null ||
-                    source.subMeshCount != 1)
-                    continue;
-                Material material = materials[0];
-                if (!groups.TryGetValue(material, out List<CombineInstance> group))
+                Matrix4x4 toRoot = root.worldToLocalMatrix;
+                // Unity 6 fills the supplied list without allocating a new
+                // MeshFilter[] for every modular house.
+                root.GetComponentsInChildren<MeshFilter>(true, scratchFilters);
+                foreach (MeshFilter filter in scratchFilters)
                 {
-                    group = new List<CombineInstance>(24);
-                    groups.Add(material, group);
+                    MeshRenderer renderer = filter.GetComponent<MeshRenderer>();
+                    Mesh source = filter.sharedMesh;
+                    if (renderer == null || !renderer.enabled || source == null ||
+                        !source.isReadable ||
+                        filter.GetComponentInParent<AarisBreakablePanel>() != null)
+                        continue;
+                    // Do not allocate Material[] for each wall, frame, or roof.
+                    scratchMaterials.Clear();
+                    renderer.GetSharedMaterials(scratchMaterials);
+                    if (scratchMaterials.Count != 1 || scratchMaterials[0] == null ||
+                        source.subMeshCount != 1)
+                        continue;
+                    Material material = scratchMaterials[0];
+                    if (!groups.TryGetValue(material, out List<CombineInstance> group))
+                    {
+                        if (groupsUsed < scratchCombinePool.Count)
+                            group = scratchCombinePool[groupsUsed];
+                        else
+                        {
+                            group = new List<CombineInstance>(24);
+                            scratchCombinePool.Add(group);
+                        }
+                        groupsUsed++;
+                        group.Clear();
+                        groups.Add(material, group);
+                    }
+                    group.Add(new CombineInstance {
+                        mesh = source, subMeshIndex = 0,
+                        transform = toRoot * filter.transform.localToWorldMatrix
+                    });
+                    originals.Add(renderer);
                 }
-                group.Add(new CombineInstance {
-                    mesh = source, subMeshIndex = 0,
-                    transform = toRoot * filter.transform.localToWorldMatrix
-                });
-                originals.Add(renderer);
+                if (groups.Count == 0) return;
+                // Preserve the original 16-bit index safety check and leave
+                // every original renderer enabled if a group is too large.
+                foreach (var pair in groups)
+                {
+                    long vertices = 0;
+                    foreach (CombineInstance part in pair.Value)
+                        vertices += part.mesh.vertexCount;
+                    if (vertices > 65534) return;
+                }
+                foreach (var pair in groups)
+                {
+                    Mesh combined = new Mesh { name = "Aaris_StaticHouse_" + pair.Key.name };
+                    combined.indexFormat = IndexFormat.UInt16;
+                    // CombineMeshes accepts CombineInstance[], so this small
+                    // per-material conversion remains; all query/group arrays
+                    // and lists above are reused across authored homes.
+                    combined.CombineMeshes(pair.Value.ToArray(), true, true, false);
+                    combined.RecalculateBounds();
+                    GameObject section = new GameObject("Batched_" + pair.Key.name);
+                    section.transform.SetParent(root, false);
+                    section.AddComponent<MeshFilter>().sharedMesh = combined;
+                    section.AddComponent<MeshRenderer>().sharedMaterial = pair.Key;
+                    combined.UploadMeshData(true);
+                }
+                foreach (MeshRenderer original in originals) original.enabled = false;
             }
-            if (groups.Count == 0) return;
-            // Built-in mobile GPUs may not support 32-bit mesh indices.
-            // These houses have small meshes; keep combined geometry on 16-bit
-            // indices and decline batching if an asset ever exceeds that cap.
-            foreach (var pair in groups)
+            finally
             {
-                long vertices = 0;
-                foreach (CombineInstance part in pair.Value)
-                    vertices += part.mesh.vertexCount;
-                if (vertices > 65534) return;
+                // Clear references to native Unity objects after each build,
+                // even when a 16-bit safety rejection or exception occurs.
+                foreach (List<CombineInstance> group in groups.Values) group.Clear();
+                groups.Clear();
+                originals.Clear();
+                scratchFilters.Clear();
+                scratchMaterials.Clear();
             }
-            foreach (var pair in groups)
-            {
-                Mesh combined = new Mesh { name = "Aaris_StaticHouse_" + pair.Key.name };
-                combined.indexFormat = IndexFormat.UInt16;
-                combined.CombineMeshes(pair.Value.ToArray(), true, true, false);
-                combined.RecalculateBounds();
-                GameObject section = new GameObject("Batched_" + pair.Key.name);
-                section.transform.SetParent(root, false);
-                section.AddComponent<MeshFilter>().sharedMesh = combined;
-                section.AddComponent<MeshRenderer>().sharedMaterial = pair.Key;
-                // Only the GPU needs these static vertices after merging.
-                combined.UploadMeshData(true);
-            }
-            foreach (MeshRenderer original in originals) original.enabled = false;
         }
 
         public static GameObject Create(Vector3 position,Quaternion rotation,
