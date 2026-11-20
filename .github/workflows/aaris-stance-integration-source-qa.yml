@@ -1,0 +1,45 @@
+name: Aaris Stance Integration Source QA
+
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisCharacterVisual.cs'
+      - 'Assets/AarisWorld/Editor/AarisPoseFrames.cs'
+      - 'Tools/Validation/test_cc0_*.py'
+      - 'Tools/Validation/test_pose_*.py'
+      - 'Tools/Validation/audit_motion_matrix_bones.py'
+      - 'Tools/Validation/test_motion_matrix_bone_audit.py'
+      - '.github/workflows/aaris-stance-integration-source-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-contracts:
+    name: Stance source and saved scene contracts (not Unity native QA)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate script source, authored foot contacts, and native QA binding
+        run: |
+          set -euo pipefail
+          python Tools/Validation/test_balanced_low_stance_ik.py
+          python Tools/Validation/test_cc0_crouch_authored_contact.py
+          python Tools/Validation/test_cc0_selected_crouch_pose.py
+          python Tools/Validation/test_pose_capture_actor_lookup.py
+          python Tools/Validation/test_pose_scene_binding_preflight.py
+          python Tools/Validation/test_motion_matrix_bone_audit.py
+      - name: Reject whitespace or patch integration mistakes
+        run: |
+          git diff --check origin/main...HEAD
+      - name: Explain what this check does not prove
+        run: |
+          echo 'Static source QA only: no Unity Play Mode, screenshots, native animation import, or Android FPS certification.'
