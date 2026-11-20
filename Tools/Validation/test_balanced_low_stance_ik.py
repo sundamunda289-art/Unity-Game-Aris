@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regression contract for mobile low-stance foot layout, not a Unity render test."""
 from pathlib import Path
-from math import sqrt
+from math import sqrt, sin, cos, radians, hypot
 import re
 
 visual = (Path(__file__).resolve().parents[2] /
@@ -45,6 +45,39 @@ assert "crouchKneeForward = Vector3.Cross(anatomicalRight," in layout
 assert "crouchKneeForward * 0.14f;" in layout
 assert "crouchKneeForward * 0.22f;" in layout
 assert "out Vector3 crouchKneeForward" in layout
+assert "Vector3 sagittalFacing = Vector3.ProjectOnPlane(" in layout
+assert "facing, anatomicalRight);" in layout
+assert "if (sagittalFacing.sqrMagnitude > 0.0025f)" in layout
+assert "Vector3.Dot(facing, crouchKneeForward) >= 0f" in layout
+assert layout.index("Vector3 sagittalFacing =") < layout.index(
+    "Vector3 proneLeft =")
+# The anatomical right vector and the prone leg-extension direction
+# must be orthogonal, even when imported torso animation rotates sideways.
+# Source-equivalent X/Z geometry. Not a Unity screenshot/bone QA.
+for hip_yaw in (0, 20, 45, 90, 160):
+    right_axis = (cos(radians(hip_yaw)), sin(radians(hip_yaw)))
+    knee_forward = (-right_axis[1], right_axis[0])
+    for torso_yaw in (-89, -65, -40, -15, 0, 15, 40, 65, 89, 90, 91, 110, 180):
+        heading = (cos(radians(torso_yaw)), sin(radians(torso_yaw)))
+        hip_component = sum(a*b for a, b in zip(heading, right_axis))
+        sagittal = (heading[0] - hip_component*right_axis[0],
+                    heading[1] - hip_component*right_axis[1])
+        length = hypot(*sagittal)
+        if length*length > .0025:
+            corrected = (sagittal[0] / length, sagittal[1] / length)
+        else:
+            signed = sum(a*b for a, b in zip(heading, knee_forward))
+            corrected = knee_forward if signed >= 0 else (
+                -knee_forward[0], -knee_forward[1])
+        assert abs(sum(a*b for a, b in zip(corrected, right_axis))) < 1e-10
+        assert abs(hypot(*corrected) - 1.) < 1e-10
+        for extension in (.35, .74, 1.055):
+            # Foot's lateral pose offset is bounded by the 3.5cm existing
+            # stagger; torso yaw introduces no additional lateral reach.
+            for stagger in (-.035, .035):
+                lateral = -extension*sum(
+                    a*b for a, b in zip(corrected, right_axis)) + stagger
+                assert abs(lateral) <= .035000001
 # Comments are explanations, not C# allocation expressions. Check code only.
 layout_code = re.sub(r"//[^\n]*|/\*.*?\*/", "", layout, flags=re.S)
 assert "new " not in layout_code  # no allocations in this IK method

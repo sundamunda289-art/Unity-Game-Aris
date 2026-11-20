@@ -1587,6 +1587,24 @@ namespace Aaris.MapReview
             facing = Vector3.ProjectOnPlane(facing, Vector3.up).normalized;
             if (facing.sqrMagnitude < 0.25f) return;
 
+            // Hip width defines the anatomical lateral axis, but imported
+            // prone head/torso yaw need not be exactly perpendicular to it.
+            // Project heel extension onto the sagittal plane: a retargeted
+            // sideways torso otherwise pulls both shoes away from the knees
+            // even though the knee pole is derived from the hip axis.
+            // Only settled near-stationary low stances use these heel goals.
+            // Fall back to anatomical forward if projection is ill-conditioned.
+            if (validAnatomicalRight)
+            {
+                Vector3 sagittalFacing = Vector3.ProjectOnPlane(
+                    facing, anatomicalRight);
+                if (sagittalFacing.sqrMagnitude > 0.0025f)
+                    facing = sagittalFacing.normalized;
+                else
+                    facing = Vector3.Dot(facing, crouchKneeForward) >= 0f
+                        ? crouchKneeForward : -crouchKneeForward;
+            }
+
             Vector3 right = Vector3.Cross(Vector3.up, facing).normalized;
             // Match left/right to the imported skeleton, not a guessed FBX yaw.
             if (Vector3.Dot(right, rightThigh.position - leftThigh.position) < 0f)
