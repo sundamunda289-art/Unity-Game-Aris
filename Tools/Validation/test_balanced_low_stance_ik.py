@@ -275,7 +275,7 @@ assert "return previous;" in source_cache
 assert "hasReliableAnatomicalRight = false;" in visual  # teleport/respawn reset
 assert "StableAnatomicalRight(hipRight)" in visual
 assert "StableAnatomicalRight(anatomicalRight)" in layout
-source_cache_code = re.sub(r"//[^\\n]*|/\\*.*?\\*/", "", source_cache, flags=re.S)
+source_cache_code = re.sub(r"//[^\n]*|/\*.*?\*/", "", source_cache, flags=re.S)
 assert "new " not in source_cache_code
 assert "Physics." not in source_cache_code
 
