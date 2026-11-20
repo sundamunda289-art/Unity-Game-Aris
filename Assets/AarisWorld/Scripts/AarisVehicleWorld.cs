@@ -321,7 +321,10 @@ namespace Aaris.MapReview
                 AarisMobileRuntime.UseConstrainedGpuStreamingBudget())
             {
                 spawnBudgetPerPoll = 1;
-                unloadBudgetPerPoll = 2;
+                // Native Destroy finalizes after Update; limit low-end GPU/PhysX
+                // teardown to one distant parked car per 300 ms poll.
+                // No car count, visibility radius or authored asset is reduced.
+                unloadBudgetPerPoll = 1;
                 spawnProbeBudgetPerPoll = 3;
                 maxConcurrentAuthoredLoads = 1;
             }
