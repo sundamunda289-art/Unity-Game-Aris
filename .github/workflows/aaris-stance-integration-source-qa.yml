@@ -34,6 +34,7 @@ jobs:
           python Tools/Validation/test_balanced_low_stance_ik.py
           python Tools/Validation/test_cc0_crouch_authored_contact.py
           python Tools/Validation/test_cc0_selected_crouch_pose.py
+          python Tools/Validation/test_cc0_als_fallback_preference.py
           python Tools/Validation/test_pose_capture_actor_lookup.py
           python Tools/Validation/test_pose_scene_binding_preflight.py
           python Tools/Validation/test_motion_matrix_bone_audit.py
