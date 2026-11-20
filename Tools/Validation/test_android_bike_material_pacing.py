@@ -40,6 +40,29 @@ class BikeMaterialPacingContract(unittest.TestCase):
         # The sequence is a one-time setup; no allocations in per-frame hot loop.
         self.assertLess(BIKE.index("private void SetupMaterials()"), BIKE.index("private void Update()"))
 
+    def test_interrupted_palette_rebuilds_after_gameobject_reenable(self):
+        # Unity stops a coroutine when its GameObject is deactivated. A partial
+        # palette must not leave bikeSource cached and bikes invisible forever.
+        disable = BIKE.split("private void OnDisable()", 1)[1].split(
+            "private void Update()", 1)[0]
+        update = BIKE.split("private void Update()", 1)[1].split(
+            "private GameObject ReuseBike(", 1)[0]
+        self.assertIn("private Coroutine bikeMaterialsBuild;", BIKE)
+        self.assertIn("StopCoroutine(bikeMaterialsBuild);", disable)
+        self.assertIn("bikeMaterialsBuild = null;", disable)
+        self.assertIn("if (bikeMaterialsReady) return;", disable)
+        self.assertIn("Destroy(paintVariants[i]);", disable)
+        self.assertIn("paintVariants[0] = null;", disable)
+        self.assertIn("Destroy(surfaces[i]);", disable)
+        self.assertIn("surfaces[i] = null;", disable)
+        self.assertIn("!bikeMaterialsReady && bikeSource != null", update)
+        self.assertIn("bikeMaterialsBuild == null", update)
+        self.assertIn("AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())", update)
+        self.assertIn("bikeMaterialsBuild = StartCoroutine(BuildMaterialsAcrossFrames(true));", update)
+        self.assertLess(update.index("bikeMaterialsBuild = StartCoroutine(BuildMaterialsAcrossFrames(true));",
+                        update.index("if (!bikeMaterialsReady) return;"))
+        self.assertIn("bikeMaterialsBuild = null;", update)
+
     def test_original_mesh_visuals_paint_limits_and_cleanup_remain(self):
         invariants = (
             "AarisVehicles/Authored/AarisRoadBike",
