@@ -84,20 +84,21 @@ namespace Aaris.MapReview
             var bike = new BikeBuildFixture();
 #if UNITY_ANDROID && !UNITY_EDITOR
             var work = bike.BuildMaterialsAcrossFrames(true);
-            int[] expected = { 2, 4, 6, 8, 11 };
+            // Native materials begin after the initial gate yield.
+            int[] expected = { 0, 2, 4, 6, 8, 11 };
             for (int i = 0; i < expected.Length; i++)
             {
                 bool hasMore = work.MoveNext();
                 if (Material.created != expected[i])
                     throw new Exception("Material burst at slice " + i
                         + " actual=" + Material.created);
-                if (hasMore != (i < 4))
+                if (hasMore != (i < 5))
                     throw new Exception("Incorrect yield boundary at slice " + i);
-                if (bike.bikeMaterialsReady != (i == 4))
+                if (bike.bikeMaterialsReady != (i == 5))
                     throw new Exception("Half-built palette became visible");
             }
-            if (AarisMobileStreamingFrameGate.claims != 4)
-                throw new Exception("Shared gate must admit four later slices");
+            if (AarisMobileStreamingFrameGate.claims != 5)
+                throw new Exception("Shared gate must admit the first and four later slices");
 
             // Other Android GPUs must keep exact original one-shot behavior.
             var fast = new BikeBuildFixture();
