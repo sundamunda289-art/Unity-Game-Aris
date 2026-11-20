@@ -15,7 +15,7 @@ support = motor[start:end]
 assert "controller == null || !controller.enabled" in support
 assert "if (controller.isGrounded) return true;" in support
 assert "now - lastPhysicalGroundContact > StanceGroundGraceSeconds" in support
-assert "now - lastJumpStarted < 0.65f" in support
+assert "if (verticalVelocity > 0f) return false;" in support
 assert "Mathf.Min(downhillProbeDistance," in support
 assert "controller.skinWidth * 2f" in support
 assert "controller.radius * 0.25f" in support
@@ -25,15 +25,21 @@ assert "hit.normal.y >= Mathf.Cos(controller.slopeLimit * Mathf.Deg2Rad)" in mot
 assert "!(motor != null ? motor.HasCloseWalkableStanceSupport()" in battle
 assert "height > capsule.height && !HasRoomAbove(height)" in battle
 
-def eligible(grounded, contact_age, jump_age, near_walkable_ground):
+def eligible(grounded, contact_age, upwards, near_walkable_ground):
+    # Rising overrides the previous-Move grounded bit. Real landing can
+    # immediately enable prone, without an arbitrary post-jump cooldown.
+    if upwards:
+        return False
     return grounded or (
-        contact_age <= .13 and jump_age >= .65 and near_walkable_ground
+        contact_age <= .13 and near_walkable_ground
     )
 
-assert eligible(True, 0, 100, False)
-assert eligible(False, .08, 100, True)
-assert not eligible(False, .08, .1, True)
-assert not eligible(False, .15, 100, True)
-assert not eligible(False, .06, 100, False)
+assert eligible(True, 0, False, False)
+assert eligible(True, 0, False, True)
+assert not eligible(True, 0, True, True)
+assert eligible(False, .08, False, True)
+assert not eligible(False, .08, True, True)
+assert not eligible(False, .15, False, True)
+assert not eligible(False, .06, False, False)
 print("PASS: supported stance seam without midair prone entry")
 print("NOT TESTED: Unity rendered poses, native collision, Android FPS")
