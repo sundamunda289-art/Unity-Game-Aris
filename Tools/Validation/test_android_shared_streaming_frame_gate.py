@@ -80,7 +80,12 @@ class SharedStreamingAdmission(unittest.TestCase):
     def test_bike_prewarm_materials_and_new_rigs_share_slot(self):
         body = BIKE.split("private void Update()", 1)[1].split(
             "private GameObject ReuseBike(", 1)[0]
-        self.assertEqual(body.count(CLAIM), 2)
+        # Source import, interrupted-palette restart and first rig spawn
+        # each claim a separate optional frame slot.
+        self.assertEqual(body.count(CLAIM), 3)
+        self.assertIn("bikeMaterialsBuild == null", body)
+        self.assertLess(body.index("bikeMaterialsBuild == null"),
+                        body.index("if (!bikeMaterialsReady) return;"))
         self.assertLess(body.index("if (!bikePrewarm.isDone) return;"),
                         body.index(CLAIM))
         self.assertLess(body.index(CLAIM), body.index("SetupMaterials();"))
