@@ -320,6 +320,12 @@ internal static class StreamingAdmissionTests
             Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() && Load() == null,
                 "Cleanup completion frame reused for optional integration");
             Frame(3);
+            if (gpu == "Adreno 610")
+            {
+                Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() &&
+                    Load() == null, "Constrained GPU overlapped post-cleanup native settle");
+                Frame(4);
+            }
             Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(), "Cleanup held forever");
         }
         // An already-complete cleanup is not a no-op: its current frame
@@ -335,8 +341,15 @@ internal static class StreamingAdmissionTests
                 "Already-complete cleanup frame admitted optional native work");
             Check(Resources.requests == 0, "Cleanup frame dispatched a native import");
             Frame(13);
+            if (gpu == "Adreno 610")
+            {
+                Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() &&
+                    Load() == null,
+                    "Already-complete cleanup lost constrained next-frame protection");
+                Frame(14);
+            }
             Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
-                "Already-complete cleanup blocked the next frame");
+                "Already-complete cleanup held work beyond the settle frame");
         }
         Configure(6144);
         Check(AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialRig(), "6 GB rig unprotected");
