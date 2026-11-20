@@ -1,0 +1,163 @@
+name: Aaris Native Animation PR Evidence Gate
+
+# Only the dedicated opt-in animation branch runs the expensive Unity Editor.
+# This job never touches the live Codespace or another agent's working tree.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/aaris-animation-native-pr-gate.yml'
+      - 'Assets/AarisWorld/Scripts/AarisCharacterVisual.cs'
+      - 'Assets/AarisWorld/Editor/AarisPoseFrames.cs'
+      - 'Tools/Validation/test_balanced_low_stance_ik.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aaris-native-animation-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  real-unity-pose-evidence:
+    if: startsWith(github.head_ref, 'animation-native-gate-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      GAMECI_IMAGE: unityci/editor:ubuntu-6000.3.26f1-base-3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          fetch-depth: 0
+
+      - name: Require Unity license; fail closed if unavailable
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$UNITY_LICENSE" || { echo 'NATIVE_UNITY_LICENSE_MISSING'; exit 2; }
+          [[ "$UNITY_LICENSE" == *"<"* ]] || { echo 'NATIVE_UNITY_LICENSE_INVALID'; exit 2; }
+
+      - name: Re-run existing no-allocation stance geometry contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Tools/Validation/test_balanced_low_stance_ik.py
+          python3 Tools/Validation/test_cc0_crouch_authored_contact.py
+          python3 Tools/Validation/test_cc0_selected_crouch_pose.py
+          git diff --check origin/main...HEAD
+
+      - name: Hydrate real character, scene, and animation LFS
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash Tools/CI/runner_storage.sh cleanup || true
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq git-lfs
+          git lfs install --local
+          git lfs pull --include="Assets/**" --exclude=""
+          test -s Assets/Resources/AarisCharacters/Primary/Player.fbx
+          if head -c 100 Assets/Resources/AarisCharacters/Primary/Player.fbx | grep -q 'git-lfs.github.com/spec'; then
+            echo 'NATIVE_FBX_STILL_LFS_POINTER'
+            exit 3
+          fi
+          mkdir -p ci-animation
+
+      - name: Capture 16 settled, 30 locomotion, and 48 timed transition portraits
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull "$GAMECI_IMAGE"
+          docker run --rm --shm-size=2g \
+            -e UNITY_LICENSE \
+            -e LIBGL_ALWAYS_SOFTWARE=1 -e GALLIUM_DRIVER=llvmpipe \
+            -v "$PWD:/project" -w /project "$GAMECI_IMAGE" bash -lc '
+              set -euo pipefail
+              apt-get update -qq
+              apt-get install -y -qq xvfb libgl1-mesa-dri libglu1-mesa
+              mkdir -p /root/.local/share/unity3d/Unity
+              printf "%s" "$UNITY_LICENSE" > /root/.local/share/unity3d/Unity/Unity_lic.ulf
+              chmod 600 /root/.local/share/unity3d/Unity/Unity_lic.ulf
+              for spec in \
+                "settled:Aaris.MapReview.Editor.AarisPoseFrames.CaptureMultiAnglePortrait" \
+                "locomotion:Aaris.MapReview.Editor.AarisPoseFrames.CaptureLocomotionMatrixPortrait" \
+                "transition_front:Aaris.MapReview.Editor.AarisPoseFrames.CaptureTransitionFrontPortrait" \
+                "transition_side:Aaris.MapReview.Editor.AarisPoseFrames.CaptureTransitionPortrait" \
+                "transition_back:Aaris.MapReview.Editor.AarisPoseFrames.CaptureTransitionBackPortrait"; do
+                name="${spec%%:*}"
+                method="${spec#*:}"
+                out="/project/ci-animation/$name"
+                mkdir -p "$out" /tmp/aaris-codespaces/motion-frames
+                rm -f /tmp/aaris-codespaces/motion-frames/*.jpg \
+                      /tmp/aaris-codespaces/motion-frames/report.txt \
+                      /tmp/aaris-codespaces/motion-frames/phase.txt
+                timeout 2400 xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX" \
+                  unity-editor -projectPath /project -batchmode \
+                  -executeMethod "$method" -logFile "$out/unity-editor.log"
+                cp /tmp/aaris-codespaces/motion-frames/*.jpg "$out/"
+                cp /tmp/aaris-codespaces/motion-frames/report.txt "$out/"
+                cp /tmp/aaris-codespaces/motion-frames/phase.txt "$out/"
+              done
+            '
+
+      - name: Reject missing frames, C# errors and physical QA failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root = Path('ci-animation')
+          cases = {
+              'settled': ('SUCCESS_16_ACTOR_MULTIANGLE_PORTRAITS', 16),
+              'locomotion': ('SUCCESS_30_MOTION_MATRIX_FRAMES', 30),
+              'transition_front': ('SUCCESS_16_STANCE_TRANSITION_FRAMES', 16),
+              'transition_side': ('SUCCESS_16_STANCE_TRANSITION_FRAMES', 16),
+              'transition_back': ('SUCCESS_16_STANCE_TRANSITION_FRAMES', 16),
+          }
+          total = 0
+          for name, (marker, expected) in cases.items():
+              folder = root / name
+              report = (folder / 'report.txt').read_text(errors='replace')
+              phase = (folder / 'phase.txt').read_text().strip()
+              editor_log = (folder / 'unity-editor.log').read_text(errors='replace')
+              frames = sorted(folder.glob('*.jpg'))
+              if phase != '07_COMPLETE' or marker not in report:
+                  raise SystemExit(f'{name}: MISSING_NATIVE_SUCCESS_OR_COMPLETION')
+              if re.search(r'error CS\d{4}|Compilation failed', editor_log, re.I):
+                  raise SystemExit(f'{name}: CSHARP_COMPILATION_ERROR')
+              if re.search(r'(^|\n)(ERROR_|LOW_STANCE_FOOT_SPLAY|SETTLED_PRONE_KNEE_TOO_HIGH|CROUCH_KNEE_SIDEWAYS_OR_MISALIGNED)', report):
+                  raise SystemExit(f'{name}: NATIVE_ANATOMY_REGRESSION')
+              if len(frames) != expected or any(f.stat().st_size <= 4000 for f in frames):
+                  raise SystemExit(f'{name}: MISSING_OR_EMPTY_NATIVE_PHOTO_{len(frames)}')
+              if name == 'settled' and ('CROUCH_KNEE_ALIGNMENT' not in report or
+                                       'SETTLED_PRONE_CONTACT' not in report):
+                  raise SystemExit('SETTLED_POSE_MEASUREMENTS_MISSING')
+              if name == 'locomotion':
+                  for state in ('01_Standing','02_Walking','03_Running',
+                                '04_Sprinting','05_Crouching','06_CrouchWalking',
+                                '07_Prone','08_Crawling','09_GettingUp','10_Jumping'):
+                      if not any(f.name.startswith(state + '_') for f in frames):
+                          raise SystemExit('MISSING_REAL_MOTION_STATE_' + state)
+              print(f'{name}: REAL_UNITY_PHOTOS={len(frames)} PASS')
+              total += len(frames)
+          assert total == 94, total
+          print('REAL_UNITY_94_FRAME_ANATOMY_GATE_PASS')
+          PY
+
+      - name: Preserve actual visual evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-animation-native-${{ github.run_id }}
+          path: |
+            ci-animation/**/*.jpg
+            ci-animation/**/report.txt
+            ci-animation/**/phase.txt
+            ci-animation/**/unity-editor.log
+          if-no-files-found: warn
+          retention-days: 7
