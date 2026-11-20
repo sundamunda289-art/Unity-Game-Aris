@@ -46,7 +46,7 @@ class AndroidColliderBudget(unittest.TestCase):
         self.assertIn("DeferredColliderUpdatesPerFrame = 24", CODE)
         self.assertIn("if (processed >= DeferredColliderUpdatesPerFrame ||", task)
         self.assertIn("yield return null;", task)
-        self.assertIn("Vector3 framePosition = target != null ? target.position : Vector3.zero;", task)
+        self.assertIn("Vector3 framePosition = target != null ? target.position : default(Vector3);", task)
         self.assertEqual(task.count("target.position"), 2)
         self.assertIn("ColliderReleaseMargin;", task)
         self.assertLess(task.index("safeDistance * safeDistance"),
