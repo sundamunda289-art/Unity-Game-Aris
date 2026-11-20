@@ -231,7 +231,7 @@ namespace Aaris.MapReview
             // One native Transform read per coroutine slice. Unity resumes
             // coroutines on the main thread; no target movement can interleave
             // with individual collider checks inside this slice.
-            Vector3 framePosition = target != null ? target.position : Vector3.zero;
+            Vector3 framePosition = target != null ? target.position : default(Vector3);
             float safeDistance = Mathf.Max(0f, activationDistance) +
                 ColliderReleaseMargin;
             float safeDistanceSquared = safeDistance * safeDistance;
@@ -259,7 +259,7 @@ namespace Aaris.MapReview
                     yield return null;
                     // A teleport/move between frames gets fresh coordinates
                     // before any collider in the next batch is disabled.
-                    framePosition = target != null ? target.position : Vector3.zero;
+                    framePosition = target != null ? target.position : default(Vector3);
                     safeDistance = Mathf.Max(0f, activationDistance) +
                         ColliderReleaseMargin;
                     safeDistanceSquared = safeDistance * safeDistance;
@@ -460,7 +460,7 @@ namespace Aaris.MapReview
             double frameStartedAt = Time.realtimeSinceStartupAsDouble;
             // Snapshot once per rendered batch, not once for each native
             // collider toggle. Refresh after every yield to handle teleports.
-            Vector3 framePosition = target != null ? target.position : Vector3.zero;
+            Vector3 framePosition = target != null ? target.position : default(Vector3);
             float retain = Mathf.Max(0f, activationDistance) +
                 ColliderReleaseMargin;
             float retainSquared = retain * retain;
@@ -493,7 +493,7 @@ namespace Aaris.MapReview
                 {
                     processed = 0;
                     yield return null;
-                    framePosition = target != null ? target.position : Vector3.zero;
+                    framePosition = target != null ? target.position : default(Vector3);
                     retain = Mathf.Max(0f, activationDistance) +
                         ColliderReleaseMargin;
                     retainSquared = retain * retain;
