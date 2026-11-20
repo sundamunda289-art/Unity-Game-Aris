@@ -14,6 +14,14 @@ namespace Aaris.MapReview
         private static Material sharedStucco;
         private static int materialUsers;
         private Mesh ownedMesh;
+        // Unity creates all facades on the main thread, with no yield inside
+        // BuildFacade. Reuse temporary geometry lists across authored homes
+        // instead of allocating four large arrays per house at cold start.
+        // Mesh.SetVertices/SetNormals/SetUVs/SetTriangles copy the data.
+        private static readonly List<Vector3> scratchVertices = new List<Vector3>(13 * 24);
+        private static readonly List<Vector3> scratchNormals = new List<Vector3>(13 * 24);
+        private static readonly List<Vector2> scratchUvs = new List<Vector2>(13 * 24);
+        private static readonly List<int> scratchTriangles = new List<int>(13 * 36);
 
         public static void Install(GameObject house, float width, float depth, float height)
         {
@@ -114,10 +122,14 @@ namespace Aaris.MapReview
             // Thirteen small solid details, combined into a SINGLE MeshRenderer:
             // 4 roof fascia, 5 low plinth, 4 slim corner pilasters.
             // A gap in the front plinth leaves the real entrance unobstructed.
-            var vertices = new List<Vector3>(13 * 24);
-            var normals = new List<Vector3>(13 * 24);
-            var uvs = new List<Vector2>(13 * 24);
-            var triangles = new List<int>(13 * 36);
+            List<Vector3> vertices = scratchVertices;
+            List<Vector3> normals = scratchNormals;
+            List<Vector2> uvs = scratchUvs;
+            List<int> triangles = scratchTriangles;
+            vertices.Clear();
+            normals.Clear();
+            uvs.Clear();
+            triangles.Clear();
             float x = width * .5f, z = depth * .5f;
             float roofY = height - .31f;
             AddBox(vertices, normals, uvs, triangles,
