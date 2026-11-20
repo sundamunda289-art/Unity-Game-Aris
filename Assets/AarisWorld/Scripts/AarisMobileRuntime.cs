@@ -991,7 +991,16 @@ namespace Aaris.MapReview
 #endif
         }
 
-        private void OnLowMemory() { lowMemoryPending = true; }
+        private void OnLowMemory()
+        {
+            lowMemoryPending = true;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Stop optional streaming as soon as the OS notification arrives,
+            // not only after this component eventually begins asset cleanup
+            // in Update (which may run after other streamers).
+            AarisMobileStreamingFrameGate.ReserveLowMemoryNotificationFrame();
+#endif
+        }
         private void OnApplicationFocus(bool focused)
         {
             // Android may regain focus after a system overlay without pause.
