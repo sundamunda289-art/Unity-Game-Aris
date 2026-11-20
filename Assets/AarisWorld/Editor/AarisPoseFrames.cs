@@ -710,6 +710,26 @@ var p=d!=null?d.GetComponent<AarisThirdPersonPlayer>():null;
 if(p==null)p=UnityEngine.Object.FindFirstObjectByType<AarisThirdPersonPlayer>();
 if(p==null||d==null){
 if(Now-SessionState.GetFloat("pose.time",(float)Now)>15){
+// Distinguish a missing imported script, inactive saved component and
+// normal aircraft-disabled motor before changing ANY production logic.
+var roots = SceneManager.GetActiveScene().GetRootGameObjects();
+GameObject savedPlayer = null;
+foreach (var root in roots)
+    if (root.name == "AarisPlayer") { savedPlayer = root; break; }
+var motors = UnityEngine.Object.FindObjectsByType<AarisThirdPersonPlayer>(
+    FindObjectsInactive.Include, FindObjectsSortMode.None);
+var drops = UnityEngine.Object.FindObjectsByType<AarisOfflineDrop>(
+    FindObjectsInactive.Include, FindObjectsSortMode.None);
+Log("QA_BOOTSTRAP_DETAIL roots="+roots.Length+
+    " rootFound="+(savedPlayer!=null)+
+    " rootActive="+(savedPlayer!=null&&savedPlayer.activeInHierarchy)+
+    " rootMotor="+(savedPlayer!=null&&
+        savedPlayer.GetComponent<AarisThirdPersonPlayer>()!=null)+
+    " rootMissingScripts="+(savedPlayer!=null?
+        GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(savedPlayer):-1)+
+    " motorsIncludeInactive="+motors.Length+
+    " dropsIncludeInactive="+drops.Length+
+    " mainCamera="+(Camera.main!=null));
 Log("QA_BOOTSTRAP_LOOKUP player="+(p!=null)+" drop="+(d!=null)+
 " scene="+SceneManager.GetActiveScene().path);
 Finish("NO_PLAYER_OR_DROP");
