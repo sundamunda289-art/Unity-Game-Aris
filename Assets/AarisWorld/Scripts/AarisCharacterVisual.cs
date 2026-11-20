@@ -2334,6 +2334,27 @@ namespace Aaris.MapReview
                         Mathf.Max(crouchRigWeight, proneRigWeight), planar,
                         out leftFootGoal, out rightFootGoal,
                         out crouchKneeForward);
+
+                    // The Quaternius crouch pair has an authored boot
+                    // footprint. During settled crouch, retain that X/Z
+                    // instead of forcing the legacy FBX's knee/foot stagger
+                    // onto a different Humanoid clip. Ease in so interrupted
+                    // stance transitions do not teleport either shoe.
+                    // The existing ground sampling and two-bone IK below
+                    // remain authoritative for boot height and knee reach.
+                    if (cc0CrouchLoaded && crouching && !visuallyAirborne &&
+                        leftFootBone != null && rightFootBone != null)
+                    {
+                        float clipContact = Mathf.SmoothStep(0f, 1f,
+                            Mathf.InverseLerp(0.82f, 0.99f, effectiveCrouchBlend));
+                        float proneFade = 1f - Mathf.SmoothStep(0f, 1f,
+                            Mathf.InverseLerp(0.02f, 0.18f, proneShare));
+                        float authoredFootShare = clipContact * proneFade;
+                        leftFootGoal = Vector3.Lerp(leftFootGoal,
+                            leftFootBone.position, authoredFootShare);
+                        rightFootGoal = Vector3.Lerp(rightFootGoal,
+                            rightFootBone.position, authoredFootShare);
+                    }
                 }
                 // The old <0.5 binary knee pole snapped from forward to none
                 // during crouch->prone. Fade the crouch hint away, then
