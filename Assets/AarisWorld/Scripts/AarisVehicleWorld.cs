@@ -1857,9 +1857,14 @@ namespace Aaris.MapReview
             int active = 0, built = 0, unloaded = 0;
             int spawnProbes = 0;
 #if UNITY_ANDROID && !UNITY_EDITOR
-            // Spread vehicle creation when recent mobile frames are slow.
-            // No render-resolution change, GC allocation or camera work.
-            bool constrainedFrame = Time.smoothDeltaTime > (1f / 45f);
+            // Compare pacing to the actual display/target combination, not
+            // a fixed 45 FPS threshold. On 60 Hz at target 30 FPS, a healthy
+            // 33 ms frame must not be mistaken for an overloaded frame; on
+            // 90 Hz at requested 60 FPS the actual pacing can be 45 FPS.
+            // The small jitter allowance avoids flipping admission at equality.
+            // No visual-range, model-count, resolution or allocation changes.
+            bool constrainedFrame = Time.smoothDeltaTime >
+                AarisMobileStreamingFrameGate.CurrentPacedFrameBudgetSeconds() * 1.08f;
 #else
             const bool constrainedFrame = false;
 #endif
