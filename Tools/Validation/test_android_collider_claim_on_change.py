@@ -46,7 +46,8 @@ class ColliderClaimOnChange(unittest.TestCase):
         self.assertEqual(body.count(
             "AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();"
         ), 3)
-        self.assertNotIn("ReservePhysicsStreamingFrame();\n            lastPosition", body)
+        self.assertIn("if (forcePhysicsSync)\\n", body)
+        self.assertLess(body.index("if (forcePhysicsSync)\\n"), body.index("lastPosition = target.position;"))
         for block in body.split("if (!c.enabled)")[1:]:
             claim = block.index("AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();")
             enable = block.index("c.enabled = true;")
