@@ -463,8 +463,15 @@ namespace Aaris.MapReview
             previousImportDeferrals = totalDeferrals;
 
             float targetFrameMs = 1000f / Mathf.Max(1f, snapshot.effectiveTargetFps);
-            bool pressure = importsObserved && snapshot.framesOver50Ms >= 3 &&
-                snapshot.p95FrameMs > targetFrameMs * 1.4f;
+            // A 45/60 FPS phone can miss its presentation budget for many
+            // 28-49 ms frames without crossing the legacy 50 ms counter.
+            // Require sustained p75 pressure as well as a bad p95: one
+            // unrelated frame hitch must not slow background uploads.
+            bool sustainedPacingMiss = snapshot.p75FrameMs >
+                targetFrameMs * 1.20f;
+            bool pressure = importsObserved &&
+                snapshot.p95FrameMs > targetFrameMs * 1.4f &&
+                (snapshot.framesOver50Ms >= 3 || sustainedPacingMiss);
             if (pressure)
             {
                 asyncUploadRecoveryWindows = 0;
