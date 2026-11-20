@@ -157,8 +157,15 @@ class SharedStreamingAdmission(unittest.TestCase):
         self.assertIn("IsEssentialRigFrame() || IsAssetCleanupPending()", probe)
         self.assertIn("if (!IsConstrainedDevice()) return true;", probe)
         self.assertIn("if (claimedFrame == frame || importIntegrationFrame == frame)", probe)
-        self.assertIn("optionalLoadInFlight.isDone", probe)
-        self.assertIn("importIntegrationFrame = frame;", probe)
+        self.assertIn("if (IsOptionalImportBusy()) return false;", probe)
+        self.assertLess(probe.index("IsOptionalImportBusy()"),
+                        probe.index("claimedFrame = frame;"))
+        # The same production import fence must reject unfinished requests
+        # and the observed native integration completion frame.
+        busy = GATE.split("private static bool IsOptionalImportBusy()", 1)[1].split(
+            "private static bool ShouldDeferForFramePressure(", 1)[0]
+        self.assertIn("if (!optionalLoadInFlight.isDone)", busy)
+        self.assertIn("importIntegrationFrame = frame;", busy)
         self.assertIn("ShouldDeferForFramePressure(frame)", probe)
         self.assertIn("claimedFrame = frame;", probe)
         self.assertNotIn("Resources.Load", probe)
