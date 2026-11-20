@@ -201,6 +201,12 @@ namespace Aaris.MapReview
         // Even a failed spawn has up to five ground rays + one box overlap.
         // Limit physics probes as well as successful Instantiate operations.
         private int spawnProbeBudgetPerPoll = 8;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // A single rejected parking spot can run several native physics queries.
+        // Budget later probes by elapsed CPU wall-clock, not only attempt count.
+        // Keep the first attempt per poll so streaming never starves.
+        private const double AndroidSpawnProbeSliceSeconds = 0.0015d;
+#endif
         // Heavy authored FBXs can each occupy several megabytes once Unity
         // expands mesh/material data. Bound simultaneous async imports so
         // low-RAM phones never stack six vehicle bodies in one memory spike.
@@ -1965,10 +1971,25 @@ namespace Aaris.MapReview
             // On a low-end phone with a two-build budget, always give the
             // closest ready car the first slot, even in a crowded sector.
             // Scan at most 44 immutable plans per attempt; no sorting or GC.
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // A 300ms vehicle poll can otherwise stack multiple expensive
+            // ground-ray and overlap probes on the same low-end CPU frame.
+            double spawnProbeSliceStart = Time.realtimeSinceStartupAsDouble;
+#endif
             while (built < spawnBudgetPerPoll &&
                    spawnProbes < spawnProbeBudgetPerPoll &&
                    (!constrainedFrame || (built == 0 && spawnProbes < 3)))
             {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // Never defer the first attempt. Remaining candidates retain
+                // their normal retry state for the next 300ms poll; no car,
+                // authored detail, visibility radius or collider is removed.
+                if (spawnProbes > 0 &&
+                    AarisMobileStreamingFrameGate.IsConstrainedDevice() &&
+                    Time.realtimeSinceStartupAsDouble - spawnProbeSliceStart >=
+                    AndroidSpawnProbeSliceSeconds)
+                    break;
+#endif
                 AarisVehicleRecord record = null;
                 float nearestDistanceSq = LoadRadius * LoadRadius;
                 foreach (var pending in plans)
