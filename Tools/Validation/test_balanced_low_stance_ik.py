@@ -101,6 +101,26 @@ support = visual[visual.index("private float SupportedAnkleY("):
                  visual.index("private void PlantUprightContact(")]
 assert "out Vector3 supportNormal, Vector3 sampleWorld)" in support
 assert "Vector3 origin = sampleWorld + Vector3.up * 0.70f;" in support
+# Native retargeted ankle positions can be >70cm below real grounded
+# capsule support. Do not start the existing ray inside the terrain.
+assert "if (controller != null && controller.isGrounded)" in support
+assert "float capsuleFloorY = transform.TransformPoint(" in support
+assert "origin.y = Mathf.Max(origin.y, capsuleFloorY + 0.35f);" in support
+assert "Ray ray = new Ray(origin, Vector3.down);" in support
+
+def grounded_support_origin(foot_y, capsule_floor_y, grounded):
+    origin_y = foot_y + .70
+    return max(origin_y, capsule_floor_y + .35) if grounded else origin_y
+
+for shoe_y, capsule_y, grounded, expected in (
+    (-.80, .0, True, .35),     # crouch boot below floor: recover real ray hit
+    (-.10, .0, True, .60),     # ordinary boot: unchanged original origin
+    (.15, .0, True, .85),      # upright swing: no downward snap
+    (-.80, .0, False, -.10),   # jump/fall: no capsule-ground assumption
+    (-3.463, -2.659, True, -2.309),  # previously recorded deep rig bounds
+):
+    assert abs(grounded_support_origin(shoe_y, capsule_y, grounded) -
+               expected) < 1e-9
 assert support.count("AarisPhysicsHitBuffer.Raycast(") == 1
 assert "float floor = float.NaN;" in support
 assert "hit.collider.transform.IsChildOf(transform)" in support
