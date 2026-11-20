@@ -188,6 +188,12 @@ namespace Aaris.MapReview
         // per-car material duplication on low-memory Android devices.
         private readonly Dictionary<Material, Material> authoredMaterialCache =
             new Dictionary<Material, Material>();
+        // Nonalloc native component scans are reused across nearby car spawns.
+        private readonly List<Collider> buildColliders = new List<Collider>(48);
+        private readonly List<Renderer> buildRenderers = new List<Renderer>(48);
+        // All fallback submeshes point to one existing scene-owned URP material.
+        private readonly Dictionary<int, Material[]> paletteSlotLayouts =
+            new Dictionary<int, Material[]>();
         // Instantiate/Destroy of a complete car can spike a 2 GB Android frame.
         // Bound structural changes per 300 ms poll; retain all 44 authored plans.
         private int spawnBudgetPerPoll = 2;
@@ -222,10 +228,11 @@ namespace Aaris.MapReview
 
         // Renderer components alone do not prove the imported car can be seen.
         // Fail safely if its only meshes are disabled, inactive or forced off.
-        private static bool HasRenderableVehicleBody(Renderer[] renderers)
+        private static bool HasRenderableVehicleBody(IReadOnlyList<Renderer> renderers)
         {
-            foreach (var renderer in renderers)
+            for (int i = 0; i < renderers.Count; i++)
             {
+                Renderer renderer = renderers[i];
                 if (renderer == null || !renderer.enabled ||
                     renderer.forceRenderingOff || !renderer.gameObject.activeInHierarchy)
                     continue;
@@ -1060,10 +1067,11 @@ namespace Aaris.MapReview
             return result;
         }
 
-        private void ApplyAuthoredMaterials(Renderer[] renderers)
+        private void ApplyAuthoredMaterials(IReadOnlyList<Renderer> renderers)
         {
-            foreach (var renderer in renderers)
+            for (int r = 0; r < renderers.Count; r++)
             {
+                Renderer renderer = renderers[r];
                 if (renderer == null) continue;
                 Material[] source = renderer.sharedMaterials;
                 if (source == null || source.Length == 0) continue;
@@ -1609,11 +1617,15 @@ namespace Aaris.MapReview
                 record.type.useEmbeddedAuthoredWheels ||
                 record.type.convertAuthoredBodyMaterials
                 ? "Authored Vehicle Body" : "Local CC0 Car Model";
-            foreach (var collider in mesh.GetComponentsInChildren<Collider>(true))
-                collider.enabled = false;
-            var renderers = mesh.GetComponentsInChildren<Renderer>(true);
+            mesh.GetComponentsInChildren<Collider>(true, buildColliders);
+            for (int i = 0; i < buildColliders.Count; i++)
+                if (buildColliders[i] != null) buildColliders[i].enabled = false;
+            mesh.GetComponentsInChildren<Renderer>(true, buildRenderers);
+            var renderers = buildRenderers;
             if (!HasRenderableVehicleBody(renderers))
             {
+                buildColliders.Clear();
+                buildRenderers.Clear();
                 FallBackToVerifiedModel(typeIndex, "renderer check");
                 Destroy(root);
                 return false;
@@ -1632,11 +1644,18 @@ namespace Aaris.MapReview
                 foreach (var renderer in renderers)
                 {
                     int submeshes = VisualSubmeshCount(renderer);
-                    Material[] materials = new Material[submeshes];
-                    for (int i = 0; i < submeshes; i++) materials[i] = paletteMaterial;
+                    if (!paletteSlotLayouts.TryGetValue(submeshes, out Material[] materials))
+                    {
+                        materials = new Material[submeshes];
+                        for (int i = 0; i < submeshes; i++) materials[i] = paletteMaterial;
+                        paletteSlotLayouts.Add(submeshes, materials);
+                    }
                     renderer.sharedMaterials = materials;
                 }
             }
+            // Paint re-queries visuals, so no cached reference keeps a retired car alive.
+            buildColliders.Clear();
+            buildRenderers.Clear();
             PaintVerifiedBodySlots(mesh, record);
             // Inspect the model in chassis space; world-space AABBs change
             // when the authored road marker is rotated 45/90/135 degrees.
