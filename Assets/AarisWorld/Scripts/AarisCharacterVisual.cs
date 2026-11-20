@@ -1358,10 +1358,10 @@ namespace Aaris.MapReview
                                 kneeGoal.y >= minimumKneeWorldY - 0.002f)
                             {
                                 float safe = 0f;
-                                float unsafe = 1f;
+                                float upperFraction = 1f;
                                 for (int step = 0; step < 6; step++)
                                 {
-                                    float middle = (safe + unsafe) * 0.5f;
+                                    float middle = (safe + upperFraction) * 0.5f;
                                     Vector3 partial = Vector3.Lerp(
                                         bend, candidateBend, middle).normalized;
                                     float partialKneeY = hip.y + axis.y * along +
@@ -1369,7 +1369,7 @@ namespace Aaris.MapReview
                                     if (partialKneeY >= minimumKneeWorldY - 0.002f)
                                         safe = middle;
                                     else
-                                        unsafe = middle;
+                                        upperFraction = middle;
                                 }
                                 candidateBend = Vector3.Lerp(
                                     bend, candidateBend, safe).normalized;
