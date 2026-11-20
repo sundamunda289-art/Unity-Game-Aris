@@ -209,6 +209,38 @@ internal static class StreamingAdmissionTests
         Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(), "Slow frame unprotected");
         Frame(3);
         Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(), "Recovery retained stale decision");
+
+        // A 500 ms resume/native hitch must not be followed immediately by
+        // fresh cosmetic model construction, even when frame pacing recovers.
+        // This is a bounded three-frame cooldown; authored visual assets
+        // remain eligible on the next attempt.
+        Configure();
+        Frame(1, 0.500f);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Long hitch admitted optional integration");
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Second caller bypassed long-hitch admission");
+        for (int frame = 2; frame <= 4; frame++)
+        {
+            Frame(frame, 0.016f);
+            Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+                "Post-hitch recovery admitted early");
+        }
+        Check(AarisMobileStreamingFrameGate.PressureDeferredFrames == 4,
+            "Long hitch cooldown counted a frame more than once");
+        Frame(5, 0.016f);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Long hitch cooldown delayed optional detail indefinitely");
+
+        // A 249 ms severe frame uses the original bounded policy; it must
+        // not accidentally inherit the larger resume cooldown.
+        Configure();
+        Frame(1, 0.249f);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Severe near-threshold frame admitted");
+        Frame(2, 0.016f);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Near-threshold frame incorrectly entered long-hitch cooldown");
     }
 
     private static void RefreshAwarePressure()
