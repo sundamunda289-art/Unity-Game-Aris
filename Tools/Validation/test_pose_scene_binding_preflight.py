@@ -58,6 +58,11 @@ for token in (
 ):
     assert token in preflight, f"Missing QA preflight protection: {token}"
 assert "new GameObject" not in preflight and "AddComponent" not in preflight
+assert "QA_BOOTSTRAP_DETAIL roots=" in editor
+assert "FindObjectsInactive.Include, FindObjectsSortMode.None" in editor
+assert "motorsIncludeInactive=" in editor
+assert "dropsIncludeInactive=" in editor
+assert "rootMissingScripts=" in editor
 assert "VerifyNativeSceneBindings(scene);" in editor
 assert "MOTION_TIMESTAMP stage=" in editor
 assert 'Time.unscaledTime.ToString("F3")' in editor
