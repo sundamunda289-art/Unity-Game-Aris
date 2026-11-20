@@ -1,0 +1,36 @@
+name: Animation knee geometry diagnostic (static only)
+
+on:
+  pull_request:
+    paths:
+      - Tools/Validation/diagnose_stance_knee_geometry.py
+      - .github/workflows/aaris-knee-geometry-static-qa.yml
+  push:
+    branches:
+      - 'qa/knee-circle-feasibility-*'
+    paths:
+      - Tools/Validation/diagnose_stance_knee_geometry.py
+      - .github/workflows/aaris-knee-geometry-static-qa.yml
+
+permissions:
+  contents: read
+
+jobs:
+  geometry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Exact two-bone math self-test (synthetic cases only)
+        run: |
+          set -euo pipefail
+          python -m py_compile Tools/Validation/diagnose_stance_knee_geometry.py
+          python Tools/Validation/diagnose_stance_knee_geometry.py --self-test
+      - name: State test limits explicitly
+        run: |
+          echo 'PASS does NOT certify Unity compile, Play Mode screenshots, or Android FPS.'
