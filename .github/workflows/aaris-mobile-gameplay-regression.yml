@@ -134,6 +134,7 @@ jobs:
           python Tools/Validation/test_android_plane_finish_async_stage.py
           python Tools/Validation/test_gloo_preview_pose_budget.py
           python Tools/Validation/test_android_runtime_diagnostics_analysis.py
+          python Tools/Validation/test_android_diagnostics_frame_pacing.py
           python Tools/Validation/test_android_logcat_triage.py
           python Tools/Validation/test_weapon_pause_input_authority.py
           python Tools/Validation/test_loot_visibility_pacing.py
