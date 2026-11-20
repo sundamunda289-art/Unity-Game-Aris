@@ -14,10 +14,17 @@ section = visual[start:end]
 assert "leftFootBone != null && rightFootBone != null" in section
 assert "Mathf.InverseLerp(0.82f, 0.99f, effectiveCrouchBlend)" in section
 assert "Mathf.InverseLerp(0.02f, 0.18f, proneShare)" in section
-assert "leftFootGoal = Vector3.Lerp(leftFootGoal," in section
-assert "rightFootGoal = Vector3.Lerp(rightFootGoal," in section
-assert "leftFootBone.position, authoredFootShare)" in section
-assert "rightFootBone.position, authoredFootShare)" in section
+assert "leftThigh != null && rightThigh != null" in section
+assert "pelvisRight = Vector3.ProjectOnPlane(" in section
+assert "rightThigh.position - leftThigh.position" in section
+assert "pelvisRight.magnitude * 0.28f, 0.035f, 0.11f" in section
+assert "leftFootBone.position - leftFootGoal" in section
+assert "rightFootBone.position - rightFootGoal" in section
+assert "Vector3.ClampMagnitude(" in section
+assert "authoredLeftDelta, footAllowance) * authoredFootShare" in section
+assert "authoredRightDelta, footAllowance) * authoredFootShare" in section
+assert "leftFootGoal = Vector3.Lerp" not in section
+assert "rightFootGoal = Vector3.Lerp" not in section
 assert "Physics." not in section
 assert "new " not in "\n".join(s.split("//", 1)[0] for s in section.splitlines())
 
@@ -35,7 +42,16 @@ for crouch in (0, 0.5, 0.82, 0.85, 0.90, 0.98, 0.99, 1):
             assert weight == 0.0
         weights.append(weight)
     assert weights == sorted(weights, reverse=True)
+# A settled humanoid crouch boot cannot be retargeted by more than
+# the rig-derived per-shoe X/Z allowance, never more than 11 cm.
+for hip_width in (0.03, 0.1, 0.25, 0.38, 0.6, 1.0):
+    allowance = max(0.035, min(0.11, hip_width * 0.28))
+    assert 0.035 <= allowance <= 0.11
+    for requested_m in (-2.0, -0.5, 0, 0.06, 0.3, 3.0):
+        displacement = max(-allowance, min(allowance, requested_m))
+        assert abs(displacement) <= allowance + 1e-12
+
 assert blend(0.82, 0.99, 1.0) == 1.0
 
-print("PASS: clip-authored crouch X/Z fades in without jumps, fades off for prone")
+print("PASS: CC0 crouch X/Z clip delta bounded by pelvis width, fading off for prone")
 print("NOT TESTED: Unity 6000.3.26f1 bone/boot visual contacts and Android FPS")
