@@ -340,6 +340,21 @@ namespace Aaris.MapReview.Editor
                 Check(Cue("gloo_deploy"), "Successful Gloo deployment emits its cue");
                 var cover = Object.FindFirstObjectByType<AarisGlooWallHealth>();
                 Check(cover != null && cover.GetComponent<BoxCollider>() != null, "Gloo has a solid collider and health");
+                cover.ApplyDamage(cover.CurrentHealth, player.gameObject);
+                Check(!cover.gameObject.activeInHierarchy && cover.CurrentHealth == 0f,
+                    "Fatal Gloo hit removes physical cover before deferred Destroy");
+                var reentrant = new GameObject("Aaris smoke nested health observer");
+                var nestedHealth = reentrant.AddComponent<AarisOfflineHealth>();
+                int deathNotifications = 0;
+                nestedHealth.Died += _ => deathNotifications++;
+                nestedHealth.HealthChanged += value =>
+                {
+                    if (!value.IsDead) value.ApplyDamage(value.CurrentHealth, player.gameObject);
+                };
+                nestedHealth.ApplyDamage(1f, player.gameObject);
+                Check(nestedHealth.IsDead && deathNotifications == 1,
+                    "Nested fatal damage emits exactly one death notification");
+                Object.DestroyImmediate(reentrant);
                 Note("PLAY_SMOKE_COMPLETE");
                 Finish(false);
             }
