@@ -2149,6 +2149,20 @@ namespace Aaris.MapReview
             float totalRigWeight = crouchRigWeight + proneRigWeight;
             float ankleRigWeight = !visuallyAirborne && graphReady
                 ? Mathf.Clamp01(totalRigWeight) : 0f;
+            // During the first grounded prone-to-standing frames, the outgoing
+            // clip still has most of its prone weight. Let the existing
+            // two-bone terrain foot solver take stronger control for this
+            // short handoff so the imported knee cannot flare sideways.
+            // Keep true prone/crouch, jump and airborne motions unchanged.
+            float getUpFootAuthority = !prone && !crouching &&
+                groundedNow && !visuallyAirborne && authoredProne
+                ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(
+                    0.15f, 0.43f, effectiveProneBlend)) *
+                  (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(
+                    0.78f, 0.96f, effectiveProneBlend)))
+                : 0f;
+            ankleRigWeight = Mathf.Lerp(ankleRigWeight, 0.98f,
+                getUpFootAuthority);
             // Each low-stance animation has a continuous human-scale blend.
             // Do not inherit world-space foot anchors across a changing
             // crouch/prone capsule pose (including interrupted transitions).
