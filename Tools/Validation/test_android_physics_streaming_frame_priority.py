@@ -61,7 +61,10 @@ class PhysicsStreamingFramePriority(unittest.TestCase):
         refresh = refresh.split("private void FlushPendingColliderReleases()", 1)[0]
         self.assertIn(RESERVE, refresh)
         self.assertLess(refresh.index(RESERVE), refresh.index("nextActive.Clear();"))
-        self.assertIn("if (!c.enabled) c.enabled = true;", refresh)
+        self.assertIn("if (!c.enabled)", refresh)
+        self.assertEqual(refresh.count("c.enabled = true;"), 2)
+        guarded = refresh.split("if (!c.enabled)", 1)[1].split("c.enabled = true;", 1)[0]
+        self.assertIn("AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();", guarded)
         self.assertIn("ColliderReleaseMargin", refresh)
         self.assertIn("if (forcePhysicsSync) Physics.SyncTransforms();", refresh)
 
