@@ -1880,6 +1880,19 @@ namespace Aaris.MapReview
                 }
                 else active++;
             }
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Unity executes actual Destroy teardown after Update, before render.
+            // On budget GPUs, avoid stacking that native teardown with the
+            // next car hierarchy build and optional model integration in this
+            // same poll. Keep parked/unoccupied distance-based release immediate;
+            // any nearby new car is reconsidered at the normal 300ms poll.
+            // Stronger Android and Editor retain the original fast path.
+            if (unloaded > 0 && AarisMobileStreamingFrameGate.IsConstrainedDevice())
+            {
+                AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
+                return;
+            }
+#endif
             PumpAuthoredBodyLoads();
             // Compete for a single new preload slot per poll by actual
             // distance, not the randomized order of the match's garage plans.
