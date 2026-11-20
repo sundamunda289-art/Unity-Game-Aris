@@ -133,6 +133,15 @@ namespace Aaris.MapReview
             return effectiveFrameBudgetSeconds;
         }
 
+        // Share the display-paced Android budget with vehicle spawn admission.
+        // A fixed 45 FPS threshold would treat a healthy 30 FPS device as
+        // perpetually overloaded, or mistake normal 90 Hz/45 FPS pacing for a
+        // hitch. Reuse the cached, nonalloc 120-frame refresh policy.
+        internal static float CurrentPacedFrameBudgetSeconds()
+        {
+            return CurrentFrameBudgetSeconds(Time.frameCount);
+        }
+
         private static bool ShouldDeferForFramePressure(int frame)
         {
             // All optional streamers in the same frame share one decision.
