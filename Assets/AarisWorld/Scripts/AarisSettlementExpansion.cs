@@ -49,6 +49,22 @@ namespace Aaris.MapReview
         private const float VegetationMargin = 2.0f;
         private const float ObstacleMargin = 1.25f;
 
+        // Deterministic fallback locations shared by Editor and Android.
+        // Reuse one array: blocked interactive houses must not allocate new
+        // offset arrays in the scene's cold-start placement loop.
+        private static readonly Vector2[] RelocationOffsets =
+        {
+            new Vector2(0f, 18f), new Vector2(18f, 0f),
+            new Vector2(0f, -18f), new Vector2(-18f, 0f),
+            new Vector2(18f, 18f), new Vector2(-18f, 18f),
+            new Vector2(18f, -18f), new Vector2(-18f, -18f),
+            new Vector2(0f, 26f), new Vector2(26f, 0f),
+            new Vector2(0f, -26f), new Vector2(-26f, 0f)
+        };
+        // One placement coroutine owns this pair; no concurrent relocation jobs.
+        private bool relocationSucceeded;
+        private float relocationElevation;
+
         private readonly Collider[] obstacles = new Collider[96];
         private const int AndroidTreeProbeBudgetPerFrame = 256;
         private const double AndroidTreeProbeBudgetSeconds = 0.001;
@@ -295,8 +311,22 @@ namespace Aaris.MapReview
                     bool blockedByCollider = !blockedByTrees && CollidersBlock(site, y);
                     if (blockedByTrees || blockedByCollider)
                     {
-                        if (!site.interactive ||
-                            !TryRelocateInteractiveSite(site, terrains, out y))
+                        bool relocated = false;
+                        if (site.interactive)
+                        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                            // A blocked entrance can require up to twelve terrain,
+                            // tree and physics probes. Never execute that entire
+                            // relocation search in one budget Android frame.
+                            // The site is not skipped while the search is pending.
+                            yield return RelocateInteractiveSiteAcrossFrames(site, terrains);
+                            relocated = relocationSucceeded;
+                            if (relocated) y = relocationElevation;
+#else
+                            relocated = TryRelocateInteractiveSite(site, terrains, out y);
+#endif
+                        }
+                        if (!relocated)
                         {
                             if (blockedByTrees) skippedTrees++;
                             else
@@ -382,15 +412,7 @@ namespace Aaris.MapReview
         {
             float originalX = site.x, originalZ = site.z;
             elevation = 0f;
-            Vector2[] offsets = {
-                new Vector2(0f, 18f), new Vector2(18f, 0f),
-                new Vector2(0f, -18f), new Vector2(-18f, 0f),
-                new Vector2(18f, 18f), new Vector2(-18f, 18f),
-                new Vector2(18f, -18f), new Vector2(-18f, -18f),
-                new Vector2(0f, 26f), new Vector2(26f, 0f),
-                new Vector2(0f, -26f), new Vector2(-26f, 0f)
-            };
-            foreach (Vector2 offset in offsets)
+            foreach (Vector2 offset in RelocationOffsets)
             {
                 site.x = originalX + offset.x;
                 site.z = originalZ + offset.y;
@@ -408,6 +430,52 @@ namespace Aaris.MapReview
             site.x = originalX;
             site.z = originalZ;
             return false;
+        }
+
+        // Android-only caller runs in the existing single placement coroutine.
+        // At most one candidate's height/slope/tree/physics checks occur before
+        // each yield. All original candidates and checks remain identical.
+        // A cancelled coroutine restores the original site coordinates.
+        private IEnumerator RelocateInteractiveSiteAcrossFrames(
+            AarisExpansionSite site, Terrain[] terrains)
+        {
+            float originalX = site.x, originalZ = site.z;
+            relocationSucceeded = false;
+            relocationElevation = 0f;
+            bool committed = false;
+            try
+            {
+                foreach (Vector2 offset in RelocationOffsets)
+                {
+                    site.x = originalX + offset.x;
+                    site.z = originalZ + offset.y;
+                    if (CoordinatesValid(site) &&
+                        TryGround(site, terrains, out _, out float candidateY) &&
+                        !TreesBlock(site, terrains) &&
+                        !CollidersBlock(site, candidateY))
+                    {
+                        relocationElevation = candidateY;
+                        relocationSucceeded = true;
+                        committed = true;
+                        Debug.Log("AARIS_INTERACTIVE_HOUSE_SAFE_RELOCATION " + site.name +
+                            " from (" + originalX.ToString("F1") + "," +
+                            originalZ.ToString("F1") + ") to (" +
+                            site.x.ToString("F1") + "," + site.z.ToString("F1") + ")");
+                        yield break;
+                    }
+                    // The next candidate belongs to the next rendered frame.
+                    // This is a bounded 12-frame search, not a per-frame scan.
+                    yield return null;
+                }
+            }
+            finally
+            {
+                if (!committed)
+                {
+                    site.x = originalX;
+                    site.z = originalZ;
+                }
+            }
         }
 
         private static bool CoordinatesValid(AarisExpansionSite site)
