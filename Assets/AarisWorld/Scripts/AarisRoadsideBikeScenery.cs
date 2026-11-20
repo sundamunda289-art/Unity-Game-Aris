@@ -39,6 +39,9 @@ namespace Aaris.MapReview
         // A material-integration slice may span several frames on budget GPUs.
         // Never render a bike with a partially initialized material palette.
         private bool bikeMaterialsReady;
+        // Track an interrupted staged palette so disabling/re-enabling the
+        // scenery cannot leave all nearby bikes permanently invisible.
+        private Coroutine bikeMaterialsBuild;
         private float nextPoll;
         private bool lowMemoryPending;
         private float poolAllowedAt;
@@ -130,6 +133,19 @@ namespace Aaris.MapReview
 
         private System.Collections.IEnumerator BuildMaterialsAcrossFrames(bool stagger)
         {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (stagger)
+            {
+                // The ResourceRequest integration already owns its admission
+                // frame. Claim another frame BEFORE allocating native URP
+                // resources, not merely between later material pairs.
+                yield return null;
+                while (isActiveAndEnabled &&
+                       !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                    yield return null;
+                if (!isActiveAndEnabled) yield break;
+            }
+#endif
             Shader shader = Shader.Find("Universal Render Pipeline/Lit");
             if (shader == null) { enabled = false; yield break; }
             Color[] tones = {
@@ -219,7 +235,31 @@ namespace Aaris.MapReview
         }
 
         private void OnEnable() { Application.lowMemory += OnLowMemory; }
-        private void OnDisable() { Application.lowMemory -= OnLowMemory; }
+        private void OnDisable()
+        {
+            Application.lowMemory -= OnLowMemory;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (!bikeMaterialsReady && bikeMaterialsBuild != null)
+            {
+                // A disabled GameObject stops its coroutines. Discard only
+                // incomplete palette resources; the next enabled Update
+                // restarts the original palette through the shared gate.
+                StopCoroutine(bikeMaterialsBuild);
+                bikeMaterialsBuild = null;
+                for (int i = 1; i < paintVariants.Length; i++)
+                {
+                    if (paintVariants[i] != null) Destroy(paintVariants[i]);
+                    paintVariants[i] = null;
+                }
+                paintVariants[0] = null; // aliases surfaces[0]
+                for (int i = 0; i < surfaces.Length; i++)
+                {
+                    if (surfaces[i] != null) Destroy(surfaces[i]);
+                    surfaces[i] = null;
+                }
+            }
+#endif
+        }
         // Android can report low memory during a heavy frame. Release pooled
         // scenery only from Update, never inside the notification callback.
         private void OnLowMemory() { lowMemoryPending = true; }
@@ -278,7 +318,7 @@ namespace Aaris.MapReview
                 }
 #if UNITY_ANDROID && !UNITY_EDITOR
                 if (AarisMobileStreamingFrameGate.IsConstrainedDevice())
-                    StartCoroutine(BuildMaterialsAcrossFrames(true));
+                    bikeMaterialsBuild = StartCoroutine(BuildMaterialsAcrossFrames(true));
                 else
                     SetupMaterials();
 #else
@@ -288,7 +328,17 @@ namespace Aaris.MapReview
             }
             // A delayed import cannot expose incomplete URP surfaces on the
             // next 0.4 s poll. The 110 m predictive prewarm remains unchanged.
-            if (!bikeMaterialsReady) return;
+            if (!bikeMaterialsReady)
+            {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // Restart after a disable/re-enable interrupted the staged
+                // import; do not silently strand the bike scenery forever.
+                if (bikeSource != null && bikeMaterialsBuild == null &&
+                    AarisMobileStreamingFrameGate.IsConstrainedDevice())
+                    bikeMaterialsBuild = StartCoroutine(BuildMaterialsAcrossFrames(true));
+#endif
+                return;
+            }
             int visibleCount = 0, unloaded = 0;
             foreach (var plan in plans)
             {
