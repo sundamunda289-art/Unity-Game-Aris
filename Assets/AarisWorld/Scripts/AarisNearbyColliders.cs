@@ -309,7 +309,12 @@ namespace Aaris.MapReview
         private void RefreshNow(bool forcePhysicsSync)
         {
             if (!indexReady || target == null || worldBounds == null) return;
-            AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
+            // Forced startup/teleport refreshes can invoke Physics.SyncTransforms:
+            // keep their original native-frame reservation. Routine movement
+            // refreshes reserve only if a collider is actually re-enabled;
+            // unchanged cached bounds do not need a native-toggle frame slot.
+            if (forcePhysicsSync)
+                AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
             lastPosition = target.position;
             nextCheck = Time.unscaledTime + 1f;
             float enterDistance = Mathf.Max(0f, activationDistance);
@@ -342,7 +347,13 @@ namespace Aaris.MapReview
                     float limit = c.enabled ? retainLimit : enterLimit;
                     if (distanceSquared > limit) continue;
                     wanted[i] = query;
-                    if (!c.enabled) c.enabled = true;
+                    if (!c.enabled)
+                    {
+                        // Claim before PhysX receives a newly enabled collider.
+                        // An unchanged nearby wall never blocks optional model work.
+                        AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
+                        c.enabled = true;
+                    }
                     nextActive.Add(i);
                 }
             }
@@ -362,7 +373,13 @@ namespace Aaris.MapReview
                 float limit = c.enabled ? retainLimit : enterLimit;
                 if (distanceSquared > limit) continue;
                 wanted[i] = query;
-                if (!c.enabled) c.enabled = true;
+                if (!c.enabled)
+                {
+                    // Claim before PhysX receives a newly enabled collider.
+                    // An unchanged nearby wall never blocks optional model work.
+                    AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
+                    c.enabled = true;
+                }
                 nextActive.Add(i);
             }
             bool androidMovementRefresh = !forcePhysicsSync &&
