@@ -33,12 +33,21 @@ class BikeMaterialPacingContract(unittest.TestCase):
             "private void OnEnable()", 1)[0]
         self.assertIn("if (stagger && i > 0 && (i & 1) == 0)", setup)
         self.assertEqual(setup.count("yield return null;\n                    while (isActiveAndEnabled"), 1)
-        self.assertEqual(setup.count("AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()"), 2)
+        self.assertEqual(setup.count("AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()"), 3)
         self.assertIn("if (!isActiveAndEnabled) yield break;", setup)
         self.assertIn("if (IsAssetCleanupPending())", GATE)
         self.assertIn("if (claimedFrame == frame)", GATE)
         # The sequence is a one-time setup; no allocations in per-frame hot loop.
         self.assertLess(BIKE.index("private void SetupMaterials()"), BIKE.index("private void Update()"))
+
+    def test_first_pair_waits_for_a_new_admitted_frame(self):
+        setup = BIKE.split("private System.Collections.IEnumerator BuildMaterialsAcrossFrames(bool stagger)", 1)[1]
+        self.assertLess(setup.index("if (stagger)"),
+                        setup.index('Shader shader = Shader.Find("Universal Render Pipeline/Lit");'))
+        first_gate = setup.split("if (stagger)", 1)[1].split("Shader shader", 1)[0]
+        self.assertIn("yield return null;", first_gate)
+        self.assertIn("AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()", first_gate)
+        self.assertIn("if (!isActiveAndEnabled) yield break;", first_gate)
 
     def test_interrupted_palette_rebuilds_after_gameobject_reenable(self):
         # Unity stops a coroutine when its GameObject is deactivated. A partial
