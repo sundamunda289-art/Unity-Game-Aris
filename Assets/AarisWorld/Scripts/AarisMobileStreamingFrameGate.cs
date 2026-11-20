@@ -16,6 +16,14 @@ namespace Aaris.MapReview
         private static int importIntegrationFrame = -1;
         private static int pressureDecisionFrame = -1, consecutivePressureDeferrals;
         private static bool pressureBlockedThisFrame;
+        // 3+ FixedUpdate ticks before one render indicate a physics catch-up
+        // burst. Reserve optional work for at most two such frames in a row
+        // so persistent slow physics never starves nearby authored assets.
+        private const int PhysicsCatchupStepThreshold = 3;
+        private const int MaximumPhysicsCatchupDeferrals = 2;
+        private static int lastPhysicsCatchupFrame = -1;
+        private static int consecutivePhysicsCatchupDeferrals;
+        internal static int PhysicsCatchupDeferredFrames { get; private set; }
         // Optional native imports also contend with 30 FPS frame pacing:
         // a 34-50 ms frame has already missed the 30 FPS budget, even before
         // reaching the old 50 ms severe-stall threshold. Defer one attempt
@@ -230,6 +238,9 @@ namespace Aaris.MapReview
             importIntegrationFrame = pressureDecisionFrame = -1;
             consecutivePressureDeferrals = 0;
             pressureBlockedThisFrame = false;
+            lastPhysicsCatchupFrame = -1;
+            consecutivePhysicsCatchupDeferrals = 0;
+            PhysicsCatchupDeferredFrames = 0;
             longHitchRecoveryThroughFrame = -1;
             effectiveFrameBudgetSeconds = FallbackFrameBudgetSeconds;
             nextFrameBudgetRefresh = -1;
@@ -253,6 +264,34 @@ namespace Aaris.MapReview
         /// that rendered frame against additional optional model construction,
         /// imports and diagnostics; preserve exact colliders and every visual.
         /// </summary>
+        // Called once from AarisMobileRuntime's early (-300) Update, after
+        // Unity has run this rendered frame's physics catch-up FixedUpdates.
+        // Avoid coincident optional imports, new model hierarchies and expensive
+        // diagnostic snapshots on two busy frames; allow the third so visual
+        // streaming continues under sustained load. No physics ticks are skipped.
+        internal static void ReservePhysicsCatchupFrame(int fixedSteps)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (!IsConstrainedDevice()) return;
+            int frame = Time.frameCount;
+            if (lastPhysicsCatchupFrame == frame) return;
+            lastPhysicsCatchupFrame = frame;
+            if (fixedSteps < PhysicsCatchupStepThreshold)
+            {
+                consecutivePhysicsCatchupDeferrals = 0;
+                return;
+            }
+            if (consecutivePhysicsCatchupDeferrals >= MaximumPhysicsCatchupDeferrals)
+            {
+                consecutivePhysicsCatchupDeferrals = 0;
+                return;
+            }
+            consecutivePhysicsCatchupDeferrals++;
+            PhysicsCatchupDeferredFrames++;
+            claimedFrame = frame;
+#endif
+        }
+
         internal static void ReservePhysicsStreamingFrame()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
