@@ -126,6 +126,14 @@ namespace Aaris.MapReview
             {
                 double divisor = System.Math.Max(1d,
                     System.Math.Ceiling(refreshHz / requestedFps));
+                // Match the runtime quality governor: reject tiny display
+                // clock rounding errors from exact requested-FPS divisors.
+                // For example, 90.0001 / 30 must use three display refreshes,
+                // not four; preserve 59.94-Hz and genuine 90/60 -> 45 FPS.
+                double nearestDivisor = System.Math.Round(refreshHz / requestedFps);
+                if (nearestDivisor >= 1d &&
+                    System.Math.Abs(refreshHz - nearestDivisor * requestedFps) <= 0.05d)
+                    divisor = nearestDivisor;
                 effectiveFps = refreshHz / divisor;
             }
             effectiveFrameBudgetSeconds = 1f /
