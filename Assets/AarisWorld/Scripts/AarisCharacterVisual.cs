@@ -948,9 +948,12 @@ namespace Aaris.MapReview
             AnimationClip communityCrouch = CalibratedSoldierLoaded
                 ? Resources.Load<AnimationClip>(
                     "AarisCharacters/CommunityStances/IdleCrouchDefault") : null;
+            // EasyLoco's simpler authored lying-down idle has fewer root
+            // muscle channels than its VR avatar default prone preset; keep
+            // the original preset in Resources for an exact A/B fallback.
             AnimationClip communityProne = CalibratedSoldierLoaded
                 ? Resources.Load<AnimationClip>(
-                    "AarisCharacters/CommunityStances/IdleProneDefault") : null;
+                    "AarisCharacters/CommunityStances/IdleProneLyingDown") : null;
             communityStanceClipsLoaded = communityCrouch != null &&
                 communityProne != null && communityCrouch.humanMotion &&
                 communityProne.humanMotion;
