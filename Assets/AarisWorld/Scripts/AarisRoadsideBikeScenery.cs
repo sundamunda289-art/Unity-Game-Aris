@@ -344,6 +344,20 @@ namespace Aaris.MapReview
                 }
                 if (parkedVictim == null) return;
             }
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // On constrained GPUs, Destroy releases a retired rig after Update.
+            // Do not add a fresh bike hierarchy in that same render frame.
+            // Reusing an existing parked/pool rig remains immediate and does
+            // not lose the already validated candidate or its original art.
+            // Leave nextProbe untouched so the same bay is retried next poll.
+            if (unloaded > 0 && parkedVictim == null &&
+                parkedBikePool.Count == 0 &&
+                AarisMobileStreamingFrameGate.IsConstrainedDevice())
+            {
+                AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
+                return;
+            }
+#endif
             // The parked model stays until the new bay and real mesh validate.
             nearest.nextProbe = now + 3f;
             if (!TryParkingSpot(nearest.point, out Vector3 spot)) return;
