@@ -50,7 +50,18 @@ def check(require_native=False):
     building_names={b['name'] for b in layout['buildings']}
     names={i:d['m_Name'] for c,i,n,d in objects if n=='GameObject'}
     lods=[d for c,i,n,d in objects if n=='LODGroup' and names[d['m_GameObject']['fileID']] in building_names]
-    assert len(lods)==59 and all(len(d['m_LODs'])==3 for d in lods)
+    # In the proposed Kenney windowless native-map migration each replaced
+    # residential home has one 440–512 polygon renderer instead of a three-
+    # renderer LODGroup. The other 12 landmark/vendor buildings keep their
+    # exact three-level original LOD hierarchy.
+    baked_windowless=sum(name=='__AarisKenneyWindowlessPrefab'
+                         for name in names.values())
+    assert baked_windowless in (0,47),(
+        'Native homes must be entirely original or wholly baked; partial scene edit',
+        baked_windowless)
+    assert len(lods)==59-baked_windowless,(
+        'Unexpected remaining building LOD count',len(lods),baked_windowless)
+    assert all(len(d['m_LODs'])==3 for d in lods)
     assert all([l['screenRelativeHeight'] for l in d['m_LODs']]==[.22,.07,.0025] for d in lods)
     sky=next(d for c,i,n,d in documents(ROOT/'Assets/TerrainDemoScene_URP/Prefabs/Skybox/Materials/Sky.mat') if n=='Material')
     assert sky['m_Shader']['fileID']==106 and sky['m_ShaderKeywords']=='_SUNDISK_HIGH_QUALITY'
