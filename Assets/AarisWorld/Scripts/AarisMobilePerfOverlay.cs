@@ -83,6 +83,16 @@ namespace Aaris.MapReview
             }
 
             if (Time.unscaledTime < nextReportAt) return;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Profiling and formatting an optional CSV/overlay snapshot can
+            // coincide with a costly FBX integration or native asset cleanup.
+            // This executes only when the overlay is enabled or CSV is being
+            // recorded, after the per-frame sample has been retained.
+            // A denied slot leaves the deadline due; retry next rendered frame
+            // without losing samples or changing any world/render settings.
+            if (!AarisMobileStreamingFrameGate.TryClaimNonessentialDiagnosticFrame())
+                return;
+#endif
             nextReportAt = Time.unscaledTime + RefreshIntervalSeconds;
             if (frameCount == 0) return;
 
