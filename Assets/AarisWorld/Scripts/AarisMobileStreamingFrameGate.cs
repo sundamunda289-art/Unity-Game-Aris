@@ -88,6 +88,15 @@ namespace Aaris.MapReview
                 unusedAssetCleanup = null;
                 cleanupCompletionFrame = Time.frameCount;
             }
+            // Native texture/mesh resource retirement can spill into the next
+            // rendered frame after Unity reports the cleanup as complete.
+            // On constrained Android only, avoid combining that aftershock
+            // with another optional import or hierarchy build. Essential
+            // gameplay and the original assets remain untouched.
+            if (cleanupCompletionFrame >= 0 &&
+                Time.frameCount == cleanupCompletionFrame + 1 &&
+                IsConstrainedDevice())
+                return true;
             return cleanupCompletionFrame == Time.frameCount;
         }
 
