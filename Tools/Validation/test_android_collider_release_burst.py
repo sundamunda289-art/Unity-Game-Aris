@@ -55,7 +55,10 @@ class ReleaseModel:
 class AndroidColliderReleaseBudget(unittest.TestCase):
     def test_source_only_defers_movement_not_nearby_enables_or_teleport(self):
         refresh = part("private void RefreshNow(bool forcePhysicsSync)", "private void FlushPendingColliderReleases()")
-        self.assertIn("if (!c.enabled) c.enabled = true;", refresh)
+        self.assertIn("if (!c.enabled)", refresh)
+        self.assertEqual(refresh.count("c.enabled = true;"), 2)
+        guarded = refresh.split("if (!c.enabled)", 1)[1].split("c.enabled = true;", 1)[0]
+        self.assertIn("AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();", guarded)
         self.assertIn("Application.platform == RuntimePlatform.Android", refresh)
         self.assertIn("!forcePhysicsSync", refresh)
         self.assertIn("if (!colliderReleaseQueued[i])", refresh)
