@@ -210,12 +210,11 @@ namespace Aaris.MapReview
             // against any streamer that runs later in the Unity Update order.
             if (claimedFrame == frame || importIntegrationFrame == frame)
                 return false;
-            if (optionalLoadInFlight != null && optionalLoadInFlight.isDone)
-            {
-                optionalLoadInFlight = null;
-                importIntegrationFrame = frame;
-                return false;
-            }
+            // A pending ResourceRequest can still consume background I/O and
+            // native main-thread integration. A nonessential JSON/profiler
+            // snapshot must wait for both the import and its completion frame.
+            // Reuse the same fence as optional builds (no new hot-path poll).
+            if (IsOptionalImportBusy()) return false;
             // Use the existing bounded 2-frame pressure recovery. A long
             // sequence of slow frames must not suppress telemetry forever.
             if (ShouldDeferForFramePressure(frame)) return false;
