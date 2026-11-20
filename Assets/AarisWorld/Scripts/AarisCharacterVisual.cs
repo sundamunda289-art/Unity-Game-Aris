@@ -1503,24 +1503,25 @@ namespace Aaris.MapReview
                 Mathf.InverseLerp(0.68f, 0.96f, lowPose));
             float stationary = 1f - Mathf.SmoothStep(0f, 1f,
                 Mathf.InverseLerp(0.07f, 0.38f, planarSpeed));
-            // Native four-step Play Mode capture exposed 70.2cm ankle
-            // separation while entering prone, and 76.9cm when standing up.
-            // The late-only full stance solver does not constrain those
-            // brief crossfades. Symmetrically trim ONLY excess horizontal
-            // splay, by <=16cm per shoe, before the existing ground rays
-            // sample those resolved target positions. At speed, in air or
-            // at upright idle the correction vanishes naturally.
-            Vector3 stanceSeparation = Vector3.ProjectOnPlane(
-                rightGoal - leftGoal, Vector3.up);
-            float stanceSpread = stanceSeparation.magnitude;
+            // Older native transitions reached 70.2/76.9cm total horizontal
+            // ankle spread. A forward/back stride must NOT count as frog-splay:
+            // squeezing its total length pulled boots along the sagittal axis
+            // even when knees already faced the proper way. Only trim lateral
+            // spread along the current anatomical hip-right basis. Preserve
+            // authored fore/aft stagger and the existing <=16cm-per-shoe cap.
+            // An invalid imported hip axis disables the correction safely.
+            // The existing support rays sample the final X/Z without added work.
+            float transitionLateralSeparation = validAnatomicalRight
+                ? Vector3.Dot(rightGoal - leftGoal, anatomicalRight) : 0f;
+            float stanceSpread = Mathf.Abs(transitionLateralSeparation);
             float guard = stationary * Mathf.SmoothStep(0f, 1f,
                 Mathf.InverseLerp(0.025f, 0.11f, lowPose));
             if (stanceSpread > 0.50f && guard > 0.001f)
             {
                 float eachShoeMetres = Mathf.Min(
                     (stanceSpread - 0.50f) * 0.5f, 0.16f) * guard;
-                Vector3 inward = stanceSeparation *
-                    (eachShoeMetres / stanceSpread);
+                Vector3 inward = anatomicalRight *
+                    (Mathf.Sign(transitionLateralSeparation) * eachShoeMetres);
                 leftGoal += inward;
                 rightGoal -= inward;
             }
