@@ -70,7 +70,7 @@ class ColliderWallClockBudget(unittest.TestCase):
         self.assertIn("constrainTime && processed % AndroidDeactivationClockCheckInterval == 0", body)
         self.assertIn("AndroidDeactivationBudgetSeconds", body)
         self.assertIn("if (constrainTime)\n                        frameStartedAt", body)
-        self.assertIn("Vector3 framePosition = target != null ? target.position : Vector3.zero;", body)
+        self.assertIn("Vector3 framePosition = target != null ? target.position : default(Vector3);", body)
         self.assertEqual(body.count("target.position"), 2)
         self.assertIn("c.enabled = false;", body)
 
