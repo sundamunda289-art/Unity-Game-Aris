@@ -108,6 +108,8 @@ namespace Aaris.MapReview
         private AnimationClip sprintClip, proneClip, crawlClip;
         // MIT VRCEasyLoco humanoid pose clips; existing FBX remains safe fallback.
         private bool communityStanceClipsLoaded;
+        private bool communityStandingLoaded;
+        private bool communityProneLoaded;
         public bool UsingCommunityStanceClips => communityStanceClipsLoaded;
         private int lastVisualAttackSequence;
         private float seenTakeoff = -10f, seenTouchdown = -10f;
@@ -900,6 +902,7 @@ namespace Aaris.MapReview
         private void SetupAnimations()
         {
             idleClip = FindClip("idle", "idle");
+            AnimationClip originalWeaponIdle = idleClip;
 
             // Use the single local 100STYLE container only as a complete
             // locomotion set. Mixing one or two mocap clips with older KayKit
@@ -977,9 +980,23 @@ namespace Aaris.MapReview
             AnimationClip communityProne = CalibratedSoldierLoaded
                 ? Resources.Load<AnimationClip>(
                     "AarisCharacters/CommunityStances/IdleProneLyingDown") : null;
+            communityProneLoaded = communityProne != null &&
+                !communityProne.legacy && communityProne.humanMotion;
             communityStanceClipsLoaded = communityCrouch != null &&
-                communityProne != null && communityCrouch.humanMotion &&
-                communityProne.humanMotion;
+                communityProneLoaded && !communityCrouch.legacy &&
+                communityCrouch.humanMotion;
+            // The MIT stand clip was imported previously but never used.
+            // Select it for the calibrated soldier, independently of weapons.
+            AnimationClip communityStand = CalibratedSoldierLoaded
+                ? Resources.Load<AnimationClip>(
+                    "AarisCharacters/CommunityStances/IdleStandDefault") : null;
+            communityStandingLoaded = communityStand != null &&
+                !communityStand.legacy && communityStand.humanMotion;
+            if (communityStandingLoaded)
+            {
+                idleClip = communityStand;
+                Debug.Log("AARIS_MIT_STANDING_IDLE_ACTIVE");
+            }
             if (communityStanceClipsLoaded)
             {
                 if (!alsCrouchLoaded)
@@ -1025,7 +1042,8 @@ namespace Aaris.MapReview
             // and already places both hands on the real weapon. Use a neutral
             // authored idle sample only to steady the upper body; the actual
             // shoot clip remains isolated to real shot events below.
-            readyHoldPlayable = AnimationClipPlayable.Create(graph, idleClip);
+            readyHoldPlayable = AnimationClipPlayable.Create(graph,
+                originalWeaponIdle != null ? originalWeaponIdle : idleClip);
             readyHoldPlayable.SetSpeed(0d);
             readyHoldPlayable.SetTime(0d);
             // Keep one-shot clips short enough to react promptly to attacks
@@ -2096,7 +2114,9 @@ namespace Aaris.MapReview
             // Imported Humanoid muscle poses still require THIS avatar's
             // established root-to-ground calibration. The VRChat clip has
             // no guaranteed soldier-specific foot/world origin.
-            float proneLowering = primaryLoaded &&
+            // MIT lying clips own the prone body pose. Fixed FBX rig-origin
+            // offsets are retained strictly as fallback for legacy animation.
+            float proneLowering = primaryLoaded && !communityProneLoaded &&
                 proneClip != null && crawlClip != null ?
                 (realisticSoldierLoaded ? RealisticSoldierProneRigLowering : ProneRigLowering) * effectiveProneBlend : 0f;
             // Preserve calibrated standing-ground offset through takeoff:
@@ -2109,6 +2129,35 @@ namespace Aaris.MapReview
                     proneLowering + standingShoeOffset, 0f);
             if (visualRoot.localPosition != desiredPosition)
                 visualRoot.localPosition = desiredPosition;
+
+            // Let the settled MIT lying pose own its neck, spine and knees.
+            // Measure the ground directly under the pelvis with the existing
+            // filtered, no-allocation support ray (bridge-safe, slope-aware).
+            // Derive the needed torso clearance from actual hip-bone breadth,
+            // not a per-model fixed rig-lowering distance.
+            bool authoredRestProne = communityProneLoaded && prone &&
+                graphReady && groundedNow && !visuallyAirborne &&
+                planar < 0.25f && effectiveProneBlend > 0.70f;
+            if (authoredRestProne && locomotionHipsBone != null &&
+                leftThigh != null && rightThigh != null && leftFootBone != null)
+            {
+                float supportY = SupportedAnkleY(leftFootBone, 0f,
+                    out Vector3 pelvisGroundNormal, locomotionHipsBone.position);
+                if (!float.IsNaN(supportY))
+                {
+                    float hipBreadth = Vector3.Distance(
+                        leftThigh.position, rightThigh.position);
+                    float bodyClearance = Mathf.Min(
+                        controller.radius, hipBreadth * 0.5f);
+                    float correction = Mathf.Clamp(
+                        supportY + bodyClearance - locomotionHipsBone.position.y,
+                        -controller.height * 0.5f, controller.height * 0.5f);
+                    visualRoot.position += Vector3.up * correction *
+                        Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(
+                            0.70f, 0.98f, effectiveProneBlend));
+                }
+            }
+
             AnkleSupportSample coarseSupport = default;
             if (uprightGroundedSoldier &&
                 leftFootBone != null && rightFootBone != null)
@@ -2147,8 +2196,8 @@ namespace Aaris.MapReview
             // capsule after any retargeting scale adjustment. Never move
             // collisions/camera; the skeleton and its IK are visual-only.
             float lowPose = Mathf.Clamp01(effectiveCrouchBlend + effectiveProneBlend);
-            if (!visuallyAirborne && graphReady && lowPose > 0.01f &&
-                proneHeadBone != null)
+            if (!authoredRestProne && !visuallyAirborne && graphReady &&
+                lowPose > 0.01f && proneHeadBone != null)
             {
                 float capsuleTop = transform.TransformPoint(controller.center +
                     Vector3.up * controller.height * 0.5f).y;
@@ -2187,9 +2236,9 @@ namespace Aaris.MapReview
             // Use the authoritative capsule bottom as a conservative visual
             // support proxy. Limit lift by helmet headroom and replant shoes
             // using the existing low-stance IK; no extra physics queries.
-            if (!visuallyAirborne && graphReady && groundedNow &&
-                effectiveProneBlend > 0.02f && locomotionHipsBone != null &&
-                proneHeadBone != null)
+            if (!authoredRestProne && !visuallyAirborne && graphReady &&
+                groundedNow && effectiveProneBlend > 0.02f &&
+                locomotionHipsBone != null && proneHeadBone != null)
             {
                 float capsuleFloor = transform.TransformPoint(controller.center -
                     Vector3.up * (controller.height * 0.5f)).y;
@@ -2254,6 +2303,11 @@ namespace Aaris.MapReview
             float totalRigWeight = crouchRigWeight + proneRigWeight;
             float ankleRigWeight = !visuallyAirborne && graphReady
                 ? Mathf.Clamp01(totalRigWeight) : 0f;
+            // Static MIT lying pose includes its own anatomically authored
+            // foot/knee bends: only transition/crawl keep procedural two-bone IK.
+            if (authoredRestProne)
+                ankleRigWeight *= 1f - Mathf.SmoothStep(0f, 1f,
+                    Mathf.InverseLerp(0.70f, 0.98f, effectiveProneBlend));
             // Each low-stance animation has a continuous human-scale blend.
             // Do not inherit world-space foot anchors across a changing
             // crouch/prone capsule pose (including interrupted transitions).
@@ -2461,8 +2515,8 @@ namespace Aaris.MapReview
             // Pivot the chest gently forward instead of sinking the entire
             // humanoid rig and burying the shoes. Only animation transforms
             // change; this never adjusts collisions or camera authority.
-            if (!visuallyAirborne && graphReady && authoredProne &&
-                effectiveProneBlend > 0.01f &&
+            if (!authoredRestProne && !visuallyAirborne && graphReady &&
+                authoredProne && effectiveProneBlend > 0.01f &&
                 proneChestBone != null && proneHeadBone != null)
             {
                 Vector3 headFromChest = proneHeadBone.position - proneChestBone.position;
