@@ -124,10 +124,14 @@ namespace Aaris.MapReview
         public bool HasCloseWalkableStanceSupport()
         {
             if (controller == null || !controller.enabled) return false;
+            // Grounded reflects the previous Move. An upward launch can
+            // already be in progress while that old grounded bit remains true.
+            // Read the motor's actual vertical motion instead of blocking
+            // legitimate landings for a hardcoded post-jump time window.
+            if (verticalVelocity > 0f) return false;
             if (controller.isGrounded) return true;
             float now = Time.unscaledTime;
-            if (now - lastPhysicalGroundContact > StanceGroundGraceSeconds ||
-                now - lastJumpStarted < 0.65f)
+            if (now - lastPhysicalGroundContact > StanceGroundGraceSeconds)
                 return false;
             // Use the real capsule dimensions, not a per-character pose height.
             // A seam gap is narrower than the ordinary downhill step distance.
