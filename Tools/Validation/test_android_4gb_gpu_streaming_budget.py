@@ -44,7 +44,7 @@ class AndroidFourGigVehicleBudget(unittest.TestCase):
         )
         for assignment in (
             "spawnBudgetPerPoll = 1;",
-            "unloadBudgetPerPoll = 2;",
+            "unloadBudgetPerPoll = 1;",
             "spawnProbeBudgetPerPoll = 3;",
             "maxConcurrentAuthoredLoads = 1;",
         ):
