@@ -1348,10 +1348,41 @@ namespace Aaris.MapReview
                                         candidateBend * across;
                                 }
                             }
-                            // Never trade ground clearance for a cosmetic
-                            // side constraint if the upward solution cannot
-                            // reach the valid floor-safe sector this frame.
-                            if (candidateKnee.y >= minimumKneeWorldY - 0.002f)
+                            // A hard reject of a floor-unsafe side trim
+                            // preserves an avoidable knee flare. Find the
+                            // largest FLOOR-SAFE fraction of this same
+                            // bounded knee-circle turn. Nlerp stays on the
+                            // bend circle after normalization; no new bones,
+                            // IK passes, raycasts or heap allocations.
+                            if (candidateKnee.y < minimumKneeWorldY - 0.002f &&
+                                kneeGoal.y >= minimumKneeWorldY - 0.002f)
+                            {
+                                float safe = 0f;
+                                float unsafe = 1f;
+                                for (int step = 0; step < 6; step++)
+                                {
+                                    float middle = (safe + unsafe) * 0.5f;
+                                    Vector3 partial = Vector3.Lerp(
+                                        bend, candidateBend, middle).normalized;
+                                    float partialKneeY = hip.y + axis.y * along +
+                                        partial.y * across;
+                                    if (partialKneeY >= minimumKneeWorldY - 0.002f)
+                                        safe = middle;
+                                    else
+                                        unsafe = middle;
+                                }
+                                candidateBend = Vector3.Lerp(
+                                    bend, candidateBend, safe).normalized;
+                                candidateKnee = hip + axis * along +
+                                    candidateBend * across;
+                            }
+                            // Never buy lateral alignment by violating the
+                            // floor, or accept a partial move that makes the
+                            // sideways excursion worse on a retargeted rig.
+                            float correctedSide = Vector3.Dot(
+                                candidateKnee - hip, anatomicalSideAxis);
+                            if (candidateKnee.y >= minimumKneeWorldY - 0.002f &&
+                                Mathf.Abs(correctedSide) + 0.001f < Mathf.Abs(kneeSide))
                             {
                                 bend = candidateBend;
                                 kneeGoal = candidateKnee;
