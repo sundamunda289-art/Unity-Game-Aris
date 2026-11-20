@@ -26,7 +26,10 @@ assert "turningFast || transitioningStance" in resolve_code
 assert "contactLocked = false;" in resolve_code
 assert "Vector3 targetFoot = resolvedFootWorld;" in plant_code
 assert "targetFoot.y = ankleWorldY;" in plant_code
-assert "Vector3 origin = sampleWorld + Vector3.up * 0.70f;" in support_code
+assert "float capsuleBottomY = controller != null && controller.enabled" in support_code
+assert "Mathf.Max(sampleWorld.y, capsuleBottomY) + 0.70f," in support_code
+assert "new Vector3(sampleWorld.x," in support_code
+assert "sampleWorld.z);" in support_code
 query_buffer = (Path(__file__).resolve().parents[2] /
                 "Assets/AarisWorld/Scripts/AarisPhysicsHitBuffer.cs").read_text()
 assert "QueryTriggerInteraction.Ignore" in query_buffer
