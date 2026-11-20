@@ -324,15 +324,30 @@ namespace Aaris.MapReview
                         continue;
                     }
                     instance.name = site.name;
+                    // Register the complete authored house immediately. A later
+                    // optional cosmetic pass must never lose it on cancellation.
+                    placed.Add(instance);
                     // Reuse ONE shared URP Lit material and ONE combined mesh per
                     // house for roof fascia, foundation plinth and corner trim.
                     // No extra colliders, so door and window apertures stay open.
                     if (site.prefabKey == "cottage" ||
                         site.prefabKey == "bungalow" ||
                         site.prefabKey == "detached")
+                    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                        // Instantiating a house and uploading its additional
+                        // combined facade mesh in ONE frame stacks native CPU/GPU
+                        // integration costs. Preserve every mesh and texture but
+                        // defer the optional trim until a DIFFERENT admitted frame.
+                        yield return null;
+                        while (isActiveAndEnabled && instance != null &&
+                            !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                            yield return null;
+                        if (!isActiveAndEnabled || instance == null) yield break;
+#endif
                         AarisHouseFacadeTrim.Install(instance,
                             site.width, site.depth, site.height);
-                    placed.Add(instance);
+                    }
                 }
             }
             finally
