@@ -59,13 +59,16 @@ class StreamedSettlementSafety(unittest.TestCase):
         self.assertIn("bool blockedByTrees = TreesBlock(site, terrains);", setup)
         self.assertIn("bool blockedByCollider = !blockedByTrees && CollidersBlock(site, y);", setup)
         self.assertIn("if (blockedByTrees || blockedByCollider)", setup)
-        self.assertIn("!TryRelocateInteractiveSite(site, terrains, out y)", setup)
+        self.assertIn("yield return RelocateInteractiveSiteAcrossFrames(site, terrains);", setup)
+        self.assertIn("relocated = TryRelocateInteractiveSite(site, terrains, out y);", setup)
+        self.assertIn("if (!relocated)", setup)
         # No early unconditional tree skip before the relocation decision.
         self.assertNotIn("if (TreesBlock(site, terrains))", setup)
         self.assertLess(setup.index("bool blockedByTrees ="),
-                        setup.index("!TryRelocateInteractiveSite("))
+                        setup.index("yield return RelocateInteractiveSiteAcrossFrames("))
         # Noninteractive sites must never be moved.
-        self.assertIn("if (!site.interactive ||", setup)
+        self.assertIn("if (site.interactive)", setup)
+        self.assertIn("if (!relocated)", setup)
 
     def test_obstacle_classification_only_counts_abandoned_sites(self):
         setup = EXPANSION[EXPANSION.index("bool blockedByTrees ="):
@@ -73,7 +76,7 @@ class StreamedSettlementSafety(unittest.TestCase):
         self.assertIn("if (blockedByTrees) skippedTrees++;", setup)
         self.assertIn("skippedObstacle++;", setup)
         self.assertIn('Debug.LogWarning("AARIS_EXPANSION_OBSTACLE_SITE "', setup)
-        self.assertLess(setup.index("!TryRelocateInteractiveSite("),
+        self.assertLess(setup.index("if (!relocated)"),
                         setup.index("if (blockedByTrees) skippedTrees++;"))
         # Accepting a relocated candidate still requires independent terrain,
         # foliage and collider verification. Invalid sites retain old values.
