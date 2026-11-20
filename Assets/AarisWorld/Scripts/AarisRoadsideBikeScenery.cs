@@ -39,6 +39,9 @@ namespace Aaris.MapReview
         // A material-integration slice may span several frames on budget GPUs.
         // Never render a bike with a partially initialized material palette.
         private bool bikeMaterialsReady;
+        // Only the material builder coroutine is tracked; other streaming
+        // tasks and the original pooled/visible bike objects are unaffected.
+        private Coroutine bikeMaterialBuild;
         private float nextPoll;
         private bool lowMemoryPending;
         private float poolAllowedAt;
@@ -218,8 +221,63 @@ namespace Aaris.MapReview
             bikeMaterialsReady = true;
         }
 
-        private void OnEnable() { Application.lowMemory += OnLowMemory; }
-        private void OnDisable() { Application.lowMemory -= OnLowMemory; }
+        private void OnEnable()
+        {
+            Application.lowMemory += OnLowMemory;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Disabling a GameObject can stop its coroutine between palette
+            // slices. Resume after re-enable instead of hiding every bike.
+            if (bikeSource != null && !bikeMaterialsReady &&
+                AarisMobileStreamingFrameGate.IsConstrainedDevice())
+                bikeMaterialBuild = StartCoroutine(ResumeMaterialPaletteAfterEnable());
+#endif
+        }
+
+        private void OnDisable()
+        {
+            Application.lowMemory -= OnLowMemory;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (bikeMaterialBuild != null)
+            {
+                StopCoroutine(bikeMaterialBuild);
+                bikeMaterialBuild = null;
+            }
+            // Only incomplete palettes can be discarded. Completed paint and
+            // the original visible/pool bikes must survive temporary disable.
+            if (!bikeMaterialsReady) ReleaseIncompleteMaterialPalette();
+#endif
+        }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private System.Collections.IEnumerator ResumeMaterialPaletteAfterEnable()
+        {
+            // The preceding frame must finish destroying incomplete GPU
+            // materials before we allocate any replacements.
+            yield return null;
+            while (isActiveAndEnabled &&
+                   !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                yield return null;
+            if (!isActiveAndEnabled) yield break;
+            yield return BuildMaterialsAcrossFrames(true);
+        }
+
+        private void ReleaseIncompleteMaterialPalette()
+        {
+            // Palette slot zero aliases surfaces[0]: release only the three
+            // unique paint variants, then each surface exactly once.
+            for (int i = 1; i < paintVariants.Length; i++)
+            {
+                if (paintVariants[i] != null) Destroy(paintVariants[i]);
+                paintVariants[i] = null;
+            }
+            paintVariants[0] = null;
+            for (int i = 0; i < surfaces.Length; i++)
+            {
+                if (surfaces[i] != null) Destroy(surfaces[i]);
+                surfaces[i] = null;
+            }
+        }
+#endif
         // Android can report low memory during a heavy frame. Release pooled
         // scenery only from Update, never inside the notification callback.
         private void OnLowMemory() { lowMemoryPending = true; }
@@ -278,7 +336,7 @@ namespace Aaris.MapReview
                 }
 #if UNITY_ANDROID && !UNITY_EDITOR
                 if (AarisMobileStreamingFrameGate.IsConstrainedDevice())
-                    StartCoroutine(BuildMaterialsAcrossFrames(true));
+                    bikeMaterialBuild = StartCoroutine(BuildMaterialsAcrossFrames(true));
                 else
                     SetupMaterials();
 #else
