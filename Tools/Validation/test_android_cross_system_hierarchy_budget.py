@@ -104,8 +104,10 @@ class HierarchyAdmission(unittest.TestCase):
             "private bool TryRelocateInteractiveSite(", 1)[0]
         self.assertIn("int attemptsPerFrame = mobile ? 1 : 2;", body)
         self.assertIn("data.GetTreeInstance(i)", body)
+        # Original house build and optional facade mesh upload now claim
+        # different Android frames; no second independent scheduler exists.
         self.assertEqual(body.count(
-            "AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()"), 1)
+            "AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()"), 2)
         self.assertIn(
             "while (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())\n"
             "                        yield return null;", body)
@@ -116,6 +118,12 @@ class HierarchyAdmission(unittest.TestCase):
         self.assertLess(body.index("TryClaimOptionalModelBuild()"),
                         body.index("Instantiate(prefab, position"))
         self.assertIn("placed.Add(instance);", body)
+        self.assertLess(body.index("placed.Add(instance);"),
+                        body.index("AarisHouseFacadeTrim.Install(instance"))
+        self.assertLess(body.index("Instantiate(prefab, position"),
+                        body.rindex("TryClaimOptionalModelBuild()"))
+        self.assertLess(body.rindex("TryClaimOptionalModelBuild()"),
+                        body.index("AarisHouseFacadeTrim.Install(instance"))
         self.assertIn("treeCache.Clear();", body)
 
     def test_zero_render_detail_changes(self):
