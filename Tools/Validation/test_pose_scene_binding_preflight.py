@@ -53,10 +53,15 @@ for token in (
     'player.GetComponent<AarisThirdPersonPlayer>()',
     'prefab.GetComponent<AarisThirdPersonPlayer>()',
     "QA_PLAYER_FBX_NOT_MATERIALIZED",
+    'File.OpenRead(fbxFile)',
+    'stream.Length',
+    '"Kaydara FBX Binary"',
+    '" fbxBytes="',
     "QA_PLAYER_SCRIPT_BINDING_MISSING",
     "AARIS_POSE_QA_PREFLIGHT",
 ):
     assert token in preflight, f"Missing QA preflight protection: {token}"
+assert "new FileInfo(fbxFile).Length" not in preflight
 assert "new GameObject" not in preflight and "AddComponent" not in preflight
 assert "QA_BOOTSTRAP_DETAIL roots=" in editor
 assert "FindObjectsInactive.Include, FindObjectsSortMode.None" in editor
