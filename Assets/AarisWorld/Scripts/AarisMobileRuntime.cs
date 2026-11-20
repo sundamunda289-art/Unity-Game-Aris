@@ -690,8 +690,20 @@ namespace Aaris.MapReview
         {
             if (requestedFps <= 0) return 30f; // Android's -1 default.
             float refreshHz = (float)Screen.currentResolution.refreshRateRatio.value;
-            if (refreshHz <= 0f) return requestedFps;
+            // Invalid display timings must never propagate NaN through the
+            // GPU/frame governor or trigger an accidental quality reduction.
+            if (float.IsNaN(refreshHz) || float.IsInfinity(refreshHz) ||
+                refreshHz < 1f) return requestedFps;
             int divisor = Mathf.Max(1, Mathf.CeilToInt(refreshHz / requestedFps));
+            // Android displays may report 90.0001 rather than exactly 90 Hz.
+            // Without this precision guard, a 30-FPS request is incorrectly
+            // budgeted at 22.5 FPS (4 refresh intervals instead of 3).
+            // Tolerate only 0.05 Hz of clock reporting noise; do not round
+            // legitimate non-divisor refresh modes such as 59.94 Hz.
+            int nearestDivisor = Mathf.RoundToInt(refreshHz / requestedFps);
+            if (nearestDivisor >= 1 &&
+                Mathf.Abs(refreshHz - nearestDivisor * requestedFps) <= 0.05f)
+                divisor = nearestDivisor;
             return refreshHz / divisor;
         }
 
