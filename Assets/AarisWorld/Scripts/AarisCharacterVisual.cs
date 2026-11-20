@@ -1669,7 +1669,21 @@ namespace Aaris.MapReview
             // surfaces, preserve the authored unsupported foot instead of
             // inventing a support plane at the motor origin.
             if (foot == null) return float.NaN;
-            Vector3 origin = sampleWorld + Vector3.up * 0.70f;
+            // A retargeted crouch/prone clip can start a shoe >70 cm
+            // below the motor's real support during an interrupted blend.
+            // Casting from that ankle would begin BELOW the floor and miss
+            // the collider entirely. Use the capsule bottom as a conservative
+            // height reference, but preserve the shoe's exact X/Z contact.
+            // On ordinary poses this is identical to the old ray origin.
+            float safeSampleY = sampleWorld.y;
+            if (controller != null && controller.enabled)
+            {
+                float capsuleBottomY = transform.TransformPoint(
+                    controller.center - Vector3.up * (controller.height * 0.5f)).y;
+                safeSampleY = Mathf.Max(safeSampleY, capsuleBottomY - 0.05f);
+            }
+            Vector3 origin = new Vector3(sampleWorld.x,
+                safeSampleY + 0.70f, sampleWorld.z);
             // Do not exclude the whole player layer: terrain, bridges and the
             // actor are often all Default (layer 0). The hit loop below
             // filters only colliders belonging to this character.
