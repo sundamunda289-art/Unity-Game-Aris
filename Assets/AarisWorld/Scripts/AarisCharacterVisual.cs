@@ -176,6 +176,11 @@ namespace Aaris.MapReview
         private float lastFacingYaw;
         private bool motionHistoryReady;
         private Vector3 lastMotorPosition;
+        // Keep the pelvis left/right direction in capsule-local coordinates.
+        // Crossed or overlapping thighs can momentarily erase/reverse the
+        // measured knee bend plane during crouch/prone clip crossfades.
+        private Vector3 lastReliableAnatomicalRightLocal;
+        private bool hasReliableAnatomicalRight;
         private AnimationClip idleClip, walkClip, runClip;
         private float locomotionPhase, crouchPhase, crawlPhase;
         private float gaitDirection = 1f; // Stable contact phase for backpedal.
@@ -1381,16 +1386,50 @@ namespace Aaris.MapReview
         // matching the anatomical basis already used by low stances. This
         // prevents a sideways imported pelvis from flipping standing knees
         // when a shoe loses support at a ledge or during a swing.
+        // A knee hint must be continuous across a retargeted pose transition.
+        // A temporary near-zero hip-right span previously snapped the knee
+        // forward to the capsule's heading (up to 90 degrees off on this FBX).
+        // Store the last valid anatomy in capsule space so turns keep it aligned.
+        // Reject a one-frame >110-degree pelvis-axis inversion from crossed
+        // thighs; accept normal, gradual real body turns. Value structs only.
+        private Vector3 StableAnatomicalRight(Vector3 measuredHipRight)
+        {
+            Vector3 previous = Vector3.zero;
+            if (hasReliableAnatomicalRight)
+            {
+                previous = Vector3.ProjectOnPlane(transform.TransformDirection(
+                    lastReliableAnatomicalRightLocal), Vector3.up);
+                if (previous.sqrMagnitude > 0.0001f) previous.Normalize();
+            }
+            Vector3 current = Vector3.ProjectOnPlane(measuredHipRight, Vector3.up);
+            if (current.sqrMagnitude > 0.02f)
+            {
+                current.Normalize();
+                if (previous.sqrMagnitude > 0.25f &&
+                    Vector3.Dot(current, previous) < -0.35f)
+                    return previous;
+                lastReliableAnatomicalRightLocal =
+                    transform.InverseTransformDirection(current);
+                hasReliableAnatomicalRight = true;
+                return current;
+            }
+            return previous;
+        }
+
         private Vector3 AnatomicalKneeForward()
         {
             if (leftThigh != null && rightThigh != null)
             {
                 Vector3 hipRight = Vector3.ProjectOnPlane(
                     rightThigh.position - leftThigh.position, Vector3.up);
-                if (hipRight.sqrMagnitude > 0.02f)
-                    return Vector3.Cross(hipRight.normalized, Vector3.up).normalized;
+                Vector3 stableRight = StableAnatomicalRight(hipRight);
+                if (stableRight.sqrMagnitude > 0.25f)
+                    return Vector3.Cross(stableRight, Vector3.up).normalized;
             }
-            return transform.forward;
+            Vector3 cachedRight = StableAnatomicalRight(Vector3.zero);
+            return cachedRight.sqrMagnitude > 0.25f
+                ? Vector3.Cross(cachedRight, Vector3.up).normalized
+                : transform.forward;
         }
 
         private void CorrectReversedSwingKnee(Transform thigh, Transform shin,
@@ -1491,10 +1530,10 @@ namespace Aaris.MapReview
             // away from the capsule. This could twist knees on crawl/pivots.
             Vector3 anatomicalRight = Vector3.ProjectOnPlane(
                 rightThigh.position - leftThigh.position, Vector3.up);
-            bool validAnatomicalRight = anatomicalRight.sqrMagnitude > 0.02f;
+            anatomicalRight = StableAnatomicalRight(anatomicalRight);
+            bool validAnatomicalRight = anatomicalRight.sqrMagnitude > 0.25f;
             if (validAnatomicalRight)
             {
-                anatomicalRight.Normalize();
                 crouchKneeForward = Vector3.Cross(anatomicalRight,
                     Vector3.up).normalized;
             }
@@ -1969,6 +2008,7 @@ namespace Aaris.MapReview
                 smoothedAccelerationPitch = 0f;
                 smoothedTurnBank = 0f;
                 smoothedOrientationWarpYaw = 0f;
+                hasReliableAnatomicalRight = false;
                 // A respawn or vehicle hand-off must also drop the previous
                 // lateral strafe lean. Otherwise the new stationary pose can
                 // remain banked for several frames despite zero local motion.
