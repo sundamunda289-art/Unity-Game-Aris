@@ -80,9 +80,16 @@ class SharedStreamingAdmission(unittest.TestCase):
     def test_bike_prewarm_materials_and_new_rigs_share_slot(self):
         body = BIKE.split("private void Update()", 1)[1].split(
             "private GameObject ReuseBike(", 1)[0]
-        # Source import, interrupted-palette restart and first rig spawn
-        # each claim a separate optional frame slot.
-        self.assertEqual(body.count(CLAIM), 3)
+        # Source import and new rig spawn claim in Update. The palette
+        # restart and FIRST pair claim separately inside the coroutine, so
+        # the restart never burns an admission with zero material work.
+        self.assertEqual(body.count(CLAIM), 2)
+        palette = BIKE.split(
+            "private System.Collections.IEnumerator BuildMaterialsAcrossFrames(bool stagger)", 1
+        )[1].split("private void OnEnable()", 1)[0]
+        self.assertEqual(palette.count(CLAIM), 3)
+        self.assertLess(palette.index(CLAIM),
+                        palette.index('Shader shader = Shader.Find("Universal Render Pipeline/Lit");'))
         self.assertIn("bikeMaterialsBuild == null", body)
         self.assertLess(body.index("bikeMaterialsBuild == null"),
                         body.index("if (!bikeMaterialsReady) return;"))
