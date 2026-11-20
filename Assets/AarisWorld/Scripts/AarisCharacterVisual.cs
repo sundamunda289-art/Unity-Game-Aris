@@ -1070,8 +1070,11 @@ namespace Aaris.MapReview
             // 100STYLE crouch is an actual crouched locomotion cycle, so its
             // cycle boundary is a valid feet-down hold instead of KayKit's
             // kneeling transition frame. Legacy clips keep their reviewed hold.
+            // A valid CC0 idle loop also owns its own cycle-boundary pose.
+            // It must not inherit the legacy KayKit transition's sample time
+            // when optional MIT/ALS assets are absent on a fresh install.
             crouchPlayable.SetTime(naturalMocapLoaded || alsCrouchLoaded ||
-                communityStanceClipsLoaded
+                communityStanceClipsLoaded || cc0CrouchLoaded
                 ? 0d : crouchClip.length * (10d / 24d));
             // The 24-frame KayKit Crawling source uses frame 0 as its prone
             // hold. Do not freeze a mid-crawl pose as the player's prone idle.
