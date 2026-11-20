@@ -116,6 +116,30 @@ namespace Aaris.MapReview
         private float lastLandingImpactSpeed;
         // Only actual motor contact defines a meaningful landing.
         private float lastPhysicalGroundContact = -10f;
+        // CharacterController.isGrounded describes the last Move. A walkable
+        // terrain seam may report false for one frame even with nearby support.
+        // Require recent actual contact AND a fresh walkable sphere cast;
+        // deliberate takeoff and genuinely unsupported falls remain rejected.
+        private const float StanceGroundGraceSeconds = 0.13f;
+        public bool HasCloseWalkableStanceSupport()
+        {
+            if (controller == null || !controller.enabled) return false;
+            // Grounded reflects the previous Move. An upward launch can
+            // already be in progress while that old grounded bit remains true.
+            // Read the motor's actual vertical motion instead of blocking
+            // legitimate landings for a hardcoded post-jump time window.
+            if (verticalVelocity > 0f) return false;
+            if (controller.isGrounded) return true;
+            float now = Time.unscaledTime;
+            if (now - lastPhysicalGroundContact > StanceGroundGraceSeconds)
+                return false;
+            // Use the real capsule dimensions, not a per-character pose height.
+            // A seam gap is narrower than the ordinary downhill step distance.
+            float seamGap = Mathf.Min(downhillProbeDistance,
+                Mathf.Max(controller.skinWidth * 2f, controller.radius * 0.25f));
+            return HasWalkableGroundWithinStep(seamGap);
+        }
+
         public bool IsInAir => controller != null && !controller.isGrounded;
         public float LastLandingTime => lastLanding;
         public float LastLandingImpactSpeed => lastLandingImpactSpeed;
@@ -770,18 +794,21 @@ namespace Aaris.MapReview
             if (leftLeg != null) leftLeg.localRotation = leftLegRest * Quaternion.Euler(angle, 0f, 0f);
             if (rightLeg != null) rightLeg.localRotation = rightLegRest * Quaternion.Euler(-angle, 0f, 0f);
         }
-        private bool HasWalkableGroundWithinStep()
+        private bool HasWalkableGroundWithinStep() =>
+            HasWalkableGroundWithinStep(downhillProbeDistance);
+
+        private bool HasWalkableGroundWithinStep(float maxDistance)
         {
-            if (downhillProbeDistance <= 0f || controller == null) return false;
+            if (maxDistance <= 0f || controller == null) return false;
             float radius = Mathf.Max(.07f, controller.radius - controller.skinWidth);
             Vector3 footSphere = transform.TransformPoint(
                 controller.center + Vector3.down * (controller.height * .5f - radius));
             Vector3 start = footSphere + Vector3.up * .04f;
             if (!Physics.SphereCast(start, radius, Vector3.down, out RaycastHit hit,
-                downhillProbeDistance + .04f, WorldMask, QueryTriggerInteraction.Ignore))
+                maxDistance + .04f, WorldMask, QueryTriggerInteraction.Ignore))
                 return false;
             return hit.normal.y >= Mathf.Cos(controller.slopeLimit * Mathf.Deg2Rad) &&
-                hit.distance <= downhillProbeDistance + .04f;
+                hit.distance <= maxDistance + .04f;
         }
 
         // Slide only along already requested movement, never drift sideways

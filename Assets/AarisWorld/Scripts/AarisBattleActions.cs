@@ -137,7 +137,9 @@ namespace Aaris.MapReview
             // capsule and lets the visual head/feet pass through geometry.
             // Crouch remains permitted in the air; prone needs real ground
             // contact from the motor's most recent CharacterController.Move.
-            if (target == PlayerStance.Prone && !capsule.isGrounded) return false;
+            if (target == PlayerStance.Prone &&
+                !(motor != null ? motor.HasCloseWalkableStanceSupport()
+                    : capsule.isGrounded)) return false;
             float height = target == PlayerStance.Standing ? standingHeight :
                 target == PlayerStance.Crouching ? crouchHeight : proneHeight;
             // CharacterController cannot be shorter than its diameter.
