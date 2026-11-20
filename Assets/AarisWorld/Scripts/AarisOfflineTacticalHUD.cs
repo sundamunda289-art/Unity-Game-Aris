@@ -96,7 +96,8 @@ namespace Aaris.MapReview
 
         internal static void EnsureForPlayer(AarisThirdPersonPlayer player)
         {
-            if (player == null) return;
+            if (player == null ||
+                player.GetComponent<AarisLocomotionGymMarker>() != null) return;
             bool hasDamageReceiver = false;
             foreach (var receiver in player.GetComponents<MonoBehaviour>())
                 if (receiver is IAarisDamageable) { hasDamageReceiver = true; break; }

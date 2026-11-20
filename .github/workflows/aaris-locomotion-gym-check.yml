@@ -1,0 +1,24 @@
+name: Aaris Locomotion Gym Static Checks
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisLocomotionGymMarker.cs'
+      - 'Assets/AarisWorld/Scripts/AarisThirdPersonPlayer.cs'
+      - 'Assets/AarisWorld/Editor/AarisLocomotionGymBuilder.cs'
+      - 'Assets/AarisWorld/Editor/AarisExplorerBuild.cs'
+      - 'Tools/CI/build_locomotion_gym.sh'
+      - 'Tools/Validation/test_locomotion_gym.py'
+      - '.github/workflows/aaris-locomotion-gym-check.yml'
+  push:
+    branches:
+      - 'feature/isolated-locomotion-gym-20261119'
+  workflow_dispatch:
+jobs:
+  check-gym:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Gym shell
+        run: bash -n Tools/CI/build_locomotion_gym.sh
+      - name: Validate movement-only scene isolation
+        run: python3 -m unittest Tools.Validation.test_locomotion_gym -v

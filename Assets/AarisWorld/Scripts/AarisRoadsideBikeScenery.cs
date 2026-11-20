@@ -59,7 +59,8 @@ namespace Aaris.MapReview
         private static void Boot()
         {
             AarisThirdPersonPlayer motor = FindFirstObjectByType<AarisThirdPersonPlayer>();
-            if (motor == null || FindFirstObjectByType<AarisRoadsideBikeScenery>() != null)
+            if (motor == null || motor.GetComponent<AarisLocomotionGymMarker>() != null ||
+                FindFirstObjectByType<AarisRoadsideBikeScenery>() != null)
                 return;
             var root = new GameObject("Aaris Roadside Motorcycles (streamed scenery)");
             root.AddComponent<AarisRoadsideBikeScenery>().player = motor.transform;

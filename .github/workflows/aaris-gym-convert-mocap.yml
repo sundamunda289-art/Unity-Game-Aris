@@ -1,0 +1,46 @@
+name: Aaris Gym New Mocap FBX Conversion
+on:
+  push:
+    branches: [feature/isolated-locomotion-gym-20261119]
+    paths:
+      - 'Tools/CI/convert_gym_mocap_blender.py'
+      - '.github/workflows/aaris-gym-convert-mocap.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  convert:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Install Blender
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends blender python3-numpy
+      - name: Fetch verified public movement-only source recordings
+        run: python3 Tools/CI/fetch_gym_mocap.py --output /tmp/aaris-new-mocap --inspect-accad
+      - name: Convert skeletal motions to Unity FBX candidates
+        run: |
+          blender --background --python Tools/CI/convert_gym_mocap_blender.py -- --input /tmp/aaris-new-mocap --output /tmp/aaris-gym-fbx --accad
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          manifest=json.loads(Path('/tmp/aaris-gym-fbx/retarget-preflight.json').read_text())
+          assert len(manifest['clips'])==18
+          assert all(x['bone_count'] >= 15 for x in manifest['clips'])
+          assert all(Path('/tmp/aaris-gym-fbx',x['filename']).is_file() for x in manifest['clips'])
+          print('AARIS_GYM_18_FBX_CANDIDATES_VALID', manifest['total_bytes'])
+          PY
+      - name: Upload binary test assets, attribution, and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-gym-18-new-mocap-fbx
+          path: |
+            /tmp/aaris-gym-fbx/*.fbx
+            /tmp/aaris-gym-fbx/retarget-preflight.json
+            /tmp/aaris-new-mocap/source-manifest.json
+          retention-days: 10
+          if-no-files-found: error
