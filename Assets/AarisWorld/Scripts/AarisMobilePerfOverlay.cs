@@ -94,8 +94,8 @@ namespace Aaris.MapReview
             float sum = 0f;
             for (int i = 0; i < frameCount; i++) sum += recentFramesMs[i];
             float fps = sum > 0f ? 1000f * frameCount / sum : 0f;
-            double cpuMs = mainThreadRecorder.IsValid ? mainThreadRecorder.LastValue / 1000000.0 : -1.0;
-            long gcBytes = gcAllocRecorder.IsValid ? gcAllocRecorder.LastValue : -1L;
+            double cpuMs = mainThreadRecorder.Valid ? mainThreadRecorder.LastValue / 1000000.0 : -1.0;
+            long gcBytes = gcAllocRecorder.Valid ? gcAllocRecorder.LastValue : -1L;
             double monoMiB = Profiler.GetMonoUsedSizeLong() / BytesPerMiB;
             double unityReservedMiB = Profiler.GetTotalReservedMemoryLong() / BytesPerMiB;
 
@@ -197,20 +197,20 @@ namespace Aaris.MapReview
         private void UpdateRecorders()
         {
             bool needed = overlayVisible || recording;
-            if (needed && !mainThreadRecorder.IsValid)
+            if (needed && !mainThreadRecorder.Valid)
             {
                 try { mainThreadRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Internal, "CPU Main Thread Frame Time"); }
                 catch (Exception) { /* Counter may be unsupported on this device. */ }
             }
-            if (needed && !gcAllocRecorder.IsValid)
+            if (needed && !gcAllocRecorder.Valid)
             {
                 try { gcAllocRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC.Alloc"); }
                 catch (Exception) { /* No fabricated zero when unavailable. */ }
             }
             if (!needed)
             {
-                if (mainThreadRecorder.IsValid) mainThreadRecorder.Dispose();
-                if (gcAllocRecorder.IsValid) gcAllocRecorder.Dispose();
+                if (mainThreadRecorder.Valid) mainThreadRecorder.Dispose();
+                if (gcAllocRecorder.Valid) gcAllocRecorder.Dispose();
             }
         }
 
@@ -261,8 +261,8 @@ namespace Aaris.MapReview
         private void OnDestroy()
         {
             if (instance == this) instance = null;
-            if (mainThreadRecorder.IsValid) mainThreadRecorder.Dispose();
-            if (gcAllocRecorder.IsValid) gcAllocRecorder.Dispose();
+            if (mainThreadRecorder.Valid) mainThreadRecorder.Dispose();
+            if (gcAllocRecorder.Valid) gcAllocRecorder.Dispose();
             TryFlushCsv();
         }
     }
