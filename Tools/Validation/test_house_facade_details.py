@@ -40,8 +40,15 @@ class HouseFacadeDetails(unittest.TestCase):
         self.assertIn("renderer.shadowCastingMode = ShadowCastingMode.Off;", FACADE)
 
     def test_thirteen_sections_keep_real_door_clear(self):
-        self.assertIn("var vertices = new List<Vector3>(13 * 24);", FACADE)
-        self.assertIn("var triangles = new List<int>(13 * 36);", FACADE)
+        # Mesh geometry is unchanged, but temporary lists are reused to
+        # eliminate per-home cold-start allocations on 4–6 GB Android phones.
+        self.assertIn("static readonly List<Vector3> scratchVertices", FACADE)
+        self.assertIn("static readonly List<int> scratchTriangles", FACADE)
+        self.assertIn("List<Vector3> vertices = scratchVertices;", FACADE)
+        self.assertIn("List<int> triangles = scratchTriangles;", FACADE)
+        self.assertIn("vertices.Clear();", FACADE)
+        self.assertIn("triangles.Clear();", FACADE)
+        self.assertNotIn("var vertices = new List<Vector3>(13 * 24);", FACADE)
         self.assertIn("float entryGap = 1.92f;", FACADE)
         self.assertIn("float wing = (width-entryGap) * .5f;", FACADE)
         self.assertGreater(1.92, 1.52)
