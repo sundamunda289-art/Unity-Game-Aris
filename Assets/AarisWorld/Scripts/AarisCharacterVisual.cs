@@ -1003,7 +1003,8 @@ namespace Aaris.MapReview
                 ? Resources.Load<AnimationClip>("AarisCharacters/CC0Locomotion/Crawl_Fwd_Loop") : null;
             cc0CrouchLoaded = cc0CrouchIdle != null && cc0CrouchForward != null &&
                 cc0CrouchIdle.humanMotion && cc0CrouchForward.humanMotion &&
-                !cc0CrouchIdle.legacy && !cc0CrouchForward.legacy;
+                !cc0CrouchIdle.legacy && !cc0CrouchForward.legacy &&
+                !alsCrouchLoaded;
             cc0CrawlLoaded = cc0CrawlIdle != null && cc0CrawlForward != null &&
                 cc0CrawlIdle.humanMotion && cc0CrawlForward.humanMotion &&
                 !cc0CrawlIdle.legacy && !cc0CrawlForward.legacy;
