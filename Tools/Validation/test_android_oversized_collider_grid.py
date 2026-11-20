@@ -64,7 +64,10 @@ class OversizedColliderGrid(unittest.TestCase):
             self.assertIn("foreach (int i in oversizedIndices)", body)
             self.assertIn("Collider c = obstacles[i];", body)
         self.assertIn("wanted[i] = query;", refresh)
-        self.assertIn("if (!c.enabled) c.enabled = true;", refresh)
+        self.assertIn("if (!c.enabled)", refresh)
+        self.assertEqual(refresh.count("c.enabled = true;"), 2)
+        guarded = refresh.split("if (!c.enabled)", 1)[1].split("c.enabled = true;", 1)[0]
+        self.assertIn("AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();", guarded)
         self.assertIn("nextActive.Add(i);", refresh)
         self.assertIn("if (visited[i] == query) continue;", refresh)
         self.assertIn("worldBounds[i].Intersects(probe)", probe)
