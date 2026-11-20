@@ -658,11 +658,19 @@ if(status=="start"){
 SessionState.SetString("pose.state","run");SessionState.SetFloat("pose.time",(float)Now);
 Phase("00_Drop");Log("ENTER_PLAYMODE");return;
 }
-var p=UnityEngine.Object.FindFirstObjectByType<AarisThirdPersonPlayer>();
+// The flight system legitimately disables the foot motor while the actor
+// rides the aircraft. Resolve both QA components from the SAME live player
+// object before falling back to a scene-wide motor search. GetComponent
+// still works for a disabled Behaviour; the runtime controller is unchanged.
 var d=UnityEngine.Object.FindFirstObjectByType<AarisOfflineDrop>();
+var p=d!=null?d.GetComponent<AarisThirdPersonPlayer>():null;
+if(p==null)p=UnityEngine.Object.FindFirstObjectByType<AarisThirdPersonPlayer>();
 if(p==null||d==null){
-if(Now-SessionState.GetFloat("pose.time",(float)Now)>15)
+if(Now-SessionState.GetFloat("pose.time",(float)Now)>15){
+Log("QA_BOOTSTRAP_LOOKUP player="+(p!=null)+" drop="+(d!=null)+
+" scene="+SceneManager.GetActiveScene().path);
 Finish("NO_PLAYER_OR_DROP");
+}
 return;
 }
 var b=p.GetComponent<AarisBattleActions>();
