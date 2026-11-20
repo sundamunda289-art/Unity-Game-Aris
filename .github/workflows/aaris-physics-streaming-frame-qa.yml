@@ -7,6 +7,8 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisNearbyColliders.cs'
       - 'Tools/Validation/test_android_physics_streaming_frame_priority.py'
       - 'Tools/Validation/test_android_collider_claim_on_change.py'
+      - 'Tools/Validation/test_android_noop_collider_release_admission.py'
+      - 'Tools/Validation/run_colliders_release_admission_csharp.py'
       - '.github/workflows/aaris-physics-streaming-frame-qa.yml'
   push:
     branches: [main]
@@ -15,6 +17,8 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisNearbyColliders.cs'
       - 'Tools/Validation/test_android_physics_streaming_frame_priority.py'
       - 'Tools/Validation/test_android_collider_claim_on_change.py'
+      - 'Tools/Validation/test_android_noop_collider_release_admission.py'
+      - 'Tools/Validation/run_colliders_release_admission_csharp.py'
       - '.github/workflows/aaris-physics-streaming-frame-qa.yml'
 
 permissions:
@@ -36,6 +40,7 @@ jobs:
         run: |
           python -m unittest discover -s Tools/Validation -p 'test_android_physics_streaming_frame_priority.py'
           python -m unittest discover -s Tools/Validation -p 'test_android_collider_claim_on_change.py'
+          python -m unittest discover -s Tools/Validation -p 'test_android_noop_collider_release_admission.py'
           python -m unittest discover -s Tools/Validation -p 'test_android_shared_streaming_frame_gate.py'
           python -m unittest discover -s Tools/Validation -p 'test_android_collider_boot_budget.py'
           python -m unittest discover -s Tools/Validation -p 'test_android_collider_wallclock_budget.py'
@@ -43,6 +48,11 @@ jobs:
           python -m unittest discover -s Tools/Validation -p 'test_android_collider_release_burst.py'
           python -m unittest discover -s Tools/Validation -p 'test_android_oversized_collider_grid.py'
           python -m unittest discover -s Tools/Validation -p 'test_player_streamer_lifecycle.py'
+      - name: Compile and run production collider coroutine with Mono
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends mono-mcs
+          python Tools/Validation/run_colliders_release_admission_csharp.py
       - name: Parse actual C-sharp syntax, check formatting
         run: |
           python -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
@@ -55,6 +65,9 @@ jobs:
               Path('Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs'),
               Path('Assets/AarisWorld/Scripts/AarisNearbyColliders.cs'),
               Path('Tools/Validation/test_android_physics_streaming_frame_priority.py'),
+              Path('Tools/Validation/test_android_noop_collider_release_admission.py'),
+              Path('Tools/Validation/run_colliders_release_admission_csharp.py'),
+              Path('Docs/ANDROID_NOOP_COLLIDER_RELEASE_ADMISSION_20261120.md'),
               Path('Docs/ANDROID_PHYSICS_OPTIONAL_FRAME_COORDINATION_20261120.md'),
           ]
           for path in paths:
