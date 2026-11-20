@@ -33,12 +33,33 @@ class BikeMaterialPacingContract(unittest.TestCase):
             "private void OnEnable()", 1)[0]
         self.assertIn("if (stagger && i > 0 && (i & 1) == 0)", setup)
         self.assertEqual(setup.count("yield return null;\n                    while (isActiveAndEnabled"), 1)
-        self.assertEqual(setup.count("AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()"), 2)
+        self.assertEqual(setup.count("AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()"), 3)
         self.assertIn("if (!isActiveAndEnabled) yield break;", setup)
         self.assertIn("if (IsAssetCleanupPending())", GATE)
         self.assertIn("if (claimedFrame == frame)", GATE)
         # The sequence is a one-time setup; no allocations in per-frame hot loop.
         self.assertLess(BIKE.index("private void SetupMaterials()"), BIKE.index("private void Update()"))
+
+    def test_initial_gpu_setup_is_not_batched_with_import_frame(self):
+        setup = BIKE.split("private System.Collections.IEnumerator BuildMaterialsAcrossFrames(bool stagger)", 1)[1]
+        self.assertLess(
+            setup.index("if (stagger)"),
+            setup.index('Shader shader = Shader.Find("Universal Render Pipeline/Lit");'),
+        )
+        self.assertIn("ResourceRequest integration already owns its admission", setup)
+        self.assertIn("yield return null;", setup)
+
+    def test_partial_palette_rebuilds_on_reenable_without_leaking_materials(self):
+        self.assertIn("private Coroutine bikeMaterialsBuild;", BIKE)
+        disabled = BIKE.split("private void OnDisable()", 1)[1].split("private void Update()", 1)[0]
+        self.assertIn("if (!bikeMaterialsReady && bikeMaterialsBuild != null)", disabled)
+        self.assertIn("StopCoroutine(bikeMaterialsBuild);", disabled)
+        self.assertIn("bikeMaterialsBuild = null;", disabled)
+        self.assertIn("Destroy(paintVariants[i]);", disabled)
+        self.assertIn("Destroy(surfaces[i]);", disabled)
+        update = BIKE.split("private void Update()", 1)[1].split("private GameObject ReuseBike(", 1)[0]
+        self.assertIn("if (bikeSource != null && bikeMaterialsBuild == null &&", update)
+        self.assertIn("bikeMaterialsBuild = StartCoroutine(BuildMaterialsAcrossFrames(true));", update)
 
     def test_original_mesh_visuals_paint_limits_and_cleanup_remain(self):
         invariants = (
