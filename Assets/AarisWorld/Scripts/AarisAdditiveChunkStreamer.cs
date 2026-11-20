@@ -31,6 +31,9 @@ namespace Aaris.MapReview
         [SerializeField, Min(1f)] private float teleportRejectSpeed = 90f;
         [SerializeField, Min(0.05f)] private float pollSeconds = 0.25f;
         [SerializeField, Min(0f)] private float transitionCooldownSeconds = 0.25f;
+        // Only speculative, not currently needed, scenes are capped on budget Android.
+        // The near/visible authored cells and their bootstrap silhouette proxies stay intact.
+        [SerializeField, Min(0f)] private int maxSpeculativeResidentCells = 2;
 
         private struct State
         {
@@ -100,6 +103,14 @@ namespace Aaris.MapReview
                     states[finished].loadedByThisStreamer = scene.IsValid() && scene.isLoaded;
                 }
                 else states[finished].loadedByThisStreamer = false;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // Native renderer/physics integration and scene retirement can finish
+                // on this frame. Keep later optional builders from stacking onto it.
+                if (inFlightLoad)
+                    AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
+                else
+                    AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();
+#endif
                 inFlight = null;
                 inFlightCell = -1;
                 nextTransitionAt = now + transitionCooldownSeconds;
@@ -124,6 +135,7 @@ namespace Aaris.MapReview
             float exitMargin = Mathf.Max(unloadMargin, loadMargin + 1f);
             float exitSquared = exitMargin * exitMargin;
             int loadCell = -1, unloadCell = -1;
+            int speculativeResidentCount = 0;
             float nearestLoad = float.MaxValue, farthestUnload = -1f;
             for (int i = 0; i < chunks.Length; i++)
             {
@@ -134,6 +146,10 @@ namespace Aaris.MapReview
                     cell.halfExtents.x, cell.halfExtents.y);
                 if (states[i].loadedByThisStreamer)
                 {
+                    // Already-resident cells beyond the urgent margin consume
+                    // speculative headroom until movement or normal retirement.
+                    if (distance > entrySquared && distance <= exitSquared)
+                        speculativeResidentCount++;
                     // Always retain on *actual* position, including teleport.
                     // A wider exit boundary prevents load/unload oscillation.
                     if (distance > exitSquared && distance > farthestUnload)
@@ -168,6 +184,12 @@ namespace Aaris.MapReview
             else if (loadCell >= 0)
             {
 #if UNITY_ANDROID && !UNITY_EDITOR
+                // Bound predicted-only residency on constrained devices. A cell
+                // inside the player's real load margin ALWAYS bypasses this cap.
+                if (nearestLoad > entrySquared &&
+                    AarisMobileStreamingFrameGate.IsConstrainedDevice() &&
+                    speculativeResidentCount >= maxSpeculativeResidentCells)
+                    return;
                 if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()) return;
 #endif
                 StartOperation(loadCell, true);

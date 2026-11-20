@@ -22,4 +22,10 @@ for token in ('Math.Abs(x - centerX)', 'Math.Abs(z - centerZ)',
               'elapsed > 1.5f'):
     assert token in policy, token
 assert 'RuntimeInitializeOnLoadMethod' not in streamer  # no auto-bootstrap
+assert 'maxSpeculativeResidentCells = 2;' in streamer
+assert 'speculativeResidentCount >= maxSpeculativeResidentCells' in streamer
+assert 'nearestLoad > entrySquared' in streamer  # only predicted-only loads capped
+assert 'AarisMobileStreamingFrameGate.IsConstrainedDevice()' in streamer
+assert 'AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();' in streamer
+assert streamer.count('AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();') == 2
 print('PASS: opt-in additive streaming safety/source contracts')

@@ -93,8 +93,11 @@ namespace Aaris.MapReview
 {
     internal static class AarisMobileStreamingFrameGate
     {
+        internal static int physicsClaims, teardownClaims;
+        internal static bool IsConstrainedDevice() { return true; }
         internal static bool TryClaimOptionalModelBuild() { return true; }
-        internal static void ReserveNativeTeardownFrame() { }
+        internal static void ReservePhysicsStreamingFrame() { physicsClaims++; }
+        internal static void ReserveNativeTeardownFrame() { teardownClaims++; }
     }
 }
 
@@ -175,13 +178,35 @@ internal static class AdditiveChunkStreamingTests
         Check(SceneManager.loadCount == 1, "never start concurrent loads");
         SceneManager.Finish();
         Frame(manager, target, 1.5f, 190f);
+#if UNITY_ANDROID && !UNITY_EDITOR
+        Check(AarisMobileStreamingFrameGate.physicsClaims == 1,
+            "completed native scene integration reserves a separate frame");
+#endif
         Frame(manager, target, 1.8f, 230f);
         Check(SceneManager.unloadCount == 0, "hysteresis retains the scene");
         Frame(manager, target, 2.1f, 300f);
         Check(SceneManager.unloadCount == 1, "unload beyond retention margin");
         SceneManager.Finish();
         Frame(manager, target, 2.2f, 300f);
+#if UNITY_ANDROID && !UNITY_EDITOR
+        Check(AarisMobileStreamingFrameGate.teardownClaims == 2,
+            "native scene unload reserves start and completion frames");
+#endif
         Check(SceneManager.loadCount == 1, "distant scene should remain unloaded");
+
+        // A zero speculative residency budget blocks only optional prefetch.
+        // A truly near chunk still loads at its original entry distance.
+#if UNITY_ANDROID && !UNITY_EDITOR
+        SceneManager.Reset();
+        target = new Transform();
+        manager = Make(target);
+        Set(manager, "maxSpeculativeResidentCells", 0);
+        Frame(manager, target, 3f, 210f);
+        Frame(manager, target, 3.3f, 200f);
+        Check(SceneManager.loadCount == 0, "speculative prefetch respects budget");
+        Frame(manager, target, 3.6f, 180f);
+        Check(SceneManager.loadCount == 1, "near-player scene bypasses speculative cap");
+#endif
 
         // Externally loaded scenes are never retired or double-loaded.
         SceneManager.Reset();
