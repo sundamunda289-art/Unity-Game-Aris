@@ -59,7 +59,7 @@ class BikeMaterialPacingContract(unittest.TestCase):
         self.assertIn("bikeMaterialsBuild == null", update)
         self.assertIn("AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())", update)
         self.assertIn("bikeMaterialsBuild = StartCoroutine(BuildMaterialsAcrossFrames(true));", update)
-        self.assertLess(update.index("bikeMaterialsBuild = StartCoroutine(BuildMaterialsAcrossFrames(true));",
+        self.assertLess(update.rindex("bikeMaterialsBuild = StartCoroutine(BuildMaterialsAcrossFrames(true));"),
                         update.index("if (!bikeMaterialsReady) return;"))
         self.assertIn("bikeMaterialsBuild = null;", update)
 
