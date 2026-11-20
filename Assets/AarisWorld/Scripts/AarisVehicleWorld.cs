@@ -1264,8 +1264,13 @@ namespace Aaris.MapReview
 #if UNITY_ANDROID && !UNITY_EDITOR
                 // A wheel request is a real native import too: keep the same
                 // two-request peak-memory cap across bodies AND wheels.
+                // A completed high-detail body waiting for its wheel is
+                // still resident native memory. Count it as ONE admission,
+                // even while its wheel request is in flight. This prevents
+                // prefetch from filling every slot with other huge bodies.
                 ResourceRequest pendingWheel = authoredWheelRequests[j];
-                if (pendingWheel != null && !pendingWheel.isDone) inFlight++;
+                if (authoredBodiesAwaitingWheels[j] != null) inFlight++;
+                else if (pendingWheel != null && !pendingWheel.isDone) inFlight++;
 #endif
             }
             if (inFlight >= maxConcurrentAuthoredLoads) return false;
