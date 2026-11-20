@@ -31,6 +31,9 @@ namespace Aaris.MapReview
         [SerializeField, Min(1f)] private float teleportRejectSpeed = 90f;
         [SerializeField, Min(0.05f)] private float pollSeconds = 0.25f;
         [SerializeField, Min(0f)] private float transitionCooldownSeconds = 0.25f;
+        // Limit only speculative chunk residency; essential nearby scenes bypass
+        // this cap to avoid missing geometry/collision as the player crosses cells.
+        [SerializeField, Min(1)] private int maxSpeculativeResidentScenes = 2;
 
         private struct State
         {
@@ -124,6 +127,8 @@ namespace Aaris.MapReview
             float exitMargin = Mathf.Max(unloadMargin, loadMargin + 1f);
             float exitSquared = exitMargin * exitMargin;
             int loadCell = -1, unloadCell = -1;
+            int ownedResidentScenes = 0;
+            bool loadIsUrgent = false;
             float nearestLoad = float.MaxValue, farthestUnload = -1f;
             for (int i = 0; i < chunks.Length; i++)
             {
@@ -134,6 +139,7 @@ namespace Aaris.MapReview
                     cell.halfExtents.x, cell.halfExtents.y);
                 if (states[i].loadedByThisStreamer)
                 {
+                    ownedResidentScenes++;
                     // Always retain on *actual* position, including teleport.
                     // A wider exit boundary prevents load/unload oscillation.
                     if (distance > exitSquared && distance > farthestUnload)
@@ -149,7 +155,14 @@ namespace Aaris.MapReview
                 float priority = distance <= entrySquared
                     ? distance : entrySquared + predicted;
                 if (priority < nearestLoad)
-                { nearestLoad = priority; loadCell = i; }
+                {
+                    nearestLoad = priority;
+                    loadCell = i;
+                    // Track urgency explicitly. A predicted point inside a
+                    // cell has zero distance and can numerically tie the entry
+                    // threshold even when the actual player is still outside.
+                    loadIsUrgent = distance <= entrySquared;
+                }
             }
             // One integration operation in flight across the *entire* world.
             // Essential visible cells win over memory retirement; distant
@@ -158,7 +171,7 @@ namespace Aaris.MapReview
             // prefetch. Otherwise rapid traversal can stack old resident
             // scenes with new predicted ones and spike Android RAM. Cells
             // needed at the player's actual position always load first.
-            if (unloadCell >= 0 && (loadCell < 0 || nearestLoad > entrySquared))
+            if (unloadCell >= 0 && (loadCell < 0 || !loadIsUrgent))
             {
 #if UNITY_ANDROID && !UNITY_EDITOR
                 AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();
@@ -167,6 +180,12 @@ namespace Aaris.MapReview
             }
             else if (loadCell >= 0)
             {
+                // Prefetch must not accumulate speculative scenes indefinitely
+                // on a 4 GB phone. Never reject a scene needed at the actual
+                // player position, even if several cells overlap there.
+                if (!loadIsUrgent &&
+                    ownedResidentScenes >= Math.Max(1, maxSpeculativeResidentScenes))
+                    return;
 #if UNITY_ANDROID && !UNITY_EDITOR
                 if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()) return;
 #endif
