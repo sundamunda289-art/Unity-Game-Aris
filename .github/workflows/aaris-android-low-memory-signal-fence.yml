@@ -1,0 +1,52 @@
+name: Android Low-Memory Stream Fence QA
+
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs'
+      - 'Assets/AarisWorld/Scripts/AarisMobileRuntime.cs'
+      - 'Tools/Validation/test_android_low_memory_signal_fence.py'
+      - '.github/workflows/aaris-android-low-memory-signal-fence.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs'
+      - 'Assets/AarisWorld/Scripts/AarisMobileRuntime.cs'
+      - 'Tools/Validation/test_android_low_memory_signal_fence.py'
+      - '.github/workflows/aaris-android-low-memory-signal-fence.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  memory-admission:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify notification and native cleanup fences
+        run: |
+          python -m unittest discover -s Tools/Validation -p 'test_android_low_memory_signal_fence.py'
+          python -m unittest discover -s Tools/Validation -p 'test_android_low_memory_unload_evidence.py'
+          python -m unittest discover -s Tools/Validation -p 'test_android_unload_streaming_backpressure.py'
+      - name: Parse both production C-sharp scripts
+        run: |
+          python -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
+          python - <<'PY'
+          from pathlib import Path
+          from tree_sitter import Language, Parser
+          import tree_sitter_c_sharp
+          parser = Parser(Language(tree_sitter_c_sharp.language()))
+          for name in ('AarisMobileRuntime.cs', 'AarisMobileStreamingFrameGate.cs'):
+              path = Path('Assets/AarisWorld/Scripts') / name
+              source = path.read_text(encoding='utf-8')
+              assert all(line == line.rstrip() for line in source.splitlines()), str(path)
+              assert not parser.parse(source.encode('utf-8')).root_node.has_error, str(path)
+              print('C-sharp syntax OK:', path)
+          PY
