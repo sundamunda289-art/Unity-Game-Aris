@@ -82,7 +82,10 @@ class BikeRecycling(unittest.TestCase):
 
     def test_low_memory_releases_only_hidden_bikes_and_pauses_pooling(self):
         self.assertIn("private void OnEnable() { Application.lowMemory += OnLowMemory; }", CODE)
-        self.assertIn("private void OnDisable() { Application.lowMemory -= OnLowMemory; }", CODE)
+        on_disable = CODE.split("private void OnDisable()", 1)[1].split(
+            "private void OnLowMemory()", 1
+        )[0]
+        self.assertIn("Application.lowMemory -= OnLowMemory;", on_disable)
         callback = CODE.split("private void OnLowMemory()", 1)[1].split(
             "private void Update()", 1)[0]
         self.assertIn("lowMemoryPending = true;", callback)
