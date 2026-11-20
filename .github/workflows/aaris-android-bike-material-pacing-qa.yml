@@ -5,6 +5,7 @@ on:
     paths:
       - 'Assets/AarisWorld/Scripts/AarisRoadsideBikeScenery.cs'
       - 'Tools/Validation/test_android_bike_material_pacing.py'
+      - 'Tools/Validation/run_bike_material_csharp.py'
       - 'Docs/ANDROID_ROADSIDE_MATERIAL_FRAME_PACING_20261120.md'
       - '.github/workflows/aaris-android-bike-material-pacing-qa.yml'
   push:
@@ -12,6 +13,7 @@ on:
     paths:
       - 'Assets/AarisWorld/Scripts/AarisRoadsideBikeScenery.cs'
       - 'Tools/Validation/test_android_bike_material_pacing.py'
+      - 'Tools/Validation/run_bike_material_csharp.py'
       - '.github/workflows/aaris-android-bike-material-pacing-qa.yml'
 
 permissions:
@@ -34,6 +36,11 @@ jobs:
           python Tools/Validation/test_android_bike_material_pacing.py
           python Tools/Validation/test_android_roadside_prewarm.py
           python Tools/Validation/test_android_shared_streaming_frame_gate.py
+      - name: Compile and execute production material builder on desktop and Android C-sharp defines
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends mono-mcs
+          python Tools/Validation/run_bike_material_csharp.py
       - name: Parse modified Unity C-sharp and verify whitespace
         run: |
           python -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
@@ -45,6 +52,7 @@ jobs:
           paths = [
               Path('Assets/AarisWorld/Scripts/AarisRoadsideBikeScenery.cs'),
               Path('Tools/Validation/test_android_bike_material_pacing.py'),
+              Path('Tools/Validation/run_bike_material_csharp.py'),
               Path('Docs/ANDROID_ROADSIDE_MATERIAL_FRAME_PACING_20261120.md'),
           ]
           for path in paths:
