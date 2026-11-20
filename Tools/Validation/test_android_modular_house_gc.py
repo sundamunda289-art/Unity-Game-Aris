@@ -35,6 +35,22 @@ class AndroidModularHouseGc(unittest.TestCase):
         ):
             self.assertIn(line, cleanup)
 
+    def test_exact_sized_combination_buffers_reused_without_mesh_retention(self):
+        self.assertIn("Dictionary<int, CombineInstance[]> scratchCombineArrays", SOURCE)
+        self.assertIn("MaximumCachedCombineArraySizes = 24", SOURCE)
+        self.assertIn("partCount <= 256", HOUSE)
+        self.assertIn("new CombineInstance[partCount]", HOUSE)
+        self.assertIn("scratchCombineArrays.TryGetValue(", HOUSE)
+        self.assertIn("scratchCombineArrays.Add(partCount, parts);", HOUSE)
+        self.assertIn("pair.Value.CopyTo(parts);", HOUSE)
+        self.assertIn("combined.CombineMeshes(parts, true, true, false);", HOUSE)
+        self.assertIn("if (cached) System.Array.Clear(parts, 0, parts.Length);", HOUSE)
+        self.assertNotIn("pair.Value.ToArray()", HOUSE)
+        self.assertLess(HOUSE.index("pair.Value.CopyTo(parts);"),
+                        HOUSE.index("combined.CombineMeshes(parts, true, true, false);"))
+        self.assertLess(HOUSE.index("combined.CombineMeshes(parts, true, true, false);"),
+                        HOUSE.index("System.Array.Clear(parts, 0, parts.Length);"))
+
     def test_mesh_colliders_materials_and_visuals_preserved(self):
         for contract in (
             "source.isReadable",
@@ -43,7 +59,7 @@ class AndroidModularHouseGc(unittest.TestCase):
             "transform = toRoot * filter.transform.localToWorldMatrix",
             "if (vertices > 65534) return;",
             "combined.indexFormat = IndexFormat.UInt16;",
-            "combined.CombineMeshes(pair.Value.ToArray(), true, true, false);",
+            "combined.CombineMeshes(parts, true, true, false);",
             "combined.RecalculateBounds();",
             "section.AddComponent<MeshFilter>().sharedMesh = combined;",
             "section.AddComponent<MeshRenderer>().sharedMaterial = pair.Key;",
