@@ -30,7 +30,7 @@ def admission_for_queued_release(changed):
 class ColliderReleaseNoopAdmission(unittest.TestCase):
     def test_admission_is_inside_real_disable_branch_and_before_toggle(self):
         self.assertEqual(BODY.count(RESERVE), 1)
-        condition = "if (dx * dx + dz * dz > retain * retain)"
+        condition = "if (dx * dx + dz * dz > retainSquared)"
         self.assertIn(condition, BODY)
         self.assertIn("if (!reservedReleaseFrame)", BODY)
         self.assertLess(BODY.index(condition), BODY.index("if (!reservedReleaseFrame)"))
@@ -41,7 +41,15 @@ class ColliderReleaseNoopAdmission(unittest.TestCase):
     def test_initial_yield_and_each_subsequent_frame_reset(self):
         self.assertIn("yield return null;\n            // A stale retirement queue", BODY)
         self.assertIn("bool reservedReleaseFrame = false;", BODY)
-        self.assertIn("yield return null;\n                    reservedReleaseFrame = false;", BODY)
+        self.assertIn("yield return null;\n                    framePosition = target != null ? target.position : Vector3.zero;", BODY)
+        self.assertIn("retainSquared = retain * retain;", BODY)
+        self.assertLess(
+            BODY.index("framePosition = target != null ? target.position",
+                       BODY.index("while (colliderReleaseCursor")),
+            BODY.index("reservedReleaseFrame = false;",
+                       BODY.index("while (colliderReleaseCursor"))
+        )
+        self.assertEqual(BODY.count("target.position"), 2)
         self.assertIn("int processed = 0;", BODY)
         self.assertIn("processed >= AndroidReleaseUpdatesPerFrame", BODY)
         self.assertIn("Time.realtimeSinceStartupAsDouble - frameStartedAt", BODY)
