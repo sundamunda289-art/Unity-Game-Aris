@@ -125,6 +125,15 @@ namespace Aaris.MapReview
             if (!isActiveAndEnabled) yield break;
             yield return catalog;
             if (!isActiveAndEnabled) yield break;
+            // Unity can finish native mesh/prefab integration on the ResourceRequest
+            // completion frame. Keep JSON deserialization, terrain lookups and
+            // settlement setup off that frame and off other streamers' slots.
+            // Original world detail, prefab references and site order are unchanged.
+            yield return null;
+            while (isActiveAndEnabled &&
+                   !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                yield return null;
+            if (!isActiveAndEnabled) yield break;
             InitializeExpansion(plan.asset as TextAsset,
                 catalog.asset as AarisExpansionCatalog);
         }
