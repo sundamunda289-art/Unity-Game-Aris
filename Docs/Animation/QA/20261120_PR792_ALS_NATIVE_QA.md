@@ -35,3 +35,11 @@ Keep PR #792 **Draft** and do not merge into main until transition knee flare, 3
 - Exploratory inspection with **only the duplicate timestamp changed in-memory**, without overwriting native logs, identified four `knee_lateral > 0.30m` flags: Crouching frames 1/2 (max **0.348 m**), CrouchWalking frame 2 (**0.324 m**), and Jumping frame 2 (**0.343 m**, potentially authored airborne movement).
 - Stationary Prone knee lateral max **0.028 m**; Crawling max **0.230 m**; GettingUp max **0.065 m**. The large early prone crossfade flare remains a distinct issue.
 - A **separate isolated A/B candidate**, not yet committed, now tests a geometry/error-responsive existing two-bone-knee circle correction only on grounded Crouching/Prone plus an Editor `Time.frameCount` capture gate and explicit >0.30m grounded knee rejection. Results pending. **Do not merge #792 on the strength of image counts alone.**
+
+## Isolated adaptive knee A/B: **rejected, do not merge**
+
+A geometry-triggered stronger two-bone knee-circle correction was **tested locally only**, with additional Editor rejection for >0.30 m knee lateral excursion. Native Unity 6000.3.26f1 compiled and started, but the strict transition capture **FAILED** at frame 6, Unity batch **exit code 2**, reason `TRANSITION_KNEE_SIDEWAYS_OVER_30CM`: early Prone (`proneBlend=0.445`) still had **right knee side 0.411 m**. Stronger IK angular authority alone was not sufficient. **No production patch from this A/B was committed or merged.**
+
+The QA frame-timestamp fix (`Time.frameCount` gate) was also prepared in this throwaway copy but had **not completed a separate native 30-frame validation**. Do not claim the timestamp bug fixed based on the source edit.
+
+After this failed A/B run, Codespace Cloudflare heartbeat became stale and the same already-authorized Issue #77 Turbo-start recovery was triggered; transient `/tmp` evidence is at risk across restart. Retain this GitHub diagnosis until any new native run proves a better contact-preserving transition solution.
