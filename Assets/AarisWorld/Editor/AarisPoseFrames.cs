@@ -658,11 +658,24 @@ if(status=="start"){
 SessionState.SetString("pose.state","run");SessionState.SetFloat("pose.time",(float)Now);
 Phase("00_Drop");Log("ENTER_PLAYMODE");return;
 }
-var p=UnityEngine.Object.FindFirstObjectByType<AarisThirdPersonPlayer>();
+// During the actual aircraft drop, AarisOfflineDrop temporarily disables
+// the on-foot motor. The drop itself owns the player until touchdown, so
+// discover the motor through that owner before the standalone scene lookup.
 var d=UnityEngine.Object.FindFirstObjectByType<AarisOfflineDrop>();
+var p=d!=null?d.GetComponent<AarisThirdPersonPlayer>():
+ UnityEngine.Object.FindFirstObjectByType<AarisThirdPersonPlayer>();
 if(p==null||d==null){
-if(Now-SessionState.GetFloat("pose.time",(float)Now)>15)
-Finish("NO_PLAYER_OR_DROP");
+if(Now-SessionState.GetFloat("pose.time",(float)Now)>15){
+ var anyPlayer=UnityEngine.Object.FindFirstObjectByType<AarisThirdPersonPlayer>(
+  FindObjectsInactive.Include);
+ var anyDrop=UnityEngine.Object.FindFirstObjectByType<AarisOfflineDrop>(
+  FindObjectsInactive.Include);
+ Log("ACTOR_BOOTSTRAP_DIAGNOSTIC scene="+SceneManager.GetActiveScene().path+
+  " player="+(p!=null)+" drop="+(d!=null)+
+  " playerIncludingInactive="+(anyPlayer!=null)+
+  " dropIncludingInactive="+(anyDrop!=null));
+ Finish("NO_PLAYER_OR_DROP");
+}
 return;
 }
 var b=p.GetComponent<AarisBattleActions>();
