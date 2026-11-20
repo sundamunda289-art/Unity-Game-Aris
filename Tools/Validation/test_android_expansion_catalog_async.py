@@ -74,7 +74,11 @@ class ExpansionCatalogPrewarm(unittest.TestCase):
         self.assertIn("if (mobile && (++processed >= AndroidTreeProbeBudgetPerFrame ||", SRC)
         self.assertIn("foreach (var site in plan.sites)", SRC)
         self.assertIn("int attemptsPerFrame = mobile ? 1 : 2;", SRC)
-        self.assertIn("!TryRelocateInteractiveSite(site, terrains, out y)", SRC)
+        # Android amortizes blocked-house fallback over frames; the Editor keeps
+        # the original synchronous, independently validated terrain/physics path.
+        self.assertIn("yield return RelocateInteractiveSiteAcrossFrames(site, terrains);", SRC)
+        self.assertIn("relocated = TryRelocateInteractiveSite(site, terrains, out y);", SRC)
+        self.assertIn("if (!relocated)", SRC)
         self.assertIn('catalog.ResolveOpen(site.prefabKey)', SRC)
         self.assertIn('catalog.Resolve(site.prefabKey)', SRC)
         self.assertIn("AarisModularHouse.Create(position, rotation, site.width,", SRC)
