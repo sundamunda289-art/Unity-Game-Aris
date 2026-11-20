@@ -128,7 +128,7 @@ for ankle_y in (0.04, 0.10, 0.45, 1.0):
     assert abs(support_ray_origin_y(ankle_y, 0.035) - (ankle_y + .70)) < 1e-10
 # Disabled / absent capsule retains the original authored-foot ray; no
 # fabricated support height is returned when the ray has no hit.
-assert support_ray_origin_y(-0.80, 0.035, False) == -0.10 + 0.70 - 0.70
+assert abs(support_ray_origin_y(-0.80, 0.035, False) - (-0.80 + 0.70)) < 1e-10
 assert "float floor = float.NaN;" in support
 
 resolver = visual[visual.index("private static Vector3 ResolveLowStanceFootContact("):
