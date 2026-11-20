@@ -69,11 +69,54 @@ SessionState.SetFloat("pose.transitionYawDegrees",180f);
 SessionState.SetBool("pose.transitions",true);
 CapturePortrait();
 }
+// Fail with an actionable Editor import error before waiting 15 seconds for
+// runtime actors that cannot exist. This is QA-only, not gameplay self-repair.
+static void VerifyNativeSceneBindings(Scene scene)
+{
+    GameObject player = null;
+    foreach (var root in scene.GetRootGameObjects())
+        if (root.name == "AarisPlayer") { player = root; break; }
+
+    var monoScript = AssetDatabase.LoadAssetAtPath<MonoScript>(
+        "Assets/AarisWorld/Scripts/AarisThirdPersonPlayer.cs");
+    var scriptType = monoScript != null ? monoScript.GetClass() : null;
+    var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+        "Assets/AarisWorld/Player/AarisPlayer.prefab");
+    int missing = player != null
+        ? GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(player) : -1;
+    bool bound = player != null &&
+        player.GetComponent<AarisThirdPersonPlayer>() != null;
+    bool prefabBound = prefab != null &&
+        prefab.GetComponent<AarisThirdPersonPlayer>() != null;
+
+    string fbxFile = Path.Combine(Application.dataPath,
+        "Resources/AarisCharacters/Primary/Player.fbx");
+    bool hydrated = File.Exists(fbxFile) &&
+        new FileInfo(fbxFile).Length > 1000;
+    if (!hydrated && File.Exists(fbxFile))
+    {
+        // A Git LFS pointer is text, not an FBX; fail before Unity imports it
+        // as a character asset. Do not download or rewrite the user's model.
+        hydrated = false;
+    }
+    Debug.Log("AARIS_POSE_QA_PREFLIGHT scene=" + scene.path +
+        " playerRoot=" + (player != null) +
+        " rootActive=" + (player != null && player.activeInHierarchy) +
+        " playerScriptClass=" + (scriptType != null ? scriptType.FullName : "null") +
+        " playerBound=" + bound + " prefabBound=" + prefabBound +
+        " missingRootScripts=" + missing +
+        " hydratedFBX=" + hydrated);
+    if (!hydrated)
+        throw new InvalidOperationException("QA_PLAYER_FBX_NOT_MATERIALIZED");
+    if (scriptType != typeof(AarisThirdPersonPlayer) || !bound || !prefabBound)
+        throw new InvalidOperationException("QA_PLAYER_SCRIPT_BINDING_MISSING");
+}
 public static void CaptureBatch(){
 if(!Application.isBatchMode)throw new InvalidOperationException("BATCHMODE_REQUIRED");
 try{
 var scene=EditorSceneManager.OpenScene(AarisExplorerBuild.ScenePath,OpenSceneMode.Single);
 if(!scene.IsValid()||!scene.isLoaded)throw new InvalidOperationException("SCENE_LOAD_FAILED");
+VerifyNativeSceneBindings(scene);
 SessionState.SetBool("pose.batch",true);
 Start();
 }catch(Exception ex){Debug.LogError("AARIS_POSE_BATCH_START_FAILED "+ex.GetType().Name);EditorApplication.Exit(2);}
@@ -834,6 +877,11 @@ Log("FRAME "+(motionMatrix?MotionNames[n]:Names[n])+" "+count+" stance="+b.Stanc
 SessionState.GetFloat("pose.transitionYawDegrees",90f):0)+
 " air="+p.IsInAir+" pos="+p.transform.position.ToString("F2"));
 if(transitionFrames)LogTransitionContact(p,b,count);
+// A 30-frame capture contains sequential camera samples, not the same
+// time instant. Include their real game-clock timestamps for bone audits.
+if(motionMatrix)
+ Log("MOTION_TIMESTAMP stage="+MotionNames[n]+" frame="+count+
+ " unscaledSeconds="+Time.unscaledTime.ToString("F3"));
 // Measure both the first pose and its final settled multi-angle frame.
 // Editor-only QA: zero work or allocations in Android players.
 if(motionMatrix || count==0 || (orbitStance && count==needed-1))
