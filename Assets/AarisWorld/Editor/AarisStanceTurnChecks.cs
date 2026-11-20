@@ -11,6 +11,8 @@ namespace Aaris.MapReview.Editor
         private delegate Vector3 ResolveContact(Vector3 goal, float speed, float turnRate,
             float weight, bool transitioning, float yaw, ref float plantedYaw,
             ref bool locked, ref Vector3 anchor);
+        private delegate float ProjectSupportHeight(float sampledHeight,
+            Vector3 sampleFoot, Vector3 resolvedFoot, Vector3 normal);
 
         // -batchmode -executeMethod Aaris.MapReview.Editor.AarisStanceTurnChecks.Run
         public static void Run()
@@ -20,6 +22,7 @@ namespace Aaris.MapReview.Editor
             {
                 EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
                 CheckFootContact();
+                CheckProjectedUprightFootHeight();
                 CheckTurnBesideCover();
                 Debug.Log("STANCE_TURN_CHECKS_PASS");
                 EditorApplication.Exit(0);
@@ -64,6 +67,38 @@ namespace Aaris.MapReview.Editor
                     Require(!locked, "Contact remained twisted across yaw wrap");
                 }
             }
+        }
+
+        private static void CheckProjectedUprightFootHeight()
+        {
+            var method = typeof(AarisCharacterVisual).GetMethod(
+                "ProjectSupportedAnkleHeight",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Require(method != null, "Upright slope projection method missing");
+            var project = (ProjectSupportHeight)Delegate.CreateDelegate(
+                typeof(ProjectSupportHeight), method);
+            Vector3 origin = new Vector3(2f, 1f, 3f);
+            foreach (int fps in new[] { 10, 30, 60, 120 })
+            {
+                foreach (float degrees in new[] { 0f, 10f, 25f, 30f, 40f })
+                {
+                    Vector3 normal = Quaternion.Euler(0f, 0f, degrees) * Vector3.up;
+                    foreach (float shift in new[] { -0.08f, 0f, 0.08f })
+                    {
+                        Vector3 target = origin + Vector3.right * shift;
+                        float solved = project(1f, origin, target, normal);
+                        float expected = 1f +
+                            Mathf.Tan(degrees * Mathf.Deg2Rad) * shift;
+                        Require(Mathf.Abs(solved - expected) < 0.0002f,
+                            "Upright shoe contact wrong on slope at " + fps + " FPS");
+                    }
+                }
+            }
+            // A near-vertical normal must not divide by a near-zero Y.
+            Vector3 wall = new Vector3(1f, 0.01f, 0f);
+            Require(Mathf.Abs(project(1.5f, origin, origin +
+                Vector3.right * 0.1f, wall) - 1.5f) < 0.0001f,
+                "Upright slope projection near vertical");
         }
 
         private static void CheckTurnBesideCover()

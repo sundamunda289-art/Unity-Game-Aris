@@ -1712,6 +1712,22 @@ namespace Aaris.MapReview
             public float height;
         }
 
+        // The upright world lock may shift a boot after its support ray was
+        // sampled. On a slope the old height is for the OLD X/Z and causes
+        // penetration or hovering. Follow the measured support tangent plane
+        // over the existing <=10.5cm lock correction, with no additional ray.
+        // A large discontinuity still requires the next real support sample.
+        private static float ProjectSupportedAnkleHeight(float sampledHeight,
+            Vector3 sampledFootWorld, Vector3 resolvedFootWorld,
+            Vector3 supportNormal)
+        {
+            if (supportNormal.y < 0.20f) return sampledHeight;
+            Vector3 delta = resolvedFootWorld - sampledFootWorld;
+            float rise = -(supportNormal.x * delta.x +
+                supportNormal.z * delta.z) / supportNormal.y;
+            return sampledHeight + Mathf.Clamp(rise, -0.13f, 0.13f);
+        }
+
         private void PlantUprightContact(Transform thigh, Transform shin,
             Transform foot, float planarSpeed, float turnDegreesPerSecond,
             float uprightWeight, Vector3 kneeForward,
@@ -1802,6 +1818,11 @@ namespace Aaris.MapReview
                 }
             }
 
+            // Keep the locked boot on the SAME sloped support plane after
+            // its bounded horizontal correction; upright and low stances now
+            // agree on which X/Z owns the contact height.
+            targetFoot.y = ProjectSupportedAnkleHeight(
+                supportY, foot.position, targetFoot, supportNormal);
             PlantLegToTarget(thigh, shin, foot, targetFoot, kneeForward,
                 finalWeight);
             AlignFootToSupport(foot, supportNormal, finalWeight, 32f, 0.85f);

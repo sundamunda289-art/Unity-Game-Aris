@@ -60,5 +60,35 @@ for degrees in (0, 10, 25, 40):
         old_y = rise_per_m * 2.0
         if degrees > 0 and signed_drift != 0:
             assert abs(old_y - correct_y) > 0.001
+# Upright locking samples before a bounded horizontal correction. Project the
+# corrected target onto that same measured support plane without a second ray.
+start_upright = source.index("private static float ProjectSupportedAnkleHeight(")
+end_upright = source.index("private void PlantUprightContact(", start_upright)
+helper = source[start_upright:end_upright]
+upright = source[end_upright:source.index("private void AlignFootToSupport(", end_upright)]
+assert "supportNormal.x * delta.x +" in helper
+assert "supportNormal.z * delta.z) / supportNormal.y;" in helper
+assert "Mathf.Clamp(rise, -0.13f, 0.13f)" in helper
+assert "targetFoot.y = ProjectSupportedAnkleHeight(" in upright
+assert "supportY, foot.position, targetFoot, supportNormal);" in upright
+assert upright.index("targetFoot.y = ProjectSupportedAnkleHeight(") < upright.index(
+    "PlantLegToTarget(thigh, shin, foot, targetFoot")
+assert "SupportedAnkleY(foot, UprightAnkleClearanceMetres, out supportNormal)" in upright
+
+# Geometry: normal=(-sin(theta), cos(theta), 0) on a +X uphill ramp.
+# Moving the lock by 8 cm changes the expected sole Y by up to 6.7 cm.
+# Test both signs and all supported stance sampling frame rates.
+for fps in (10, 30, 60, 120):
+    for degrees in (0, 10, 25, 30, 40):
+        normal_x = -math.sin(math.radians(degrees))
+        normal_y = math.cos(math.radians(degrees))
+        for dx in (-.08, .0, .08):
+            rise = -(normal_x * dx) / normal_y
+            projected = 1.0 + max(-.13, min(.13, rise))
+            expected = 1.0 + dx * math.tan(math.radians(degrees))
+            assert abs(projected - expected) < 1e-9, (fps, degrees, dx)
+assert abs(math.tan(math.radians(30)) * .08 - .04618802) < 1e-6
+print("PASS: upright sloped contact keeps horizontal world-lock on the same support plane")
+
 print("PASS: final low-stance support rays follow world-locked X/Z on slopes")
 print("NOT TESTED: native Unity terrain intersections or Android FPS")
