@@ -1,0 +1,43 @@
+name: Aaris Android Authored Wheel Async QA
+
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisVehicleWorld.cs'
+      - 'Tools/Validation/test_android_authored_wheel_streaming.py'
+      - '.github/workflows/aaris-authored-wheel-async-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisVehicleWorld.cs'
+      - 'Tools/Validation/test_android_authored_wheel_streaming.py'
+      - '.github/workflows/aaris-authored-wheel-async-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  android-wheel-source-qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Check and execute authored wheel frame-budget regressions
+        run: |
+          python3 -m py_compile Tools/Validation/test_android_authored_wheel_streaming.py
+          python3 Tools/Validation/test_android_authored_wheel_streaming.py
+      - name: Parse modified production C# with tree-sitter
+        run: |
+          python3 -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
+          python3 - <<'PY'
+          from pathlib import Path
+          from tree_sitter import Language, Parser
+          import tree_sitter_c_sharp
+          parser = Parser(Language(tree_sitter_c_sharp.language()))
+          path = Path('Assets/AarisWorld/Scripts/AarisVehicleWorld.cs')
+          assert not parser.parse(path.read_bytes()).root_node.has_error, path
+          print('C# syntax parser passed (not a native Unity Editor compile).')
+          PY
