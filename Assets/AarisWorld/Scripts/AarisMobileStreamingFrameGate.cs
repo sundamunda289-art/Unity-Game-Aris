@@ -181,6 +181,21 @@ namespace Aaris.MapReview
         }
 #endif
 
+        /// <summary>
+        /// The authored collision grid is essential world physics, not an
+        /// optional visual import. A grid/toggle batch can consume costly native
+        /// CPU work even when its own item/time budget is respected. Reserve
+        /// that rendered frame against additional optional model construction,
+        /// imports and diagnostics; preserve exact colliders and every visual.
+        /// </summary>
+        internal static void ReservePhysicsStreamingFrame()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (IsConstrainedDevice())
+                claimedFrame = Time.frameCount;
+#endif
+        }
+
         internal static bool IsConstrainedDevice()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
