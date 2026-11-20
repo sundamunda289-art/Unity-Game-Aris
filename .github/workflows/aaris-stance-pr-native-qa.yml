@@ -1,0 +1,112 @@
+name: Aaris stance PR native Unity 30-pose QA
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisCharacterVisual.cs'
+      - 'Tools/Validation/test_balanced_low_stance_ik.py'
+      - '.github/workflows/aaris-stance-pr-native-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native-poses:
+    # Only the repository owner's own branches can read the Unity license.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GAMECI_IMAGE: unityci/editor:ubuntu-6000.3.26f1-base-3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Check source-level leg geometry contracts
+        run: |
+          set -euo pipefail
+          python3 Tools/Validation/test_balanced_low_stance_ik.py
+          git diff --check origin/main...HEAD
+      - name: Require owner-provided Unity license
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          set -euo pipefail
+          [[ -n "$UNITY_LICENSE" && "$UNITY_LICENSE" == *"<"* ]] || {
+            echo 'UNITY_LICENSE_MISSING_NATIVE_QA_NOT_VERIFIED'
+            exit 2
+          }
+      - name: Hydrate real terrain, actor and animation LFS data
+        run: |
+          set -euo pipefail
+          bash Tools/CI/runner_storage.sh cleanup || true
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq git-lfs
+          git lfs install --local
+          git lfs pull --include="Assets/**" --exclude=""
+          if head -c 100 Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity |
+             grep -q 'git-lfs.github.com/spec'; then
+            echo 'SCENE_LFS_NOT_HYDRATED'
+            exit 3
+          fi
+          mkdir -p ci-stance
+      - name: Run real Unity Play Mode with 30 front-side-back pose captures
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          set -euo pipefail
+          docker pull "$GAMECI_IMAGE"
+          docker run --rm --shm-size=1g \
+            -e UNITY_LICENSE \
+            -e LIBGL_ALWAYS_SOFTWARE=1 -e GALLIUM_DRIVER=llvmpipe \
+            -v "$PWD:/project" \
+            -v "$PWD/ci-stance:/tmp/aaris-codespaces/motion-frames" \
+            -w /project "$GAMECI_IMAGE" bash -lc '
+              set -euo pipefail
+              apt-get update -qq
+              apt-get install -y -qq xvfb libgl1-mesa-dri libglu1-mesa
+              mkdir -p /root/.local/share/unity3d/Unity /project/ci-stance
+              printf "%s" "$UNITY_LICENSE" > /root/.local/share/unity3d/Unity/Unity_lic.ulf
+              chmod 600 /root/.local/share/unity3d/Unity/Unity_lic.ulf
+              xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX" \
+                unity-editor -projectPath /project -batchmode \
+                -executeMethod Aaris.MapReview.Editor.AarisPoseFrames.CaptureLocomotionMatrixPortrait \
+                -logFile /project/ci-stance/unity-editor.log
+            '
+      - name: Verify native frames and measurable humanoid bone telemetry
+        run: |
+          set -euo pipefail
+          test -s ci-stance/report.txt
+          grep -qx '07_COMPLETE' ci-stance/phase.txt
+          grep -qx 'SUCCESS_30_MOTION_MATRIX_FRAMES' <(tail -n 1 ci-stance/report.txt)
+          python3 Tools/Validation/audit_motion_matrix_bones.py ci-stance/report.txt > ci-stance/bone-audit.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('ci-stance')
+          frames=sorted(p.glob('*.jpg'))
+          assert len(frames)==30, f'Expected 30 real screenshots, got {len(frames)}'
+          assert all(f.stat().st_size > 4000 for f in frames), 'Empty screenshot'
+          audit=json.loads((p/'bone-audit.json').read_text())
+          assert audit['sample_count']==30
+          if audit['review_flags']:
+              raise AssertionError('Knee lateral review flags: '+str(audit['review_flags']))
+          log=(p/'unity-editor.log').read_text(errors='replace')
+          assert 'error CS' not in log, 'Unity C# compiler errors detected'
+          print('UNITY_NATIVE_30_POSE_QA_PASS')
+          PY
+      - name: Save actual Unity screenshots, bone measurements and Editor logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-stance-pr-30-real-pose-frames-${{ github.run_id }}
+          path: |
+            ci-stance/*.jpg
+            ci-stance/report.txt
+            ci-stance/phase.txt
+            ci-stance/bone-audit.json
+            ci-stance/unity-editor.log
+          retention-days: 7
+          if-no-files-found: warn
