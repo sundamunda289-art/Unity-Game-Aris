@@ -162,6 +162,12 @@ namespace Aaris.MapReview
         // the player approaches a planned car. This preserves the exact same
         // visuals while avoiding five multi-megabyte FBX loads during boot.
         private ResourceRequest[] authoredBodyRequests;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // Keep the completed body request while its authored wheel is loading.
+        // This prevents duplicate body prewarms without increasing parked cars.
+        private ResourceRequest[] authoredWheelRequests;
+        private GameObject[] authoredBodiesAwaitingWheels;
+#endif
         private bool[] authoredBodyLoadingFallback;
         private bool[] authoredBodyResolved;
         private int validModels;
@@ -493,6 +499,10 @@ namespace Aaris.MapReview
             safeBodyPrefabs = new GameObject[vehicleTypes.Length];
             safeWheelPrefabs = new GameObject[vehicleTypes.Length];
             authoredBodyRequests = new ResourceRequest[vehicleTypes.Length];
+#if UNITY_ANDROID && !UNITY_EDITOR
+            authoredWheelRequests = new ResourceRequest[vehicleTypes.Length];
+            authoredBodiesAwaitingWheels = new GameObject[vehicleTypes.Length];
+#endif
             authoredBodyLoadingFallback = new bool[vehicleTypes.Length];
             authoredBodyResolved = new bool[vehicleTypes.Length];
             int availableWeight = 0;
@@ -1119,7 +1129,7 @@ namespace Aaris.MapReview
             return -1;
         }
 
-        private void CommitAuthoredBody(int i, GameObject authoredBody)
+        private void CommitAuthoredBody(int i, GameObject authoredBody, GameObject loadedWheel = null)
         {
             var item = vehicleTypes[i];
             if (authoredBody == null ||
@@ -1136,10 +1146,15 @@ namespace Aaris.MapReview
             }
             if (!string.IsNullOrEmpty(item.authoredWheelResource))
             {
-                // The sedan wheel asset is tiny compared with the authored body;
-                // loading it only after the body is ready avoids boot-time churn.
-                var authoredWheel =
+                // The Android prewarmer integrates this separate mesh on a
+                // DIFFERENT admitted frame than the authored vehicle body.
+                // Editor behaviour remains unchanged for synchronous previews.
+#if UNITY_ANDROID && !UNITY_EDITOR
+                GameObject authoredWheel = loadedWheel;
+#else
+                GameObject authoredWheel =
                     Resources.Load<GameObject>(item.authoredWheelResource);
+#endif
                 if (HasCompatibleUrpMaterials(authoredBody) &&
                     HasCompatibleUrpMaterials(authoredWheel))
                 {
@@ -1162,6 +1177,32 @@ namespace Aaris.MapReview
             if (authoredBodyRequests == null) return;
             for (int i = 0; i < authoredBodyRequests.Length; i++)
             {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // An authored sedan wheel must never synchronously import on
+                // the exact frame that binds its multi-mesh body. Retain the
+                // old lightweight body/wheel until both have been validated.
+                if (authoredBodiesAwaitingWheels[i] != null)
+                {
+                    ResourceRequest wheelRequest = authoredWheelRequests[i];
+                    if (wheelRequest == null)
+                    {
+                        authoredWheelRequests[i] =
+                            AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(
+                                vehicleTypes[i].authoredWheelResource);
+                        continue; // admission rejected or async load just began
+                    }
+                    if (!wheelRequest.isDone ||
+                        !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                        continue;
+                    CommitAuthoredBody(i, authoredBodiesAwaitingWheels[i],
+                        wheelRequest.asset as GameObject);
+                    authoredWheelRequests[i] = null;
+                    authoredBodiesAwaitingWheels[i] = null;
+                    authoredBodyRequests[i] = null;
+                    authoredBodyResolved[i] = true;
+                    continue;
+                }
+#endif
                 var request = authoredBodyRequests[i];
                 if (request == null || !request.isDone) continue;
                 var body = request.asset as GameObject;
@@ -1173,6 +1214,17 @@ namespace Aaris.MapReview
                     // binding. Defer its optional native integration to a free frame.
                     if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
                         continue;
+#endif
+#if UNITY_ANDROID && !UNITY_EDITOR
+                    // Body integration owns this frame's shared native slot.
+                    // Hold a finished request (and its asset reference) so the
+                    // prefetch chooser cannot start the same body twice.
+                    if (!string.IsNullOrEmpty(vehicleTypes[i].authoredWheelResource) &&
+                        !HasEmbeddedWheelSet(body))
+                    {
+                        authoredBodiesAwaitingWheels[i] = body;
+                        continue;
+                    }
 #endif
                     authoredBodyRequests[i] = null;
                     CommitAuthoredBody(i, body);
@@ -1209,6 +1261,12 @@ namespace Aaris.MapReview
             {
                 ResourceRequest pendingRequest = authoredBodyRequests[j];
                 if (pendingRequest != null && !pendingRequest.isDone) inFlight++;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // A wheel request is a real native import too: keep the same
+                // two-request peak-memory cap across bodies AND wheels.
+                ResourceRequest pendingWheel = authoredWheelRequests[j];
+                if (pendingWheel != null && !pendingWheel.isDone) inFlight++;
+#endif
             }
             if (inFlight >= maxConcurrentAuthoredLoads) return false;
             var item = vehicleTypes[i];
