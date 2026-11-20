@@ -36,6 +36,9 @@ namespace Aaris.MapReview
         private AarisNearbyColliders nearbyColliders;
         private GameObject bikeSource;
         private ResourceRequest bikePrewarm;
+        // A material-integration slice may span several frames on budget GPUs.
+        // Never render a bike with a partially initialized material palette.
+        private bool bikeMaterialsReady;
         private float nextPoll;
         private bool lowMemoryPending;
         private float poolAllowedAt;
@@ -116,10 +119,19 @@ namespace Aaris.MapReview
             }
         }
 
+        // Desktop and non-budget devices keep the original immediate setup.
+        // The iterator creates the exact same assets, but only yields for a
+        // budget Android GPU when it has a fresh shared admission slot.
         private void SetupMaterials()
         {
+            System.Collections.IEnumerator job = BuildMaterialsAcrossFrames(false);
+            while (job.MoveNext()) { }
+        }
+
+        private System.Collections.IEnumerator BuildMaterialsAcrossFrames(bool stagger)
+        {
             Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null) { enabled = false; return; }
+            if (shader == null) { enabled = false; yield break; }
             Color[] tones = {
                 new Color(.08f,.23f,.40f), new Color(.034f,.039f,.048f),
                 new Color(.57f,.61f,.67f), new Color(.15f,.17f,.20f),
@@ -128,6 +140,18 @@ namespace Aaris.MapReview
             };
             for (int i = 0; i < surfaces.Length; i++)
             {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // Two existing surface materials per render frame. A yield
+                // ensures the next claim cannot spend this frame twice.
+                if (stagger && i > 0 && (i & 1) == 0)
+                {
+                    yield return null;
+                    while (isActiveAndEnabled &&
+                           !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                        yield return null;
+                    if (!isActiveAndEnabled) yield break;
+                }
+#endif
                 surfaces[i] = new Material(shader)
                 {
                     name = "Aaris Road Bike " + i,
@@ -163,6 +187,18 @@ namespace Aaris.MapReview
                 surfaces[0].EnableKeyword("_CLEARCOAT");
             }
             // Three extra shared paint finishes; never create a material per bike.
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Clear-coat clones do not share the surface-import frame on
+            // Snapdragon 680. No texture, paint or shader variant is changed.
+            if (stagger)
+            {
+                yield return null;
+                while (isActiveAndEnabled &&
+                       !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                    yield return null;
+                if (!isActiveAndEnabled) yield break;
+            }
+#endif
             paintVariants[0] = surfaces[0];
             Color[] paints = {
                 new Color(.08f,.23f,.40f),
@@ -179,6 +215,7 @@ namespace Aaris.MapReview
                 };
                 paintVariants[i].SetColor("_BaseColor", paints[i]);
             }
+            bikeMaterialsReady = true;
         }
 
         private void OnEnable() { Application.lowMemory += OnLowMemory; }
@@ -239,9 +276,19 @@ namespace Aaris.MapReview
                     enabled = false;
                     return;
                 }
+#if UNITY_ANDROID && !UNITY_EDITOR
+                if (AarisMobileStreamingFrameGate.IsConstrainedDevice())
+                    StartCoroutine(BuildMaterialsAcrossFrames(true));
+                else
+                    SetupMaterials();
+#else
                 SetupMaterials();
-                if (!enabled) return;
+#endif
+                if (!enabled || !bikeMaterialsReady) return;
             }
+            // A delayed import cannot expose incomplete URP surfaces on the
+            // next 0.4 s poll. The 110 m predictive prewarm remains unchanged.
+            if (!bikeMaterialsReady) return;
             int visibleCount = 0, unloaded = 0;
             foreach (var plan in plans)
             {
