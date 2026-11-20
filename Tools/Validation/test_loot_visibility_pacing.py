@@ -88,6 +88,22 @@ class LootVisibilityPacing(unittest.TestCase):
                     calls += 1
             self.assertLessEqual(calls, 5, fps)
 
+    def test_shared_transparent_beacon_and_staggered_camera_checks(self):
+        # Source guard only; native Unity shader appearance still needs Play Mode.
+        self.assertIn('Shader.Find("Universal Render Pipeline/Particles/Unlit")', SRC)
+        self.assertIn('shared.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");', SRC)
+        self.assertIn('shared.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;', SRC)
+        self.assertIn('if (shared.HasProperty("_ZWrite")) shared.SetFloat("_ZWrite", 0f);', SRC)
+        self.assertIn('beacon.sharedMaterial = beaconPaint;', SRC)
+        self.assertIn('beacon.enabled = false;', SRC)
+        self.assertIn('Mathf.Abs(index % 9) * 0.05f;', SRC)
+        self.assertIn('if (beacon != null) beacon.enabled = false;', SRC)
+        update = SRC.split("private void Update()", 1)[1].split(
+            "private void OnEnable()", 1
+        )[0]
+        self.assertNotIn("new Material(", update)
+        self.assertIn("nextBeaconVisibilityCheck = Time.unscaledTime + 0.45f;", update)
+
     def test_hidden_poll_budget_and_visible_fidelity(self):
         for fps in (15, 30, 60, 90, 120):
             with self.subTest(fps=fps):
