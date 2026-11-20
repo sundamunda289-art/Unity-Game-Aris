@@ -1067,11 +1067,11 @@ namespace Aaris.MapReview
             // Stance FBX clips are transitions into a pose, not continuous gaits.
             // Freeze on the settled position: frame zero can still be standing.
             crouchPlayable.SetSpeed(0d);
-            // 100STYLE crouch is an actual crouched locomotion cycle, so its
-            // cycle boundary is a valid feet-down hold instead of KayKit's
-            // kneeling transition frame. Legacy clips keep their reviewed hold.
-            crouchPlayable.SetTime(naturalMocapLoaded || alsCrouchLoaded ||
-                communityStanceClipsLoaded
+            // CC0 Quaternius, ALS and 100STYLE are authored crouch holds/loops,
+            // not KayKit's kneeling transition. Freeze each selected source
+            // at its intended idle boundary; keep the legacy FBX frame hold.
+            crouchPlayable.SetTime(cc0CrouchLoaded || naturalMocapLoaded ||
+                alsCrouchLoaded || communityStanceClipsLoaded
                 ? 0d : crouchClip.length * (10d / 24d));
             // The 24-frame KayKit Crawling source uses frame 0 as its prone
             // hold. Do not freeze a mid-crawl pose as the player's prone idle.
@@ -2118,8 +2118,8 @@ namespace Aaris.MapReview
             // retargeted crouch stayed too tall. The natural mocap is already
             // physically crouched; applying that legacy drop would bury the
             // hips. Capsule headroom + real foot support remain authoritative.
-            float crouchLowering = naturalMocapLoaded || alsCrouchLoaded ||
-                communityStanceClipsLoaded ? 0f :
+            float crouchLowering = cc0CrouchLoaded || naturalMocapLoaded ||
+                alsCrouchLoaded || communityStanceClipsLoaded ? 0f :
                 (realisticSoldierLoaded ? RealisticSoldierCrouchRigLowering :
                     CrouchRigLowering) * crouchRigWeight;
             // Source crawling hips/ankles float above the floor by about 22 cm.
