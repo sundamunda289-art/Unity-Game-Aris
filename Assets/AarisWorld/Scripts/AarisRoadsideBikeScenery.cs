@@ -39,6 +39,9 @@ namespace Aaris.MapReview
         // A material-integration slice may span several frames on budget GPUs.
         // Never render a bike with a partially initialized material palette.
         private bool bikeMaterialsReady;
+        // A GameObject deactivate stops the staged coroutine, but keeps the
+        // imported motorcycle source. Track that job to allow a safe restart.
+        private Coroutine bikeMaterialsBuild;
         private float nextPoll;
         private bool lowMemoryPending;
         private float poolAllowedAt;
@@ -219,7 +222,32 @@ namespace Aaris.MapReview
         }
 
         private void OnEnable() { Application.lowMemory += OnLowMemory; }
-        private void OnDisable() { Application.lowMemory -= OnLowMemory; }
+
+        private void OnDisable()
+        {
+            Application.lowMemory -= OnLowMemory;
+            if (bikeMaterialsBuild != null)
+            {
+                StopCoroutine(bikeMaterialsBuild);
+                bikeMaterialsBuild = null;
+            }
+            if (bikeMaterialsReady) return;
+            // GameObject deactivation interrupts the budgeted coroutine.
+            // Discard only its incomplete palette; otherwise its first
+            // populated surface blocks a correct rebuild after reactivation.
+            // The original vehicle resource and parking plans stay cached.
+            for (int i = 1; i < paintVariants.Length; i++)
+            {
+                if (paintVariants[i] != null) Destroy(paintVariants[i]);
+                paintVariants[i] = null;
+            }
+            paintVariants[0] = null; // alias of surfaces[0], not a second owner
+            for (int i = 0; i < surfaces.Length; i++)
+            {
+                if (surfaces[i] != null) Destroy(surfaces[i]);
+                surfaces[i] = null;
+            }
+        }
         // Android can report low memory during a heavy frame. Release pooled
         // scenery only from Update, never inside the notification callback.
         private void OnLowMemory() { lowMemoryPending = true; }
@@ -278,7 +306,7 @@ namespace Aaris.MapReview
                 }
 #if UNITY_ANDROID && !UNITY_EDITOR
                 if (AarisMobileStreamingFrameGate.IsConstrainedDevice())
-                    StartCoroutine(BuildMaterialsAcrossFrames(true));
+                    bikeMaterialsBuild = StartCoroutine(BuildMaterialsAcrossFrames(true));
                 else
                     SetupMaterials();
 #else
@@ -288,7 +316,21 @@ namespace Aaris.MapReview
             }
             // A delayed import cannot expose incomplete URP surfaces on the
             // next 0.4 s poll. The 110 m predictive prewarm remains unchanged.
-            if (!bikeMaterialsReady) return;
+            if (!bikeMaterialsReady)
+            {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // Re-enable after a partially completed build: do not leave
+                // roads empty forever and do not recreate URP materials on
+                // an unadmitted frame. Ordinary first-load behavior is intact.
+                if (bikeSource != null && bikeMaterialsBuild == null &&
+                    AarisMobileStreamingFrameGate.IsConstrainedDevice() &&
+                    AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                    bikeMaterialsBuild = StartCoroutine(BuildMaterialsAcrossFrames(true));
+#endif
+                return;
+            }
+            // Do not hold onto a completed Unity coroutine handle.
+            bikeMaterialsBuild = null;
             int visibleCount = 0, unloaded = 0;
             foreach (var plan in plans)
             {
