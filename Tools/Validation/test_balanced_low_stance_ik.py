@@ -261,5 +261,56 @@ for start_angle in [-3.0,-2.5,-2.0,-1.5,-0.4,0.0,0.4,1.5,2.0,2.5,3.0]:
             # Preserve which side of the knee plane the old bend occupied.
             assert fixed_lateral*lateral>=-1e-9
 
+# Regression for the stable anatomical knee pole when humanoid pelvis bones
+# overlap temporarily or their left/right ordering flips during a crossfade.
+# These are source-equivalent geometry cases, NOT captured Unity Play Mode poses.
+source_cache = visual[visual.index("private Vector3 StableAnatomicalRight("):
+                      visual.index("private Vector3 AnatomicalKneeForward(")]
+assert "lastReliableAnatomicalRightLocal" in source_cache
+assert "transform.TransformDirection(" in source_cache
+assert "transform.InverseTransformDirection(current)" in source_cache
+assert "Vector3.Dot(current, previous) < -0.35f" in source_cache
+assert "current.sqrMagnitude > 0.02f" in source_cache
+assert "return previous;" in source_cache
+assert "hasReliableAnatomicalRight = false;" in visual  # teleport/respawn reset
+assert "StableAnatomicalRight(hipRight)" in visual
+assert "StableAnatomicalRight(anatomicalRight)" in layout
+source_cache_code = re.sub(r"//[^\n]*|/\*.*?\*/", "", source_cache, flags=re.S)
+assert "new " not in source_cache_code
+assert "Physics." not in source_cache_code
+
+from math import radians
+
+def rotate_xz(v, degrees):
+    c, s = cos(radians(degrees)), sin(radians(degrees))
+    return (v[0]*c - v[1]*s, v[0]*s + v[1]*c)
+
+def dot2(a, b):
+    return a[0]*b[0] + a[1]*b[1]
+
+def stabilize_axis(previous_world, measured):
+    sq = dot2(measured, measured)
+    if sq <= .02:
+        return previous_world
+    length = sqrt(sq)
+    current = (measured[0]/length, measured[1]/length)
+    if dot2(current, previous_world) < -.35:
+        return previous_world
+    return current
+
+# A capsule yaw changes the world-space cached axis, not its local anatomy.
+# The imported model's anatomical-right may be 90 degrees off capsule-right.
+for yaw in (0, 30, 90, 135, 180):
+    previous = rotate_xz((0.0, 1.0), yaw)
+    for span in (0.0, 0.03, 0.10, -0.38):
+        measured = (previous[0]*span, previous[1]*span)
+        fixed = stabilize_axis(previous, measured)
+        assert dot2(fixed, previous) > .999999, (yaw, span, fixed)
+    # Valid incremental relative pelvis rotation must still follow the rig.
+    for relative in (0, 15, 40, 75):
+        measured = rotate_xz(previous, relative)
+        fixed = stabilize_axis(previous, measured)
+        assert dot2(fixed, measured) > .999999, (yaw, relative, fixed)
+
 print("PASS: anatomy-scaled crouch/prone IK, grounded knee hint and bend-circle stability")
 print("NOT TESTED: Unity retargeted visuals, real collisions or Android FPS")
