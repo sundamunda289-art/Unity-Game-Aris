@@ -102,6 +102,7 @@ namespace Aaris.MapReview
         private AnimationClip sprintClip, proneClip, crawlClip;
         // MIT VRCEasyLoco humanoid pose clips; existing FBX remains safe fallback.
         private bool communityStanceClipsLoaded;
+        public bool UsingCommunityStanceClips => communityStanceClipsLoaded;
         private int lastVisualAttackSequence;
         private float seenTakeoff = -10f, seenTouchdown = -10f;
         private AarisBattleActions actions;
@@ -957,7 +958,10 @@ namespace Aaris.MapReview
             {
                 crouchClip = communityCrouch;
                 proneClip = communityProne;
+                Debug.Log("AARIS_MIT_STANCE_CLIPS_ACTIVE EasyLoco crouch/prone");
             }
+            else if (CalibratedSoldierLoaded)
+                Debug.LogWarning("AARIS_MIT_STANCE_CLIPS_FALLBACK old clips");
             punchClip = FindClip("punch", "punch");
             shootClip = FindClip("shoot", "shoot");
             if (punchClip == null) punchClip = idleClip;
