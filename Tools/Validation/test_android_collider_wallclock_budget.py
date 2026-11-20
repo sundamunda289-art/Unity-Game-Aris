@@ -70,7 +70,8 @@ class ColliderWallClockBudget(unittest.TestCase):
         self.assertIn("constrainTime && processed % AndroidDeactivationClockCheckInterval == 0", body)
         self.assertIn("AndroidDeactivationBudgetSeconds", body)
         self.assertIn("if (constrainTime)\n                        frameStartedAt", body)
-        self.assertIn("Vector3 position = target.position;", body)
+        self.assertIn("Vector3 framePosition = target != null ? target.position : Vector3.zero;", body)
+        self.assertEqual(body.count("target.position"), 2)
         self.assertIn("c.enabled = false;", body)
 
     def test_initial_solid_and_interrupted_resume_invariants(self):
