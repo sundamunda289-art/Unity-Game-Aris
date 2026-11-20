@@ -46,5 +46,42 @@ class DiagnosticFramePacing(unittest.TestCase):
         self.assertIn('Record("frame-stall");', CODE)
 
 
+    def test_android_terrain_audit_uses_distinct_admitted_frames(self):
+        start = CODE.split("private IEnumerator Start()", 1)[1].split(
+            "private IEnumerator CollectPreviousProcessExitAfterStartup()", 1)[0]
+        self.assertIn("terrainAuditPending = true;", start)
+        self.assertIn("#else\n            // Editor terrain verification remains synchronous", start)
+        android_start = start.split("#if UNITY_ANDROID && !UNITY_EDITOR", 2)[-1]
+        self.assertNotIn('Record("terrain-render-audit");', android_start.split("#else", 1)[0])
+        update = CODE.split("private void Update()", 1)[1].split(
+            "private bool CanRecordPeriodicDiagnostics()", 1)[0]
+        self.assertIn("Time.unscaledTime - startupTime >= 2f", update)
+        audit = update.split("if (terrainAuditPending &&", 1)[1].split(
+            "if (terrainAuditReportPending &&", 1)[0]
+        self.assertIn("CanRecordPeriodicDiagnostics()", audit)
+        self.assertIn("lastDiagnosticFrame = Time.frameCount;", audit)
+        self.assertIn("AuditNativeTerrain();", audit)
+        self.assertNotIn("Record(", audit)
+        report = update.split("if (terrainAuditReportPending &&", 1)[1].split(
+            "if (previousProcessExitReportPending &&", 1)[0]
+        self.assertIn("CanRecordPeriodicDiagnostics()", report)
+        self.assertIn('Record("terrain-render-audit");', report)
+        self.assertLess(update.index('Record("frame-stall");'),
+                        update.index("if (terrainAuditPending &&"))
+
+    def test_previous_process_exit_snapshot_retries_without_native_stall(self):
+        collect = CODE.split("private IEnumerator CollectPreviousProcessExitAfterStartup()", 1)[1].split(
+            "private void ConfigureOceanShadowBudget()", 1)[0]
+        self.assertIn("previousExitReady = true;", collect)
+        self.assertIn("previousProcessExitReportPending = true;", collect)
+        self.assertNotIn('Record("previous-process-exit");', collect)
+        update = CODE.split("private void Update()", 1)[1].split(
+            "private bool CanRecordPeriodicDiagnostics()", 1)[0]
+        report = update.split("if (previousProcessExitReportPending &&", 1)[1].split(
+            "if (startupReportPending &&", 1)[0]
+        self.assertIn("CanRecordPeriodicDiagnostics()", report)
+        self.assertIn('Record("previous-process-exit");', report)
+        self.assertIn("AarisMobileStreamingFrameGate.TryClaimNonessentialDiagnosticFrame()", CODE)
+
 if __name__ == "__main__":
     unittest.main()
