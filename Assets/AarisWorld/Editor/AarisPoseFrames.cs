@@ -685,6 +685,12 @@ Log("TRANSITION_LEGS stance="+b.Stance+" frame="+sampleIndex+
 " foreAftFootStagger="+footForwardStagger.ToString("F3")+
 " leftKneeSide="+lSide.ToString("F3")+
 " rightKneeSide="+rSide.ToString("F3"));
+// The image-count success marker must not certify a planted limb that
+// flares across the hip-side plane during a grounded stance crossfade.
+// Airborne authored motion is excluded from this stationary contact gate.
+if(transitioning && !p.IsInAir &&
+ Mathf.Max(Mathf.Abs(lSide),Mathf.Abs(rSide)) > 0.30f)
+ throw new InvalidOperationException("TRANSITION_KNEE_SIDEWAYS_OVER_30CM");
 }
 static void Finish(string reason){
 FinishMotionContactSummary();
