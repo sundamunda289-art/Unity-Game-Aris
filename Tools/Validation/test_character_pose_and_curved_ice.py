@@ -323,7 +323,7 @@ action = (ROOT / 'Assets/AarisWorld/Scripts/AarisBattleActions.cs').read_text()
 assert 'public bool CanFaceProne(Vector3 forward)' in action
 assert '!(motor != null ? motor.HasCloseWalkableStanceSupport()' in action
 assert 'now - lastPhysicalGroundContact > StanceGroundGraceSeconds' in motor
-assert 'now - lastJumpStarted < 0.65f' in motor
+assert 'if (verticalVelocity > 0f) return false;' in motor
 assert 'return HasWalkableGroundWithinStep(seamGap);' in motor
 # Turning before Move checks prone clearance at the old position.
 # A wall-corner turn that is valid there can clip the horizontal head
