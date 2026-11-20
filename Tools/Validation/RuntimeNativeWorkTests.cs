@@ -4,6 +4,15 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
+// The runner inserts production collider loop bodies. Record their calls to
+// the shared frame gate without pretending to execute Unity/Android native work.
+internal static class AarisMobileStreamingFrameGate
+{
+    internal static int Claimed;
+    internal static void ResetClaims() { Claimed = 0; }
+    internal static void ReservePhysicsStreamingFrame() { Claimed++; }
+}
+
 namespace UnityEngine
 {
     public struct Vector2 { public float x, y; public Vector2(float a, float b) { x=a; y=b; } }
@@ -127,9 +136,16 @@ internal static class RuntimeNativeWorkTests
                     float dx=q.x-player.x, dz=q.z-player.z;
                     float d2=dx*dx+dz*dz;
                     bool expected=mode>=2 && d2 <= (mode==3 ? 61f*61f : 55f*55f);
+                    AarisMobileStreamingFrameGate.ResetClaims();
                     bool accepted=oversized ? f.Oversized(55f*55f,61f*61f) :
                                              f.Grid(55f*55f,61f*61f);
                     Check(accepted==expected,"Activation/hysteresis changed");
+                    // A no-op scan must not claim the optional streamer's
+                    // frame. Exactly one originally-off solid entering range
+                    // should reserve native physics before it is enabled.
+                    int expectedClaims=mode==2 && expected ? 1 : 0;
+                    Check(AarisMobileStreamingFrameGate.Claimed==expectedClaims,
+                          "Collider change/idle frame admission mismatch");
                     if(mode>=2)
                     {
                         Check(c.state==(expected || mode==3),"Collider state changed incorrectly");
