@@ -1,0 +1,43 @@
+name: Aaris additive chunk streaming regression
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisAdditiveChunkStreamer.cs'
+      - 'Assets/AarisWorld/Scripts/AarisChunkStreamingPolicy.cs'
+      - 'Tools/Validation/AdditiveChunkStreamingTests.cs'
+      - '.github/workflows/aaris-additive-streaming-validation.yml'
+  push:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisAdditiveChunkStreamer.cs'
+      - 'Assets/AarisWorld/Scripts/AarisChunkStreamingPolicy.cs'
+      - 'Tools/Validation/AdditiveChunkStreamingTests.cs'
+      - '.github/workflows/aaris-additive-streaming-validation.yml'
+permissions:
+  contents: read
+jobs:
+  compile-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Install C# compiler
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends mono-mcs
+      - name: Compile and run actual streaming code (Editor policy)
+        run: |
+          mcs -out:/tmp/aaris-chunks-editor.exe \
+            Tools/Validation/AdditiveChunkStreamingTests.cs \
+            Assets/AarisWorld/Scripts/AarisChunkStreamingPolicy.cs \
+            Assets/AarisWorld/Scripts/AarisAdditiveChunkStreamer.cs
+          mono /tmp/aaris-chunks-editor.exe
+      - name: Compile and run Android admission path
+        run: |
+          mcs -define:UNITY_ANDROID -out:/tmp/aaris-chunks-android.exe \
+            Tools/Validation/AdditiveChunkStreamingTests.cs \
+            Assets/AarisWorld/Scripts/AarisChunkStreamingPolicy.cs \
+            Assets/AarisWorld/Scripts/AarisAdditiveChunkStreamer.cs
+          mono /tmp/aaris-chunks-android.exe
+      - name: Evidence boundary
+        run: echo 'Production C# compiled against controlled Unity stubs. Native Unity Editor, Android APK and device FPS still require verification.'

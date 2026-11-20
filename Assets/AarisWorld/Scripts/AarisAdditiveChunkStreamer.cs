@@ -154,25 +154,43 @@ namespace Aaris.MapReview
             // One integration operation in flight across the *entire* world.
             // Essential visible cells win over memory retirement; distant
             // proxy scenery lives in the persistent scene during transitions.
-            if (loadCell >= 0)
-            {
-#if UNITY_ANDROID && !UNITY_EDITOR
-                if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()) return;
-#endif
-                StartOperation(loadCell, true);
-            }
-            else if (unloadCell >= 0)
+            // Retire a distant owned cell before a merely speculative
+            // prefetch. Otherwise rapid traversal can stack old resident
+            // scenes with new predicted ones and spike Android RAM. Cells
+            // needed at the player's actual position always load first.
+            if (unloadCell >= 0 && (loadCell < 0 || nearestLoad > entrySquared))
             {
 #if UNITY_ANDROID && !UNITY_EDITOR
                 AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();
 #endif
                 StartOperation(unloadCell, false);
             }
+            else if (loadCell >= 0)
+            {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()) return;
+#endif
+                StartOperation(loadCell, true);
+            }
         }
 
         private void StartOperation(int index, bool load)
         {
             string path = chunks[index].scenePath;
+            // Recheck only at an actual transition, not once per cell on
+            // every poll. Another manager may have loaded this scene after
+            // our Awake, or retired one that we previously owned.
+            Scene existing = SceneManager.GetSceneByPath(path);
+            if (load && existing.IsValid() && existing.isLoaded)
+            {
+                states[index].externallyOwned = true;
+                return;
+            }
+            if (!load && (!existing.IsValid() || !existing.isLoaded))
+            {
+                states[index].loadedByThisStreamer = false;
+                return;
+            }
             try
             {
                 AsyncOperation operation = load

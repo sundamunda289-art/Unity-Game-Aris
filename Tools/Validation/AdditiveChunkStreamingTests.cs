@@ -130,6 +130,17 @@ internal static class AdditiveChunkStreamingTests
         Invoke(manager, "OnEnable");
         return manager;
     }
+    private static AarisAdditiveChunkStreamer MakeMultiple(
+        Transform player, params AarisAdditiveChunkStreamer.Chunk[] entries)
+    {
+        var manager = new AarisAdditiveChunkStreamer();
+        Set(manager, "player", player);
+        Set(manager, "chunks", entries);
+        Invoke(manager, "Awake");
+        Invoke(manager, "OnEnable");
+        return manager;
+    }
+
     private static void Frame(AarisAdditiveChunkStreamer manager,
         Transform player, float time, float x)
     {
@@ -181,6 +192,64 @@ internal static class AdditiveChunkStreamingTests
         Frame(manager, target, 4.5f, 0f);
         Check(SceneManager.unloadCount == 0 && SceneManager.loadCount == 0,
             "only unload scenes owned by this manager");
+        // One far resident scene must be retired before an optional
+        // predicted-only cell is admitted: bounded peak resident memory.
+        SceneManager.Reset();
+        target = new Transform();
+        manager = MakeMultiple(target,
+            new AarisAdditiveChunkStreamer.Chunk {
+                scenePath = Path, center = new Vector2(0, 0),
+                halfExtents = new Vector2(100, 100)
+            },
+            new AarisAdditiveChunkStreamer.Chunk {
+                scenePath = "Assets/CellEast.unity", center = new Vector2(570, 0),
+                halfExtents = new Vector2(100, 100)
+            });
+        Frame(manager, target, 1f, 0f);
+        Check(SceneManager.loadCount == 1, "current-position cell should load");
+        SceneManager.Finish();
+        Frame(manager, target, 1.1f, 0f);
+        Set(manager, "previousSampleValid", true);
+        Set(manager, "previousSample", new Vector3 { x = 333, z = 0 });
+        Set(manager, "previousSampleAt", 1.0f);
+        Set(manager, "nextPollAt", 0f);
+        Set(manager, "nextTransitionAt", 0f);
+        Frame(manager, target, 1.3f, 350f);
+        Check(SceneManager.unloadCount == 1 && SceneManager.loadCount == 1,
+            "stale resident should retire before speculative prefetch");
+        SceneManager.Finish();
+        Frame(manager, target, 1.4f, 350f);
+        Frame(manager, target, 1.7f, 400f);
+        Check(SceneManager.loadCount == 2,
+            "actual-position urgent cell must still load next");
+
+        // An external loader can win the race AFTER the streamer's Awake.
+        // Never duplicate its load or later unload someone else's scene.
+        SceneManager.Reset();
+        target = new Transform();
+        manager = Make(target);
+        SceneManager.loaded[Path] = true;
+        Frame(manager, target, 4f, 0f);
+        Frame(manager, target, 4.5f, 700f);
+        Check(SceneManager.loadCount == 0 && SceneManager.unloadCount == 0,
+            "externally loaded cell must remain externally owned");
+
+        // Another manager can retire a scene formerly loaded by us.
+        // Avoid Unity's redundant unload and allow a later clean reload.
+        SceneManager.Reset();
+        target = new Transform();
+        manager = Make(target);
+        Frame(manager, target, 5f, 0f);
+        SceneManager.Finish();
+        Frame(manager, target, 5.1f, 0f);
+        SceneManager.loaded[Path] = false;
+        Frame(manager, target, 5.5f, 500f);
+        Check(SceneManager.unloadCount == 0,
+            "already absent scene should not be unloaded again");
+        Frame(manager, target, 5.8f, 0f);
+        Check(SceneManager.loadCount == 2,
+            "externally retired scene should be reloadable");
+
         Console.WriteLine("PASS: " + checks + " checked assertions (real production sources)");
         return 0;
     }
