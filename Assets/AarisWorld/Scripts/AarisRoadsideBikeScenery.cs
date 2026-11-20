@@ -280,6 +280,17 @@ namespace Aaris.MapReview
                     bikeVisuals.Remove(inactiveBike);
                     Destroy(inactiveBike);
                 }
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // Android low-memory is a critical cleanup frame, even when
+                // the pool happens to be empty. The callback can fire before
+                // this streamer's Update and before the runtime begins its
+                // asynchronous UnloadUnusedAssets pass. Reserve admission
+                // globally now, and do not import or instantiate a fresh bike
+                // in the very frame we just released native pooled rigs.
+                // The ordinary poll will retry; all visible bikes survive.
+                AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
+                return;
+#endif
             }
             if (player == null || !enabled) return;
             float now = Time.unscaledTime;
