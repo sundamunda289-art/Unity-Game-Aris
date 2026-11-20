@@ -41,7 +41,7 @@ class ColliderReleaseNoopAdmission(unittest.TestCase):
     def test_initial_yield_and_each_subsequent_frame_reset(self):
         self.assertIn("yield return null;\n            // A stale retirement queue", BODY)
         self.assertIn("bool reservedReleaseFrame = false;", BODY)
-        self.assertIn("yield return null;\n                    framePosition = target != null ? target.position : Vector3.zero;", BODY)
+        self.assertIn("yield return null;\n                    framePosition = target != null ? target.position : default(Vector3);", BODY)
         self.assertIn("retainSquared = retain * retain;", BODY)
         self.assertLess(
             BODY.index("framePosition = target != null ? target.position",
