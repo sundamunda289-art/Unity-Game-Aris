@@ -100,11 +100,36 @@ for prone in (0.0, 0.2, 0.5, 0.8, 1.0):
 support = visual[visual.index("private float SupportedAnkleY("):
                  visual.index("private void PlantUprightContact(")]
 assert "out Vector3 supportNormal, Vector3 sampleWorld)" in support
-assert "Vector3 origin = sampleWorld + Vector3.up * 0.70f;" in support
+assert "float capsuleBottomY = controller != null && controller.enabled" in support
+assert "controller.bounds.min.y : sampleWorld.y;" in support
+assert "Mathf.Max(sampleWorld.y, capsuleBottomY) + 0.70f," in support
+assert "new Vector3(sampleWorld.x," in support
+assert "sampleWorld.z);" in support
 assert support.count("AarisPhysicsHitBuffer.Raycast(") == 1
 assert "float floor = float.NaN;" in support
 assert "hit.collider.transform.IsChildOf(transform)" in support
 assert "hit.normal.y < minWalkableNormalY" in support
+
+# Pure geometry preflight (not a Unity screenshot or physical raycast).
+# A crossfade may put the ankle 0.80m below terrain while the grounded
+# capsule bottom stays at +0.035m; the old 0.70m origin starts underground.
+def support_ray_origin_y(ankle_y, capsule_bottom_y, enabled=True):
+    anchor_y = max(ankle_y, capsule_bottom_y if enabled else ankle_y)
+    return anchor_y + 0.70
+
+def can_hit_floor(ray_start_y, floor_y):
+    return ray_start_y >= floor_y >= ray_start_y - 1.70
+
+assert not can_hit_floor(-0.80 + 0.70, 0.0)
+assert can_hit_floor(support_ray_origin_y(-0.80, 0.035), 0.0)
+# If the animated ankle is already higher than the capsule bottom, preserve
+# the original ray: standing, gait swing and height-on-stairs are unchanged.
+for ankle_y in (0.04, 0.10, 0.45, 1.0):
+    assert abs(support_ray_origin_y(ankle_y, 0.035) - (ankle_y + .70)) < 1e-10
+# Disabled / absent capsule retains the original authored-foot ray; no
+# fabricated support height is returned when the ray has no hit.
+assert support_ray_origin_y(-0.80, 0.035, False) == -0.10 + 0.70 - 0.70
+assert "float floor = float.NaN;" in support
 
 resolver = visual[visual.index("private static Vector3 ResolveLowStanceFootContact("):
                   visual.index("private static void PlantCrouchLeg(")]
