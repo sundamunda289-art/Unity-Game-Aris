@@ -133,6 +133,19 @@ namespace Aaris.MapReview
 
         private System.Collections.IEnumerator BuildMaterialsAcrossFrames(bool stagger)
         {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (stagger)
+            {
+                // The vehicle ResourceRequest integration already claimed its
+                // frame. Defer the FIRST native URP pair to a fresh admission
+                // rather than doing it on the same import-completion frame.
+                yield return null;
+                while (isActiveAndEnabled &&
+                       !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                    yield return null;
+                if (!isActiveAndEnabled) yield break;
+            }
+#endif
             Shader shader = Shader.Find("Universal Render Pipeline/Lit");
             if (shader == null) { enabled = false; yield break; }
             Color[] tones = {
@@ -321,8 +334,7 @@ namespace Aaris.MapReview
             // slice again rather than leaving all roadside bikes invisible.
             if (!bikeMaterialsReady && bikeSource != null &&
                 bikeMaterialsBuild == null &&
-                AarisMobileStreamingFrameGate.IsConstrainedDevice() &&
-                AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                AarisMobileStreamingFrameGate.IsConstrainedDevice())
                 bikeMaterialsBuild = StartCoroutine(BuildMaterialsAcrossFrames(true));
 #endif
             if (!bikeMaterialsReady) return;
