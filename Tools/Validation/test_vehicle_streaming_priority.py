@@ -120,6 +120,29 @@ class VehicleStreamingPriority(unittest.TestCase):
         self.assertEqual(nearest([(27, True), (27, True), (30, True)]), 0)
         self.assertIsNone(nearest([(106, True), (200, True)]))
 
+    def test_constrained_android_physics_probes_have_soft_time_budget(self):
+        # Actual Unity physics timing must still be measured on the phone.
+        update = WORLD.split("private void Update()", 1)[1].split(
+            "private AarisVehicleRecord FarthestReplaceableParkedCar(", 1)[0]
+        self.assertIn("AndroidSpawnProbeSliceSeconds = 0.0015d;", WORLD)
+        self.assertIn("double spawnProbeSliceStart = Time.realtimeSinceStartupAsDouble;", update)
+        self.assertIn("spawnProbes > 0 &&", update)
+        self.assertIn("AarisMobileStreamingFrameGate.IsConstrainedDevice()", update)
+        self.assertIn("Time.realtimeSinceStartupAsDouble - spawnProbeSliceStart >=", update)
+        self.assertIn("AndroidSpawnProbeSliceSeconds)\n                    break;", update)
+        self.assertLess(update.index("spawnProbes > 0 &&"),
+                        update.index("AarisVehicleRecord record = null;"))
+        self.assertLess(update.index("AarisVehicleRecord record = null;"),
+                        update.index("spawnProbes++;"))
+        self.assertIn("nextPoll = now + .3f;", update)
+        # One attempt progresses even if the previous poll was expensive.
+        def allowed(attempts, seconds, constrained):
+            return attempts == 0 or not constrained or seconds < .0015
+        self.assertTrue(allowed(0, .250, True))
+        self.assertTrue(allowed(1, .0014, True))
+        self.assertFalse(allowed(1, .0015, True))
+        self.assertTrue(allowed(2, .010, False))
+
     def test_hysteresis_and_occupied_safety(self):
         helper = WORLD.split("private AarisVehicleRecord FarthestReplaceableParkedCar(", 1)[1].split(
             "private void OnDestroy()", 1)[0]
