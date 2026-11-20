@@ -1422,9 +1422,9 @@ namespace Aaris.MapReview
             {
                 Vector3 hipRight = Vector3.ProjectOnPlane(
                     rightThigh.position - leftThigh.position, Vector3.up);
-                Vector3 stableRight = StableAnatomicalRight(hipRight);
-                if (stableRight.sqrMagnitude > 0.25f)
-                    return Vector3.Cross(stableRight, Vector3.up).normalized;
+                hipRight = StableAnatomicalRight(hipRight);
+                if (hipRight.sqrMagnitude > 0.25f)
+                    return Vector3.Cross(hipRight.normalized, Vector3.up).normalized;
             }
             Vector3 cachedRight = StableAnatomicalRight(Vector3.zero);
             return cachedRight.sqrMagnitude > 0.25f
