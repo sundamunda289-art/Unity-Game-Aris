@@ -2257,9 +2257,10 @@ namespace Aaris.MapReview
                 // but made return-to-standing knees up to 23cm more lateral.
                 // Keep the original settled-only pole. The independent
                 // symmetric foot-spread guard handles the real splay safely.
-                float pronePoleStrength = communityStanceClipsLoaded ? 0f :
-                    proneKneeShare * proneKneeSettle *
+                float pronePoleStrength = proneKneeShare * proneKneeSettle *
                     kneeStillness * kneeTurnStability;
+                // Let the MIT authored Humanoid animation own knee direction.
+                if (communityStanceClipsLoaded) pronePoleStrength = 0f;
                 Vector3 kneeForward = crouchKneeForward * crouchPoleStrength +
                     Vector3.up * pronePoleStrength;
                 float kneePoleStrength = Mathf.Clamp01(
