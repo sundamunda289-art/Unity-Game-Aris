@@ -1,0 +1,64 @@
+name: Android Physics and Optional Streaming Frame QA
+
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs'
+      - 'Assets/AarisWorld/Scripts/AarisNearbyColliders.cs'
+      - 'Tools/Validation/test_android_physics_streaming_frame_priority.py'
+      - '.github/workflows/aaris-physics-streaming-frame-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs'
+      - 'Assets/AarisWorld/Scripts/AarisNearbyColliders.cs'
+      - 'Tools/Validation/test_android_physics_streaming_frame_priority.py'
+      - '.github/workflows/aaris-physics-streaming-frame-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  source-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Re-run cross-system admission and collider source regressions
+        run: |
+          python -m unittest discover -s Tools/Validation -p 'test_android_physics_streaming_frame_priority.py'
+          python -m unittest discover -s Tools/Validation -p 'test_android_shared_streaming_frame_gate.py'
+          python -m unittest discover -s Tools/Validation -p 'test_android_collider_boot_budget.py'
+          python -m unittest discover -s Tools/Validation -p 'test_android_collider_wallclock_budget.py'
+          python -m unittest discover -s Tools/Validation -p 'test_android_collider_grid_lifecycle.py'
+          python -m unittest discover -s Tools/Validation -p 'test_android_collider_release_burst.py'
+          python -m unittest discover -s Tools/Validation -p 'test_android_oversized_collider_grid.py'
+          python -m unittest discover -s Tools/Validation -p 'test_player_streamer_lifecycle.py'
+      - name: Parse actual C-sharp syntax, check formatting
+        run: |
+          python -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
+          python - <<'PY'
+          from pathlib import Path
+          from tree_sitter import Language, Parser
+          import tree_sitter_c_sharp
+          p=Parser(Language(tree_sitter_c_sharp.language()))
+          paths = [
+              Path('Assets/AarisWorld/Scripts/AarisMobileStreamingFrameGate.cs'),
+              Path('Assets/AarisWorld/Scripts/AarisNearbyColliders.cs'),
+              Path('Tools/Validation/test_android_physics_streaming_frame_priority.py'),
+              Path('Docs/ANDROID_PHYSICS_OPTIONAL_FRAME_COORDINATION_20261120.md'),
+          ]
+          for path in paths:
+              assert path.is_file(), str(path)
+              content=path.read_text(encoding='utf-8')
+              assert all(line == line.rstrip() for line in content.splitlines()), str(path)
+              if path.suffix == '.cs':
+                  assert not p.parse(content.encode('utf-8')).root_node.has_error, str(path)
+          print('PASS: source tests, C-sharp syntax and whitespace; native Unity compilation still required')
+          PY
