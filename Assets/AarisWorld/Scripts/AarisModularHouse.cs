@@ -293,6 +293,12 @@ namespace Aaris.MapReview
         private static readonly List<MeshFilter> scratchFilters = new List<MeshFilter>(96);
         private static readonly List<Material> scratchMaterials = new List<Material>(4);
         private static readonly List<MeshRenderer> scratchOriginals = new List<MeshRenderer>(64);
+        // Unity consumes CombineMeshes input synchronously. Keep only a bounded
+        // set of exact-sized, reusable arrays for repeated house layouts.
+        // Do not pad arrays: a default CombineInstance changes the result.
+        private const int MaximumCachedCombineArraySizes = 24;
+        private static readonly Dictionary<int, CombineInstance[]> scratchCombineArrays =
+            new Dictionary<int, CombineInstance[]>();
 
         // The static walls, roof and trim share a handful of materials.
         // Merge by material once at spawning time, while keeping every
@@ -361,10 +367,32 @@ namespace Aaris.MapReview
                 {
                     Mesh combined = new Mesh { name = "Aaris_StaticHouse_" + pair.Key.name };
                     combined.indexFormat = IndexFormat.UInt16;
-                    // CombineMeshes accepts CombineInstance[], so this small
-                    // per-material conversion remains; all query/group arrays
-                    // and lists above are reused across authored homes.
-                    combined.CombineMeshes(pair.Value.ToArray(), true, true, false);
+                    // Copy to an exact-sized array. Repeated house layouts
+                    // reuse it instead of allocating through List.ToArray().
+                    // A bounded cache prevents retaining arbitrarily many sizes.
+                    int partCount = pair.Value.Count;
+                    bool cached = scratchCombineArrays.TryGetValue(
+                        partCount, out CombineInstance[] parts);
+                    if (!cached)
+                    {
+                        parts = new CombineInstance[partCount];
+                        if (partCount <= 256 &&
+                            scratchCombineArrays.Count < MaximumCachedCombineArraySizes)
+                        {
+                            scratchCombineArrays.Add(partCount, parts);
+                            cached = true;
+                        }
+                    }
+                    pair.Value.CopyTo(parts);
+                    try
+                    {
+                        combined.CombineMeshes(parts, true, true, false);
+                    }
+                    finally
+                    {
+                        // Never retain Mesh references in static managed buffers.
+                        if (cached) System.Array.Clear(parts, 0, parts.Length);
+                    }
                     combined.RecalculateBounds();
                     GameObject section = new GameObject("Batched_" + pair.Key.name);
                     section.transform.SetParent(root, false);
