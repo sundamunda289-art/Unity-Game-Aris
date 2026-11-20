@@ -100,7 +100,30 @@ for prone in (0.0, 0.2, 0.5, 0.8, 1.0):
 support = visual[visual.index("private float SupportedAnkleY("):
                  visual.index("private void PlantUprightContact(")]
 assert "out Vector3 supportNormal, Vector3 sampleWorld)" in support
-assert "Vector3 origin = sampleWorld + Vector3.up * 0.70f;" in support
+assert "float safeSampleY = sampleWorld.y;" in support
+assert "controller != null && controller.enabled" in support
+assert "controller.center - Vector3.up * (controller.height * 0.5f)" in support
+assert "safeSampleY = Mathf.Max(safeSampleY, capsuleBottomY - 0.05f);" in support
+assert "Vector3 origin = new Vector3(sampleWorld.x," in support
+assert "safeSampleY + 0.70f, sampleWorld.z);" in support
+
+# A buried animated ankle must not start the downward ray underground.
+# Normal contact remains unchanged; X/Z remains the planned stance target.
+def support_ray_origin_y(foot_sample_y, capsule_floor_y):
+    return max(foot_sample_y, capsule_floor_y - 0.05) + 0.70
+
+for capsule_floor_y in (-3.0, 0.0, 12.5):
+    for animated_ankle_y in (capsule_floor_y - 1.10,
+                             capsule_floor_y - 0.80,
+                             capsule_floor_y - 0.20,
+                             capsule_floor_y + 0.05,
+                             capsule_floor_y + 0.50):
+        origin_y = support_ray_origin_y(animated_ankle_y, capsule_floor_y)
+        assert origin_y >= capsule_floor_y + 0.65 - 1e-9
+        assert origin_y >= animated_ankle_y + 0.70 - 1e-9
+    assert abs(support_ray_origin_y(capsule_floor_y + 0.10,
+                                    capsule_floor_y) -
+               (capsule_floor_y + 0.80)) < 1e-9
 assert support.count("AarisPhysicsHitBuffer.Raycast(") == 1
 assert "float floor = float.NaN;" in support
 assert "hit.collider.transform.IsChildOf(transform)" in support
