@@ -441,7 +441,10 @@ namespace Aaris.MapReview
             // An ordinary movement refresh already enabled nearby cover. Give
             // its expensive native collider toggles their own rendered frames.
             yield return null;
-            AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
+            // A stale retirement queue may contain only already-reacquired
+            // walls. Do not reserve scarce low-end import time until native
+            // collider state actually changes. One claim per changed frame.
+            bool reservedReleaseFrame = false;
             int processed = 0;
             double frameStartedAt = Time.realtimeSinceStartupAsDouble;
             while (colliderReleaseCursor < pendingColliderRelease.Count)
@@ -458,7 +461,14 @@ namespace Aaris.MapReview
                     float retain = Mathf.Max(0f, activationDistance) +
                         ColliderReleaseMargin;
                     if (dx * dx + dz * dz > retain * retain)
+                    {
+                        if (!reservedReleaseFrame)
+                        {
+                            AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
+                            reservedReleaseFrame = true;
+                        }
                         collider.enabled = false;
+                    }
                 }
                 processed++;
                 if (processed >= AndroidReleaseUpdatesPerFrame ||
@@ -468,7 +478,7 @@ namespace Aaris.MapReview
                 {
                     processed = 0;
                     yield return null;
-                    AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
+                    reservedReleaseFrame = false;
                     frameStartedAt = Time.realtimeSinceStartupAsDouble;
                 }
             }
