@@ -49,6 +49,16 @@ namespace Aaris.MapReview
         // imported motorcycle source. Track that job to allow a safe restart.
         private Coroutine bikeMaterialsBuild;
         private float nextPoll;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // Predict only the OPTIONAL scenery asset import, never bike visibility,
+        // placement or collision. Keep samples across the existing 0.4s poll.
+        private const float BikePrewarmLeadSeconds = 1.25f;
+        private const float BikePrewarmMaxSpeedMetresPerSecond = 28f;
+        private const float BikePrewarmTeleportSpeedMetresPerSecond = 45f;
+        private Vector3 previousPrewarmPosition;
+        private float previousPrewarmTime;
+        private bool hasPrewarmSample;
+#endif
         private bool lowMemoryPending;
         private float poolAllowedAt;
 
@@ -303,6 +313,35 @@ namespace Aaris.MapReview
             if (now < nextPoll) return;
             nextPoll = now + .4f;
             Vector3 position = player.position;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // A nearby bike shares one authored model. Start its async import
+            // before the player reaches the 45m visibility boundary on a fast
+            // approach, but never create a bike at the predicted location.
+            // Ignore teleports, long app suspends and vertical-only movement.
+            Vector3 predictedPrewarmPosition = position;
+            if (hasPrewarmSample)
+            {
+                float elapsed = now - previousPrewarmTime;
+                if (elapsed >= 0.2f && elapsed <= 1.5f)
+                {
+                    Vector3 movement = position - previousPrewarmPosition;
+                    movement.y = 0f;
+                    float teleportLimit =
+                        BikePrewarmTeleportSpeedMetresPerSecond * elapsed;
+                    if (movement.sqrMagnitude <= teleportLimit * teleportLimit)
+                    {
+                        Vector3 velocity = movement / elapsed;
+                        if (velocity.sqrMagnitude > 1f)
+                            predictedPrewarmPosition += Vector3.ClampMagnitude(
+                                velocity, BikePrewarmMaxSpeedMetresPerSecond) *
+                                BikePrewarmLeadSeconds;
+                    }
+                }
+            }
+            previousPrewarmPosition = position;
+            previousPrewarmTime = now;
+            hasPrewarmSample = true;
+#endif
             if (bikeSource == null)
             {
                 if (bikePrewarm == null)
@@ -313,7 +352,20 @@ namespace Aaris.MapReview
                     foreach (var plan in plans)
                     {
                         Vector3 bay = new Vector3(plan.point.x, plan.point.y, plan.point.z);
-                        if ((bay - position).sqrMagnitude > warmDistanceSq) continue;
+                        bool nearbyNow =
+                            (bay - position).sqrMagnitude <= warmDistanceSq;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                        // The real position always wins: prediction grants
+                        // only the same one optional async resource request,
+                        // with no increased bike count, GPU draws or colliders.
+                        bool approaching =
+                            predictedPrewarmPosition != position &&
+                            (bay - predictedPrewarmPosition).sqrMagnitude <=
+                            warmDistanceSq;
+                        if (!nearbyNow && !approaching) continue;
+#else
+                        if (!nearbyNow) continue;
+#endif
                         bikePrewarm = AarisMobileStreamingFrameGate.TryStartOptionalLoadAsync<GameObject>(ModelResource);
                         if (bikePrewarm == null) return; // optional import deferred
                         break;
