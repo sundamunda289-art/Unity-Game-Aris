@@ -122,6 +122,38 @@ internal static class StreamingAdmissionTests
         Check(Load(null) == null && Load("") == null && Resources.requests == 0, "Invalid path imported");
     }
 
+    private static void DiagnosticImportFence()
+    {
+        // This regression executes the actual production gate with controlled
+        // Unity ResourceRequest states, not a mirrored Python policy.
+        Configure(6144, "Adreno 610");
+        ResourceRequest import = Load();
+        Check(import != null, "Optional import not admitted");
+        Frame(2);
+        Check(!AarisMobileStreamingFrameGate.TryClaimNonessentialDiagnosticFrame(),
+            "Profiler/JSON snapshot overlapped unfinished native import");
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Other optional model overlapped unfinished import");
+        import.isDone = true;
+        Frame(3);
+        Check(!AarisMobileStreamingFrameGate.TryClaimNonessentialDiagnosticFrame(),
+            "Profiler/JSON snapshot reused native integration completion frame");
+        Frame(4);
+        Check(AarisMobileStreamingFrameGate.TryClaimNonessentialDiagnosticFrame(),
+            "Profiler/JSON snapshot failed to resume after import completion");
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Diagnostic and model claimed the same frame");
+        Frame(5);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Optional build starved after diagnostic frame");
+        // High-end Android and non-Android policies must remain untouched.
+        Configure(8192, "Adreno 730");
+        Check(Load() != null, "Fast-device import missing");
+        Frame(2);
+        Check(AarisMobileStreamingFrameGate.TryClaimNonessentialDiagnosticFrame(),
+            "High-end Android diagnostic incorrectly throttled");
+    }
+
     private static void Pressure()
     {
         Configure();
@@ -231,7 +263,7 @@ internal static class StreamingAdmissionTests
     public static void Main()
     {
 #if UNITY_ANDROID && !UNITY_EDITOR
-        Hardware(); ImportFence(); Pressure(); CleanupRigAndReset();
+        Hardware(); ImportFence(); DiagnosticImportFence(); Pressure(); CleanupRigAndReset();
         Console.WriteLine("STREAMING_ADMISSION_ANDROID_PASS checks=" + checks);
 #else
         Configure();
