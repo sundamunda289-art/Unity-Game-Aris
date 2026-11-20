@@ -16,6 +16,15 @@ namespace UnityEngine
         public RuntimeInitializeOnLoadMethodAttribute(RuntimeInitializeLoadType type) { }
     }
     public static class Time { public static int frameCount; public static float unscaledDeltaTime; }
+    public static class Application { public static int targetFrameRate = 30; }
+    public struct RefreshRate { public double value; }
+    public struct Resolution { public RefreshRate refreshRateRatio; }
+    public static class Screen
+    {
+        public static int reads;
+        public static Resolution resolution;
+        public static Resolution currentResolution { get { reads++; return resolution; } }
+    }
     public static class SystemInfo
     {
         public static int ram, memoryReads, gpuReads;
@@ -46,13 +55,19 @@ internal static class StreamingAdmissionTests
     { checks++; if (!ok) throw new Exception(message); }
     private static void Frame(int frame, float delta = 0.016f)
     { Time.frameCount = frame; Time.unscaledDeltaTime = delta; }
-    private static void Configure(int ram = 4096, string gpu = "Adreno (TM) 610")
+    private static void Configure(int ram = 4096, string gpu = "Adreno (TM) 610",
+        int targetFps = 30, double refreshHz = 60d)
     {
 #if UNITY_ANDROID && !UNITY_EDITOR
         typeof(AarisMobileStreamingFrameGate).GetMethod("Reset",
             BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);
 #endif
         SystemInfo.ram = ram; SystemInfo.gpu = gpu;
+        Application.targetFrameRate = targetFps;
+        Screen.resolution = new Resolution {
+            refreshRateRatio = new RefreshRate { value = refreshHz }
+        };
+        Screen.reads = 0;
         SystemInfo.memoryReads = SystemInfo.gpuReads = Resources.requests = 0;
         Frame(1);
     }
@@ -196,6 +211,69 @@ internal static class StreamingAdmissionTests
         Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(), "Recovery retained stale decision");
     }
 
+    private static void RefreshAwarePressure()
+    {
+        // 60 Hz / 60 FPS: 20 ms is a missed frame budget. Defer optional
+        // integrations every other attempt, without starving them.
+        Configure(targetFps: 60, refreshHz: 60d);
+        for (int f = 1; f <= 12; f++)
+        {
+            Frame(f, 0.020f);
+            Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() == (f % 2 == 0),
+                "60 FPS did not fence optional work on 20 ms frames");
+        }
+        Check(Screen.reads == 1, "Display refresh queried on hot path");
+        // At 30 FPS the same 20 ms is healthy and must not delay assets.
+        Configure(targetFps: 30, refreshHz: 60d);
+        for (int f = 1; f <= 12; f++)
+        {
+            Frame(f, 0.020f);
+            Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+                "30 FPS healthy frame incorrectly deferred");
+        }
+        // Android 90 Hz displays pace a 60 FPS request at 45 FPS. A normal
+        // 23 ms presentation must not masquerade as a missed 60 FPS frame.
+        Configure(targetFps: 60, refreshHz: 90d);
+        Frame(1, 0.023f);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "90 Hz display effective 45 FPS cadence ignored");
+        Frame(2, 0.026f);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "45 FPS pressure failed to defer import");
+        Frame(3, 0.026f);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "45 FPS sustained pressure starved import");
+        // Two severe deferrals, then an admitted recovery frame.
+        Configure(targetFps: 60, refreshHz: 60d);
+        for (int f = 1; f <= 3; f++)
+        {
+            Frame(f, 0.030f);
+            Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() == (f == 3),
+                "Severe 60 FPS budget recovery was not bounded");
+        }
+        // A user quality setting can change FPS without waiting 120 frames.
+        Configure(targetFps: 60, refreshHz: 60d);
+        Frame(1, 0.020f);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Prechange 60 FPS pressure not detected");
+        Application.targetFrameRate = 30;
+        Frame(2, 0.020f);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "FPS target change retained stale frame budget");
+        // OS refresh-rate changes are resampled at a bounded cadence.
+        Configure(targetFps: 60, refreshHz: 90d);
+        Frame(1, 0.020f);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Expected healthy 45 FPS admission");
+        Screen.resolution = new Resolution {
+            refreshRateRatio = new RefreshRate { value = 60d }
+        };
+        Frame(121, 0.020f);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Refresh-rate change was not resampled");
+        Check(Screen.reads == 2, "Display refresh polling cost is unbounded");
+    }
+
     private static void CleanupRigAndReset()
     {
         foreach (string gpu in new[] { "Adreno 610", "Adreno 730" })
@@ -280,7 +358,7 @@ internal static class StreamingAdmissionTests
     public static void Main()
     {
 #if UNITY_ANDROID && !UNITY_EDITOR
-        Hardware(); ImportFence(); DiagnosticImportFence(); Pressure(); CleanupRigAndReset();
+        Hardware(); ImportFence(); DiagnosticImportFence(); Pressure(); RefreshAwarePressure(); CleanupRigAndReset();
         Console.WriteLine("STREAMING_ADMISSION_ANDROID_PASS checks=" + checks);
 #else
         Configure();

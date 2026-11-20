@@ -21,8 +21,11 @@ namespace Aaris.MapReview
         // reaching the old 50 ms severe-stall threshold. Defer one attempt
         // at moderate pressure and at most two at severe pressure. Always
         // admit a later attempt so nearby original-detail models are not lost.
-        private const float FrameBudget30FpsSeconds = 1f / 30f;
-        private const float SlowFrameSeconds = 0.05f;
+        private const float FallbackFrameBudgetSeconds = 1f / 30f;
+        private const int FrameBudgetRefreshFrames = 120;
+        private static float effectiveFrameBudgetSeconds = FallbackFrameBudgetSeconds;
+        private static int nextFrameBudgetRefresh = -1;
+        private static int cachedTargetFrameRate = int.MinValue;
         private const int ModeratePressureDeferralFrames = 1;
         private const int MaximumPressureDeferralFrames = 2;
         internal static int ImportSettleDeferredAttempts { get; private set; }
@@ -102,16 +105,48 @@ namespace Aaris.MapReview
             return true;
         }
 
+        // Unity's Android frame pacing uses integer divisors of display refresh.
+        // A 60-FPS request on 90 Hz is effectively 45 FPS, not 60 FPS.
+        // Sample display timing only every 120 frames or on a target-FPS change;
+        // do not query Screen.currentResolution for every streaming request.
+        private static float CurrentFrameBudgetSeconds(int frame)
+        {
+            int requestedFps = Application.targetFrameRate;
+            if (requestedFps == cachedTargetFrameRate &&
+                frame < nextFrameBudgetRefresh)
+                return effectiveFrameBudgetSeconds;
+
+            cachedTargetFrameRate = requestedFps;
+            nextFrameBudgetRefresh = frame + FrameBudgetRefreshFrames;
+            if (requestedFps <= 0) requestedFps = 30;
+            double refreshHz = Screen.currentResolution.refreshRateRatio.value;
+            double effectiveFps = requestedFps;
+            if (refreshHz >= 1d &&
+                !double.IsNaN(refreshHz) && !double.IsInfinity(refreshHz))
+            {
+                double divisor = System.Math.Max(1d,
+                    System.Math.Ceiling(refreshHz / requestedFps));
+                effectiveFps = refreshHz / divisor;
+            }
+            effectiveFrameBudgetSeconds = 1f /
+                (float)System.Math.Max(1d, effectiveFps);
+            return effectiveFrameBudgetSeconds;
+        }
+
         private static bool ShouldDeferForFramePressure(int frame)
         {
-            // Several streamers can ask in one frame. They must share one
-            // decision, not consume two recovery frames in the same Update.
+            // All optional streamers in the same frame share one decision.
+            // Adapt the pressure thresholds to 30/45/60 FPS without changing
+            // the authored model, tree, terrain, texture or visibility settings.
             if (pressureDecisionFrame == frame) return pressureBlockedThisFrame;
             pressureDecisionFrame = frame;
+            float budget = CurrentFrameBudgetSeconds(frame);
             float frameSeconds = Time.unscaledDeltaTime;
-            int maxDeferrals = frameSeconds > SlowFrameSeconds
+            // Allow 8% pacing jitter, but protect the next frame when work has
+            // already missed the real hardware-specific presentation budget.
+            int maxDeferrals = frameSeconds > budget * 1.5f
                 ? MaximumPressureDeferralFrames
-                : frameSeconds > FrameBudget30FpsSeconds
+                : frameSeconds > budget * 1.08f
                     ? ModeratePressureDeferralFrames : 0;
             pressureBlockedThisFrame = maxDeferrals > 0 &&
                 consecutivePressureDeferrals < maxDeferrals;
@@ -132,6 +167,9 @@ namespace Aaris.MapReview
             importIntegrationFrame = pressureDecisionFrame = -1;
             consecutivePressureDeferrals = 0;
             pressureBlockedThisFrame = false;
+            effectiveFrameBudgetSeconds = FallbackFrameBudgetSeconds;
+            nextFrameBudgetRefresh = -1;
+            cachedTargetFrameRate = int.MinValue;
             ImportSettleDeferredAttempts = PressureDeferredFrames = 0;
             essentialRigFrame = -1;
             essentialAircraftFrame = -1;
