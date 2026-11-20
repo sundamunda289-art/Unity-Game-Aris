@@ -32,36 +32,28 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python Tools/Validation/test_additive_chunk_streaming.py
-      - name: Compile and execute production scripts using minimal Unity stubs
+      - name: Check source-only opt-in safety contracts
+        run: python Tools/Validation/test_additive_chunk_streaming.py
+      - name: Compile production scripts and exercise async state machine
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends mono-mcs
-          mcs -out:/tmp/aaris-chunks-qa.exe \
-            Assets/AarisWorld/Scripts/AarisChunkStreamingPolicy.cs \
-            Assets/AarisWorld/Scripts/AarisAdditiveChunkStreamer.cs \
-            Tools/Validation/AdditiveChunkStreamingTests.cs
-          mono /tmp/aaris-chunks-qa.exe
-          mcs -define:UNITY_ANDROID -out:/tmp/aaris-chunks-android-qa.exe \
-            Assets/AarisWorld/Scripts/AarisChunkStreamingPolicy.cs \
-            Assets/AarisWorld/Scripts/AarisAdditiveChunkStreamer.cs \
-            Tools/Validation/AdditiveChunkStreamingTests.cs
-          mono /tmp/aaris-chunks-android-qa.exe
-      - name: Parse authored C# with tree-sitter
+          dotnet --version
+          dotnet new console -o /tmp/aaris-chunk-qa --framework net8.0 --no-restore
+          rm /tmp/aaris-chunk-qa/Program.cs
+          cp Assets/AarisWorld/Scripts/AarisChunkStreamingPolicy.cs /tmp/aaris-chunk-qa/
+          cp Assets/AarisWorld/Scripts/AarisAdditiveChunkStreamer.cs /tmp/aaris-chunk-qa/
+          cp Tools/Validation/AdditiveChunkStreamingTests.cs /tmp/aaris-chunk-qa/
+          dotnet run --project /tmp/aaris-chunk-qa --framework net8.0
+          dotnet run --project /tmp/aaris-chunk-qa --framework net8.0 -p:DefineConstants=UNITY_ANDROID
+      - name: Check touched source formatting
         run: |
-          python -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
           python - <<'PY'
           from pathlib import Path
-          from tree_sitter import Language, Parser
-          import tree_sitter_c_sharp
-          parser = Parser(Language(tree_sitter_c_sharp.language()))
           for path in [
               Path('Assets/AarisWorld/Scripts/AarisChunkStreamingPolicy.cs'),
               Path('Assets/AarisWorld/Scripts/AarisAdditiveChunkStreamer.cs'),
               Path('Tools/Validation/AdditiveChunkStreamingTests.cs'),
           ]:
-              src = path.read_bytes()
-              assert not parser.parse(src).root_node.has_error, path
-              assert all(line == line.rstrip() for line in src.decode().splitlines()), path
-          print('PASS: C# source syntax/format')
+              src = path.read_text()
+              assert all(line == line.rstrip() for line in src.splitlines()), path
+          print('PASS: source formatting')
           PY
