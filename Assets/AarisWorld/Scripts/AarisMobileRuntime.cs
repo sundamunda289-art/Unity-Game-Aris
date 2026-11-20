@@ -136,10 +136,11 @@ namespace Aaris.MapReview
             startupTime = Time.unscaledTime;
             // At the authored 20 ms fixed step, the default 333 ms cap can
             // schedule about 16 physics updates after one stalled frame.
-            // Keep at most six catch-up steps on budget GPUs with <=4 GB RAM.
+            // Keep at most six catch-up steps on budget GPUs, including 6 GB
+            // Adreno 610 phones: GPU/physics speed does not scale with RAM.
             // Normal frames still run at the exact original fixed frequency.
             int ramMB = SystemInfo.systemMemorySize;
-            if (ramMB > 0 && ramMB <= 4608 && IsBudgetAndroidGpu())
+            if (ramMB > 0 && IsBudgetAndroidGpu())
             {
                 originalMaximumDeltaTime = Time.maximumDeltaTime;
                 appliedMaximumDeltaTime = Mathf.Min(
