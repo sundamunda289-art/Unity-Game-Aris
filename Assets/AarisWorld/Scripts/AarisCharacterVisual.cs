@@ -1381,11 +1381,13 @@ namespace Aaris.MapReview
                             // sideways excursion worse on a retargeted rig.
                             float correctedSide = Vector3.Dot(
                                 candidateKnee - hip, anatomicalSideAxis);
-                            if (candidateKnee.y >= minimumKneeWorldY - 0.002f &&
-                                Mathf.Abs(correctedSide) + 0.001f < Mathf.Abs(kneeSide))
+                            if (candidateKnee.y >= minimumKneeWorldY - 0.002f)
                             {
-                                bend = candidateBend;
-                                kneeGoal = candidateKnee;
+                                if (Mathf.Abs(correctedSide) + 0.001f < Mathf.Abs(kneeSide))
+                                {
+                                    bend = candidateBend;
+                                    kneeGoal = candidateKnee;
+                                }
                             }
                         }
                     }
