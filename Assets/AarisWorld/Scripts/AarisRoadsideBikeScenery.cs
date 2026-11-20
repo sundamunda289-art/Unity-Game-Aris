@@ -32,6 +32,12 @@ namespace Aaris.MapReview
             new Stack<GameObject>(MaximumVisibleBikes);
         private readonly Dictionary<GameObject, BikeVisualCache> bikeVisuals =
             new Dictionary<GameObject, BikeVisualCache>(MaximumVisibleBikes);
+        // Every clone of this one authored prefab normally has the same source
+        // surface order. Keep the four immutable paint layouts after the first
+        // build rather than allocating them again for each streamed bike.
+        private Material[][][] cachedBikePaintLayouts;
+        private Material[][] cachedBikePrefabMaterials;
+        private readonly List<Material> bikeSourceScratch = new List<Material>(8);
         private Transform player;
         private AarisNearbyColliders nearbyColliders;
         private GameObject bikeSource;
@@ -610,6 +616,78 @@ namespace Aaris.MapReview
             return false;
         }
 
+        // Compare the complete original source-material topology before
+        // sharing cached layouts. An edited/variant prefab safely falls back
+        // to the original per-renderer conversion path.
+        private bool MatchesCachedBikeSource(Renderer[] renderers)
+        {
+            if (cachedBikePaintLayouts == null ||
+                cachedBikePrefabMaterials == null ||
+                renderers.Length != cachedBikePrefabMaterials.Length)
+                return false;
+            for (int r = 0; r < renderers.Length; r++)
+            {
+                Renderer renderer = renderers[r];
+                if (renderer == null) return false;
+                bikeSourceScratch.Clear();
+                // Unity 6 avoids allocating Renderer.sharedMaterials arrays
+                // when the caller supplies a reusable List<Material>.
+                renderer.GetSharedMaterials(bikeSourceScratch);
+                Material[] original = cachedBikePrefabMaterials[r];
+                if (original == null || original.Length != bikeSourceScratch.Count)
+                    return false;
+                for (int i = 0; i < original.Length; i++)
+                    if (original[i] != bikeSourceScratch[i]) return false;
+            }
+            return true;
+        }
+
+        private Material[][][] GetBikePaintLayouts(Renderer[] renderers)
+        {
+            if (MatchesCachedBikeSource(renderers))
+                return cachedBikePaintLayouts;
+
+            // Preserve the original authored OBJ usemtl order, including
+            // metallic parts, tyre rubber, lamps and four body paint finishes.
+            int[] fallbackOrder = {1,2,3,4,0,7,5,6};
+            var layouts = new Material[paintVariants.Length][][];
+            for (int paint = 0; paint < paintVariants.Length; paint++)
+                layouts[paint] = new Material[renderers.Length][];
+            // Only the first valid source becomes the reusable cache key.
+            // A different topology is rebuilt for that instance, never cached
+            // over the original, so paint mapping cannot silently drift.
+            Material[][] sourceSlots = cachedBikePaintLayouts == null
+                ? new Material[renderers.Length][] : null;
+            for (int r = 0; r < renderers.Length; r++)
+            {
+                Renderer renderer = renderers[r];
+                if (renderer == null) continue;
+                Material[] source = renderer.sharedMaterials;
+                if (sourceSlots != null) sourceSlots[r] = source;
+                if (source == null || source.Length == 0) continue;
+                var kinds = new int[source.Length];
+                for (int i = 0; i < source.Length; i++)
+                    kinds[i] = SurfaceIndex(source[i],
+                        fallbackOrder[Mathf.Min(i, fallbackOrder.Length - 1)]);
+                for (int paint = 0; paint < paintVariants.Length; paint++)
+                {
+                    Material[] converted = new Material[source.Length];
+                    for (int i = 0; i < source.Length; i++)
+                    {
+                        int kind = kinds[i];
+                        converted[i] = kind == 0 ? paintVariants[paint] : surfaces[kind];
+                    }
+                    layouts[paint][r] = converted;
+                }
+            }
+            if (cachedBikePaintLayouts == null)
+            {
+                cachedBikePaintLayouts = layouts;
+                cachedBikePrefabMaterials = sourceSlots;
+            }
+            return layouts;
+        }
+
         private GameObject CreateBike(AarisVehiclePoint point, Vector3 location)
         {
             var root = new GameObject("Aaris parked motorcycle " + point.id);
@@ -636,31 +714,14 @@ namespace Aaris.MapReview
             // all visible bikes. No per-bike Material instances or per-frame GC.
             // This matches OBJ usemtl section order, NOT palette declaration
             // order: Tyre, Rim, Engine, Seat, Paint, Amber, Headlamp, TailLamp.
-            int[] fallbackOrder = {1,2,3,4,0,7,5,6};
             int paintIndex = StablePaintIndex(point.id);
-            var layouts = new Material[paintVariants.Length][][];
-            for (int paint = 0; paint < paintVariants.Length; paint++)
-                layouts[paint] = new Material[renderers.Length][];
+            Material[][][] layouts = GetBikePaintLayouts(renderers);
             for (int r = 0; r < renderers.Length; r++)
             {
                 Renderer renderer = renderers[r];
-                Material[] source = renderer.sharedMaterials;
-                if (source == null || source.Length == 0) continue;
-                var kinds = new int[source.Length];
-                for (int i = 0; i < source.Length; i++)
-                    kinds[i] = SurfaceIndex(source[i],
-                        fallbackOrder[Mathf.Min(i, fallbackOrder.Length - 1)]);
-                for (int paint = 0; paint < paintVariants.Length; paint++)
-                {
-                    Material[] converted = new Material[source.Length];
-                    for (int i = 0; i < source.Length; i++)
-                    {
-                        int kind = kinds[i];
-                        converted[i] = kind == 0 ? paintVariants[paint] : surfaces[kind];
-                    }
-                    layouts[paint][r] = converted;
-                }
-                renderer.sharedMaterials = layouts[paintIndex][r];
+                if (renderer == null) continue;
+                if (layouts[paintIndex][r] != null)
+                    renderer.sharedMaterials = layouts[paintIndex][r];
 #if UNITY_ANDROID && !UNITY_EDITOR
                 // On low-RAM phones, eight motorcycle material slots do not
                 // need eight additional realtime shadow-pass submissions.
