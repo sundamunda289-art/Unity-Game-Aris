@@ -250,6 +250,64 @@ internal static class AdditiveChunkStreamingTests
         Check(SceneManager.loadCount == 2,
             "externally retired scene should be reloadable");
 
+        // A speculative scene must not exceed the authored residency cap.
+        // A genuinely nearby scene must still load even when at that cap.
+        SceneManager.Reset();
+        target = new Transform();
+        manager = MakeMultiple(target,
+            new AarisAdditiveChunkStreamer.Chunk {
+                scenePath = Path, center = new Vector2(0, 0),
+                halfExtents = new Vector2(100, 100)
+            },
+            new AarisAdditiveChunkStreamer.Chunk {
+                scenePath = "Assets/CellEast.unity", center = new Vector2(400, 0),
+                halfExtents = new Vector2(100, 100)
+            });
+        Set(manager, "maxSpeculativeResidentScenes", 1);
+        Frame(manager, target, 1f, 0f);
+        SceneManager.Finish();
+        Frame(manager, target, 1.1f, 0f);
+        Set(manager, "previousSampleValid", true);
+        Set(manager, "previousSample", new Vector3 { x = 150, z = 0 });
+        Set(manager, "previousSampleAt", 1.05f);
+        Set(manager, "nextPollAt", 0f);
+        Set(manager, "nextTransitionAt", 0f);
+        Frame(manager, target, 1.3f, 170f);
+        Check(SceneManager.loadCount == 1 && SceneManager.unloadCount == 0,
+            "resident cap must defer predicted-only prefetch without retiring nearby cell");
+        Frame(manager, target, 1.6f, 220f);
+        Check(SceneManager.loadCount == 2,
+            "urgent current-position cells bypass the speculative cap");
+        SceneManager.Finish();
+
+        // A projected point INSIDE a speculative cell has distance zero.
+        // That must not trick numeric priority equality into treating this
+        // speculative load as urgent ahead of a distant resident unload.
+        SceneManager.Reset();
+        target = new Transform();
+        manager = MakeMultiple(target,
+            new AarisAdditiveChunkStreamer.Chunk {
+                scenePath = Path, center = new Vector2(0, 0),
+                halfExtents = new Vector2(100, 100)
+            },
+            new AarisAdditiveChunkStreamer.Chunk {
+                scenePath = "Assets/CellEast.unity", center = new Vector2(570, 0),
+                halfExtents = new Vector2(100, 100)
+            });
+        Set(manager, "lookaheadSeconds", 2f);
+        Set(manager, "maxPredictedSpeed", 80f);
+        Frame(manager, target, 1f, 0f);
+        SceneManager.Finish();
+        Frame(manager, target, 1.1f, 0f);
+        Set(manager, "previousSampleValid", true);
+        Set(manager, "previousSample", new Vector3 { x = 327, z = 0 });
+        Set(manager, "previousSampleAt", 1f);
+        Set(manager, "nextPollAt", 0f);
+        Set(manager, "nextTransitionAt", 0f);
+        Frame(manager, target, 1.3f, 350f);
+        Check(SceneManager.unloadCount == 1 && SceneManager.loadCount == 1,
+            "stale cell retires first when projected speculative distance is zero");
+
         Console.WriteLine("PASS: " + checks + " checked assertions (real production sources)");
         return 0;
     }
