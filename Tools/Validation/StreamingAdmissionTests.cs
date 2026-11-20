@@ -170,9 +170,26 @@ internal static class StreamingAdmissionTests
         Check(Load() == null && Resources.requests == 0, "Pressure import bypass");
         Frame(302);
         Check(Load() != null, "Healthy frame failed to recover immediately");
+        // A sustained 40 ms frame is under the old 50 ms threshold, but has
+        // already missed 30 FPS. Share one decision across every requester.
+        Configure();
+        int moderateAdmitted = 0;
+        for (int frame = 1; frame <= 120; frame++)
+        {
+            Frame(frame, 0.040f);
+            for (int caller = 0; caller < 6; caller++)
+                if (AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()) moderateAdmitted++;
+        }
+        Check(moderateAdmitted == 60, "Moderate pressure must admit every other attempt-frame");
+        Check(AarisMobileStreamingFrameGate.PressureDeferredFrames == 60,
+            "Moderate pressure counted duplicate callers or lost a deferral");
+        Frame(121);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Healthy frame must recover from moderate pressure without extra delay");
         Configure();
         Frame(1, 0.050f);
-        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(), "50 ms boundary deferred");
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "50 ms moderate pressure allowed an optional native import");
         Frame(2, 0.051f);
         Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(), "Slow frame unprotected");
         Frame(3);
