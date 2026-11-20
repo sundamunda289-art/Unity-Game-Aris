@@ -9,6 +9,7 @@ on:
       - 'Tools/Validation/test_pose_*.py'
       - 'Tools/Validation/audit_motion_matrix_bones.py'
       - 'Tools/Validation/test_motion_matrix_bone_audit.py'
+      - 'Tools/Validation/test_motion_matrix_chronology_and_knee_gate.py'
       - '.github/workflows/aaris-stance-integration-source-qa.yml'
   workflow_dispatch:
 
@@ -38,6 +39,7 @@ jobs:
           python Tools/Validation/test_pose_capture_actor_lookup.py
           python Tools/Validation/test_pose_scene_binding_preflight.py
           python Tools/Validation/test_motion_matrix_bone_audit.py
+          python Tools/Validation/test_motion_matrix_chronology_and_knee_gate.py
       - name: Reject whitespace or patch integration mistakes
         run: |
           git diff --check origin/main...HEAD
