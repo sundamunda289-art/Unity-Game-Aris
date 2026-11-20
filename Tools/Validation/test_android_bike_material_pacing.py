@@ -17,12 +17,12 @@ class BikeMaterialPacingContract(unittest.TestCase):
         self.assertIn("else\n                    SetupMaterials();", update)
         self.assertIn("#else\n                SetupMaterials();\n#endif", update)
         self.assertIn("if (!enabled || !bikeMaterialsReady) return;", update)
-        self.assertIn("if (!bikeMaterialsReady) return;", update)
+        self.assertIn("if (!bikeMaterialsReady)\n            {", update)
         self.assertIn("while (job.MoveNext())", BIKE)
 
     def test_partial_palette_never_instantiates_bike(self):
         update = BIKE.split("private void Update()", 1)[1].split("private GameObject ReuseBike(", 1)[0]
-        self.assertLess(update.index("if (!bikeMaterialsReady) return;"),
+        self.assertLess(update.index("if (!bikeMaterialsReady)\n            {"),
                         update.index("CreateBike(nearest.point, spot)"))
         self.assertEqual(BIKE.count("bikeMaterialsReady = true;"), 1)
         self.assertLess(BIKE.index("paintVariants[i].SetColor(\"_BaseColor\", paints[i]);"),
