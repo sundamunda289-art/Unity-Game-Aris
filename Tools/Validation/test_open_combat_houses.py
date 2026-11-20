@@ -209,7 +209,12 @@ class OpenCombatHouseContracts(unittest.TestCase):
         self.assertIn("target: {fileID: 201417}", streamer)
         runtime = (SCRIPTS / "AarisNearbyColliders.cs").read_text(encoding="utf-8")
         self.assertIn("if (c == null || !c.enabled) return;", runtime)
-        self.assertIn("if (!c.enabled) c.enabled = true;", runtime)
+        refresh = runtime.split("private void RefreshNow(bool forcePhysicsSync)", 1)[1].split(
+            "private void FlushPendingColliderReleases()", 1)[0]
+        self.assertEqual(refresh.count("if (!c.enabled)"), 2)
+        self.assertEqual(refresh.count("c.enabled = true;"), 2)
+        guarded = refresh.split("if (!c.enabled)", 1)[1].split("c.enabled = true;", 1)[0]
+        self.assertIn("AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();", guarded)
         # Rebuilding the map must not silently revert #505's native fix.
         # Gate ALL distant colliders at runtime, only AFTER the streamer
         # has indexed their local geometry in Awake.
