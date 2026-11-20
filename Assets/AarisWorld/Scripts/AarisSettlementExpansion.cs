@@ -236,26 +236,8 @@ namespace Aaris.MapReview
                     int processed = 0;
                     double sliceDeadline = mobile ? Time.realtimeSinceStartupAsDouble +
                         AndroidTreeProbeBudgetSeconds : 0d;
-#if UNITY_ANDROID && !UNITY_EDITOR
-                    bool treeSliceAdmitted = false;
-#endif
                     for (int i = 0; i < treeCount; i++)
                     {
-#if UNITY_ANDROID && !UNITY_EDITOR
-                        // TreeData probes touch native memory. Give each bounded
-                        // clearance slice its own admission slot so it cannot
-                        // coincide with a streamed 3D model or diagnostic.
-                        if (!treeSliceAdmitted)
-                        {
-                            while (isActiveAndEnabled &&
-                                !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
-                                yield return null;
-                            if (!isActiveAndEnabled) yield break;
-                            treeSliceAdmitted = true;
-                            sliceDeadline = Time.realtimeSinceStartupAsDouble +
-                                AndroidTreeProbeBudgetSeconds;
-                        }
-#endif
                         TreeInstance tree = data.GetTreeInstance(i);
                         float x = origin.x + tree.position.x * size.x;
                         float z = origin.z + tree.position.z * size.z;
@@ -279,11 +261,6 @@ namespace Aaris.MapReview
                         {
                             processed = 0;
                             yield return null;
-#if UNITY_ANDROID && !UNITY_EDITOR
-                            // A new frame needs a new slot. Never keep the
-                            // previous frame's optional-work admission.
-                            treeSliceAdmitted = false;
-#endif
                             sliceDeadline = Time.realtimeSinceStartupAsDouble +
                                 AndroidTreeProbeBudgetSeconds;
                         }
@@ -321,16 +298,6 @@ namespace Aaris.MapReview
                         skippedResources++;
                         continue;
                     }
-#if UNITY_ANDROID && !UNITY_EDITOR
-                    // Site/obstacle clearance performs terrain + physics queries.
-                    // Keep that native probing off the same Android frame as
-                    // optional model construction. The existing admission just
-                    // before Instantiate then yields to the NEXT frame.
-                    while (isActiveAndEnabled &&
-                        !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
-                        yield return null;
-                    if (!isActiveAndEnabled) yield break;
-#endif
                     if (!TryGround(site, terrains, out Terrain support, out float y))
                     {
                         skippedTerrain++;
@@ -373,6 +340,11 @@ namespace Aaris.MapReview
                     }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
+                    // Terrain, tree and overlap probes ran during site validation.
+                    // Put the ensuing native prefab creation on another rendered
+                    // frame, without gating essential world/tree clearance work.
+                    // Keep every authored landmark and its original visual LODs.
+                    yield return null;
                     // Site validation never consumes an optional build slot.
                     // Only a fully valid house/watchtower admission competes
                     // with cars, ground loot, motorcycles and medical visuals.
