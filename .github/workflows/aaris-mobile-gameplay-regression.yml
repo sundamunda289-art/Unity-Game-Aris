@@ -30,6 +30,7 @@ on:
       - 'Tools/Validation/test_android_plane_async_boot.py'
       - 'Tools/Validation/test_android_collider_release_burst.py'
       - 'Tools/Validation/test_android_predictive_vehicle_prewarm.py'
+      - 'Tools/Validation/test_android_vehicle_retirement_frame.py'
       - 'Tools/Validation/test_android_canopy_rope_native_budget.py'
       - 'Tools/Validation/test_android_plane_finish_async_stage.py'
       - 'Tools/Validation/test_gloo_preview_pose_budget.py'
@@ -79,6 +80,7 @@ on:
       - 'Tools/Validation/test_android_plane_async_boot.py'
       - 'Tools/Validation/test_android_collider_release_burst.py'
       - 'Tools/Validation/test_android_predictive_vehicle_prewarm.py'
+      - 'Tools/Validation/test_android_vehicle_retirement_frame.py'
       - 'Tools/Validation/test_android_canopy_rope_native_budget.py'
       - 'Tools/Validation/test_android_plane_finish_async_stage.py'
       - 'Tools/Validation/test_gloo_preview_pose_budget.py'
@@ -133,6 +135,7 @@ jobs:
           python Tools/Validation/test_android_plane_async_boot.py
           python Tools/Validation/test_android_collider_release_burst.py
           python Tools/Validation/test_android_predictive_vehicle_prewarm.py
+          python Tools/Validation/test_android_vehicle_retirement_frame.py
           python Tools/Validation/test_android_canopy_rope_native_budget.py
           python Tools/Validation/test_android_canopy_prefab_prewarm.py
           python Tools/Validation/test_android_plane_finish_async_stage.py
