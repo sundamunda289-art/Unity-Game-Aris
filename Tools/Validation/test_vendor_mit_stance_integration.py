@@ -8,6 +8,9 @@ assert "namespace ALSUnity" in als
 assert "public static float InterpTo(float current, float target, float deltaTime, float speed)" in als
 assert visual.count("ALSUnity.ALSMath.InterpTo(") == 2
 assert "AARIS_MIT_STANCE_CLIPS_ACTIVE" in visual
+assert '"AarisCharacters/CommunityStances/IdleProneLyingDown"' in visual
+assert (root / "Assets/Resources/AarisCharacters/CommunityStances/IdleProneLyingDown.anim").is_file()
+assert (root / "Assets/Resources/AarisCharacters/CommunityStances/IdleProneLyingDown.anim.meta").is_file()
 assert "communityCrouch.humanMotion" in visual
 assert "communityProne.humanMotion" in visual
 assert "if (communityStanceClipsLoaded)" in visual
