@@ -36,6 +36,19 @@ class ExpansionCatalogPrewarm(unittest.TestCase):
         self.assertGreaterEqual(self.start.count("yield return null;"), 2)
         self.assertNotIn("Instantiate(", self.start)
 
+    def test_catalog_completion_does_not_stack_native_setup(self):
+        # A source contract, not a measured Unity/Android timing result.
+        after_completion = self.start.split("yield return catalog;", 1)[1]
+        before_setup = after_completion.split("InitializeExpansion(plan.asset as TextAsset,", 1)[0]
+        self.assertIn("yield return null;", before_setup)
+        self.assertIn("while (isActiveAndEnabled &&", before_setup)
+        self.assertIn("!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()", before_setup)
+        self.assertIn("if (!isActiveAndEnabled) yield break;", before_setup)
+        self.assertLess(before_setup.index("yield return null;"),
+                        before_setup.index("TryClaimOptionalModelBuild()"))
+        self.assertLess(before_setup.index("TryClaimOptionalModelBuild()"),
+                        len(before_setup))
+
     def test_editor_preserves_original_synchronous_resource_behavior(self):
         desktop = self.start.split("#else", 1)[1].split("#endif", 1)[0]
         self.assertIn('Resources.Load<TextAsset>("AarisExpansion/WorldExpansionPlan")', desktop)
