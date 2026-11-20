@@ -821,6 +821,11 @@ namespace Aaris.MapReview
             fixedStepsInWindow += physicsTicks;
             if (physicsTicks > peakFixedStepsInWindow)
                 peakFixedStepsInWindow = physicsTicks;
+            // This component runs before optional streamers (execution order
+            // -300). Fence a burst of three or more completed physics ticks
+            // against model integration, without changing the fixed step,
+            // collider fidelity, terrain, vegetation or render resolution.
+            AarisMobileStreamingFrameGate.ReservePhysicsCatchupFrame(physicsTicks);
             SampleMobileFrameTiming();
 #endif
             float dt = Time.unscaledDeltaTime;
