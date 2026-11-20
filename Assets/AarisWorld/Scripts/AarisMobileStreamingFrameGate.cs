@@ -16,10 +16,14 @@ namespace Aaris.MapReview
         private static int importIntegrationFrame = -1;
         private static int pressureDecisionFrame = -1, consecutivePressureDeferrals;
         private static bool pressureBlockedThisFrame;
-        // Defer at most two attempt-frames while frame time exceeds 50 ms.
-        // Still admit one optional item on the third during sustained load,
-        // so a slow device cannot starve its nearby models indefinitely.
+        // Optional native imports also contend with 30 FPS frame pacing:
+        // a 34-50 ms frame has already missed the 30 FPS budget, even before
+        // reaching the old 50 ms severe-stall threshold. Defer one attempt
+        // at moderate pressure and at most two at severe pressure. Always
+        // admit a later attempt so nearby original-detail models are not lost.
+        private const float FrameBudget30FpsSeconds = 1f / 30f;
         private const float SlowFrameSeconds = 0.05f;
+        private const int ModeratePressureDeferralFrames = 1;
         private const int MaximumPressureDeferralFrames = 2;
         internal static int ImportSettleDeferredAttempts { get; private set; }
         internal static int PressureDeferredFrames { get; private set; }
@@ -104,8 +108,13 @@ namespace Aaris.MapReview
             // decision, not consume two recovery frames in the same Update.
             if (pressureDecisionFrame == frame) return pressureBlockedThisFrame;
             pressureDecisionFrame = frame;
-            pressureBlockedThisFrame = Time.unscaledDeltaTime > SlowFrameSeconds &&
-                consecutivePressureDeferrals < MaximumPressureDeferralFrames;
+            float frameSeconds = Time.unscaledDeltaTime;
+            int maxDeferrals = frameSeconds > SlowFrameSeconds
+                ? MaximumPressureDeferralFrames
+                : frameSeconds > FrameBudget30FpsSeconds
+                    ? ModeratePressureDeferralFrames : 0;
+            pressureBlockedThisFrame = maxDeferrals > 0 &&
+                consecutivePressureDeferrals < maxDeferrals;
             if (pressureBlockedThisFrame)
             {
                 consecutivePressureDeferrals++;
