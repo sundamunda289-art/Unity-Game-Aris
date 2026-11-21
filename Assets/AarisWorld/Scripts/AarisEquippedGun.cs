@@ -629,7 +629,13 @@ namespace Aaris.MapReview
                 spec.scopePower == 2 ? 2.3f : 3.7f;
             if (AarisOfflineBRDirector.TryAcquireAimTarget(camera, owner.transform,
                 spec.rangeMetres, assistCone, out Vector3 assisted))
-                shotForward = Vector3.Slerp(shotForward, assisted, .82f).normalized;
+            {
+                // A confirmed RED reticle must correspond to the actual shot
+                // ray. Partial Slerp at 4x can miss a 0.62m rival capsule even
+                // when the scope says locked. Weapon spread and first physical
+                // muzzle obstruction still govern the final pellet impacts.
+                shotForward = assisted;
+            }
             bool impactSoundEmitted = false;
             for (int pellet = 0; pellet < spec.pellets; pellet++)
             {
