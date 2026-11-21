@@ -618,7 +618,7 @@ namespace Aaris.MapReview
             if (!CanEngage || candidate == null || !candidate.IsAlive ||
                 !candidate.HasPlayerSight) return false;
             float candidateSqr = (candidate.transform.position - player.position).sqrMagnitude;
-            if (candidateSqr > 42f * 42f) return false;
+            if (candidateSqr > AarisCombatSelectionPolicy.PlayerAwarenessDistanceSquared) return false;
             int nearer = 0;
             int total = rivals.Length + (massBots != null ? massBots.ProxySlots : 0);
             for (int i = 0; i < total; i++)
@@ -628,13 +628,13 @@ namespace Aaris.MapReview
                 if (other == null || other == candidate || !other.IsAlive ||
                     !other.HasPlayerSight) continue;
                 float otherSqr = (other.transform.position - player.position).sqrMagnitude;
-                if (otherSqr <= 42f * 42f &&
-                    (otherSqr < candidateSqr - .01f ||
-                     (Mathf.Abs(otherSqr - candidateSqr) <= .01f &&
-                      other.EncounterId < candidate.EncounterId)))
+                if (otherSqr <= AarisCombatSelectionPolicy.PlayerAwarenessDistanceSquared &&
+                    AarisCombatSelectionPolicy.HigherPriority(otherSqr,
+                        other.EncounterId, candidateSqr, candidate.EncounterId))
                     nearer++;
             }
-            return nearer < 2;
+            return AarisCombatSelectionPolicy.CanAttackPlayer(
+                candidate.HasPlayerSight, candidateSqr, nearer);
         }
 
         // At most nine live native actors are candidates. Distant roster
