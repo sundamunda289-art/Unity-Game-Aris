@@ -48,9 +48,17 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("hitFadeUntil = Time.unscaledTime + .35f;", HUD)
         self.assertIn('"HIT RIGHT"', HUD)
         self.assertIn("victim.ApplyHitDamage(damage, attacker, headshot)", GUN)
-        self.assertIn("targetHealth.ApplyDamage(damage, gameObject);", BOTS)
+        self.assertIn("AarisEquippedGun.ApplyDamage(shotHit.collider, damage,", BOTS)
+        self.assertIn("TryGetSightHit(target, out RaycastHit shotHit)", BOTS)
+        self.assertIn("shotHit = hit;", BOTS)
         self.assertIn("AarisCombatFeedbackHUD.NotifyOutgoingDamage", GUN)
         self.assertIn("headshot) damage *= 1.75f", GUN)
+
+    def test_floating_numbers_project_confirmed_world_hits(self):
+        self.assertIn("hitPosition ?? collider.bounds.center", GUN)
+        self.assertIn("WorldToScreenPoint(worldHitPosition)", HUD)
+        self.assertIn("RectTransformUtility.ScreenPointToLocalPointInRectangle(", HUD)
+        self.assertIn("numberOrigin[index] = origin;", HUD)
 
     def test_100_bots_locally_restrict_player_aggression(self):
         self.assertIn("private const int RivalCount = 100;", BOTS)
