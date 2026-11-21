@@ -42,7 +42,13 @@ class AndroidPlaneStartupRegression(unittest.TestCase):
         self.assertLess(load.index("yield return null;", load.index(marker)),
                         load.index("AarisOfflineDropVisuals.CreatePlane("))
         gate = (SCRIPTS / "AarisMobileStreamingFrameGate.cs").read_text()
-        self.assertIn("essentialAircraftFrame = Time.frameCount + 1;", gate)
+        # The native fence now retains both due frames when the same aircraft
+        # re-reserves during the frame it was already due. Test semantics,
+        # not the former single-slot assignment's exact source spelling.
+        self.assertIn("int nextFrame = Time.frameCount + 1;", gate)
+        self.assertIn("essentialAircraftFrame = nextFrame;", gate)
+        self.assertIn("previousEssentialAircraftFrame = essentialAircraftFrame;", gate)
+        self.assertIn("Time.frameCount == previousEssentialAircraftFrame", gate)
         self.assertIn("Time.frameCount == essentialAircraftFrame", gate)
         self.assertIn("essentialAircraftFrame = -1;", gate)
         self.assertIn("IsConstrainedDevice()", gate)
