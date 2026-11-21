@@ -93,7 +93,9 @@ namespace Aaris.MapReview
 {
     internal static class AarisMobileStreamingFrameGate
     {
-        internal static int physicsClaims, teardownClaims;
+        internal static int physicsClaims, teardownClaims, trackedSceneLoads;
+        internal static void TrackAdditiveSceneLoad(AsyncOperation operation)
+        { if (operation != null) trackedSceneLoads++; }
         internal static bool IsConstrainedDevice() { return true; }
         internal static bool TryClaimOptionalModelBuild() { return true; }
         internal static void ReservePhysicsStreamingFrame() { physicsClaims++; }
@@ -174,6 +176,10 @@ internal static class AdditiveChunkStreamingTests
         Frame(manager, target, 1.3f, 200f);
         Check(SceneManager.loadCount == 1, "predictive prefetch should load one chunk");
         Check(SceneManager.pending.priority == -1, "lower native async priority");
+#if UNITY_ANDROID && !UNITY_EDITOR
+        Check(AarisMobileStreamingFrameGate.trackedSceneLoads == 1,
+            "scene launch must register its native loading window");
+#endif
         Frame(manager, target, 1.4f, 190f);
         Check(SceneManager.loadCount == 1, "never start concurrent loads");
         SceneManager.Finish();
