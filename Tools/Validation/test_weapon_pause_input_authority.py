@@ -102,6 +102,35 @@ class OfflineWeaponPauseAndLandingAuthority(unittest.TestCase):
                     else:
                         self.assertTrue(permitted)
 
+    def test_red_lock_optic_never_claims_a_suspended_player_gun(self):
+        # The Red-Lock query and the red reticle must have the same on-foot
+        # authority as the shot path; HP remains independently visible.
+        self.assertIn(
+            "internal bool CanShowCombatReticle => HasGun && AcceptsPlayerWeaponInput;",
+            INVENTORY)
+        update = section(FEEDBACK, "private void LateUpdate()", "private void OnDestroy()")
+        self.assertIn("inventory.CanShowCombatReticle", update)
+        self.assertIn("(drop == null || drop.HasLanded)", update)
+        self.assertIn("bool lockOn = armed && aimCamera != null &&", update)
+        self.assertIn("bool showOptic = armed && inventory.Aiming && scope >= 2;", update)
+        self.assertIn("crosshair[i].gameObject.SetActive(armed);", update)
+        self.assertIn("health.HealthChanged += HealthChanged;", FEEDBACK)
+        # Delayed HUD reconciliation after pause, vehicle boarding or drop
+        # cannot paint red or query the 100-rival scene while fire is blocked.
+        for active, motor, combat, running, gun, landed in (
+            (True, True, True, True, True, True),
+            (True, False, True, True, True, True),
+            (True, True, True, False, True, True),
+            (True, True, False, True, True, True),
+            (True, True, True, True, True, False),
+            (True, True, True, True, False, True),
+        ):
+            expected = active and motor and combat and running and gun and landed
+            if (not motor or not combat or not running or not gun or not landed):
+                self.assertFalse(expected)
+            else:
+                self.assertTrue(expected)
+
     def test_landing_gate_retains_visual_prestream(self):
         landing = section(LOOT, "private bool HasLandingAuthority =>",
                           "/// <summary>Explicit pickup")
