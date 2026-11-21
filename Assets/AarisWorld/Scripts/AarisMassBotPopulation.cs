@@ -32,10 +32,11 @@ namespace Aaris.MapReview
         private AarisOfflineBRDirector director;
         private Transform player;
         private AarisOfflineHealth playerHealth;
-        private int seeded, aliveCount, simulationCursor;
+        private int seeded, aliveCount, simulationCursor, validSeeds;
         private float nextStreaming;
         private bool ready;
         internal int AliveCount => aliveCount;
+        internal bool HadValidBots => validSeeds > 0;
         internal bool IsReady => ready;
 
         internal void Initialize(AarisOfflineBRDirector match,
@@ -67,6 +68,7 @@ namespace Aaris.MapReview
                         record.nextDecision = Time.time + 2f;
                         record.nextShot = Time.time + 1f;
                         aliveCount++;
+                        validSeeds++;
                     }
                     bots[seeded] = record;
                 }
