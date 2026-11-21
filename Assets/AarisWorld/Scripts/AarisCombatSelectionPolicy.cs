@@ -13,9 +13,12 @@ namespace Aaris.MapReview
         internal static bool HigherPriority(float rivalDistanceSquared, int rivalId,
             float candidateDistanceSquared, int candidateId)
         {
-            float delta = rivalDistanceSquared - candidateDistanceSquared;
-            return delta < -.01f || (delta >= -.01f && delta <= .01f &&
-                rivalId < candidateId);
+            // Strict total order. A tolerance-based near-tie is NOT
+            // transitive (A near B, B near C, but A far from C) and may let
+            // three bots each count only one outranker.
+            return rivalDistanceSquared < candidateDistanceSquared ||
+                (rivalDistanceSquared == candidateDistanceSquared &&
+                 rivalId < candidateId);
         }
 
         internal static bool CanAttackPlayer(bool hasSight,
