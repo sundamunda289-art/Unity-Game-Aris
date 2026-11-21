@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -110,14 +111,18 @@ namespace Aaris.MapReview.Editor
             var json = Resources.Load<TextAsset>("AarisWeapons/weapon_catalog");
             if (json == null) throw new InvalidOperationException("Missing active catalog.");
             var parsed = JsonUtility.FromJson<LiveCatalog>(json.text);
-            if (parsed == null || parsed.weapons == null || parsed.weapons.Length != 5)
-                throw new InvalidOperationException("Active catalog requires five models.");
+            if (parsed == null || parsed.weapons == null || parsed.weapons.Length < 5)
+                throw new InvalidOperationException("Active catalog requires at least five weapon definitions.");
             var specs = parsed.weapons;
             int triangles = 0;
+            var seenIds = new HashSet<string>(StringComparer.Ordinal);
+            var importedModels = new HashSet<string>(StringComparer.Ordinal);
             foreach (var spec in specs)
             {
                 if (spec == null || !spec.Valid)
                     throw new InvalidOperationException("Invalid live catalog entry.");
+                if (!seenIds.Add(spec.id))
+                    throw new InvalidOperationException("Duplicate live weapon ID: " + spec.id);
                 string name = spec.id;
                 string prefix = "Assets/Resources/" + spec.modelResource;
                 string path = AssetDatabase.LoadAssetAtPath<GameObject>(prefix + ".fbx") != null ? prefix + ".fbx" : prefix + ".obj";
@@ -150,13 +155,16 @@ namespace Aaris.MapReview.Editor
                 if (thisModel < 8 || thisModel > 180000)
                     throw new InvalidOperationException("Invalid phone mesh triangle count " +
                         thisModel + ": " + path);
-                triangles += thisModel;
+                // DMR and Battle Rifle share one mesh; don't double-count GPU geometry.
+                if (importedModels.Add(spec.modelResource)) triangles += thisModel;
                 ValidateVisibleScale(spec, model);
                 string resourcePath = spec.modelResource;
                 if (Resources.Load<GameObject>(resourcePath) == null)
                     throw new InvalidOperationException("Resources.Load failed: " + resourcePath);
                 Debug.Log("AARIS_WEAPON_IMPORT: " + name + ", " + thisModel + " triangles, Active gameplay model GUID stable.");
             }
+            if (importedModels.Count < 5)
+                throw new InvalidOperationException("Active catalog has fewer than five distinct imported models.");
             string[] scripts =
             {
                 "AarisWeaponCatalog", "AarisWeaponPickup", "AarisWeaponInventory",
@@ -175,8 +183,9 @@ namespace Aaris.MapReview.Editor
             var loot = Resources.Load<TextAsset>("AarisWeapons/loot_candidates");
             if (loot == null || !loot.text.Contains("\"schema\": 1"))
                 throw new InvalidOperationException("Missing baked 2km loot candidate data.");
-            Debug.Log("AARIS_WEAPON_IMPORT_PASS: 5 active gameplay FBX/OBJ assets; " +
-                triangles + " total triangles; offline catalog + authored loot + player scripts.");
+            Debug.Log("AARIS_WEAPON_IMPORT_PASS: " + specs.Length +
+                " weapon variants across " + importedModels.Count + " distinct FBX/OBJ models; " +
+                triangles + " unique-model triangles; offline catalog + authored loot + player scripts.");
             Debug.Log("PLAYMODE_QA_REQUIRED: test hand rig, scope FOV, prone muzzle, ammo, " +
                 "indoor accessible floor, native tree cover, fire audio/materials and Android FPS.");
         }
