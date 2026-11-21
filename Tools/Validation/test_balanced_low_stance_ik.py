@@ -261,5 +261,42 @@ for start_angle in [-3.0,-2.5,-2.0,-1.5,-0.4,0.0,0.4,1.5,2.0,2.5,3.0]:
             # Preserve which side of the knee plane the old bend occupied.
             assert fixed_lateral*lateral>=-1e-9
 
+# Nearly antiparallel knee-pole directions have numerically ambiguous
+# signed 180-degree arcs. The actual solver now picks the arc that lifts
+# the midpoint rather than accepting random opposite-angle rounding.
+# This is a deterministic mathematical test, not a Unity screenshot.
+solver = visual[visual.index("private static void PlantLegToTarget("):
+                visual.index("private Vector3 AnatomicalKneeForward()")]
+for token in ("poleCos < -0.985f", "Mathf.Abs(poleSin) < 0.175f",
+              "Vector3 positiveTangent = Vector3.Cross(axis, bend);",
+              "float upPreference = Vector3.Dot(positiveTangent, Vector3.up);",
+              "anatomicalSideAxis.sqrMagnitude > 0.25f",
+              "poleSin = upPreference >= 0f"):
+    assert token in solver, token
+
+# World X is the ankle axis; animated knee bend points along world Z.
+# The positive signed half-arc sends the knee DOWN, while the negative
+# half-arc sends it UP. Tiny pole Y perturbations previously switched
+# the branch by ~180 degrees at a 50% transition weight.
+def halfway_knee_height(pole_sin, pole_cos, corrected):
+    if corrected and pole_cos < -0.985 and abs(pole_sin) < .175:
+        # x-axis cross z-axis = -y, so the upper branch has negative sign.
+        preference = -1.0
+        pole_sin = (abs(pole_sin) + .0001) * (1 if preference >= 0 else -1)
+    return -sin(.5 * atan2(pole_sin, pole_cos))
+
+epsilon = 1e-7
+old_upper = halfway_knee_height(epsilon, -1.0, False)
+old_lower = halfway_knee_height(-epsilon, -1.0, False)
+assert abs(old_upper - old_lower) > 1.99
+for perturbation in (-epsilon, 0.0, epsilon):
+    fixed = halfway_knee_height(perturbation, -1.0, True)
+    assert fixed > .999, (perturbation, fixed)
+# Ordinary non-opposed poles are mathematically unchanged.
+for p_cos, p_sin in ((1.0, 0.0), (0.0, 1.0), (0.5, -0.5),
+                      (-0.7, 0.7), (-0.9, -0.2)):
+    assert halfway_knee_height(p_sin, p_cos, True) == \
+           halfway_knee_height(p_sin, p_cos, False)
+
 print("PASS: anatomy-scaled crouch/prone IK, grounded knee hint and bend-circle stability")
 print("NOT TESTED: Unity retargeted visuals, real collisions or Android FPS")
