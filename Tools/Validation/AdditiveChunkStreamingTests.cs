@@ -23,7 +23,7 @@ namespace UnityEngine
     }
     public struct Vector3 { public float x, y, z; }
     public class AsyncOperation { public bool isDone; public int priority; }
-    public static class Time { public static float unscaledTime; }
+    public static class Time { public static float unscaledTime; public static int frameCount; }
     public static class Mathf
     {
         public static float Max(float a, float b) { return Math.Max(a, b); }
@@ -152,9 +152,24 @@ internal static class AdditiveChunkStreamingTests
         return manager;
     }
 
+    private static void ResetScene()
+    {
+        SceneManager.Reset();
+        Time.frameCount = 0;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // Mimic a fresh Android play session between unrelated test cases.
+        // Runtime statics persist only within one session.
+        typeof(AarisAdditiveChunkStreamer).GetField("sharedSceneOperation",
+            BindingFlags.NonPublic | BindingFlags.Static).SetValue(null, null);
+        typeof(AarisAdditiveChunkStreamer).GetField("sharedSceneCompletionFrame",
+            BindingFlags.NonPublic | BindingFlags.Static).SetValue(null, -1);
+#endif
+    }
+
     private static void Frame(AarisAdditiveChunkStreamer manager,
         Transform player, float time, float x)
     {
+        Time.frameCount++;
         Time.unscaledTime = time;
         player.position = new Vector3 { x = x, z = 0 };
         Invoke(manager, "Update");
@@ -174,7 +189,7 @@ internal static class AdditiveChunkStreamingTests
         AarisChunkStreamingPolicy.Predict(200, 0, 210, 0, 5f, 1.25f, 35, 90, out px, out pz);
         Check(px == 200, "resume gap should disable extrapolation");
 
-        SceneManager.Reset();
+        ResetScene();
         var target = new Transform();
         var manager = Make(target);
         Frame(manager, target, 1f, 210f);
@@ -209,7 +224,7 @@ internal static class AdditiveChunkStreamingTests
         // A zero speculative residency budget blocks only optional prefetch.
         // A truly near chunk still loads at its original entry distance.
 #if UNITY_ANDROID && !UNITY_EDITOR
-        SceneManager.Reset();
+        ResetScene();
         target = new Transform();
         manager = Make(target);
         Set(manager, "maxSpeculativeResidentCells", 0);
@@ -222,7 +237,7 @@ internal static class AdditiveChunkStreamingTests
         // Regression: a predicted point INSIDE the cell has outside-distance 0.
         // Its numeric priority ties entrySquared, but the actual player is still
         // outside the entry margin. It must remain speculative and respect cap=0.
-        SceneManager.Reset();
+        ResetScene();
         target = new Transform();
         manager = Make(target);
         Set(manager, "maxSpeculativeResidentCells", 0);
@@ -236,8 +251,38 @@ internal static class AdditiveChunkStreamingTests
             "actual near-player distance still overrides speculative budget");
 #endif
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // Two independent scene managers must not start competing native
+        // additive activations on the same low-end Android render frame.
+        ResetScene();
+        var parallelTarget = new Transform();
+        var firstManager = Make(parallelTarget);
+        var secondManager = MakeMultiple(parallelTarget,
+            new AarisAdditiveChunkStreamer.Chunk
+            {
+                scenePath = "Assets/CellEast.unity",
+                center = new Vector2(500, 0),
+                halfExtents = new Vector2(100, 100)
+            });
+        Frame(firstManager, parallelTarget, 60f, 0f);
+        Check(SceneManager.loadCount == 1, "first manager begins one scene operation");
+        // Different manager Update in SAME rendered frame.
+        parallelTarget.position = new Vector3 { x = 500, z = 0 };
+        Invoke(secondManager, "Update");
+        Check(SceneManager.loadCount == 1, "second manager must not start concurrent load");
+        SceneManager.Finish();
+        Frame(secondManager, parallelTarget, 60.3f, 500f);
+        Check(SceneManager.loadCount == 1, "completion observation reserves its frame");
+        Frame(firstManager, parallelTarget, 60.4f, 500f);
+        Frame(secondManager, parallelTarget, 60.7f, 500f);
+        Check(SceneManager.loadCount == 2, "second manager loads after first integration");
+        SceneManager.Finish();
+        Frame(secondManager, parallelTarget, 61f, 500f);
+        Check(SceneManager.loadCount == 2, "no extra duplicate loads");
+#endif
+
         // Externally loaded scenes are never retired or double-loaded.
-        SceneManager.Reset();
+        ResetScene();
         SceneManager.loaded[Path] = true;
         target = new Transform();
         manager = Make(target);
@@ -247,7 +292,7 @@ internal static class AdditiveChunkStreamingTests
             "only unload scenes owned by this manager");
         // One far resident scene must be retired before an optional
         // predicted-only cell is admitted: bounded peak resident memory.
-        SceneManager.Reset();
+        ResetScene();
         target = new Transform();
         manager = MakeMultiple(target,
             new AarisAdditiveChunkStreamer.Chunk {
@@ -278,7 +323,7 @@ internal static class AdditiveChunkStreamingTests
 
         // An external loader can win the race AFTER the streamer's Awake.
         // Never duplicate its load or later unload someone else's scene.
-        SceneManager.Reset();
+        ResetScene();
         target = new Transform();
         manager = Make(target);
         SceneManager.loaded[Path] = true;
@@ -289,7 +334,7 @@ internal static class AdditiveChunkStreamingTests
 
         // Another manager can retire a scene formerly loaded by us.
         // Avoid Unity's redundant unload and allow a later clean reload.
-        SceneManager.Reset();
+        ResetScene();
         target = new Transform();
         manager = Make(target);
         Frame(manager, target, 5f, 0f);
@@ -306,7 +351,7 @@ internal static class AdditiveChunkStreamingTests
         // A different manager can unload a scene while the player stays
         // inside it. The next poll must reload that visible cell, not wait
         // for the player to leave the hysteresis zone and come back.
-        SceneManager.Reset();
+        ResetScene();
         target = new Transform();
         manager = Make(target);
         Frame(manager, target, 9f, 0f);
@@ -319,7 +364,7 @@ internal static class AdditiveChunkStreamingTests
 
         // An externally owned scene can disappear too; ownership must be
         // rechecked before excluding it from the next near-player poll.
-        SceneManager.Reset();
+        ResetScene();
         SceneManager.loaded[Path] = true;
         target = new Transform();
         manager = Make(target);
@@ -332,7 +377,7 @@ internal static class AdditiveChunkStreamingTests
 
         // A 512-cell empty world used to scan every state on every poll.
         // Residency reconciliation must be independent of unloaded cell count.
-        SceneManager.Reset();
+        ResetScene();
         target = new Transform();
         var emptyCells = new AarisAdditiveChunkStreamer.Chunk[512];
         for (int i = 0; i < emptyCells.Length; i++)
@@ -350,7 +395,7 @@ internal static class AdditiveChunkStreamingTests
 
         // Sparse externally owned scenes must reconcile in resident order,
         // not by scanning hundreds of inactive authored chunk definitions.
-        SceneManager.Reset();
+        ResetScene();
         SceneManager.loaded["Assets/CellEmpty2.unity"] = true;
         SceneManager.loaded["Assets/CellEmpty509.unity"] = true;
         manager = MakeMultiple(target, emptyCells);
