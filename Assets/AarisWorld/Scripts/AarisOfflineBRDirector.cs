@@ -37,6 +37,9 @@ namespace Aaris.MapReview
         private Transform player;
         private AarisOfflineHealth playerHealth;
         private AarisOfflineDrop drop;
+        // Flight component may be attached after this director starts. Limit
+        // missing-component native lookups during the cold-start render path.
+        private float nextDropComponentRefresh;
         private AarisOfflineMatchEnd matchEnd;
         private AarisNearbyColliders nearbyColliders;
         private Terrain[] terrains;
@@ -268,7 +271,11 @@ namespace Aaris.MapReview
             {
                 // Runtime boot order is unspecified. Do not start an unseen
                 // ground battle while the real player is still parachuting.
-                if (drop == null) drop = player.GetComponent<AarisOfflineDrop>();
+                if (drop == null && Time.unscaledTime >= nextDropComponentRefresh)
+                {
+                    nextDropComponentRefresh = Time.unscaledTime + 1f;
+                    drop = player.GetComponent<AarisOfflineDrop>();
+                }
                 if (drop != null && !drop.HasLanded) return;
                 // Don't start the match clock while the first character
                 // resource is integrating into Unity on constrained phones.
