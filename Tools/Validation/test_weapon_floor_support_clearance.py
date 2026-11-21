@@ -36,6 +36,19 @@ class WeaponFloorSupportContract(unittest.TestCase):
         self.assertIn("ModelFloorClearance = 0.025f;", PICKUP)
         self.assertAlmostEqual(clearance("LootRootFloorClearance") + 0.025, 0.065)
 
+    def test_near_grade_solid_support_outranks_underlying_terrain(self):
+        # Real PhysX proof lives in AarisWeaponSupportPhysicsQA.Run.
+        # This contract prevents accidental deletion of the selection rule.
+        self.assertIn("bool preferredNearGradeSolid = false;", WORLD)
+        self.assertIn("bool nearGradeSolid = !indoor &&", WORLD)
+        self.assertIn("candidate.point.y >= expectedGround - 0.02f", WORLD)
+        self.assertIn("candidate.point.y <= expectedGround + 0.22f", WORLD)
+        self.assertIn("if (preferredNearGradeSolid && !nearGradeSolid) continue;", WORLD)
+        self.assertIn("preferredNearGradeSolid = nearGradeSolid;", WORLD)
+        self.assertLess(
+            WORLD.index("if (preferredNearGradeSolid && !nearGradeSolid) continue;"),
+            WORLD.index("preferredNearGradeSolid = nearGradeSolid;"))
+
     def test_no_extra_physics_or_allocation_on_placement(self):
         tail = WORLD.split("bool terrainGrassSupport = !indoor && floor.collider is TerrainCollider;", 1)[1]
         tail = tail.split("return true;", 1)[0]
