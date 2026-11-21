@@ -220,7 +220,7 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("Outside(player.position)", br)
         self.assertIn("playerHealth.ApplyDamage(7f, null)", br)
         self.assertIn("Physics.RaycastNonAlloc(ray, sightHits, distance,", br)
-        self.assertIn("hits = Physics.RaycastAll(ray, distance,", br)
+        self.assertIn("Physics.Raycast(ray, out RaycastHit nearestHit, distance,", br)
         self.assertIn("private bool HasSightTo(Transform victim)", br)
         self.assertIn("closest.transform.IsChildOf(victim)", br)
         self.assertIn("HasPlayerSightForSelection()", br)
