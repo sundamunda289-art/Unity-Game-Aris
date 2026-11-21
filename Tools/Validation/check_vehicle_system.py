@@ -358,7 +358,10 @@ def test():
     assert "localSpace.worldToLocalMatrix" in world
     assert "filter.transform.localToWorldMatrix" in world
     assert "Mathf.Abs(toLocal.m00)" in world
-    assert "GetComponentsInChildren<SkinnedMeshRenderer>(true)" in world
+    # Bounds measurements reuse Unity 6 caller-owned component buffers,
+    # without dropping skinned meshes from the real visible-body fit.
+    assert "subtree.GetComponentsInChildren<SkinnedMeshRenderer>(true, skins);" in world
+    assert "subtree.GetComponentsInChildren<MeshFilter>(true, filters);" in world
     wheels = motor.split("public bool AttachWheelModels(", 1)[1].split(
         "private void SyncVisibleWheels()", 1)[0]
     assert "TryGetVisualBoundsLocal(" in wheels
