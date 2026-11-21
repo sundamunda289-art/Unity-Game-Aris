@@ -871,6 +871,8 @@ namespace Aaris.MapReview
         private float nextThink, nextAttack, verticalSpeed, turnOffset, visualBlend;
         private Transform playerTarget;
         private AarisOfflineHealth playerTargetHealth;
+        // Cache stance-aware collision bodies; do not GetComponent in LOS ray hot paths.
+        private CharacterController playerTargetCapsule, targetCapsule;
         private GameObject visualRoot;
         private bool visualBuilt;
         private float nextVisualCheck, staggeredVisualDelay;
@@ -909,6 +911,7 @@ namespace Aaris.MapReview
             targetHealth = null;
             playerTarget = victim;
             playerTargetHealth = victimHealth;
+            playerTargetCapsule = victim != null ? victim.GetComponent<CharacterController>() : null;
             capsule = GetComponent<CharacterController>();
             health.Died += OnDied;
             health.Damaged += OnDamaged;
@@ -1116,6 +1119,10 @@ namespace Aaris.MapReview
                     target = null;
                     targetHealth = null;
                 }
+                // Only target changes refresh this reference; stance center/height
+                // remain live so prone and crouch affect sight immediately.
+                targetCapsule = target == playerTarget ? playerTargetCapsule :
+                    target != null ? target.GetComponent<CharacterController>() : null;
                 canSee = target != null && targetHealth != null && !targetHealth.IsDead &&
                     (target.position - transform.position).sqrMagnitude < 42f * 42f && HasSight();
                 if (!canSee) turnOffset += UnityEngine.Random.Range(-35f, 35f);
@@ -1251,7 +1258,14 @@ namespace Aaris.MapReview
         {
             if (victim == null) return false;
             Vector3 eye = transform.position + transform.forward * .48f + Vector3.up * 1.28f;
-            Vector3 to = victim.position + Vector3.up * 1.07f - eye;
+            CharacterController body = victim == playerTarget ? playerTargetCapsule :
+                victim == target ? targetCapsule : null;
+            // Aim inside the live collision capsule, never at a fixed standing
+            // 1.07m point above a crouched/prone player. The physics ray still
+            // requires the victim to be the FIRST unobstructed collider.
+            Vector3 aimPoint = body != null
+                ? victim.TransformPoint(body.center) : victim.position + Vector3.up * 1.07f;
+            Vector3 to = aimPoint - eye;
             float distance = to.magnitude;
             if (distance < .1f) return false;
             Ray ray = new Ray(eye, to / distance);
