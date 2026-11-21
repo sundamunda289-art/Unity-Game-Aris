@@ -43,6 +43,10 @@ namespace Aaris.MapReview
         private const double AndroidReleaseFrameBudgetSeconds = 0.001;
         private const int AndroidReleaseClockCheckInterval = 4;
         private const int MaxCellsPerCollider = 64;
+        // Queries are usually vehicle/AI-sized. A corrupt or enormous
+        // footprint must not iterate millions of grid coordinates on the
+        // Android main thread. Large probes scan the bounded authored array.
+        private const int MaxCellsPerProbe = 64;
         private List<int> active, nextActive;
         private int[] visited, wanted, probeVisited;
         private int query, probeQuery;
@@ -530,6 +534,31 @@ namespace Aaris.MapReview
                 Mathf.Abs(right.y) + Mathf.Abs(up.y) + Mathf.Abs(forward.y),
                 Mathf.Abs(right.z) + Mathf.Abs(up.z) + Mathf.Abs(forward.z));
             Bounds probe = new Bounds(center, 2f * extents);
+            Vector3 probeMin = probe.min, probeMax = probe.max;
+            // A broken/overflowing transform is not evidence of a clear
+            // vehicle/AI spawn or safe exit. Reject it without grid traversal.
+            if (!Finite(probeMin) || !Finite(probeMax)) return true;
+            int firstX = Cell(probeMin.x), lastX = Cell(probeMax.x);
+            int firstZ = Cell(probeMin.z), lastZ = Cell(probeMax.z);
+            long width = (long)lastX - firstX + 1;
+            long depth = (long)lastZ - firstZ + 1;
+            if (width <= 0 || depth <= 0 ||
+                width > MaxCellsPerProbe || depth > MaxCellsPerProbe ||
+                width * depth > MaxCellsPerProbe)
+            {
+                // Do not enumerate giant rectangular grids. Scan only the
+                // serialized authored obstacle set (including oversized
+                // grid members), preserving exact 3D bounds intersection.
+                for (int i = 0; i < obstacles.Length; i++)
+                {
+                    if (!streamed[i] || !worldBounds[i].Intersects(probe))
+                        continue;
+                    Collider candidate = obstacles[i];
+                    if (candidate != null && !candidate.enabled)
+                        return true;
+                }
+                return false;
+            }
             // The same large wall can occupy several spatial cells. Check it only
             // once per placement probe, without allocating a HashSet in combat.
             if (probeQuery == int.MaxValue)
@@ -538,8 +567,8 @@ namespace Aaris.MapReview
                 probeQuery = 0;
             }
             int probeStamp = ++probeQuery;
-            for (int xCell = Cell(probe.min.x); xCell <= Cell(probe.max.x); xCell++)
-                for (int zCell = Cell(probe.min.z); zCell <= Cell(probe.max.z); zCell++)
+            for (int xCell = firstX; xCell <= lastX; xCell++)
+                for (int zCell = firstZ; zCell <= lastZ; zCell++)
                 {
                     if (!cells.TryGetValue(Key(xCell, zCell), out List<int> entries)) continue;
                     foreach (int i in entries)
