@@ -375,6 +375,35 @@ internal static class AdditiveChunkStreamingTests
         Check(SceneManager.loadCount == 1,
             "retired externally owned scene must become streamable");
 
+        // A large chunk manifest uses an indexed duplicate check during Awake.
+        // The original behavior rejected a valid path that repeated even an
+        // earlier *invalid* cell, and treats paths with different case separately.
+        ResetScene();
+        target = new Transform();
+        var duplicateCells = new AarisAdditiveChunkStreamer.Chunk[18];
+        for (int i = 0; i < duplicateCells.Length; i++)
+            duplicateCells[i] = new AarisAdditiveChunkStreamer.Chunk {
+                scenePath = "Assets/CellUnique" + i + ".unity",
+                center = new Vector2(i * 4000f, 0f),
+                halfExtents = new Vector2(100f, 100f)
+            };
+        duplicateCells[0].scenePath = "Assets/CellInvalidFirst.unity";
+        duplicateCells[0].halfExtents = new Vector2(0f, 100f);
+        duplicateCells[1].scenePath = duplicateCells[0].scenePath;
+        duplicateCells[2].scenePath = "Assets/CellShared.unity";
+        duplicateCells[3].scenePath = "Assets/CellShared.unity";
+        duplicateCells[4].scenePath = "Assets/CellCase.unity";
+        duplicateCells[5].scenePath = "Assets/Cellcase.unity";
+        SceneManager.loaded["Assets/CellShared.unity"] = true;
+        SceneManager.loaded["Assets/CellCase.unity"] = true;
+        SceneManager.loaded["Assets/Cellcase.unity"] = true;
+        int warningsBeforeIndex = Debug.warnings.Count;
+        manager = MakeMultiple(target, duplicateCells);
+        Check(Debug.warnings.Count == warningsBeforeIndex + 3,
+            "large-manifest index must preserve invalid and duplicate warnings");
+        Check(ResidentCount(manager) == 3,
+            "indexed dedupe must keep one resident owner plus case-distinct cells");
+
         // A 512-cell empty world used to scan every state on every poll.
         // Residency reconciliation must be independent of unloaded cell count.
         ResetScene();
