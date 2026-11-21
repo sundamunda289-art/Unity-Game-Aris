@@ -2316,6 +2316,22 @@ namespace Aaris.MapReview
                 // Crouch knees face forward and stay above the shoe; extended
                 // prone retains the authored near-ground knee plane once feet align.
                 float kneeClearance = Mathf.Lerp(0.21f, 0.045f, proneShare);
+                // Native 30-frame crouch-walk QA measured a 41.8cm lateral
+                // knee flare with both shoes at the real 13cm ground clearance.
+                // At a 21cm knee floor the exact-length bend circle contains
+                // no forward, <=23cm lateral knee solution. Moving the pelvis
+                // upward instead made this worse (50.4cm), so retain the
+                // authored body and reduce only the MOVING CROUCH knee floor.
+                // Static crouch, airborne, crawling, prone and stance
+                // transitions keep their existing support/bend plane.
+                float movingCrouchKneeRelax = crouching && !prone
+                    ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(
+                        0.20f, 0.88f, planar)) *
+                      Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(
+                        0.78f, 0.98f, effectiveCrouchBlend))
+                    : 0f;
+                kneeClearance -= 0.06f * movingCrouchKneeRelax *
+                    (1f - proneShare);
                 Vector3 leftFootGoal, rightFootGoal, crouchKneeForward;
                 if (communityStanceClipsLoaded && !alsCrouchLoaded && proneShare < 0.05f)
                 {
@@ -2458,9 +2474,17 @@ namespace Aaris.MapReview
                     float movingLowStance = Mathf.SmoothStep(0f, 1f,
                         Mathf.InverseLerp(0.20f, 0.88f, planar)) *
                         Mathf.Clamp01(Mathf.Max(crouchRigWeight, proneRigWeight));
+                    // The same native limb-circle sample requires ~86 degrees
+                    // of bend-plane travel to reach the forward, floor-safe
+                    // sector. The old 75 degree per-solve cap could not reach
+                    // it. Only moving crouch receives 110 degrees; settled
+                    // crouch and all prone/crawl modes retain the old cap.
+                    float movingCrouchPoleCap = crouching && !prone &&
+                        proneShare < 0.05f ? 110f : 75f;
                     transitionKneeSideTurn = Mathf.Max(
                         transitionKneeSideTurn,
-                        75f * movingLowStance * kneeTurnStability);
+                        movingCrouchPoleCap * movingLowStance *
+                        kneeTurnStability);
                 }
                 // Resolve X/Z BEFORE sampling Y. This keeps the one existing
                 // Physics query per foot on the actual locked point, rather
