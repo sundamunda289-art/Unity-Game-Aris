@@ -138,6 +138,9 @@ namespace Aaris.MapReview
             hitFlash = Block(root.transform, "Incoming red flash",
                 new Vector2(.5f, .5f), new Vector2(4000f, 4000f),
                 Vector2.zero, new Color(1f, .03f, .03f, 0f));
+            // Avoid a fullscreen transparent uGUI quad and canvas dirties in
+            // idle play. Only a real incoming HP hit needs this overlay.
+            hitFlash.gameObject.SetActive(false);
             Block(root.transform, "HP background", new Vector2(0f, 0f),
                 new Vector2(258f, 51f), new Vector2(158f, 46f),
                 new Color(.035f, .05f, .065f, .88f));
@@ -215,6 +218,8 @@ namespace Aaris.MapReview
         {
             if (receiver != health) return;
             hitFadeUntil = Time.unscaledTime + .35f;
+            if (hitFlash != null && !hitFlash.gameObject.activeSelf)
+                hitFlash.gameObject.SetActive(true);
             if (attacker == null) { hitDirection.gameObject.SetActive(false); return; }
             Vector3 from = attacker.transform.position - transform.position;
             from.y = 0f;
@@ -263,13 +268,17 @@ namespace Aaris.MapReview
         {
             if (canvas == null) return;
             float now = Time.unscaledTime;
-            if (hitFlash != null)
+            if (hitFlash != null && hitFlash.gameObject.activeSelf)
             {
-                float alpha = Mathf.Clamp01((hitFadeUntil - now) / .35f) * .2f;
-                hitFlash.color = new Color(1f, .03f, .03f, alpha);
-                if (hitDirection != null && hitDirection.gameObject.activeSelf &&
-                    now >= hitFadeUntil) hitDirection.gameObject.SetActive(false);
+                float remaining = hitFadeUntil - now;
+                if (remaining <= 0f)
+                    hitFlash.gameObject.SetActive(false);
+                else
+                    hitFlash.color = new Color(1f, .03f, .03f,
+                        Mathf.Clamp01(remaining / .35f) * .2f);
             }
+            if (hitDirection != null && hitDirection.gameObject.activeSelf &&
+                now >= hitFadeUntil) hitDirection.gameObject.SetActive(false);
             for (int i = 0; i < numbers.Length; i++)
             {
                 var label = numbers[i];
