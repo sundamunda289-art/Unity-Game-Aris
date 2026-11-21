@@ -49,8 +49,16 @@ class RivalAnimationPrewarm(unittest.TestCase):
                       self.resolve)
         self.assertIn('LoadRivalClip("AarisCharacters/Kenney/idle")', self.resolve)
         self.assertIn('LoadRivalClip("AarisCharacters/Kenney/run")', self.resolve)
-        self.assertIn("private const int RivalCount = 6;", SRC)
-        self.assertIn("nextSpawn = Time.time + 0.5f;", SRC)
+
+
+    def test_100_rivals_spawn_after_prewarm_with_android_budget(self):
+        self.assertIn("private const int RivalCount = 100;", SRC)
+        self.assertIn("if (!rivalVisualPrewarmComplete) return;", SRC)
+        self.assertIn("CanAttemptRivalSpawn()", SRC)
+        self.assertIn("if (!populatedSlots[slot]) TrySpawnSlot(slot);", SRC)
+        self.assertIn("nextSpawn = Time.time + 0.17f;", SRC)
+        self.assertIn("AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()", SRC)
+        self.assertIn("nextSpawn = Time.time + 0.12f;", SRC)
 
     def test_sanity_predicate_shared_by_runtime_clip_paths(self):
         predicate = SRC.split("private static bool IsUsableRivalClip(AnimationClip clip)", 1)[1].split(
