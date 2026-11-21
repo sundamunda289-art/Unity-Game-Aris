@@ -277,6 +277,14 @@ namespace Aaris.MapReview
             return TryGetVisualBoundsLocal(localSpace, localSpace, out combined);
         }
 
+        // Bounds fitting can execute repeatedly for the same newly imported
+        // vehicle and each of its wheels. Unity 6 can fill caller-owned lists
+        // instead of allocating two new component arrays on every query.
+        // Unity scene APIs run on the main thread, but thread-local storage
+        // additionally prevents callers on separate threads sharing buffers.
+        [ThreadStatic] private static List<MeshFilter> visualBoundsFilters;
+        [ThreadStatic] private static List<SkinnedMeshRenderer> visualBoundsSkins;
+
         // Measure one imported subtree directly in another transform's axes.
         // Project source mesh bounds once, never a world-aligned bounding box.
         internal static bool TryGetVisualBoundsLocal(Transform localSpace,
@@ -286,33 +294,53 @@ namespace Aaris.MapReview
             if (localSpace == null || subtree == null) return false;
             bool found = false;
             Matrix4x4 toLocal = localSpace.worldToLocalMatrix;
-            foreach (var filter in subtree.GetComponentsInChildren<MeshFilter>(true))
+            List<MeshFilter> filters = visualBoundsFilters;
+            if (filters == null)
+                visualBoundsFilters = filters = new List<MeshFilter>(24);
+            List<SkinnedMeshRenderer> skins = visualBoundsSkins;
+            if (skins == null)
+                visualBoundsSkins = skins = new List<SkinnedMeshRenderer>(4);
+            try
             {
-                if (filter == null || filter.sharedMesh == null ||
-                    filter.sharedMesh.vertexCount == 0) continue;
-                // Imported FBXs can contain disabled helper/LOD meshes that
-                // are much larger than the visible shell. Fitting collider,
-                // lamps and wheels to those hidden bounds makes cars tiny or
-                // apparently float. Measure only actual rendered geometry.
-                var renderer = filter.GetComponent<MeshRenderer>();
-                if (renderer == null || !renderer.enabled ||
-                    renderer.forceRenderingOff ||
-                    !renderer.gameObject.activeInHierarchy) continue;
-                AccumulateLocalBounds(filter.sharedMesh.bounds,
-                    toLocal * filter.transform.localToWorldMatrix,
-                    ref combined, ref found);
+                filters.Clear();
+                subtree.GetComponentsInChildren<MeshFilter>(true, filters);
+                foreach (var filter in filters)
+                {
+                    if (filter == null || filter.sharedMesh == null ||
+                        filter.sharedMesh.vertexCount == 0) continue;
+                    // Imported FBXs can contain disabled helper/LOD meshes that
+                    // are much larger than the visible shell. Fitting collider,
+                    // lamps and wheels to those hidden bounds makes cars tiny or
+                    // apparently float. Measure only actual rendered geometry.
+                    var renderer = filter.GetComponent<MeshRenderer>();
+                    if (renderer == null || !renderer.enabled ||
+                        renderer.forceRenderingOff ||
+                        !renderer.gameObject.activeInHierarchy) continue;
+                    AccumulateLocalBounds(filter.sharedMesh.bounds,
+                        toLocal * filter.transform.localToWorldMatrix,
+                        ref combined, ref found);
+                }
+                skins.Clear();
+                subtree.GetComponentsInChildren<SkinnedMeshRenderer>(true, skins);
+                foreach (var skinned in skins)
+                {
+                    if (skinned == null || skinned.sharedMesh == null ||
+                        skinned.sharedMesh.vertexCount == 0 || !skinned.enabled ||
+                        skinned.forceRenderingOff ||
+                        !skinned.gameObject.activeInHierarchy) continue;
+                    AccumulateLocalBounds(skinned.localBounds,
+                        toLocal * skinned.transform.localToWorldMatrix,
+                        ref combined, ref found);
+                }
+                return found;
             }
-            foreach (var skinned in subtree.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            finally
             {
-                if (skinned == null || skinned.sharedMesh == null ||
-                    skinned.sharedMesh.vertexCount == 0 || !skinned.enabled ||
-                    skinned.forceRenderingOff ||
-                    !skinned.gameObject.activeInHierarchy) continue;
-                AccumulateLocalBounds(skinned.localBounds,
-                    toLocal * skinned.transform.localToWorldMatrix,
-                    ref combined, ref found);
+                // Do not retain retired imported meshes, skins or GameObjects
+                // after stream-out, including an exceptional native query.
+                filters.Clear();
+                skins.Clear();
             }
-            return found;
         }
 
         private static void AccumulateLocalBounds(Bounds meshBounds, Matrix4x4 toLocal,
