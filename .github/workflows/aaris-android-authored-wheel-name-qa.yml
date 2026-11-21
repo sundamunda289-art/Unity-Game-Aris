@@ -1,0 +1,62 @@
+name: Android authored wheel name buffer QA
+
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisVehicleWorld.cs'
+      - 'Tools/Validation/test_android_authored_wheel_name_buffer.py'
+      - 'Tools/Validation/AuthoredWheelNameBufferTests.cs'
+      - 'Tools/Validation/run_authored_wheel_name_buffer_csharp.py'
+      - '.github/workflows/aaris-android-authored-wheel-name-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisVehicleWorld.cs'
+      - 'Tools/Validation/test_android_authored_wheel_name_buffer.py'
+      - 'Tools/Validation/AuthoredWheelNameBufferTests.cs'
+      - 'Tools/Validation/run_authored_wheel_name_buffer_csharp.py'
+      - '.github/workflows/aaris-android-authored-wheel-name-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  authored-wheel-lookup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Preserve exact source axle and vehicle geometry checks
+        run: |
+          python3 Tools/Validation/test_android_authored_wheel_name_buffer.py
+          python3 Tools/Validation/test_android_vehicle_bounds_query_reuse.py
+          python3 Tools/Validation/test_vehicle_axle_road_failsafe.py
+          python3 Tools/Validation/test_vehicle_wheel_center_pivot.py
+          python3 Tools/Validation/check_vehicle_system.py
+      - name: Compile actual authored wheel matching method in Mono
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends mono-mcs
+          python3 Tools/Validation/run_authored_wheel_name_buffer_csharp.py
+      - name: Parse production Unity C-sharp and validate Python syntax
+        run: |
+          python3 -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
+          python3 - <<'PY'
+          from pathlib import Path
+          from tree_sitter import Language,Parser
+          import tree_sitter_c_sharp
+          parser=Parser(Language(tree_sitter_c_sharp.language()))
+          p=Path('Assets/AarisWorld/Scripts/AarisVehicleWorld.cs')
+          data=p.read_bytes()
+          assert not parser.parse(data).root_node.has_error,p
+          assert all(line==line.rstrip() for line in data.decode().splitlines()),p
+          print('AUTHORED_WHEEL_NAME_CSHARP_PARSE_PASS')
+          PY
+          python3 -m py_compile Tools/Validation/test_android_authored_wheel_name_buffer.py \
+            Tools/Validation/run_authored_wheel_name_buffer_csharp.py
