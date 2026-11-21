@@ -1202,14 +1202,26 @@ namespace Aaris.MapReview
             // knee to the back when ground contact moves the ankle.
             Vector3 animatedAxis = (ankle - hip).normalized;
             Vector3 currentKnee = knee - hip;
-            // An antiparallel ankle axis has no unique 180-degree rotation.
-            // Retain the animated knee hint through crouch/prone crossfades.
-            float axisDot = Vector3.Dot(animatedAxis, axis);
-            Vector3 bend = axisDot < -0.985f
-                ? Vector3.ProjectOnPlane(currentKnee, axis)
-                : Quaternion.FromToRotation(animatedAxis, axis) *
-                    Vector3.ProjectOnPlane(currentKnee, animatedAxis);
+            // A near-opposite ankle direction can make shortest-arc rotation
+            // choose an unstable bend side. Ease continuously toward the
+            // anatomical pole BEFORE the antiparallel singularity, rather
+            // than switching 180-degree branches on one frame.
+            Vector3 bend = Quaternion.FromToRotation(animatedAxis, axis) *
+                Vector3.ProjectOnPlane(currentKnee, animatedAxis);
             Vector3 forwardBend = Vector3.ProjectOnPlane(forward, axis);
+            float reversalBlend = Mathf.SmoothStep(0f, 1f,
+                Mathf.Clamp01((-0.70f - Vector3.Dot(animatedAxis, axis)) / 0.27f));
+            if (reversalBlend > 0.001f && bend.sqrMagnitude > 0.0001f &&
+                forwardBend.sqrMagnitude > 0.0001f)
+            {
+                Vector3 pole = forwardBend.normalized;
+                Vector3 bendDirection = bend.normalized;
+                float poleAngle = Mathf.Atan2(
+                    Vector3.Dot(axis, Vector3.Cross(bendDirection, pole)),
+                    Mathf.Clamp(Vector3.Dot(bendDirection, pole), -1f, 1f));
+                bend = Quaternion.AngleAxis(poleAngle * Mathf.Rad2Deg *
+                    reversalBlend, axis) * bend;
+            }
             if (bend.sqrMagnitude < 0.0001f ||
                 (kneePoleStrength >= 0.89f &&
                  Vector3.Dot(bend, forwardBend) < 0f))
