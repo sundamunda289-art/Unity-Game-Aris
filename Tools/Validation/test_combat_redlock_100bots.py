@@ -61,12 +61,27 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("owner.FindRivalOpponent(this, out target, out targetHealth)", BOTS)
         self.assertIn("FarSimulationInterval = 0.35f;", BOTS)
         self.assertIn("FarSimulationInterval / 100f", BOTS)
-        self.assertIn("playerDistance < 105f", BOTS)
+        self.assertIn("playerDistanceSqr < 105f * 105f", BOTS)
         self.assertIn("Physics.OverlapSphereNonAlloc", BOTS)
         distances = [4.0, 9.0, 13.0, 15.0, 20.0, 23.0, 30.0, 35.0, 45.0]
         eligible = [x for x in distances if x < 42.0]
         self.assertEqual(len(sorted(eligible)[:2]), 2)
         self.assertLessEqual(len(sorted(eligible)[:2]), 2)
+
+    def test_bots_hunt_across_map_without_long_distance_damage(self):
+        # Hunting range is separate from real sight and firing authority.
+        self.assertIn("private const float RivalHuntRadius = 110f;", BOTS)
+        self.assertIn("float nearest = RivalHuntRadius * RivalHuntRadius;", BOTS)
+        self.assertIn("(target.position - transform.position).sqrMagnitude < 42f * 42f && HasSight()", BOTS)
+        self.assertIn("distance <= 38f", BOTS)
+        # Far and near/visual gates use squared distances, no per-frame sqrt.
+        self.assertIn("float playerDistanceSqr =", BOTS)
+        self.assertIn("playerDistanceSqr < 76f * 76f", BOTS)
+        self.assertIn("playerDistanceSqr < 105f * 105f", BOTS)
+        self.assertIn("playerDistanceSqr < 155f * 155f", BOTS)
+        self.assertNotIn("Vector3.Distance(playerTarget.position, transform.position)", BOTS)
+        # The aggression cap is independent of inter-bot hunting radius.
+        self.assertIn("return bot == attackerOne || bot == attackerTwo;", BOTS)
 
     def test_visible_two_attacker_selection(self):
         self.assertIn("distance >= second || !bot.HasPlayerSightForSelection()", BOTS)

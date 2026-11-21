@@ -621,11 +621,15 @@ namespace Aaris.MapReview
                 rivalLootWorld.TryTakeForRival(position, out weapon);
         }
 
+        // Distant opponents are strategic hunt targets, not shooting targets.
+        // Only the existing 42 m LOS gate and 38 m firing gate permit damage.
+        private const float RivalHuntRadius = 110f;
+
         internal bool FindRivalOpponent(AarisOfflineRival self,
             out Transform victim, out AarisOfflineHealth victimHealth)
         {
             victim = null; victimHealth = null;
-            float nearest = 44f * 44f;
+            float nearest = RivalHuntRadius * RivalHuntRadius;
             for (int i = 0; i < rivals.Length; i++)
             {
                 AarisOfflineRival bot = rivals[i];
@@ -1062,10 +1066,14 @@ namespace Aaris.MapReview
                 playerTarget == null || playerTargetHealth == null || playerTargetHealth.IsDead)
                 return;
             float now = Time.time;
-            float playerDistance = Vector3.Distance(playerTarget.position, transform.position);
-            bool farSimulation = playerDistance >= FarSimulationDistance;
+            // Avoid 100 square roots each rendered frame on mobile. All
+            // thresholds below are distances squared; the 90m policy is unchanged.
+            float playerDistanceSqr =
+                (playerTarget.position - transform.position).sqrMagnitude;
+            bool farSimulation = playerDistanceSqr >=
+                FarSimulationDistance * FarSimulationDistance;
             if (farSimulation && now < nextFarSimulation) return;
-            if (playerDistance < 76f && now >= nextLootAt)
+            if (playerDistanceSqr < 76f * 76f && now >= nextLootAt)
             {
                 nextLootAt = now + 3.5f;
                 if (owner.TryLootForRival(transform.position, out AarisWeaponSpec found))
@@ -1094,7 +1102,7 @@ namespace Aaris.MapReview
             if (now >= nextVisualCheck && now >= staggeredVisualDelay)
             {
                 nextVisualCheck = now + .55f;
-                if (!visualBuilt && playerDistance < 105f)
+                if (!visualBuilt && playerDistanceSqr < 105f * 105f)
                 {
                     bool permitted = true;
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -1104,7 +1112,7 @@ namespace Aaris.MapReview
                 }
                 if (visualRoot != null)
                 {
-                    bool visible = playerDistance < 155f;
+                    bool visible = playerDistanceSqr < 155f * 155f;
                     if (visualRoot.activeSelf != visible)
                         visualRoot.SetActive(visible);
                 }
