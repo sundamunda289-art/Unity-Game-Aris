@@ -896,6 +896,7 @@ namespace Aaris.MapReview
     {
         private AarisOfflineBRDirector owner;
         private AarisOfflineHealth health, targetHealth;
+        private AarisBattleActions playerStanceState;
         private Transform target;
         private CharacterController capsule;
         private readonly RaycastHit[] sightHits = new RaycastHit[20];
@@ -988,6 +989,7 @@ namespace Aaris.MapReview
             encounterId = encounterSlot;
             target = victim;
             targetHealth = victimHealth;
+            playerStanceState = victim != null ? victim.GetComponent<AarisBattleActions>() : null;
             capsule = GetComponent<CharacterController>();
             health.Died += OnDied;
             health.Damaged += OnDamaged;
@@ -1280,7 +1282,27 @@ namespace Aaris.MapReview
                     ammunition--;
                     nextAttack = Time.time + UnityEngine.Random.Range(1.15f, 1.65f);
                     AarisAudioDirector.GunShot("SMG", "Rival", transform.position + Vector3.up);
-                    targetHealth.ApplyBallisticDamage(6f, gameObject, false);
+                    // The earlier offline bots always hit after passing LOS,
+                    // making two riflemen unfair even at maximum 38m range.
+                    // Keep actual LOS mandatory, but allow believable misses.
+                    float accuracy = Mathf.Lerp(.91f, .54f, Mathf.Clamp01(distance / 38f));
+                    if (fightingPlayer && playerStanceState != null)
+                    {
+                        // A lower physical profile is harder to hit. This
+                        // respects standing/crouching/prone state at shot time,
+                        // without reducing the player's own shooting authority.
+                        switch (playerStanceState.Stance)
+                        {
+                            case AarisBattleActions.PlayerStance.Crouching:
+                                accuracy *= .83f;
+                                break;
+                            case AarisBattleActions.PlayerStance.Prone:
+                                accuracy *= .64f;
+                                break;
+                        }
+                    }
+                    if (UnityEngine.Random.value <= accuracy)
+                        targetHealth.ApplyBallisticDamage(6f, gameObject, false);
                 }
             }
         }
