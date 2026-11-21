@@ -107,9 +107,11 @@ class WorldScene:
         outgoing, incoming = set(), set()
         for source, block in self.blocks.items():
             src_go = self.owner.get(source)
-            # Scene root registry (Unity class 1660057539) is structural, not
-            # a gameplay cross-scene pointer.
-            if block.kind == 1660057539:
+            # Transform hierarchy children/parents and Unity scene roots are
+            # structural references, rewritten automatically when reparenting.
+            # Counting them as inspector dependencies would mask the actual
+            # MobileRuntime -> MeshCollider cross-scene safety blocker.
+            if block.kind in (4, 1660057539):
                 continue
             src_inside = src_go in members
             for line in block.body.splitlines():
@@ -172,7 +174,8 @@ class WorldScene:
             "districts": rows,
             "persistent_groups": other_protected,
             "ready_for_district_migration": all(r["direct_move_safe"] for r in rows),
-            "outcome": "BLOCKED_PENDING_COLLISION_LOD_AND_REFERENCE_PROXY_VALIDATION",
+            "outcome": ("SAFE" if all(r["direct_move_safe"] for r in rows) else
+                        "BLOCKED_PENDING_COLLISION_LOD_AND_REFERENCE_PROXY_VALIDATION"),
         }
         return report
 
