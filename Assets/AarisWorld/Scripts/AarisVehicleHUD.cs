@@ -179,6 +179,7 @@ namespace Aaris.MapReview
         private readonly bool[] pressed = new bool[4];
         private Vector2 lastScreen;
         private Rect lastSafe;
+        private float nextSafeAreaPollAt;
 
         private bool CanDrive => isActiveAndEnabled && Time.timeScale > 0f &&
             session != null && session.isActiveAndEnabled &&
@@ -364,6 +365,9 @@ namespace Aaris.MapReview
         {
             if (safeRoot == null) return;
             var screen = new Vector2(Screen.width, Screen.height);
+            if (!force && screen == lastScreen &&
+                Time.unscaledTime < nextSafeAreaPollAt) return;
+            nextSafeAreaPollAt = Time.unscaledTime + 0.4f;
             var safe = Screen.safeArea;
             if (!force && screen == lastScreen && safe == lastSafe) return;
             lastScreen = screen;
