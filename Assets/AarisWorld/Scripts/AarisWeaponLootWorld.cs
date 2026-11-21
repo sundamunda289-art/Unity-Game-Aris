@@ -1233,8 +1233,12 @@ namespace Aaris.MapReview
 #endif
 #if UNITY_ANDROID && !UNITY_EDITOR
                     if (!TryRecycleFarVisual(pickup, now))
-#endif
+                    {
                         Destroy(pickup.gameObject);
+                    }
+#else
+                    Destroy(pickup.gameObject);
+#endif
                     unloaded++;
                     continue;
                 }
