@@ -125,6 +125,9 @@ namespace Aaris.MapReview
         // floor clearance. Together with pickup's 2.5 cm mesh lift, their
         // lowest geometry rests 6.5 cm above a verified ground hit.
         private const float LootRootFloorClearance = 0.04f;
+        // Open-ground weapons rise slightly above tall terrain grass for
+        // readable silhouettes; indoors retain exact floor contact.
+        private const float OutdoorLootPresentationClearance = 0.28f;
         private const float SeaLevel = -38.07552f;
         private const float CandidateCellMetres = 64f;
 
@@ -631,7 +634,8 @@ namespace Aaris.MapReview
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
                 return false; // no inside-wall or furniture placement
 
-            spot = floor.point + Vector3.up * LootRootFloorClearance;
+            spot = floor.point + Vector3.up *
+                (indoor ? LootRootFloorClearance : OutdoorLootPresentationClearance);
             return true;
         }
 
@@ -876,7 +880,9 @@ namespace Aaris.MapReview
                     break;
                 }
                 if (!clear) continue;
-                Vector3 candidate = hitPoint + Vector3.up * LootRootFloorClearance;
+                Vector3 candidate = hitPoint + Vector3.up *
+                    (floor is TerrainCollider ? OutdoorLootPresentationClearance :
+                     LootRootFloorClearance);
                 if (requireReachable && !CanReachPoint(candidate)) continue;
                 position = candidate;
                 return true;
