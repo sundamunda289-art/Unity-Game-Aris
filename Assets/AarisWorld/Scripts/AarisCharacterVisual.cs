@@ -2468,11 +2468,12 @@ namespace Aaris.MapReview
                                 (leftShin.position -
                                  leftThigh.position).sqrMagnitude))
                         : 0f;
-                    float enteringProneTurnDegrees =
-                        Mathf.Lerp(80f, 170f, enteringProneLongRig);
-                    transitionKneeSideTurn = enteringProneTurnDegrees *
+                    float transitionEnvelope =
                         Mathf.Max(crouchEntry, proneTransition) *
                         kneeStillness * kneeTurnStability;
+                    transitionKneeSideTurn = 80f * transitionEnvelope;
+                    transitionKneeSideTurn += 90f * enteringProneLongRig *
+                        transitionEnvelope;
                 }
                 // Native 30-frame motor QA found 0.53m crouch-walk and 0.43m
                 // crawl knee excursions, although stationary low stances

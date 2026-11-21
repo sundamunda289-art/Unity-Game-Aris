@@ -7,7 +7,7 @@ assert src.count('float enteringProneLongRig =')==1
 fragment=src.split('// Large retargeted legs need more bend-circle rotation',1)[1].split('// Native 30-frame motor QA',1)[0]
 for needed in ('prone && !crouching','effectiveProneBlend > 0.20f',
                'effectiveProneBlend < 0.82f','0.18f, 0.24f',
-               'leftThigh.position).sqrMagnitude','80f, 170f, enteringProneLongRig',
+               'leftThigh.position).sqrMagnitude','transitionKneeSideTurn = 80f * transitionEnvelope','90f * enteringProneLongRig',
                'kneeStillness * kneeTurnStability'):
     assert needed in fragment,needed
 assert 'Physics.' not in fragment and '.magnitude' not in fragment and 'new ' not in fragment
