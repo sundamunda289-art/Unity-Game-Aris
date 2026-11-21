@@ -220,6 +220,32 @@ namespace Aaris.MapReview
             return true;
         }
 
+        // Called only for an inactive, previously validated *identical gun*
+        // model. No prefab Instantiate, bounds scan or new beacon renderer.
+        // Inventory transactions always use the new authoritative gunState;
+        // never reuse a consumed/reserved or different-spec pickup.
+        internal bool RebindForStreaming(AarisWeaponState gunState, int index)
+        {
+            if (gameObject.activeSelf || consumed || reserved ||
+                gunState == null || gunState.Spec == null ||
+                state == null || state.Spec == null ||
+                state.Spec.id != gunState.Spec.id ||
+                model == null || modelRenderers == null ||
+                modelRenderers.Length == 0) return false;
+            state = gunState;
+            candidateIndex = index;
+            reserved = consumed = false;
+            pendingSpinDegrees = 0f;
+            // This is the original pivot rotation before the pickup spin.
+            // Reset only while invisible so camera entry has no stale pose.
+            model.localRotation = Quaternion.identity;
+            modelWasVisible = false;
+            nextModelVisibilityCheck = 0f;
+            nextBeaconVisibilityCheck = 0f;
+            beaconObserver = null;
+            return true;
+        }
+
         private void Update()
         {
             // The subtle beam matters only around reachable loot. Far beams
