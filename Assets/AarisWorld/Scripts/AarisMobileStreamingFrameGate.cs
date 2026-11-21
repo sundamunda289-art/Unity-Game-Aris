@@ -59,6 +59,13 @@ namespace Aaris.MapReview
         // One shared native import slot across optional model prewarmers.
         // Completed requests release the slot even when a coroutine stops.
         private static ResourceRequest optionalLoadInFlight;
+        // Additive scene activation may consume native main-thread time after
+        // asynchronous IO. Never pause allowSceneActivation (Unity's queue).
+        // This persistent list allocates once and preserves overlapping streamers.
+        private static readonly System.Collections.Generic.List<AsyncOperation> additiveLoads =
+            new System.Collections.Generic.List<AsyncOperation>(2);
+        private static int additiveIntegrationFrame = -1;
+        internal static int AdditiveSceneDeferredAttempts { get; private set; }
         // Unity's critical-memory asset cleanup can run for many rendered
         // frames. Starting optional imports/hierarchies while it is still
         // unloading competes for native memory and the same main-thread time.
@@ -127,6 +134,26 @@ namespace Aaris.MapReview
                 IsConstrainedDevice())
                 return true;
             return cleanupCompletionFrame == Time.frameCount;
+        }
+
+        // Fence the real async scene-operation window and observed completion
+        // frame against unrelated optional model construction and diagnostics.
+        // No per-frame allocation, scene activation hold, or extra gameplay IO.
+        private static bool IsAdditiveSceneLoadBusy()
+        {
+            bool waiting = false;
+            for (int i = additiveLoads.Count - 1; i >= 0; i--)
+            {
+                AsyncOperation op = additiveLoads[i];
+                if (op != null && !op.isDone)
+                {
+                    waiting = true;
+                    continue;
+                }
+                additiveLoads.RemoveAt(i);
+                additiveIntegrationFrame = Time.frameCount;
+            }
+            return waiting || additiveIntegrationFrame == Time.frameCount;
         }
 
         private static bool IsOptionalImportBusy()
@@ -253,12 +280,26 @@ namespace Aaris.MapReview
             essentialAircraftFrame = -1;
             RigReservedDeferredAttempts = 0;
             optionalLoadInFlight = null;
+            additiveLoads.Clear();
+            additiveIntegrationFrame = -1;
+            AdditiveSceneDeferredAttempts = 0;
             unusedAssetCleanup = null;
             lowMemoryNotificationFrame = -1;
             cleanupCompletionFrame = -1;
             CleanupDeferredAttempts = SameFrameDeferredAttempts = ImportDeferredAttempts = 0;
         }
 #endif
+
+        // Called once when an authored additive scene starts loading.
+        // Essential player/world work remains unblocked.
+        internal static void TrackAdditiveSceneLoad(AsyncOperation operation)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (operation == null || !IsConstrainedDevice()) return;
+            additiveLoads.Add(operation);
+            claimedFrame = Time.frameCount;
+#endif
+        }
 
         /// <summary>
         /// The authored collision grid is essential world physics, not an
@@ -393,6 +434,7 @@ namespace Aaris.MapReview
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (IsEssentialRigFrame() || IsAssetCleanupPending()) return false;
             if (IsNativeTeardownSettleFrame()) return false;
+            if (IsAdditiveSceneLoadBusy()) return false;
             if (!IsConstrainedDevice()) return true;
             int frame = Time.frameCount;
             // An admitted hierarchy/import or an observed native completion
@@ -430,6 +472,11 @@ namespace Aaris.MapReview
             if (IsAssetCleanupPending())
             {
                 CleanupDeferredAttempts++;
+                return false;
+            }
+            if (IsAdditiveSceneLoadBusy())
+            {
+                AdditiveSceneDeferredAttempts++;
                 return false;
             }
             if (IsConstrainedDevice())
