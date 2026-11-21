@@ -75,6 +75,13 @@ namespace Aaris.MapReview
         private ParticleSystem impactParticles;
         private Transform impactTransform;
         private static Material sharedImpactParticleMaterial;
+        // One reused view-aligned tracer per gun, never a new projectile or
+        // LineRenderer allocation in the high-rate firing loop.
+        // Hitscan remains the single authoritative damage/collision path.
+        private LineRenderer tracerRenderer;
+        private Vector3 tracerStart, tracerEnd;
+        private float tracerStartedAt, tracerDuration, tracerDistance;
+        private int tracerShotCounter;
         public bool Configured => spec != null;
         public bool Automatic => spec != null && spec.automatic;
         public float SecondsBetweenShots => spec != null ? spec.ShotInterval : 1f;
@@ -107,6 +114,7 @@ namespace Aaris.MapReview
             EnsureMuzzleFlash();
             EnsureCasingVisual();
             EnsureImpactParticles();
+            EnsureTracer();
             RefreshReload();
         }
 
@@ -387,9 +395,67 @@ namespace Aaris.MapReview
             impactParticles.Emit(spec != null && spec.pellets > 1 ? 5 : 3);
         }
 
+        // A short moving streak makes bullet direction visible without changing
+        // hit registration, spawning physics bodies, or adding Update allocations.
+        private void EnsureTracer()
+        {
+            if (tracerRenderer != null) return;
+            Material material = MuzzleFlashMaterial();
+            if (material == null) return;
+            GameObject tracer = new GameObject("Aaris Reused Bullet Tracer");
+            tracer.transform.SetParent(transform, false);
+            tracerRenderer = tracer.AddComponent<LineRenderer>();
+            tracerRenderer.sharedMaterial = material;
+            tracerRenderer.useWorldSpace = true;
+            tracerRenderer.positionCount = 2;
+            tracerRenderer.widthMultiplier = 0.012f;
+            tracerRenderer.alignment = LineAlignment.View;
+            tracerRenderer.startColor = new Color(1f, .87f, .52f, .82f);
+            tracerRenderer.endColor = new Color(1f, .68f, .3f, .12f);
+            tracerRenderer.shadowCastingMode =
+                UnityEngine.Rendering.ShadowCastingMode.Off;
+            tracerRenderer.receiveShadows = false;
+            tracerRenderer.enabled = false;
+        }
+
+        private void TriggerTracer(Vector3 muzzle, Vector3 impact)
+        {
+            if (tracerRenderer == null) return;
+            Vector3 flight = impact - muzzle;
+            float length = flight.magnitude;
+            if (length < 0.12f) return;
+            // Cap the visible streak; long-distance hits retain their actual
+            // damage result while distant tracer pixels do not overdraw terrain.
+            tracerDistance = Mathf.Min(length, 64f);
+            tracerStart = muzzle;
+            tracerEnd = muzzle + flight * (tracerDistance / length);
+            tracerStartedAt = Time.time;
+            tracerDuration = Mathf.Clamp(tracerDistance / 310f, 0.025f, 0.21f);
+            tracerRenderer.SetPosition(0, tracerStart);
+            tracerRenderer.SetPosition(1, tracerStart);
+            tracerRenderer.enabled = true;
+        }
+
+        private void TickTracer()
+        {
+            if (tracerRenderer == null || !tracerRenderer.enabled) return;
+            float head = (Time.time - tracerStartedAt) / tracerDuration;
+            if (head >= 1f)
+            {
+                tracerRenderer.enabled = false;
+                return;
+            }
+            head = Mathf.Clamp01(head);
+            float tail = Mathf.Max(0f, head - 2.1f / tracerDistance);
+            Vector3 segment = tracerEnd - tracerStart;
+            tracerRenderer.SetPosition(0, tracerStart + segment * tail);
+            tracerRenderer.SetPosition(1, tracerStart + segment * head);
+        }
+
         private void Update()
         {
             RefreshReload();
+            TickTracer();
             if (muzzleFlashRenderer != null && muzzleFlashRenderer.enabled &&
                 Time.time >= muzzleFlashUntil)
                 muzzleFlashRenderer.enabled = false;
@@ -410,6 +476,7 @@ namespace Aaris.MapReview
         {
             if (muzzleFlashRenderer != null)
                 muzzleFlashRenderer.enabled = false;
+            if (tracerRenderer != null) tracerRenderer.enabled = false;
             HideCasing();
         }
 
@@ -548,6 +615,10 @@ namespace Aaris.MapReview
                         targetFound = true;
                     }
                 }
+                // One tracer on a bolt/semi shot, every third automatic shot.
+                // Repeated pellets share the visual, rather than spawning 8 trails.
+                if (pellet == 0 && (!spec.automatic || ++tracerShotCounter % 3 == 0))
+                    TriggerTracer(muzzle, impactPoint);
                 if (targetFound)
                 {
                     // A shotgun's first pellet can miss while a later one
