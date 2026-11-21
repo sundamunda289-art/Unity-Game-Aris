@@ -587,7 +587,9 @@ def audit():
     # 3m spatial rescans are 1/3 less frequent than 2m rescans at the same
     # player speed; 55m collision activation remains well beyond this step.
     assert "private const float RefreshTravelSquared = 9f;" in nearby
-    assert "(target.position - lastPosition).sqrMagnitude >= RefreshTravelSquared" in nearby
+    assert "dx * dx + dz * dz >= RefreshTravelSquared" in nearby
+    assert "float dx = current.x - lastPosition.x;" in nearby
+    assert "float dz = current.z - lastPosition.z;" in nearby
     assert "Time.unscaledTime >= nextCheck) RefreshNow(false);" in nearby
     assert "private const float ColliderReleaseMargin = 6f;" in nearby
     assert 3.0 < 55.0 and 3.0 < 6.0
