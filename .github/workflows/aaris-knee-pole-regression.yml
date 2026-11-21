@@ -1,0 +1,42 @@
+name: Aaris knee pole continuity regression
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisCharacterVisual.cs'
+      - 'Tools/Validation/test_balanced_low_stance_ik.py'
+      - '.github/workflows/aaris-knee-pole-regression.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisCharacterVisual.cs'
+      - 'Tools/Validation/test_balanced_low_stance_ik.py'
+      - '.github/workflows/aaris-knee-pole-regression.yml'
+permissions:
+  contents: read
+jobs:
+  source-and-geometry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Validate Python syntax
+        run: python3 -m py_compile Tools/Validation/test_balanced_low_stance_ik.py
+      - name: Validate knee-pole geometry and low-stance contact invariants
+        run: |
+          python3 Tools/Validation/test_balanced_low_stance_ik.py
+          python3 Tools/Validation/test_locked_slope_foot_support.py
+          python3 Tools/Validation/test_native_stance_transition_capture.py
+      - name: Verify authored source whitespace
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('Assets/AarisWorld/Scripts/AarisCharacterVisual.cs')
+          lines=p.read_text().splitlines()
+          assert all(line==line.rstrip() for line in lines)
+          print('PASS: no trailing whitespace')
+          PY
+      - name: Evidence boundary
+        run: echo 'Geometry/source QA only. Unity Play Mode and native Android compile remain separate gates.'
