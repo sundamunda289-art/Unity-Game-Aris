@@ -715,6 +715,48 @@ internal static class StreamingAdmissionTests
         Frame(4);
         Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
             "Consecutive essential frames kept optional admission blocked");
+        // Two consecutive requests of the SAME essential kind are not
+        // independent unless the already-due current frame is retained.
+        // Old single-slot logic overwrote frame 41 with frame 42 here.
+        Configure(6144, "Adreno 610");
+        Frame(40);
+        Check(AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialRig(),
+            "First rig reservation missing");
+        Frame(41);
+        Check(AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialRig(),
+            "Consecutive rig reservation missing");
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() &&
+              !AarisMobileStreamingFrameGate.TryClaimNonessentialDiagnosticFrame(),
+            "Second rig reservation erased current-frame rig protection");
+        Frame(42);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() && Load() == null,
+            "Consecutive rig frame admitted optional native import");
+        Frame(43);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Rig overlap protection never expired");
+
+        // Aircraft can also be restarted/respawned across adjacent frames;
+        // duplicate same-frame calls must not lose the previous slot.
+        Configure(6144, "Adreno 610");
+        Frame(60);
+        Check(AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialAircraft(),
+            "First aircraft reservation missing");
+        Check(AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialAircraft(),
+            "Duplicate aircraft reservation failed");
+        Frame(61);
+        Check(AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialAircraft(),
+            "Second aircraft reservation missing");
+        Check(AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialAircraft(),
+            "Duplicate follow-up aircraft reservation failed");
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Aircraft current-frame fence erased by its next-frame reservation");
+        Frame(62);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() && Load() == null,
+            "Overlapping aircraft frame admitted optional native work");
+        Frame(63);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Aircraft overlap fence blocked later visual streaming");
+
         Configure(8192, "Adreno 730");
         Check(!AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialRig(), "Fast rig delayed");
         Check(!AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialAircraft(),
