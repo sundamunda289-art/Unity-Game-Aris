@@ -56,6 +56,37 @@ class MobileAssetLifecycleBudget(unittest.TestCase):
         self.assertIn("TryResolveNearCandidate(c, i, terrains,", LOOT)
         self.assertIn("MaximumCandidateProbesPerFrame", LOOT)
 
+    def test_all_live_mobile_huds_bound_safe_area_native_queries(self):
+        # Each visible HUD still notices a screen rotation immediately. Inset-
+        # only changes get a bounded update instead of repeated JNI calls
+        # during every 30/45/60 FPS frame. Never replace safe-area anchors.
+        configs = (
+            ("AarisBattleHUD.cs", "UpdateSafeArea(", "previousScreen == resolution"),
+            ("AarisWeaponHUD.cs", "UpdateArea(", "previousScreen == screen"),
+            ("AarisVehicleHUD.cs", "UpdateSafe(", "screen == lastScreen"),
+            ("AarisOfflineTacticalHUD.cs", "RefreshSafeArea()", "previousScreen == screen"),
+        )
+        for file_name, method, resolution_guard in configs:
+            with self.subTest(hud=file_name):
+                src = (SCRIPTS / file_name).read_text()
+                self.assertIn("private float nextSafeAreaPollAt;", src)
+                if file_name == "AarisOfflineTacticalHUD.cs":
+                    block = src.split("private void RefreshSafeArea()", 1)[1].split(
+                        "private void LoadMedicalSites()", 1)[0]
+                else:
+                    start = "private void " + method
+                    block = src.split(start, 1)[1].split("private void ", 1)[0]
+                self.assertIn(resolution_guard, block)
+                self.assertIn("Time.unscaledTime < nextSafeAreaPollAt", block)
+                self.assertIn("nextSafeAreaPollAt = Time.unscaledTime + 0.4f;", block)
+                self.assertIn("Screen.safeArea", block)
+                self.assertIn("safe.anchorMin" if file_name == "AarisOfflineTacticalHUD.cs"
+                              else "safeRoot.anchorMin", block)
+                self.assertLess(block.index("Time.unscaledTime < nextSafeAreaPollAt"),
+                                block.index("Screen.safeArea"))
+                self.assertLess(block.index("nextSafeAreaPollAt = Time.unscaledTime + 0.4f;"),
+                                block.index("Screen.safeArea"))
+
     def test_owned_mesh_cleanup_runs_once_per_owned_mesh(self):
         editor = os.getenv("AARIS_UNITY_EDITOR_DATA")
         if editor:
