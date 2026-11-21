@@ -647,6 +647,8 @@ namespace Aaris.MapReview
             aimedDirection = Vector3.zero;
             if (camera == null || shooter == null || activeDirector == null) return false;
             Vector3 origin = camera.transform.position;
+            Vector3 cameraForward = camera.transform.forward;
+            float maximumRangeSqr = range * range;
             float minimumDot = Mathf.Cos(coneDegrees * Mathf.Deg2Rad);
             AarisOfflineRival rejectedFirst = null, rejectedSecond = null;
             // The most centered rival may be hidden behind a wall.
@@ -664,11 +666,18 @@ namespace Aaris.MapReview
                     if (bot == null || !bot.IsAlive || !bot.HasVisibleBody ||
                         bot == rejectedFirst || bot == rejectedSecond) continue;
                     Vector3 delta = bot.transform.position + Vector3.up * 1.12f - origin;
-                    float d = delta.magnitude;
-                    if (d < 1f || d > range) continue;
-                    Vector3 normalized = delta / d;
-                    float alignment = Vector3.Dot(camera.transform.forward, normalized);
+                    float sqrDistance = delta.sqrMagnitude;
+                    if (sqrDistance < 1f || sqrDistance > maximumRangeSqr) continue;
+                    // Most of the 100 rivals are outside this narrow aim cone.
+                    // Reject by dot product before any expensive square root.
+                    float projected = Vector3.Dot(cameraForward, delta);
+                    if (projected <= 0f ||
+                        projected * projected <= threshold * threshold * sqrDistance)
+                        continue;
+                    float d = Mathf.Sqrt(sqrDistance);
+                    float alignment = projected / d;
                     if (alignment <= threshold) continue;
+                    Vector3 normalized = delta / d;
                     candidate = bot; direction = normalized; distance = d;
                     threshold = alignment;
                 }
