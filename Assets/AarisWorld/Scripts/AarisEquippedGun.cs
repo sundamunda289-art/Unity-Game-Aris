@@ -738,7 +738,8 @@ namespace Aaris.MapReview
                         float actualLoss = Mathf.Max(0f, before - victim.CurrentHealth);
                         if (actualLoss > 0f && attacker != null &&
                             !node.IsChildOf(attacker.transform))
-                            AarisCombatFeedbackHUD.NotifyOutgoingDamage(attacker, actualLoss, headshot);
+                            AarisCombatFeedbackHUD.NotifyOutgoingDamage(attacker, actualLoss, headshot,
+                                hitPosition ?? collider.bounds.center);
                     }
                     else damageable.ApplyDamage(damage, attacker);
                     if (canRegister && attacker != null &&
