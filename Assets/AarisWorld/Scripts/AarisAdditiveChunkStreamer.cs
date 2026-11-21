@@ -49,7 +49,11 @@ namespace Aaris.MapReview
         private bool previousSampleValid;
         // Round-robin check of one resident scene per poll; other scene
         // managers can retire an authored cell after this streamer loaded it.
-        private int nextReconcileIndex;
+        // Sparse resident roster: the cold, nonresident world costs O(1) to
+        // reconcile, rather than scanning every authored cell each poll.
+        // Slot + 1 uses zero as the untracked sentinel (no HashSet/GC).
+        private int[] trackedResidentIndices, trackedResidentSlots;
+        private int trackedResidentCount, nextReconcileIndex;
         private Vector3 previousSample;
         private float previousSampleAt, nextPollAt, nextTransitionAt;
 
@@ -57,6 +61,8 @@ namespace Aaris.MapReview
         {
             if (chunks == null || chunks.Length == 0) return;
             states = new State[chunks.Length];
+            trackedResidentIndices = new int[chunks.Length];
+            trackedResidentSlots = new int[chunks.Length];
             string hostPath = gameObject.scene.path;
             for (int i = 0; i < chunks.Length; i++)
             {
@@ -85,6 +91,7 @@ namespace Aaris.MapReview
                 states[i].valid = true;
                 Scene preloaded = SceneManager.GetSceneByPath(cell.scenePath);
                 states[i].externallyOwned = preloaded.IsValid() && preloaded.isLoaded;
+                if (states[i].externallyOwned) TrackResident(i);
             }
         }
 
@@ -104,8 +111,14 @@ namespace Aaris.MapReview
                 {
                     Scene scene = SceneManager.GetSceneByPath(chunks[finished].scenePath);
                     states[finished].loadedByThisStreamer = scene.IsValid() && scene.isLoaded;
+                    if (states[finished].loadedByThisStreamer) TrackResident(finished);
+                    else ForgetResident(finished);
                 }
-                else states[finished].loadedByThisStreamer = false;
+                else
+                {
+                    states[finished].loadedByThisStreamer = false;
+                    ForgetResident(finished);
+                }
 #if UNITY_ANDROID && !UNITY_EDITOR
                 // Native renderer/physics integration and scene retirement can finish
                 // on this frame. Keep later optional builders from stacking onto it.
@@ -207,28 +220,50 @@ namespace Aaris.MapReview
             }
         }
 
-        // Another subsystem may retire a scene we previously loaded, or an
-        // externally owned scene after Awake. Without reconciliation the stale
-        // ownership flag can strand visible world cells permanently unloaded.
-        // At most ONE native scene lookup per poll; do not scan every scene
-        // through SceneManager or allocate a collection in the frame loop.
+        // Track only loaded/external cells, not all authored cells. The
+        // roster is allocated once in Awake and uses swap-remove without GC.
+        private void TrackResident(int index)
+        {
+            if (trackedResidentSlots[index] != 0) return;
+            trackedResidentIndices[trackedResidentCount] = index;
+            trackedResidentSlots[index] = ++trackedResidentCount;
+        }
+
+        private void ForgetResident(int index)
+        {
+            int slot = trackedResidentSlots[index] - 1;
+            if (slot < 0) return;
+            int last = trackedResidentIndices[--trackedResidentCount];
+            trackedResidentIndices[slot] = last;
+            trackedResidentSlots[last] = slot + 1;
+            trackedResidentSlots[index] = 0;
+            // Deleting the just-checked slot swaps a new index into it.
+            // Revisit that slot on the next poll rather than skipping it.
+            if (slot < nextReconcileIndex) nextReconcileIndex--;
+            if (nextReconcileIndex >= trackedResidentCount) nextReconcileIndex = 0;
+        }
+
+        // Another manager may retire a scene we previously owned. Recheck
+        // exactly one resident scene per poll, including externally owned
+        // cells, so it can reload immediately when the player is nearby.
+        // With zero resident chunks this is O(1), even for huge world grids.
         private void ReconcileOneLoadedChunk()
         {
-            for (int scanned = 0; scanned < states.Length; scanned++)
+            if (trackedResidentCount == 0) return;
+            if (nextReconcileIndex >= trackedResidentCount) nextReconcileIndex = 0;
+            int index = trackedResidentIndices[nextReconcileIndex++];
+            if (nextReconcileIndex >= trackedResidentCount) nextReconcileIndex = 0;
+            if (!states[index].valid)
             {
-                int index = nextReconcileIndex;
-                nextReconcileIndex = index + 1 == states.Length ? 0 : index + 1;
-                if (!states[index].valid ||
-                    (!states[index].externallyOwned && !states[index].loadedByThisStreamer))
-                    continue;
-
-                Scene scene = SceneManager.GetSceneByPath(chunks[index].scenePath);
-                if (!scene.IsValid() || !scene.isLoaded)
-                {
-                    states[index].externallyOwned = false;
-                    states[index].loadedByThisStreamer = false;
-                }
+                ForgetResident(index);
                 return;
+            }
+            Scene scene = SceneManager.GetSceneByPath(chunks[index].scenePath);
+            if (!scene.IsValid() || !scene.isLoaded)
+            {
+                states[index].externallyOwned = false;
+                states[index].loadedByThisStreamer = false;
+                ForgetResident(index);
             }
         }
 
@@ -242,11 +277,13 @@ namespace Aaris.MapReview
             if (load && existing.IsValid() && existing.isLoaded)
             {
                 states[index].externallyOwned = true;
+                TrackResident(index);
                 return;
             }
             if (!load && (!existing.IsValid() || !existing.isLoaded))
             {
                 states[index].loadedByThisStreamer = false;
+                ForgetResident(index);
                 return;
             }
             try
