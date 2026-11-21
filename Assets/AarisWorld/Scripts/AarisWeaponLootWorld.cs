@@ -311,7 +311,7 @@ namespace Aaris.MapReview
             if (idleLootVisuals.Count == 0) idlePoolTrimPending = false;
         }
 
-        private bool TryRecycleFarVisual(AarisWeaponPickup pickup, float now)
+        private bool TryRecycleFarVisualAndroid(AarisWeaponPickup pickup, float now)
         {
             if (pickup == null || pickup.IsConsumed || idleLootCapacity == 0 ||
                 idleLootVisuals.Count >= idleLootCapacity ||
@@ -364,6 +364,17 @@ namespace Aaris.MapReview
             return null;
         }
 #endif
+
+        // Full-platform wrapper keeps the C# preprocessor outside the caller's
+        // if/Destroy statement, including under Unity 6 and static parsers.
+        private bool TryRecycleFarVisual(AarisWeaponPickup pickup, float now)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return TryRecycleFarVisualAndroid(pickup, now);
+#else
+            return false;
+#endif
+        }
 
         // On all non-Android platforms, original new-prefab path is unchanged.
         private AarisWeaponPickup TryReuseLootVisual(AarisWeaponState gunState,
@@ -1231,14 +1242,8 @@ namespace Aaris.MapReview
                     if (unloaded == 0)
                         AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();
 #endif
-#if UNITY_ANDROID && !UNITY_EDITOR
                     if (!TryRecycleFarVisual(pickup, now))
-                    {
                         Destroy(pickup.gameObject);
-                    }
-#else
-                    Destroy(pickup.gameObject);
-#endif
                     unloaded++;
                     continue;
                 }
