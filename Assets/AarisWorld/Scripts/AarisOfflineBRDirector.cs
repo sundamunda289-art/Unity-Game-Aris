@@ -321,6 +321,15 @@ namespace Aaris.MapReview
                 }
             }
 
+            // A seeded roster can complete after physical spawn retries.
+            // Handle the all-invalid terrain case even without an elimination.
+            if (spawnComplete && spawnedRivals == 0 && massBots != null &&
+                massBots.IsReady && !massBots.HadValidBots)
+            {
+                matchEnd.FailMatchSetup();
+                return;
+            }
+
             if (Time.time >= nextZoneTick)
             {
                 nextZoneTick = Time.time + 0.5f;
