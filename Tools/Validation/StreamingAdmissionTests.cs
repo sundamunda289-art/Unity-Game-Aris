@@ -192,6 +192,51 @@ internal static class StreamingAdmissionTests
         Check(Load(null) == null && Load("") == null && Resources.requests == 0, "Invalid path imported");
     }
 
+    private static void AdditiveSceneFence()
+    {
+        // Production gate under controlled native operation states. Multiple
+        // streaming systems must each retain their own in-flight reservation.
+        Configure(6144, "Adreno 610");
+        var first = new AsyncOperation();
+        AarisMobileStreamingFrameGate.TrackAdditiveSceneLoad(first);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() &&
+              Load() == null, "Scene started with overlapping FBX import");
+        var second = new AsyncOperation();
+        AarisMobileStreamingFrameGate.TrackAdditiveSceneLoad(second);
+        for (int frame = 2; frame <= 4; frame++)
+        {
+            Frame(frame);
+            Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() &&
+                  !AarisMobileStreamingFrameGate.TryClaimNonessentialDiagnosticFrame(),
+                "In-flight authored scene collided with optional work");
+        }
+        first.isDone = true;
+        Frame(5);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Scene completion allowed same-frame native integration");
+        Frame(6);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Second unfinished scene lost its own fence");
+        second.isDone = true;
+        Frame(7);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() &&
+              Load() == null, "Last scene completion allowed concurrent import");
+        Frame(8);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Scene completion permanently starved authored detail");
+        Check(AarisMobileStreamingFrameGate.AdditiveSceneDeferredAttempts >= 6,
+            "Deferred scene/import evidence missing");
+        Configure(6144, "Adreno 610");
+        Frame(2);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() &&
+              AarisMobileStreamingFrameGate.AdditiveSceneDeferredAttempts == 0,
+            "Subsystem reset retained stale scene fences");
+        Configure(8192, "Adreno 730");
+        AarisMobileStreamingFrameGate.TrackAdditiveSceneLoad(new AsyncOperation());
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "High-end Android GPU was unnecessarily throttled");
+    }
+
     private static void DiagnosticImportFence()
     {
         // This regression executes the actual production gate with controlled
@@ -458,7 +503,7 @@ internal static class StreamingAdmissionTests
     public static void Main()
     {
 #if UNITY_ANDROID && !UNITY_EDITOR
-        Hardware(); ImportFence(); DiagnosticImportFence(); Pressure(); RefreshAwarePressure(); PhysicsCatchupAdmission(); CleanupRigAndReset();
+        Hardware(); ImportFence(); AdditiveSceneFence(); DiagnosticImportFence(); Pressure(); RefreshAwarePressure(); PhysicsCatchupAdmission(); CleanupRigAndReset();
         Console.WriteLine("STREAMING_ADMISSION_ANDROID_PASS checks=" + checks);
 #else
         Configure();
