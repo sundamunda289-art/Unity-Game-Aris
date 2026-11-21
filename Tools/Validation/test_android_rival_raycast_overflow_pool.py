@@ -29,7 +29,7 @@ class RivalNonAllocOverflow(unittest.TestCase):
         self.assertLess(routine.index("hits = crowdedSpawnHits;"),
                         routine.index("hits = Physics.OverlapCapsule("))
 
-    def test_los_reuses_crowded_buffer_before_allocating_exhaustive(self):
+    def test_los_reuses_crowded_buffer_before_single_nearest_fallback(self):
         self.assertIn("private readonly RaycastHit[] sightHits = new RaycastHit[20];", RIVAL)
         self.assertIn("private readonly RaycastHit[] crowdedSightHits = new RaycastHit[128];", RIVAL)
         routine = RIVAL.split("private bool HasSight()", 1)[1].split(
@@ -39,12 +39,14 @@ class RivalNonAllocOverflow(unittest.TestCase):
         self.assertIn("hits = crowdedSightHits;", routine)
         self.assertIn("Physics.RaycastNonAlloc(ray, crowdedSightHits, distance,", routine)
         self.assertIn("if (count >= crowdedSightHits.Length)", routine)
-        self.assertIn("hits = Physics.RaycastAll(ray, distance,", routine)
+        self.assertIn("Physics.Raycast(ray, out RaycastHit nearestHit, distance,", routine)
+        self.assertIn("return firstCollider.transform.IsChildOf(victim);", routine)
+        self.assertNotIn("Physics.RaycastAll(", routine)
         self.assertIn("if (hit.distance < first)", routine)
         self.assertIn("hit.collider.transform.IsChildOf(transform)", routine)
         self.assertIn("closest.transform.IsChildOf(victim)", routine)
         self.assertLess(routine.index("hits = crowdedSightHits;"),
-                        routine.index("hits = Physics.RaycastAll("))
+                        routine.index("Physics.Raycast(ray, out RaycastHit nearestHit"))
 
     def test_synthetic_saturation_preserves_blockers_and_closest_hit(self):
         rng = random.Random(20261119)
@@ -87,6 +89,24 @@ class RivalNonAllocOverflow(unittest.TestCase):
         selected, stage = staged_query(dense, 20, 128)
         self.assertEqual(stage, "pooled")
         self.assertFalse(min(selected, key=lambda h: h["distance"])["target"])
+
+    def test_full_los_buffer_uses_closest_real_surface_fail_closed(self):
+        # Model Physics.Raycast(out RaycastHit): nearest unfiltered collider
+        # wins, even when a saturated NonAlloc array omitted a near wall.
+        scenes = [
+            ([(8, "bot"), (1, "wall"), (2, "bot")], False),
+            ([(6, "wall"), (1, "bot"), (2, "wall")], True),
+            ([(1, "self"), (2, "bot"), (4, "wall")], False),
+        ]
+        for hits, expected in scenes:
+            nearest = min(hits, key=lambda hit: hit[0])
+            visible = nearest[1] == "bot"   # self and cover fail closed
+            self.assertEqual(visible, expected)
+        source = RIVAL.split("private bool TryGetSightHit(", 1)[1].split(
+            "private void OnDamaged(", 1)[0]
+        self.assertNotIn("Physics.RaycastAll(", source)
+        self.assertIn("shotHit = nearestHit;", source)
+        self.assertIn("firstCollider.transform.IsChildOf(transform)", source)
 
     def test_existing_live_frame_budget_and_native_collision_are_untouched(self):
         for token in ("FarSimulationDistance = 90f;", "FarSimulationInterval = 0.35f;",
