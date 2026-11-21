@@ -37,7 +37,7 @@ class MobileAssetLifecycleBudget(unittest.TestCase):
 
     def test_drop_safe_area_poll_is_bounded_but_rotation_immediate(self):
         self.assertIn("private float nextSafeAreaPollAt;", DROP)
-        update = DROP.split("private sealed class", 1)[0] if False else DROP.split(
+        update = DROP.split(
             "// Orientation/size changes update immediately.", 1)[1].split(
             "public void SetAction(", 1)[0]
         self.assertIn("Time.unscaledTime >= nextSafeAreaPollAt", update)
