@@ -206,6 +206,22 @@ internal static class AdditiveChunkStreamingTests
         Check(SceneManager.loadCount == 0, "speculative prefetch respects budget");
         Frame(manager, target, 3.6f, 180f);
         Check(SceneManager.loadCount == 1, "near-player scene bypasses speculative cap");
+
+        // Regression: a predicted point INSIDE the cell has outside-distance 0.
+        // Its numeric priority ties entrySquared, but the actual player is still
+        // outside the entry margin. It must remain speculative and respect cap=0.
+        SceneManager.Reset();
+        target = new Transform();
+        manager = Make(target);
+        Set(manager, "maxSpeculativeResidentCells", 0);
+        Set(manager, "lookaheadSeconds", 4f);
+        Frame(manager, target, 5f, 230f);
+        Frame(manager, target, 5.3f, 210f);
+        Check(SceneManager.loadCount == 0,
+            "predicted-inside cell must not bypass speculative budget on equality");
+        Frame(manager, target, 5.6f, 180f);
+        Check(SceneManager.loadCount == 1,
+            "actual near-player distance still overrides speculative budget");
 #endif
 
         // Externally loaded scenes are never retired or double-loaded.
