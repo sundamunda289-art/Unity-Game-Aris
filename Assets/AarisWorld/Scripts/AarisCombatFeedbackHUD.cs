@@ -23,6 +23,7 @@ namespace Aaris.MapReview
         private AarisOfflineDrop drop;
         private Camera aimCamera;
         private Canvas canvas;
+        private RectTransform canvasRect;
         private Image healthFill, hitFlash, opticalRing;
         private Text healthText, scopeText, hitDirection;
         private float nextAimCheck, hitFadeUntil;
@@ -127,6 +128,7 @@ namespace Aaris.MapReview
             var root = new GameObject("Combat feedback", typeof(RectTransform),
                 typeof(Canvas), typeof(CanvasScaler));
             root.transform.SetParent(transform, false);
+            canvasRect = root.GetComponent<RectTransform>();
             canvas = root.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = 186;
@@ -242,14 +244,14 @@ namespace Aaris.MapReview
             hitDirection.gameObject.SetActive(true);
         }
 
-        public static void NotifyOutgoingDamage(GameObject attacker, float amount, bool headshot)
+        public static void NotifyOutgoingDamage(GameObject attacker, float amount, bool headshot, Vector3 worldHitPosition)
         {
             if (instance == null || attacker == null || instance.gameObject != attacker ||
                 !instance.isActiveAndEnabled || amount <= 0f) return;
-            instance.AddNumber(amount, headshot);
+            instance.AddNumber(amount, headshot, worldHitPosition);
         }
 
-        private void AddNumber(float amount, bool headshot)
+        private void AddNumber(float amount, bool headshot, Vector3 worldHitPosition)
         {
             int index = numberIndex++ % numbers.Length;
             int rounded = Mathf.Clamp(Mathf.CeilToInt(amount), 0, DamageLabels.Length - 1);
@@ -258,6 +260,16 @@ namespace Aaris.MapReview
             label.color = headshot ? new Color(1f, .36f, .12f, 1f) :
                 new Color(1f, .88f, .35f, 1f);
             Vector2 origin = new Vector2(((index % 5) - 2) * 22f, 21f + (index % 3) * 12f);
+            // One projection per confirmed hit, not every frame per label.
+            // Reuse the existing pooled UI and avoid managed allocations.
+            if (aimCamera == null) aimCamera = Camera.main;
+            if (aimCamera != null && canvasRect != null)
+            {
+                Vector3 screen = aimCamera.WorldToScreenPoint(worldHitPosition);
+                if (screen.z > 0f && RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    canvasRect, new Vector2(screen.x, screen.y), null, out Vector2 local))
+                    origin += local;
+            }
             numberOrigin[index] = origin;
             label.rectTransform.anchoredPosition = origin;
             numberUntil[index] = Time.unscaledTime + .75f;
