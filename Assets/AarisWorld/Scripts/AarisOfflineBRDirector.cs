@@ -1313,11 +1313,19 @@ namespace Aaris.MapReview
                     Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
                 if (count >= crowdedSightHits.Length)
                 {
-                    // Preserve exhaustive visibility on pathological overlap:
-                    // never treat an incomplete ray as line of sight.
-                    hits = Physics.RaycastAll(ray, distance,
-                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-                    count = hits.Length;
+                    // Saturated NonAlloc results are unordered. Obtain the
+                    // actual first surface without allocating RaycastAll.
+                    // If it is our own collider, fail closed rather than
+                    // risk ignoring cover and allowing a shot through a wall.
+                    if (!Physics.Raycast(ray, out RaycastHit nearestHit, distance,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                        return false;
+                    Collider firstCollider = nearestHit.collider;
+                    if (firstCollider == null ||
+                        firstCollider.transform.IsChildOf(transform))
+                        return false;
+                    shotHit = nearestHit;
+                    return firstCollider.transform.IsChildOf(victim);
                 }
             }
             float first = distance + 1f;
