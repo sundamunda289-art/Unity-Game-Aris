@@ -1202,9 +1202,26 @@ namespace Aaris.MapReview
             // knee to the back when ground contact moves the ankle.
             Vector3 animatedAxis = (ankle - hip).normalized;
             Vector3 currentKnee = knee - hip;
+            // A near-opposite ankle direction can make shortest-arc rotation
+            // choose an unstable bend side. Ease continuously toward the
+            // anatomical pole BEFORE the antiparallel singularity, rather
+            // than switching 180-degree branches on one frame.
             Vector3 bend = Vector3.ProjectOnPlane(currentKnee, animatedAxis);
             bend = Quaternion.FromToRotation(animatedAxis, axis) * bend;
             Vector3 forwardBend = Vector3.ProjectOnPlane(forward, axis);
+            float reversalBlend = Mathf.SmoothStep(0f, 1f,
+                Mathf.Clamp01((-0.70f - Vector3.Dot(animatedAxis, axis)) / 0.27f));
+            if (reversalBlend > 0.001f && bend.sqrMagnitude > 0.0001f &&
+                forwardBend.sqrMagnitude > 0.0001f)
+            {
+                Vector3 pole = forwardBend.normalized;
+                Vector3 bendDirection = bend.normalized;
+                float poleAngle = Mathf.Atan2(
+                    Vector3.Dot(axis, Vector3.Cross(bendDirection, pole)),
+                    Mathf.Clamp(Vector3.Dot(bendDirection, pole), -1f, 1f));
+                bend = Quaternion.AngleAxis(poleAngle * Mathf.Rad2Deg *
+                    reversalBlend, axis) * bend;
+            }
             if (bend.sqrMagnitude < 0.0001f ||
                 (kneePoleStrength >= 0.89f &&
                  Vector3.Dot(bend, forwardBend) < 0f))
@@ -1797,8 +1814,22 @@ namespace Aaris.MapReview
                     float speed01 = Mathf.InverseLerp(
                         2.8f, fullRunSpeed, planarSpeed);
                     float maxCorrection = Mathf.Lerp(0.105f, 0.072f, speed01);
-                    targetFoot += Vector3.ClampMagnitude(
+                    Vector3 lockedShift = Vector3.ClampMagnitude(
                         horizontalError, maxCorrection) * twistWeight;
+                    // The ground ray sampled the original shoe X/Z. A boot
+                    // shifted uphill must follow the local support plane.
+                    // Reject sharp extrapolations at steps/ledges instead
+                    // of adding another per-frame raycast on mobile.
+                    float rise = supportNormal.y > 0.001f
+                        ? -(supportNormal.x * lockedShift.x +
+                            supportNormal.z * lockedShift.z) / supportNormal.y
+                        : 0f;
+                    if (Mathf.Abs(rise) <= 0.055f)
+                    {
+                        targetFoot += lockedShift;
+                        targetFoot.y += rise;
+                    }
+                    else plantLocked = false;
                 }
             }
 

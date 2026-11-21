@@ -62,3 +62,20 @@ for degrees in (0, 10, 25, 40):
             assert abs(old_y - correct_y) > 0.001
 print("PASS: final low-stance support rays follow world-locked X/Z on slopes")
 print("NOT TESTED: native Unity terrain intersections or Android FPS")
+
+# Upright planted boots must follow the same ray-hit contact plane
+# when the existing world lock shifts their horizontal position.
+upright = source[source.index("private void PlantUprightContact("):source.index("private void AlignFootToSupport(")]
+for guard in ("float rise = supportNormal.y > 0.001f", "targetFoot += lockedShift;", "targetFoot.y += rise;", "Mathf.Abs(rise) <= 0.055f", "else plantLocked = false;"):
+    assert guard in upright
+assert "Physics.Raycast(" not in upright
+for degrees in (0, 10, 25, 40, 46):
+    nx = -math.sin(math.radians(degrees))
+    ny = math.cos(math.radians(degrees))
+    for dx in (-.105, -.08, -.03, 0., .03, .08, .105):
+        rise = -(nx*dx)/ny
+        if abs(rise) <= .055:
+            assert abs(rise-dx*math.tan(math.radians(degrees))) < 1e-10
+        else:
+            assert abs(rise) > .055
+print("PASS: upright slope lock uses one-ray normal without boot burial")
