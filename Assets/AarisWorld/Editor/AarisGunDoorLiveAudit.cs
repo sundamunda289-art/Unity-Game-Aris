@@ -178,10 +178,63 @@ namespace Aaris.MapReview.Editor
             return found && bounds.size.sqrMagnitude > 0.000001f;
         }
 
+
+        // Real URP camera readback from an actual Play Mode scene. Images are
+        // written under /tmp only and never ship inside the Android player.
+        private static void CaptureAuditPhoto(
+            string label, Vector3 focus, Vector3 lookFrom, int subjectLayer)
+        {
+            Camera camera = Camera.main;
+            if (camera == null) { Note("PHOTO_" + label + "=NO_CAMERA"); return; }
+            const int width = 960, height = 540;
+            RenderTexture output = RenderTexture.GetTemporary(width, height, 24);
+            RenderTexture previousTarget = camera.targetTexture;
+            RenderTexture previousActive = RenderTexture.active;
+            Vector3 previousPosition = camera.transform.position;
+            Quaternion previousRotation = camera.transform.rotation;
+            int previousMask = camera.cullingMask;
+            float previousFov = camera.fieldOfView;
+            Texture2D pixels = null;
+            try
+            {
+                Vector3 orbit = lookFrom.sqrMagnitude > 0.01f
+                    ? lookFrom.normalized : Vector3.forward;
+                Vector3 viewpoint = focus + orbit * 2.25f + Vector3.up * 0.32f;
+                camera.transform.SetPositionAndRotation(
+                    viewpoint, Quaternion.LookRotation(focus - viewpoint, Vector3.up));
+                camera.cullingMask |= 1 << subjectLayer;
+                camera.fieldOfView = 54f;
+                camera.targetTexture = output;
+                camera.Render();
+                RenderTexture.active = output;
+                pixels = new Texture2D(width, height, TextureFormat.RGB24, false);
+                pixels.ReadPixels(new Rect(0, 0, width, height), 0, 0, false);
+                pixels.Apply(false);
+                byte[] jpg = pixels.EncodeToJPG(86);
+                if (jpg.Length < 4000)
+                    throw new InvalidOperationException("EMPTY_NATIVE_CAMERA_FRAME");
+                string filename = Path.Combine(Folder, label + ".jpg");
+                File.WriteAllBytes(filename, jpg);
+                Note("PHOTO_" + label + "_bytes=" + jpg.Length);
+            }
+            finally
+            {
+                camera.transform.SetPositionAndRotation(
+                    previousPosition, previousRotation);
+                camera.cullingMask = previousMask;
+                camera.fieldOfView = previousFov;
+                camera.targetTexture = previousTarget;
+                RenderTexture.active = previousActive;
+                if (pixels != null) Object.DestroyImmediate(pixels);
+                RenderTexture.ReleaseTemporary(output);
+            }
+        }
+
         private static void CheckLootSite(int index, AarisThirdPersonPlayer player)
         {
             int active = 0, models = 0, nearby = 0, oversize = 0;
             float nearest = float.PositiveInfinity, longestNearby = 0f;
+            AarisWeaponPickup nearestPickup = null;
             foreach (var pickup in Object.FindObjectsByType<AarisWeaponPickup>(
                 FindObjectsSortMode.None))
             {
@@ -205,7 +258,7 @@ namespace Aaris.MapReview.Editor
                 if (visibleMesh && hasBounds) models++;
                 float dist = Vector3.Distance(player.transform.position,
                     pickup.transform.position);
-                nearest = Mathf.Min(nearest, dist);
+                if (dist < nearest) { nearest = dist; nearestPickup = pickup; }
                 if (dist < 50f && visibleMesh)
                 {
                     nearby++;
@@ -218,6 +271,11 @@ namespace Aaris.MapReview.Editor
             if (nearby > 0 && oversize == 0)
                 SessionState.SetInt(Key + "LootSites",
                     SessionState.GetInt(Key + "LootSites", 0) + 1);
+            if (nearby > 0 && nearestPickup != null)
+                CaptureAuditPhoto("GroundLoot_Site_" + index,
+                    nearestPickup.transform.position + Vector3.up * 0.14f,
+                    player.transform.forward,
+                    nearestPickup.gameObject.layer);
             Note("SITE_" + index + "_PICKUPS active=" + active + " mesh=" +
                 models + " within50m=" + nearby + " invalidSize=" + oversize +
                 " longestNearby_m=" + longestNearby.ToString("F3") +
@@ -240,7 +298,7 @@ namespace Aaris.MapReview.Editor
             if (hand == null) { Note("HELD_GUN=NO_RIGHT_HAND"); return false; }
             bool success = true;
             foreach (string gunName in new[] { "SMG", "AssaultRifle", "BattleRifle",
-                         "Sniper", "Shotgun" })
+                         "Sniper", "Shotgun", "DMR" })
             {
                 AarisWeaponSpec spec = AarisWeaponCatalog.Get(gunName);
                 bool equipped = spec != null && inventory.TryPickup(
@@ -264,6 +322,25 @@ namespace Aaris.MapReview.Editor
                 Note("HELD_" + gunName + " hand_center_m=" + distance.ToString("F3") +
                     " body_longest_m=" + size.ToString("F3"));
                 if (distance > 0.90f || size < 0.15f || size > 1.7f) success = false;
+                Vector3 focus = measuredWorldCenter + Vector3.up * 0.03f;
+                CaptureAuditPhoto("Held_" + gunName + "_Front",
+                    focus, player.transform.forward, player.gameObject.layer);
+                CaptureAuditPhoto("Held_" + gunName + "_Side",
+                    focus, Quaternion.AngleAxis(78f, Vector3.up) *
+                    player.transform.forward, player.gameObject.layer);
+                bool fired = gun.TryFire(Camera.main, player.gameObject);
+                Note("FIRING_" + gunName + "=" + fired);
+                if (!fired) success = false;
+                else
+                {
+                    CaptureAuditPhoto("Firing_" + gunName,
+                        focus, player.transform.forward, player.gameObject.layer);
+                    bool reload = gun.BeginReload();
+                    Note("RELOAD_" + gunName + "=" + reload);
+                    if (!reload) success = false;
+                    CaptureAuditPhoto("ReloadState_" + gunName,
+                        focus, player.transform.forward, player.gameObject.layer);
+                }
             }
             return success;
         }
