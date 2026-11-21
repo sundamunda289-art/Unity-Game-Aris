@@ -127,8 +127,8 @@ class OpenCombatHouseContracts(unittest.TestCase):
 
     def test_static_batching_and_roof_shape_contracts(self):
         src = MODULAR.read_text(encoding="utf-8")
-        for term in ("PitchedRoof(t,width,depth,h);",
-                     "CombineStaticSurfaces(t);",
+        for term in ("PitchedRoof(t,width,depth,h,owned);",
+                     "CombineStaticSurfaces(t,owned);",
                      "combined.CombineMeshes(", "combined.UploadMeshData(true);",
                      "mesh.RecalculateNormals();"):
             self.assertIn(term, src)
