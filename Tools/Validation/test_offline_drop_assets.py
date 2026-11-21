@@ -113,7 +113,8 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("bool retreat = outsideSafeArea && (distance > 23f || !canSee);",
                       rival)
         self.assertIn("Vector3 travelDirection = retreat ? retreatDirection : toward;", rival)
-        self.assertIn("if (canSee && !retreat) desired *= .23f;", rival)
+        self.assertIn("if (canSee && !retreat && Time.time - lastDamagedAt >= 2.3f)", rival)
+        self.assertIn("desired *= .23f;", rival)
         self.assertIn("Vector3 beforeMove = transform.position;", rival)
         self.assertIn("Vector3 realTravel = transform.position - beforeMove;", rival)
         self.assertIn("realTravel.y = 0f;", rival)
