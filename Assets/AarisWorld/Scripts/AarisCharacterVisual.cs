@@ -1202,8 +1202,13 @@ namespace Aaris.MapReview
             // knee to the back when ground contact moves the ankle.
             Vector3 animatedAxis = (ankle - hip).normalized;
             Vector3 currentKnee = knee - hip;
-            Vector3 bend = Vector3.ProjectOnPlane(currentKnee, animatedAxis);
-            bend = Quaternion.FromToRotation(animatedAxis, axis) * bend;
+            // An antiparallel ankle axis has no unique 180-degree rotation.
+            // Retain the animated knee hint through crouch/prone crossfades.
+            float axisDot = Vector3.Dot(animatedAxis, axis);
+            Vector3 bend = axisDot < -0.985f
+                ? Vector3.ProjectOnPlane(currentKnee, axis)
+                : Quaternion.FromToRotation(animatedAxis, axis) *
+                    Vector3.ProjectOnPlane(currentKnee, animatedAxis);
             Vector3 forwardBend = Vector3.ProjectOnPlane(forward, axis);
             if (bend.sqrMagnitude < 0.0001f ||
                 (kneePoleStrength >= 0.89f &&
@@ -1797,8 +1802,22 @@ namespace Aaris.MapReview
                     float speed01 = Mathf.InverseLerp(
                         2.8f, fullRunSpeed, planarSpeed);
                     float maxCorrection = Mathf.Lerp(0.105f, 0.072f, speed01);
-                    targetFoot += Vector3.ClampMagnitude(
+                    Vector3 lockedShift = Vector3.ClampMagnitude(
                         horizontalError, maxCorrection) * twistWeight;
+                    // The ground ray sampled the original shoe X/Z. A boot
+                    // shifted uphill must follow the local support plane.
+                    // Reject sharp extrapolations at steps/ledges instead
+                    // of adding another per-frame raycast on mobile.
+                    float rise = supportNormal.y > 0.001f
+                        ? -(supportNormal.x * lockedShift.x +
+                            supportNormal.z * lockedShift.z) / supportNormal.y
+                        : 0f;
+                    if (Mathf.Abs(rise) <= 0.055f)
+                    {
+                        targetFoot += lockedShift;
+                        targetFoot.y += rise;
+                    }
+                    else plantLocked = false;
                 }
             }
 
