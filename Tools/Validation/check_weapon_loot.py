@@ -223,6 +223,11 @@ def run():
 
     catalog_cs = (SCRIPTS / "AarisWeaponCatalog.cs").read_text()
     gun_cs = (SCRIPTS / "AarisEquippedGun.cs").read_text()
+    gun_photo_audit = (ROOT / "Assets/AarisWorld/Editor/AarisGunDoorLiveAudit.cs").read_text()
+    assert "camera.cullingMask = 1 << subjectLayer;" in gun_photo_audit
+    assert "camera.cullingMask = 1 << 30;" not in gun_photo_audit
+    assert "GroundLoot_Before_Site_" in gun_photo_audit
+    assert "GroundLoot_After_Site_" in gun_photo_audit
     inventory = (SCRIPTS / "AarisWeaponInventory.cs").read_text()
     pickup_cs = (SCRIPTS / "AarisWeaponPickup.cs").read_text()
     world = (SCRIPTS / "AarisWeaponLootWorld.cs").read_text()
