@@ -726,7 +726,9 @@ namespace Aaris.MapReview
                                 bounds.size.y * .76f;
                         if (headshot) damage *= 1.65f;
                     }
-                    damageable.ApplyDamage(damage, attacker);
+                    if (health != null)
+                        health.ApplyBallisticDamage(damage, attacker, headshot);
+                    else damageable.ApplyDamage(damage, attacker);
                     float actual = health != null ?
                         Mathf.Max(0f, previous - health.CurrentHealth) : damage;
                     damageScratch.Clear();
