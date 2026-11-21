@@ -21,6 +21,15 @@ for token in ('Math.Abs(x - centerX)', 'Math.Abs(z - centerZ)',
               'speedSquared > teleportSpeed * teleportSpeed',
               'elapsed > 1.5f'):
     assert token in policy, token
+# Separate streamers must not stack asynchronous scene activation/retirement
+# in a budget Android frame. Non-Android Editor behavior stays unchanged.
+assert 'private static AsyncOperation sharedSceneOperation;' in streamer
+assert 'private static int sharedSceneCompletionFrame = -1;' in streamer
+assert 'if (sharedSceneOperation != null)' in streamer
+assert 'if (sharedSceneCompletionFrame == Time.frameCount) return;' in streamer
+assert 'sharedSceneOperation = operation;' in streamer
+assert 'ReferenceEquals(sharedSceneOperation, inFlight)' in streamer
+assert streamer.index('if (sharedSceneOperation != null)') < streamer.index('if (now < nextPollAt) return;')
 assert 'RuntimeInitializeOnLoadMethod' not in streamer  # no auto-bootstrap
 assert 'maxSpeculativeResidentCells = 2;' in streamer
 assert 'speculativeResidentCount >= maxSpeculativeResidentCells' in streamer
