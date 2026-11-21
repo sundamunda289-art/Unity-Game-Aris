@@ -45,6 +45,11 @@ check("100 logical opponents, no duplicate roster slot", physical + virtual == 1
 check("physical rivals born with health", "actor.AddComponent<AarisOfflineHealth>()" in director)
 check("player HP maximum 200", "maximumHealth = 200f" in health)
 check("actual damage and source event", "Damaged?.Invoke(this, actual, attacker)" in health)
+check("lethal player credit excludes zone and bot kills",
+      "KillingAttacker => dead ? lastAttacker : null" in health
+      and "defeated.KillingAttacker == player.gameObject" in director
+      and "owner.RegisterPlayerElimination(defeated)" in director
+      and '"    KILLS " + playerEliminations' in director)
 check("player HUD bound to health event", "health.Damaged += OnPlayerDamaged" in feedback)
 check("player HUD bootstrapped", "AarisCombatFeedbackHUD.EnsureForPlayer(this)" in player)
 check("incoming flash & direction", "flashUntil" in feedback and "HIT FROM LEFT" in feedback)
