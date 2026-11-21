@@ -154,6 +154,37 @@
       "handScale": 1,
       "presentationLengthMetres": 1.03,
       "handlingMassKg": 3.6
+    },
+    {
+      "id": "DMR",
+      "displayName": "Precision DMR",
+      "modelResource": "AarisWeapons/PBR/BattleRifle/BattleRifle",
+      "category": "DMR",
+      "automatic": false,
+      "rpm": 270,
+      "magazineSize": 20,
+      "reserveAmmo": 80,
+      "pellets": 1,
+      "damage": 57,
+      "rangeMetres": 360,
+      "spreadDegrees": 0.34,
+      "recoilPitchDegrees": 1.75,
+      "reloadSeconds": 2.85,
+      "adsFov": 26,
+      "weight": 7,
+      "handOffset": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "handRotation": {
+        "x": 0,
+        "y": 90,
+        "z": 0
+      },
+      "handScale": 1,
+      "presentationLengthMetres": 1.02,
+      "handlingMassKg": 4.4
     }
   ]
 }
