@@ -873,7 +873,10 @@ namespace Aaris.MapReview
         // Kept per rival: retain correct closest-visible-target selection
         // without RaycastAll allocations when >20 cover hits overlap.
         private readonly RaycastHit[] crowdedSightHits = new RaycastHit[128];
-        private float nextThink, nextAttack, nextTargetScan, verticalSpeed, turnOffset, visualBlend;
+        private float nextThink, nextAttack, nextTargetScan, nextHealAt;
+        private float lastDamagedAt = -100f;
+        private int medicine = 1, ammunition = 30;
+        private float verticalSpeed, turnOffset, visualBlend;
         private AarisMassBotPopulation streamedPopulation;
         private int streamedRecordIndex = -1;
         // Outside the combat range, save mobile CPU by updating far capsules
@@ -908,6 +911,10 @@ namespace Aaris.MapReview
             nextTargetScan = Time.time;
             nextThink = Time.time;
             nextAttack = Time.time + .5f;
+            lastDamagedAt = -100f;
+            medicine = 1;
+            ammunition = 30;
+            nextHealAt = Time.time + 2f;
             lastSimulationTime = Time.time;
             nextFarSimulation = Time.time;
             if (!gameObject.activeSelf) gameObject.SetActive(true);
@@ -925,6 +932,17 @@ namespace Aaris.MapReview
             if (health != null && !health.IsDead) health.ApplyDamage(amount, null);
         }
 
+        private void OnDamaged(AarisOfflineHealth victim, float amount, GameObject attacker)
+        {
+            if (victim != health || amount <= 0f) return;
+            lastDamagedAt = Time.time;
+            avoidanceHandedness = -avoidanceHandedness;
+            turnOffset = UnityEngine.Random.Range(-25f, 25f);
+            // Preserve the two-player-attacker limit: retaliation only
+            // changes attention. The actual fire gate is still checked.
+            nextTargetScan = Time.time;
+        }
+
         internal void Initialize(AarisOfflineBRDirector director, AarisOfflineHealth self,
             Transform victim, AarisOfflineHealth victimHealth, int encounterSlot)
         {
@@ -934,6 +952,7 @@ namespace Aaris.MapReview
             targetHealth = victimHealth;
             capsule = GetComponent<CharacterController>();
             health.Died += OnDied;
+            health.Damaged += OnDamaged;
             turnOffset = UnityEngine.Random.Range(-12f, 12f);
             avoidanceHandedness = UnityEngine.Random.value < 0.5f ? 1f : -1f;
             lastSimulationTime = Time.time;
@@ -1077,6 +1096,13 @@ namespace Aaris.MapReview
                 nextThink = Time.time;
             }
             if (target == null || targetHealth == null || targetHealth.IsDead) return;
+            if (medicine > 0 && health.CurrentHealth < 115f &&
+                Time.time >= nextHealAt && Time.time - lastDamagedAt > 7f)
+            {
+                medicine--;
+                health.RestoreHealth(50f);
+                nextHealAt = Time.time + 12f;
+            }
             Vector3 diff = target.position - transform.position;
             diff.y = 0f;
             float distance = diff.magnitude;
@@ -1129,6 +1155,13 @@ namespace Aaris.MapReview
                 // rush into the player nor consume additional LOS shots.
                 travelDirection = Quaternion.Euler(0f, avoidanceHandedness * 85f, 0f) * toward;
                 moveSpeed = distance < 55f ? 1.8f : 2.25f;
+            }
+            if (!retreat && Time.time - lastDamagedAt < 2.3f)
+            {
+                // A lightweight cover-seeking strafe: the existing solid
+                // obstacle test below prevents clipping into authored houses.
+                travelDirection = Quaternion.Euler(0f, avoidanceHandedness * 115f, 0f) * toward;
+                moveSpeed = 3.15f;
             }
             Vector3 desired = Quaternion.Euler(0f, turnOffset, 0f) *
                 travelDirection * moveSpeed;
@@ -1183,10 +1216,19 @@ namespace Aaris.MapReview
                 Vector3.Dot(transform.forward, toward) > .84f &&
                 Time.time >= nextAttack && HasSight())
             {
-                // Offline damage contract, not real-world ballistics.
-                nextAttack = Time.time + UnityEngine.Random.Range(1.15f, 1.65f);
-                AarisAudioDirector.GunShot("SMG", "Rival", transform.position + Vector3.up);
-                targetHealth.ApplyDamage(6f, gameObject);
+                // Shared offline damage contract, not real-world ballistics.
+                if (ammunition <= 0)
+                {
+                    ammunition = 30;
+                    nextAttack = Time.time + 2f; // visible silent reload window
+                }
+                else
+                {
+                    ammunition--;
+                    nextAttack = Time.time + UnityEngine.Random.Range(1.15f, 1.65f);
+                    AarisAudioDirector.GunShot("SMG", "Rival", transform.position + Vector3.up);
+                    targetHealth.ApplyDamage(6f, gameObject);
+                }
             }
         }
 
@@ -1262,7 +1304,11 @@ namespace Aaris.MapReview
 
         private void OnDestroy()
         {
-            if (health != null) health.Died -= OnDied;
+            if (health != null)
+            {
+                health.Died -= OnDied;
+                health.Damaged -= OnDamaged;
+            }
             if (graph.IsValid()) graph.Destroy();
         }
     }
