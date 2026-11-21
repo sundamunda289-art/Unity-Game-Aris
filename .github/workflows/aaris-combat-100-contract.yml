@@ -8,6 +8,8 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisMassBotPopulation.cs'
       - 'Assets/AarisWorld/Scripts/AarisCombatFeedbackHUD.cs'
       - 'Assets/AarisWorld/Scripts/AarisEquippedGun.cs'
+      - 'Assets/AarisWorld/Scripts/AarisCombatSelectionPolicy.cs'
+      - 'Tools/Validation/CombatSelectionPolicyTests.cs'
       - 'Assets/AarisWorld/Scripts/AarisThirdPersonPlayer.cs'
       - 'Tools/Validation/test_combat_mass_bot_contract.py'
       - '.github/workflows/aaris-combat-100-contract.yml'
@@ -19,6 +21,8 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisMassBotPopulation.cs'
       - 'Assets/AarisWorld/Scripts/AarisCombatFeedbackHUD.cs'
       - 'Assets/AarisWorld/Scripts/AarisEquippedGun.cs'
+      - 'Assets/AarisWorld/Scripts/AarisCombatSelectionPolicy.cs'
+      - 'Tools/Validation/CombatSelectionPolicyTests.cs'
       - 'Assets/AarisWorld/Scripts/AarisThirdPersonPlayer.cs'
       - 'Tools/Validation/test_combat_mass_bot_contract.py'
       - '.github/workflows/aaris-combat-100-contract.yml'
@@ -40,6 +44,14 @@ jobs:
           python-version: '3.11'
       - name: Verify cross-file 100-rival combat contracts
         run: python3 Tools/Validation/test_combat_mass_bot_contract.py
+      - name: Execute production two-attacker policy in real C-sharp runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends mono-mcs
+          mcs -optimize+ -out:/tmp/aaris-combat-selection.exe \
+            Assets/AarisWorld/Scripts/AarisCombatSelectionPolicy.cs \
+            Tools/Validation/CombatSelectionPolicyTests.cs
+          mono /tmp/aaris-combat-selection.exe
       - name: Validate authored Unity C-sharp grammar
         run: |
           python3 -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
@@ -52,6 +64,7 @@ jobs:
               'AarisOfflineHealth.cs', 'AarisEquippedGun.cs',
               'AarisOfflineBRDirector.cs', 'AarisMassBotPopulation.cs',
               'AarisCombatFeedbackHUD.cs', 'AarisThirdPersonPlayer.cs',
+              'AarisCombatSelectionPolicy.cs',
               'AarisWeaponInventory.cs',
           ]
           base = Path('Assets/AarisWorld/Scripts')
