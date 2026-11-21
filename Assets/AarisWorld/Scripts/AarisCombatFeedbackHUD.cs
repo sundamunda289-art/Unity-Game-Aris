@@ -334,7 +334,9 @@ namespace Aaris.MapReview
             if (now < nextAimCheck) return;
             nextAimCheck = now + .09f;
             if (inventory == null) inventory = GetComponent<AarisWeaponInventory>();
-            bool armed = inventory != null && inventory.HasGun &&
+            // Keep the Red-Lock marker honest: if fire input is suspended,
+            // hide the optic without hiding the authoritative HP bar.
+            bool armed = inventory != null && inventory.CanShowCombatReticle &&
                 (drop == null || drop.HasLanded);
             if (aimCamera == null) aimCamera = Camera.main;
             int scope = armed && inventory.Current != null && inventory.Current.Spec != null
