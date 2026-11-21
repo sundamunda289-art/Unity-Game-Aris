@@ -381,7 +381,7 @@ def run():
     # Indoor low-profile contact stays 6.5 cm; terrain grass presentation
     # sits ~30.5 cm above ground to avoid fully hidden gun silhouettes.
     assert 0.05 < 0.04 + 0.025 < 0.08
-    assert 0.28 + 0.025 == 0.305
+    assert abs((0.28 + 0.025) - 0.305) < 1e-6
     assert "(modelBounds.center.y - modelBounds.min.y) * scale" in pickup_cs
     assert "model.SetParent(visualPivot.transform, true);" in pickup_cs
     assert "meshFilter.sharedMesh.bounds" in pickup_cs
