@@ -47,6 +47,9 @@ namespace Aaris.MapReview
         private int inFlightCell = -1;
         private bool inFlightLoad;
         private bool previousSampleValid;
+        // Round-robin check of one resident scene per poll; other scene
+        // managers can retire an authored cell after this streamer loaded it.
+        private int nextReconcileIndex;
         private Vector3 previousSample;
         private float previousSampleAt, nextPollAt, nextTransitionAt;
 
@@ -85,7 +88,7 @@ namespace Aaris.MapReview
             }
         }
 
-        private void OnEnable() { nextPollAt = 0f; previousSampleValid = false; }
+        private void OnEnable() { nextPollAt = 0f; previousSampleValid = false; nextReconcileIndex = 0; }
 
         private void Update()
         {
@@ -118,6 +121,7 @@ namespace Aaris.MapReview
             }
             if (now < nextPollAt) return;
             nextPollAt = now + Mathf.Max(0.05f, pollSeconds);
+            ReconcileOneLoadedChunk();
 
             Vector3 current = player.position;
             float projectedX = current.x, projectedZ = current.z;
@@ -193,6 +197,31 @@ namespace Aaris.MapReview
                 if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()) return;
 #endif
                 StartOperation(loadCell, true);
+            }
+        }
+
+        // Another subsystem may retire a scene we previously loaded, or an
+        // externally owned scene after Awake. Without reconciliation the stale
+        // ownership flag can strand visible world cells permanently unloaded.
+        // At most ONE native scene lookup per poll; do not scan every scene
+        // through SceneManager or allocate a collection in the frame loop.
+        private void ReconcileOneLoadedChunk()
+        {
+            for (int scanned = 0; scanned < states.Length; scanned++)
+            {
+                int index = nextReconcileIndex;
+                nextReconcileIndex = index + 1 == states.Length ? 0 : index + 1;
+                if (!states[index].valid ||
+                    (!states[index].externallyOwned && !states[index].loadedByThisStreamer))
+                    continue;
+
+                Scene scene = SceneManager.GetSceneByPath(chunks[index].scenePath);
+                if (!scene.IsValid() || !scene.isLoaded)
+                {
+                    states[index].externallyOwned = false;
+                    states[index].loadedByThisStreamer = false;
+                }
+                return;
             }
         }
 

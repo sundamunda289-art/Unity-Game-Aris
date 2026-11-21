@@ -275,6 +275,33 @@ internal static class AdditiveChunkStreamingTests
         Check(SceneManager.loadCount == 2,
             "externally retired scene should be reloadable");
 
+        // A different manager can unload a scene while the player stays
+        // inside it. The next poll must reload that visible cell, not wait
+        // for the player to leave the hysteresis zone and come back.
+        SceneManager.Reset();
+        target = new Transform();
+        manager = Make(target);
+        Frame(manager, target, 9f, 0f);
+        SceneManager.Finish();
+        Frame(manager, target, 9.1f, 0f);
+        SceneManager.loaded[Path] = false;
+        Frame(manager, target, 9.5f, 0f);
+        Check(SceneManager.loadCount == 2,
+            "externally retired near scene must be admitted again");
+
+        // An externally owned scene can disappear too; ownership must be
+        // rechecked before excluding it from the next near-player poll.
+        SceneManager.Reset();
+        SceneManager.loaded[Path] = true;
+        target = new Transform();
+        manager = Make(target);
+        Frame(manager, target, 10f, 0f);
+        Check(SceneManager.loadCount == 0, "externally owned scene stays untouched");
+        SceneManager.loaded[Path] = false;
+        Frame(manager, target, 10.4f, 0f);
+        Check(SceneManager.loadCount == 1,
+            "retired externally owned scene must become streamable");
+
         Console.WriteLine("PASS: " + checks + " checked assertions (real production sources)");
         return 0;
     }
