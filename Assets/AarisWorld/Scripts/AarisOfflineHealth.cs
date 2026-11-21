@@ -32,18 +32,24 @@ namespace Aaris.MapReview
         }
         public event Action<AarisOfflineHealth> Died;
         public event Action<AarisOfflineHealth> HealthChanged;
+        // Actual damage after helmet absorption, with original source for the
+        // player's hit-flash/direction HUD. No global lookups or allocations.
+        public event Action<AarisOfflineHealth, float, GameObject> Damaged;
 
         private void Awake() => current = maximumHealth;
 
         public void ApplyDamage(float amount, GameObject attacker)
         {
             if (dead || float.IsNaN(amount) || float.IsInfinity(amount) || amount <= 0f) return;
+            float previous = current;
             float absorbed = Mathf.Min(helmetDurability, amount * helmetProtection);
             helmetDurability = Mathf.Max(0f, helmetDurability - absorbed);
             current = Mathf.Max(0f, current - (amount - absorbed));
             // Publish fatality before notifying HUD/AI health observers:
             // a zero-HP notification must already report IsDead = true.
             if (current <= 0f) dead = true;
+            float actual = previous - current;
+            if (actual > 0f) Damaged?.Invoke(this, actual, attacker);
             HealthChanged?.Invoke(this);
             if (!dead) return;
             Died?.Invoke(this);
