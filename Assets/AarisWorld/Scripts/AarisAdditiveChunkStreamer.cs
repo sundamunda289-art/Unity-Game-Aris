@@ -49,6 +49,10 @@ namespace Aaris.MapReview
 
         private State[] states;
         private AarisChunkSpatialIndex spatialIndex;
+        // Build a large world index over multiple quiet frames. Until the last
+        // cell is indexed, the original full scan remains authoritative.
+        private int nextSpatialBuildIndex;
+        private bool spatialReady;
         private float observedLoadSeconds, inFlightStartedAt;
         private AsyncOperation inFlight;
         private int inFlightCell = -1;
@@ -123,9 +127,6 @@ namespace Aaris.MapReview
                     continue;
                 }
                 states[i].valid = true;
-                if (spatialIndex != null)
-                    spatialIndex.Add(i, cell.center.x, cell.center.y,
-                        cell.halfExtents.x, cell.halfExtents.y);
                 Scene preloaded = SceneManager.GetSceneByPath(cell.scenePath);
                 states[i].externallyOwned = preloaded.IsValid() && preloaded.isLoaded;
                 if (states[i].externallyOwned) TrackResident(i);
@@ -195,6 +196,11 @@ namespace Aaris.MapReview
             }
             if (sharedSceneCompletionFrame == Time.frameCount) return;
 #endif
+            // Spread one-time managed index allocations across render frames,
+            // never overlap a pending scene activation or native retirement.
+            // Even if a loading screen ends early, full-scan fallback prevents
+            // a missing cell while this one-time warmup is still in progress.
+            BuildSpatialIndexSlice();
             if (now < nextPollAt) return;
             nextPollAt = now + Mathf.Max(0.05f, pollSeconds);
             ReconcileOneLoadedChunk();
@@ -246,7 +252,7 @@ namespace Aaris.MapReview
             // to be inside exitMargin, even when prefetch projected farther.
             // Thus one current-position broad-phase query cannot omit a load.
             // Invalid/extreme query bounds fail open to the original full scan.
-            int nearby = spatialIndex != null
+            int nearby = spatialReady
                 ? spatialIndex.Query(current.x, current.z, exitMargin) : -1;
             int count = nearby >= 0 ? nearby : chunks.Length;
             for (int ordinal = 0; ordinal < count; ordinal++)
@@ -303,6 +309,25 @@ namespace Aaris.MapReview
 #endif
                 StartOperation(loadCell, true);
             }
+        }
+
+        private void BuildSpatialIndexSlice()
+        {
+            if (spatialReady || spatialIndex == null) return;
+            // Explicit per-frame limit rather than a wall-clock stopwatch,
+            // which adds timer overhead and produces nondeterministic builds.
+            const int MaxCellsPerRenderedFrame = 24;
+            int end = Math.Min(chunks.Length,
+                nextSpatialBuildIndex + MaxCellsPerRenderedFrame);
+            for (int i = nextSpatialBuildIndex; i < end; i++)
+            {
+                if (!states[i].valid) continue;
+                Chunk cell = chunks[i];
+                spatialIndex.Add(i, cell.center.x, cell.center.y,
+                    cell.halfExtents.x, cell.halfExtents.y);
+            }
+            nextSpatialBuildIndex = end;
+            spatialReady = end == chunks.Length;
         }
 
         // Track only loaded/external cells, not all authored cells. The
