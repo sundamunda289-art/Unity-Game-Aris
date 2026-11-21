@@ -230,7 +230,7 @@ def test():
     # cleanup guard. Verify both native spring-mass resets still invalidate
     # steering, without hard-coding the old whitespace indentation.
     assert len(re.findall(
-        r"ResetSprungMasses\\(\\);\\s*appliedSteeringAngle = float\\.NaN;", motor)) == 2
+        r"ResetSprungMasses\(\);\s*appliedSteeringAngle = float\.NaN;", motor)) == 2
     for occupied in (False, True):
         for sleeping in (False, True):
             skip_physics = not occupied and sleeping
