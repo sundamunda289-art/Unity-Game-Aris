@@ -1006,6 +1006,7 @@ namespace Aaris.MapReview
         private Rect previousSafeArea;
         private Vector2Int previousScreen;
         private float nextTelemetry;
+        private float nextSafeAreaPollAt;
         private AarisOfflineDropStick stick;
         public Vector2 MoveInput => stick != null ? stick.Value : Vector2.zero;
         internal bool TelemetryDue => Time.unscaledTime >= nextTelemetry;
@@ -1101,7 +1102,19 @@ namespace Aaris.MapReview
             safe.offsetMin = safe.offsetMax = Vector2.zero;
         }
 
-        private void Update() { if (safe != null) ApplySafeArea(); }
+        // Orientation/size changes update immediately. Inset-only changes (system bars)
+        // still refresh periodically without a native safeArea query every frame.
+        private void Update()
+        {
+            if (safe == null) return;
+            if (previousScreen.x != Screen.width ||
+                previousScreen.y != Screen.height ||
+                Time.unscaledTime >= nextSafeAreaPollAt)
+            {
+                nextSafeAreaPollAt = Time.unscaledTime + 0.4f;
+                ApplySafeArea();
+            }
+        }
         public void SetAction(string label, bool visible)
         {
             if (action != null) action.gameObject.SetActive(visible);
