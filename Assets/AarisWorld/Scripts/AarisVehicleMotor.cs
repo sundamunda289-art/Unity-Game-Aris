@@ -17,6 +17,17 @@ namespace Aaris.MapReview
         private const float BaseForwardGripStiffness = 1.15f;
         private const float BaseSideGripStiffness = 1.35f;
         private readonly WheelCollider[] wheels = new WheelCollider[4];
+        // A vehicle may instantiate four identical imported wheel hierarchies.
+        // Unity 6 fills these owned lists without a fresh Collider[]/Renderer[]
+        // per tyre. Clear after every attachment, including rejected imports.
+        private readonly List<Collider> wheelPrefabColliders = new List<Collider>(8);
+        private readonly List<Renderer> wheelPrefabRenderers = new List<Renderer>(8);
+        // Four wheel renderers frequently have identical submesh counts.
+        // Reuse one immutable palette layout for each slot count, not four
+        // fresh Material[] allocations for identical wheel materials.
+        private readonly Dictionary<int, Material[]> wheelPrefabSlotLayouts =
+            new Dictionary<int, Material[]>(4);
+        private Material wheelPrefabLayoutPalette;
         private readonly float[] surfaceGripMultipliers = new float[4];
         private readonly Transform[] visualWheels = new Transform[4];
         // The FBX chassis is visual-only. WheelCollider meshes remain under
@@ -408,57 +419,84 @@ namespace Aaris.MapReview
         {
             if (wheelPrefab == null ||
                 (!preserveAuthoredUrpMaterials && palette == null)) return false;
-            for (int i = 0; i < wheels.Length; i++)
+            // A later explicit reattachment with another wheel palette must
+            // never inherit the preceding car's paint; the arrays are immutable.
+            if (!preserveAuthoredUrpMaterials && wheelPrefabLayoutPalette != palette)
             {
-                var instance = Instantiate(wheelPrefab, transform, false);
-                instance.name = "Kenney Wheel Visual " + i;
-                foreach (var obstacle in instance.GetComponentsInChildren<Collider>(true))
-                    obstacle.enabled = false;
-                var renderers = instance.GetComponentsInChildren<Renderer>(true);
-                if (renderers.Length == 0 ||
-                    !AarisVehicleWorld.HasRenderableWheelGeometry(instance.transform))
-                {
-                    // A Renderer component alone does not make this tyre visible.
-                    Destroy(instance);
-                    return false;
-                }
-                if (!preserveAuthoredUrpMaterials)
-                {
-                    foreach (var renderer in renderers)
-                    {
-                        int n = AarisVehicleWorld.VisualSubmeshCount(renderer);
-                        var materials = new Material[n];
-                        for (int j = 0; j < n; j++) materials[j] = palette;
-                        renderer.sharedMaterials = materials;
-                    }
-                }
-                // Wheel size must not shrink or grow merely because a car
-                // is parked at a different compass heading.
-                if (!AarisVehicleWorld.TryGetVisualBoundsLocal(
-                    instance.transform, out Bounds combined))
-                { Destroy(instance); return false; }
-                float maxDimension = Mathf.Max(combined.size.x,
-                    Mathf.Max(combined.size.y, combined.size.z));
-                if (maxDimension < .001f)
-                {
-                    Destroy(instance);
-                    return false;
-                }
-                instance.transform.localScale *=
-                    Mathf.Clamp(2f * WheelRadius / maxDimension, .01f, 30f);
-                // Imported prefab pivots need not coincide with the rendered
-                // tyre centre. The measurement is in wheel-local orientation
-                // AFTER sizing, so steering/spin rotate it without drifting.
-                Vector3 visualCentreWorld =
-                    instance.transform.TransformPoint(combined.center);
-                visualWheelCenterOffsets[i] =
-                    Quaternion.Inverse(instance.transform.rotation) *
-                    (visualCentreWorld - instance.transform.position);
-                visualWheels[i] = instance.transform;
-                visualWheelRotationOffsets[i] = Quaternion.identity;
+                wheelPrefabSlotLayouts.Clear();
+                wheelPrefabLayoutPalette = palette;
             }
-            SyncVisibleWheels();
-            return true;
+            try
+            {
+                for (int i = 0; i < wheels.Length; i++)
+                {
+                    var instance = Instantiate(wheelPrefab, transform, false);
+                    instance.name = "Kenney Wheel Visual " + i;
+                    instance.GetComponentsInChildren<Collider>(true, wheelPrefabColliders);
+                    for (int c = 0; c < wheelPrefabColliders.Count; c++)
+                    {
+                        Collider obstacle = wheelPrefabColliders[c];
+                        if (obstacle != null) obstacle.enabled = false;
+                    }
+                    wheelPrefabColliders.Clear();
+                    instance.GetComponentsInChildren<Renderer>(true, wheelPrefabRenderers);
+                    if (wheelPrefabRenderers.Count == 0 ||
+                        !AarisVehicleWorld.HasRenderableWheelGeometry(instance.transform))
+                    {
+                        // A Renderer component alone does not make this tyre visible.
+                        Destroy(instance);
+                        return false;
+                    }
+                    if (!preserveAuthoredUrpMaterials)
+                    {
+                        foreach (var renderer in wheelPrefabRenderers)
+                        {
+                            int n = AarisVehicleWorld.VisualSubmeshCount(renderer);
+                            if (!wheelPrefabSlotLayouts.TryGetValue(n, out Material[] materials))
+                            {
+                                materials = new Material[n];
+                                for (int j = 0; j < n; j++) materials[j] = palette;
+                                wheelPrefabSlotLayouts.Add(n, materials);
+                            }
+                            renderer.sharedMaterials = materials;
+                        }
+                    }
+                    wheelPrefabRenderers.Clear();
+                    // Wheel size must not shrink or grow merely because a car
+                    // is parked at a different compass heading.
+                    if (!AarisVehicleWorld.TryGetVisualBoundsLocal(
+                        instance.transform, out Bounds combined))
+                    { Destroy(instance); return false; }
+                    float maxDimension = Mathf.Max(combined.size.x,
+                        Mathf.Max(combined.size.y, combined.size.z));
+                    if (maxDimension < .001f)
+                    {
+                        Destroy(instance);
+                        return false;
+                    }
+                    instance.transform.localScale *=
+                        Mathf.Clamp(2f * WheelRadius / maxDimension, .01f, 30f);
+                    // Imported prefab pivots need not coincide with the rendered
+                    // tyre centre. The measurement is in wheel-local orientation
+                    // AFTER sizing, so steering/spin rotate it without drifting.
+                    Vector3 visualCentreWorld =
+                        instance.transform.TransformPoint(combined.center);
+                    visualWheelCenterOffsets[i] =
+                        Quaternion.Inverse(instance.transform.rotation) *
+                        (visualCentreWorld - instance.transform.position);
+                    visualWheels[i] = instance.transform;
+                    visualWheelRotationOffsets[i] = Quaternion.identity;
+                }
+                SyncVisibleWheels();
+                return true;
+            }
+            finally
+            {
+                // Never retain imported hierarchy handles across unload/rebuild,
+                // including any early invalid-geometry return above.
+                wheelPrefabColliders.Clear();
+                wheelPrefabRenderers.Clear();
+            }
         }
 
         /// <summary>
