@@ -222,7 +222,7 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("playerHealth.ApplyDamage(7f, null)", br)
         self.assertIn("Physics.RaycastNonAlloc(ray, sightHits, distance,", br)
         self.assertIn("hits = Physics.RaycastAll(ray, distance,", br)
-        self.assertIn("closest.transform.IsChildOf(target)", br)
+        self.assertIn("closest.transform.IsChildOf(selectedTarget)", br)
         self.assertIn("targetHealth.ApplyBallisticDamage(6f, gameObject, false);", br)
         self.assertIn("private void OnDied(AarisOfflineHealth defeated)", br)
         self.assertIn("activeRivals + massBots.AliveCount == 0", br)
