@@ -8,10 +8,13 @@ SRC = (ROOT / "Assets/AarisWorld/Scripts/AarisMobileRuntime.cs").read_text()
 TIME = (ROOT / "ProjectSettings/TimeManager.asset").read_text()
 
 class AndroidFixedStepBudget(unittest.TestCase):
-    def test_applies_only_to_small_budget_android_gpus(self):
+    def test_applies_to_budget_android_gpus_independent_of_ram_class(self):
         awake = SRC.split("private void Awake()", 1)[1].split("private IEnumerator Start()", 1)[0]
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", awake)
-        self.assertIn("ramMB > 0 && ramMB <= 4608 && IsBudgetAndroidGpu()", awake)
+        self.assertIn("int ramMB = SystemInfo.systemMemorySize;", awake)
+        self.assertIn("if (ramMB > 0 && IsBudgetAndroidGpu())", awake)
+        self.assertNotIn("ramMB <= 4608", awake)
+        self.assertNotIn("ramMB <= 4096", awake)
         self.assertIn("Time.fixedDeltaTime * 6f", awake)
         self.assertIn("Time.maximumDeltaTime = appliedMaximumDeltaTime;", awake)
         self.assertIn("Mathf.Min(", awake)
