@@ -65,7 +65,7 @@ internal sealed class ProbeFixture
     }
     private int Cell(float value) => Mathf.FloorToInt(value / cellSize);
     private static long Key(int x, int z) => ((long)x << 32) ^ (uint)z;
-    private static bool Finite(Vector3 v) { /* FINITE_BODY */ }
+    private static bool Finite(Vector3 value) { /* FINITE_BODY */ }
 
     internal void Add(int i, Bounds b, bool on, bool spatial)
     {
@@ -135,13 +135,13 @@ internal static class BoundedProbeTests
             Check(fixture.Probe(p,half,rotation)==fixture.Exhaustive(p,half,rotation),
                 "small rotated vehicle/AI clearance differs from exhaustive");
         }
-        // At 250 m/cell this covers > (64,000/250)^2 cells. An
+        // At 250 m/cell this covers > (6,400,000/250)^2 cells. An
         // unbounded nested grid walk would effectively hang the fixture.
         for(int i=0;i<150;i++)
         {
             float x=i%2==0?0f:30000000f;
             var p=new Vector3(x,0,0);
-            var half=new Vector3(32000f,15f,32000f);
+            var half=new Vector3(3200000f,15f,3200000f);
             Check(fixture.Probe(p,half,Quaternion.identity)==
                   fixture.Exhaustive(p,half,Quaternion.identity),
                 "large probe missed disabled authored bounds");
