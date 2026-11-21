@@ -59,6 +59,13 @@ internal static class CombatSelectionPolicyTests
             new Rival { Id = 1, HasSight = true, DistanceSquared = 12f },
             new Rival { Id = 3, HasSight = true, DistanceSquared = 12f },
         }) == 2, "deterministic exact distance ties");
+        // Three near-ties can form a non-transitive outrank cycle with a
+        // 0.01f epsilon and break the max-two guarantee. Keep this regression.
+        Check(CountAttackers(new[] {
+            new Rival { Id = 3, HasSight = true, DistanceSquared = 1.000f },
+            new Rival { Id = 2, HasSight = true, DistanceSquared = 1.006f },
+            new Rival { Id = 1, HasSight = true, DistanceSquared = 1.012f },
+        }) == 2, "near-tie triangle must never permit three attackers");
         Check(CountAttackers(new[] {
             new Rival { Id = 1, HasSight = true, DistanceSquared = 1800f },
             new Rival { Id = 2, HasSight = true, DistanceSquared = 1764f },
