@@ -78,6 +78,7 @@ namespace Aaris.MapReview
         private float nextOptionalComponentRefresh;
         private int shownWalls = -1, shownGrenades = -1;
         private Rect previousSafeArea;
+        private float nextSafeAreaPollAt;
         private Vector2Int previousScreen;
         private bool initialized;
 
@@ -396,8 +397,11 @@ namespace Aaris.MapReview
         private void RefreshSafeArea()
         {
             if (safe == null || Screen.width <= 0 || Screen.height <= 0) return;
-            Rect area = Screen.safeArea;
             var screen = new Vector2Int(Screen.width, Screen.height);
+            if (previousScreen == screen && Time.unscaledTime < nextSafeAreaPollAt)
+                return;
+            nextSafeAreaPollAt = Time.unscaledTime + 0.4f;
+            Rect area = Screen.safeArea;
             if (previousScreen == screen && previousSafeArea == area) return;
             previousScreen = screen;
             previousSafeArea = area;
