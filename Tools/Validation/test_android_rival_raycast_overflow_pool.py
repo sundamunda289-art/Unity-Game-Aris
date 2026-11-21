@@ -42,7 +42,7 @@ class RivalNonAllocOverflow(unittest.TestCase):
         self.assertIn("hits = Physics.RaycastAll(ray, distance,", routine)
         self.assertIn("if (hit.distance < first)", routine)
         self.assertIn("hit.collider.transform.IsChildOf(transform)", routine)
-        self.assertIn("closest.transform.IsChildOf(target)", routine)
+        self.assertIn("closest.transform.IsChildOf(victim)", routine)
         self.assertLess(routine.index("hits = crowdedSightHits;"),
                         routine.index("hits = Physics.RaycastAll("))
 
