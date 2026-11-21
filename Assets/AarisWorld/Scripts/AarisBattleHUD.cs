@@ -26,6 +26,7 @@ namespace Aaris.MapReview
         private RectTransform safeRoot;
         private Vector2 previousScreen;
         private Rect previousSafeArea;
+        private float nextSafeAreaPollAt;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
@@ -143,8 +144,11 @@ namespace Aaris.MapReview
 
         private void UpdateSafeArea(bool force)
         {
-            var safe = Screen.safeArea;
             var resolution = new Vector2(Screen.width, Screen.height);
+            if (!force && previousScreen == resolution &&
+                Time.unscaledTime < nextSafeAreaPollAt) return;
+            nextSafeAreaPollAt = Time.unscaledTime + 0.4f;
+            var safe = Screen.safeArea;
             if (!force && previousScreen == resolution && previousSafeArea == safe) return;
             previousScreen = resolution;
             previousSafeArea = safe;
