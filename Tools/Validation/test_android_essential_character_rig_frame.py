@@ -24,17 +24,22 @@ def simulate(reservation_frame, attempts):
 
 
 class EssentialCharacterRigFrame(unittest.TestCase):
-    def test_constrained_android_owns_only_one_next_frame_reservation(self):
+    def test_constrained_android_preserves_consecutive_next_frame_reservations(self):
         reserve = GATE.split("internal static bool ReserveNextFrameForEssentialRig()", 1)[1].split(
             "private static bool IsEssentialRigFrame()", 1)[0]
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", reserve)
         self.assertIn("if (IsConstrainedDevice())", reserve)
-        self.assertIn("essentialRigFrame = Time.frameCount + 1;", reserve)
+        self.assertIn("int nextFrame = Time.frameCount + 1;", reserve)
+        self.assertIn("previousEssentialRigFrame = essentialRigFrame;", reserve)
+        self.assertIn("essentialRigFrame = nextFrame;", reserve)
         self.assertIn("return true;", reserve)
         self.assertIn("return false;", reserve)
         self.assertIn("return Time.frameCount == essentialRigFrame ||", GATE)
-        self.assertIn("Time.frameCount == essentialAircraftFrame;", GATE)
-        self.assertIn("essentialAircraftFrame = Time.frameCount + 1;", reserve)
+        self.assertIn("Time.frameCount == previousEssentialRigFrame ||", GATE)
+        self.assertIn("Time.frameCount == essentialAircraftFrame ||", GATE)
+        self.assertIn("Time.frameCount == previousEssentialAircraftFrame;", GATE)
+        self.assertIn("previousEssentialAircraftFrame = essentialAircraftFrame;", reserve)
+        self.assertIn("essentialAircraftFrame = nextFrame;", reserve)
         self.assertIn("essentialAircraftFrame = -1;", GATE)
         self.assertIn("essentialRigFrame = -1;", GATE)
         self.assertIn("RigReservedDeferredAttempts = 0;", GATE)
