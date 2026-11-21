@@ -382,8 +382,8 @@ def run():
     assert "ModelFloorClearance + (modelBounds.center.y - modelBounds.min.y) * scale" in pickup_cs
     assert "private const float LootRootFloorClearance = 0.04f;" in world
     assert "private const float OutdoorLootPresentationClearance = 0.28f;" in world
-    assert "(indoor ? LootRootFloorClearance : OutdoorLootPresentationClearance)" in world
-    assert "(floor is TerrainCollider ? OutdoorLootPresentationClearance :" in world
+    assert "bool terrainGrassSupport = !indoor && floor.collider is TerrainCollider;" in world
+    assert "spot = floor.point + Vector3.up * (terrainGrassSupport" in world
     assert "LootRootFloorClearance);" in world
     # Measured visual floor clearance for both authored and dropped guns.
     # Small positive margin avoids z-fighting without 21cm arcade hovering.
