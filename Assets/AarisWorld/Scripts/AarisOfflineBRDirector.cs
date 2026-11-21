@@ -1270,7 +1270,7 @@ namespace Aaris.MapReview
                     ammunition--;
                     nextAttack = Time.time + UnityEngine.Random.Range(1.15f, 1.65f);
                     AarisAudioDirector.GunShot("SMG", "Rival", transform.position + Vector3.up);
-                    targetHealth.ApplyDamage(6f, gameObject);
+                    targetHealth.ApplyBallisticDamage(6f, gameObject, false);
                 }
             }
         }
