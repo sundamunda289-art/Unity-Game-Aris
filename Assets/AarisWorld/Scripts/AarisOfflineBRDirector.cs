@@ -405,6 +405,8 @@ namespace Aaris.MapReview
             CreateBoundary();
             massBots = gameObject.AddComponent<AarisMassBotPopulation>();
             massBots.Initialize(this, player, playerHealth);
+            var combatHud = player.GetComponent<AarisCombatFeedbackHUD>();
+            if (combatHud != null) combatHud.BindDirector(this);
             RefreshStatus(0f);
         }
 
