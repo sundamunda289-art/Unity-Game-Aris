@@ -11,8 +11,7 @@ namespace Aaris.MapReview
     public sealed class AarisCombatFeedbackHUD : MonoBehaviour
     {
         private static AarisCombatFeedbackHUD instance;
-        private readonly RaycastHit[] directHits = new RaycastHit[32];
-        private RaycastHit[] assistedHits = new RaycastHit[32];
+                private RaycastHit[] assistedHits = new RaycastHit[32];
         private readonly Text[] damageLabels = new Text[8];
         private readonly float[] damageUntil = new float[8];
         private readonly string[] damageStrings = new string[601];
@@ -27,7 +26,7 @@ namespace Aaris.MapReview
         private Text healthLabel, scopeLabel, directionLabel;
         private Image healthFill, flash, reticle;
         private int lastHealth = -1, lastMaximum = -1, labelCursor;
-        private float flashUntil, directionUntil, nextAim, nextSafeArea;
+        private float flashUntil, directionUntil, nextAim, nextSafeArea, nextDirectorLookup;
         private Vector2 previousScreen;
         private Rect previousSafe;
         private Vector3 assistedDirection;
@@ -234,7 +233,7 @@ namespace Aaris.MapReview
             flashUntil = Time.unscaledTime + .32f;
             directionUntil = Time.unscaledTime + .65f;
             if (attacker == null || aimCamera == null)
-                directionLabel.text = "ZONE DAMAGE";
+                directionLabel.text = attacker == null ? "ZONE DAMAGE" : "INCOMING HIT";
             else
             {
                 Vector3 toward = attacker.transform.position - transform.position;
@@ -351,8 +350,11 @@ namespace Aaris.MapReview
             if (canvas == null || health == null) return;
             UpdateSafeArea(false);
             if (aimCamera == null) aimCamera = Camera.main;
-            if (director == null && Time.unscaledTime > nextAim + 2f)
+            if (director == null && Time.unscaledTime >= nextDirectorLookup)
+            {
+                nextDirectorLookup = Time.unscaledTime + 1.5f;
                 director = FindFirstObjectByType<AarisOfflineBRDirector>();
+            }
             if (Time.unscaledTime >= nextAim)
             {
                 nextAim = Time.unscaledTime + .10f;
