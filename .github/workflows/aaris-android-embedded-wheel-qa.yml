@@ -1,0 +1,63 @@
+name: Android embedded wheel lookup QA
+
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisVehicleMotor.cs'
+      - 'Tools/Validation/test_android_embedded_wheel_lookup_allocations.py'
+      - 'Tools/Validation/EmbeddedWheelLookupTests.cs'
+      - 'Tools/Validation/run_embedded_wheel_lookup_csharp.py'
+      - '.github/workflows/aaris-android-embedded-wheel-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisVehicleMotor.cs'
+      - 'Tools/Validation/test_android_embedded_wheel_lookup_allocations.py'
+      - 'Tools/Validation/EmbeddedWheelLookupTests.cs'
+      - 'Tools/Validation/run_embedded_wheel_lookup_csharp.py'
+      - '.github/workflows/aaris-android-embedded-wheel-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  embedded-wheel-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check retained visual/physics constraints and allocation source contracts
+        run: |
+          python3 Tools/Validation/test_android_embedded_wheel_lookup_allocations.py
+          python3 Tools/Validation/test_android_wheel_prefab_allocations.py
+          python3 Tools/Validation/test_vehicle_wheel_center_pivot.py
+          python3 Tools/Validation/test_vehicle_axle_road_failsafe.py
+          python3 Tools/Validation/test_vehicle_visible_body_guard.py
+          python3 Tools/Validation/check_vehicle_system.py
+      - name: Compile real embedded wheel method and axle guard with Mono
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends mono-mcs
+          python3 Tools/Validation/run_embedded_wheel_lookup_csharp.py
+      - name: Validate production C-sharp parser and Python source
+        run: |
+          python3 -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
+          python3 - <<'PY'
+          from pathlib import Path
+          from tree_sitter import Language,Parser
+          import tree_sitter_c_sharp
+          parser=Parser(Language(tree_sitter_c_sharp.language()))
+          p=Path('Assets/AarisWorld/Scripts/AarisVehicleMotor.cs')
+          data=p.read_bytes()
+          assert not parser.parse(data).root_node.has_error,p
+          assert all(line==line.rstrip() for line in data.decode('utf8').splitlines()),p
+          print('EMBEDDED_WHEEL_PRODUCTION_CSHARP_PARSE_PASS')
+          PY
+          python3 -m py_compile Tools/Validation/test_android_embedded_wheel_lookup_allocations.py \
+            Tools/Validation/run_embedded_wheel_lookup_csharp.py
