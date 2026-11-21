@@ -1206,8 +1206,8 @@ namespace Aaris.MapReview
             // choose an unstable bend side. Ease continuously toward the
             // anatomical pole BEFORE the antiparallel singularity, rather
             // than switching 180-degree branches on one frame.
-            Vector3 bend = Quaternion.FromToRotation(animatedAxis, axis) *
-                Vector3.ProjectOnPlane(currentKnee, animatedAxis);
+            Vector3 bend = Vector3.ProjectOnPlane(currentKnee, animatedAxis);
+            bend = Quaternion.FromToRotation(animatedAxis, axis) * bend;
             Vector3 forwardBend = Vector3.ProjectOnPlane(forward, axis);
             float reversalBlend = Mathf.SmoothStep(0f, 1f,
                 Mathf.Clamp01((-0.70f - Vector3.Dot(animatedAxis, axis)) / 0.27f));
