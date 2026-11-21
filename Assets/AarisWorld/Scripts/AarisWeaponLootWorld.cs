@@ -1279,8 +1279,14 @@ namespace Aaris.MapReview
             // frame to avoid back-to-back render/rig initialization spikes.
             // Never use zero: existing drops, planned pickup visuals and the
             // reserved starter path must keep progressing after landing.
+            // Match the actual display/target pacing (30/45/60/90 Hz),
+            // not a hardcoded 45 FPS number. A healthy 30 FPS phone must
+            // not be considered overloaded during every loot stream tick.
+            // Global native-model admission remains the final one-per-frame
+            // safety fence on constrained Android devices.
             if (budgetAndroidLootStreaming &&
-                Time.smoothDeltaTime > (1f / 45f))
+                Time.smoothDeltaTime >
+                    AarisMobileStreamingFrameGate.CurrentPacedFrameBudgetSeconds() * 1.08f)
                 modelBuildBudget = 1;
 #endif
 
