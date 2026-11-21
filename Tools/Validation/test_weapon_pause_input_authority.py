@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2] / "Assets/AarisWorld/Scripts"
 INVENTORY = (ROOT / "AarisWeaponInventory.cs").read_text("utf-8")
 LOOT = (ROOT / "AarisWeaponLootWorld.cs").read_text("utf-8")
 TACTICAL = (ROOT / "AarisOfflineTacticalHUD.cs").read_text("utf-8")
+ACTIONS = (ROOT / "AarisBattleActions.cs").read_text("utf-8")
 
 
 def section(src, start, end):
@@ -73,6 +74,32 @@ class OfflineWeaponPauseAndLandingAuthority(unittest.TestCase):
             self.assertLess(body.index("AcceptsPlayerWeaponInput"),
                             body.find("Input.GetKeyDown(") if "Input.GetKeyDown(" in body
                             else len(body))
+
+    def test_combat_input_requires_on_foot_authority(self):
+        authority = section(ACTIONS, "private bool AcceptsCombatInput =>",
+                            "public float CameraEyeHeight =>")
+        for token in ("isActiveAndEnabled", "Time.timeScale > 0f",
+                      "motor != null && motor.isActiveAndEnabled"):
+            self.assertIn(token, authority)
+        press = section(ACTIONS, "public void SetFireHeld(bool held)",
+                        "public bool ToggleCrouch()")
+        self.assertLess(press.index("if (!AcceptsCombatInput)"),
+                        press.index("bool newPress ="))
+        self.assertIn("CancelPendingCombatInput();", press)
+        update = section(ACTIONS, "private void Update()",
+                         "private void QueuePunch()")
+        self.assertLess(update.index("if (!AcceptsCombatInput)"),
+                        update.index("Punch();"))
+        self.assertLess(update.index("if (!AcceptsCombatInput)"),
+                        update.index("ShootEquippedWeapon();"))
+        for motor_active in (False, True):
+            for time_scale in (0.0, 1.0):
+                for actions_active in (False, True):
+                    permitted = (motor_active and time_scale > 0 and actions_active)
+                    if not (motor_active and time_scale > 0 and actions_active):
+                        self.assertFalse(permitted)
+                    else:
+                        self.assertTrue(permitted)
 
     def test_landing_gate_retains_visual_prestream(self):
         landing = section(LOOT, "private bool HasLandingAuthority =>",
