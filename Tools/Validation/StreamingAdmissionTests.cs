@@ -522,6 +522,44 @@ internal static class StreamingAdmissionTests
         Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
             "Long hitch cooldown delayed optional detail indefinitely");
 
+        // Every rendered frame may be a long hitch on a thermal or memory-
+        // pressured Android handset. The 3-frame cooldown previously moved
+        // forward forever, making original-detail optional models disappear.
+        Configure();
+        int longHitchAdmitted = 0;
+        for (int frame = 1; frame <= 70; frame++)
+        {
+            Frame(frame, 0.500f);
+            bool accepted = AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild();
+            if (accepted) longHitchAdmitted++;
+            Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+                "More than one long-hitch optional integration per frame");
+        }
+        Check(longHitchAdmitted == 10,
+            "Continuous long hitches permanently starved optional detail");
+        Check(AarisMobileStreamingFrameGate.PressureDeferredFrames == 60,
+            "Long-hitch deferrals were not capped or counted once per frame");
+        Frame(71, 0.016f);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Recovered healthy frame retained long-hitch starvation");
+
+        // Several consecutive native hitches still receive a recovery window
+        // after the most recent one, unless the bounded fairness cap expires.
+        Configure();
+        Frame(1, 0.500f);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(), "First long hitch allowed");
+        Frame(2, 0.500f);
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(), "Second long hitch allowed");
+        for (int frame = 3; frame <= 5; frame++)
+        {
+            Frame(frame, 0.016f);
+            Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+                "Final long hitch recovery window ended early");
+        }
+        Frame(6, 0.016f);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Recovery after consecutive hitches did not resume");
+
         // A 249 ms severe frame uses the original bounded policy; it must
         // not accidentally inherit the larger resume cooldown.
         Configure();
