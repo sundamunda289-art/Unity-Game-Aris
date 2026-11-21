@@ -26,7 +26,14 @@ assert "turningFast || transitioningStance" in resolve_code
 assert "contactLocked = false;" in resolve_code
 assert "Vector3 targetFoot = resolvedFootWorld;" in plant_code
 assert "targetFoot.y = ankleWorldY;" in plant_code
-assert "Vector3 origin = sampleWorld + Vector3.up * 0.70f;" in support_code
+# Keep the original single support-ray budget, but on retargeted low-stance
+# animation ensure the ray cannot start beneath the grounded capsule floor.
+assert "float safeSampleY = sampleWorld.y;" in support_code
+assert "if (controller != null && controller.enabled)" in support_code
+assert "controller.center - Vector3.up * (controller.height * 0.5f)" in support_code
+assert "safeSampleY = Mathf.Max(safeSampleY, capsuleBottomY - 0.05f);" in support_code
+assert "Vector3 origin = new Vector3(sampleWorld.x," in support_code
+assert "safeSampleY + 0.70f, sampleWorld.z);" in support_code
 query_buffer = (Path(__file__).resolve().parents[2] /
                 "Assets/AarisWorld/Scripts/AarisPhysicsHitBuffer.cs").read_text()
 assert "QueryTriggerInteraction.Ignore" in query_buffer
