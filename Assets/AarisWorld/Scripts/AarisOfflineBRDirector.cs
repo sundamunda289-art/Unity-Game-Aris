@@ -36,6 +36,8 @@ namespace Aaris.MapReview
         private readonly System.Random random = new System.Random();
         private Transform player;
         private AarisOfflineHealth playerHealth;
+        private AarisMassBotPopulation massBots;
+        internal Transform PlayerActor => player;
         private AarisOfflineDrop drop;
         // Flight component may be attached after this director starts. Limit
         // missing-component native lookups during the cold-start render path.
@@ -312,8 +314,8 @@ namespace Aaris.MapReview
                         // report a fake solo victory. Offer a clean restart.
                         if (spawnedRivals == 0)
                             matchEnd.FailMatchSetup();
-                        else if (activeRivals == 0)
-                            matchEnd.WinMatch();
+                        else
+                            TryConcludeMatch();
                     }
                 }
             }
@@ -391,6 +393,8 @@ namespace Aaris.MapReview
             radius = ZoneRadii[0];
             CreateStatus();
             CreateBoundary();
+            massBots = gameObject.AddComponent<AarisMassBotPopulation>();
+            massBots.Initialize(this, player, playerHealth);
             RefreshStatus(0f);
         }
 
@@ -448,6 +452,9 @@ namespace Aaris.MapReview
             }
             return false;
         }
+
+        internal bool TryGetBotGround(float x, float z, out float height) =>
+            TryGetGround(x, z, out height);
 
         private bool SpawnClear(Vector3 point)
         {
@@ -544,6 +551,8 @@ namespace Aaris.MapReview
             return dx * dx + dz * dz > safe * safe;
         }
 
+        internal bool BotOutsideZone(Vector3 location) => Outside(location);
+
         private void ApplyZoneDamage()
         {
             if (!spawnComplete || playerHealth == null || playerHealth.IsDead) return;
@@ -553,16 +562,35 @@ namespace Aaris.MapReview
                 if (rivals[i] != null && rivals[i].IsAlive &&
                     Outside(rivals[i].transform.position))
                     rivals[i].TakeZoneDamage(9f);
+            if (massBots != null)
+                for (int i = 0; i < massBots.ProxySlots; i++)
+                {
+                    AarisOfflineRival proxy = massBots.PhysicalProxy(i);
+                    if (proxy != null && Outside(proxy.transform.position))
+                        proxy.TakeZoneDamage(9f);
+                }
+        }
+
+        private void TryConcludeMatch()
+        {
+            if (!spawnComplete || massBots == null || !massBots.IsReady ||
+                playerHealth == null || playerHealth.IsDead ||
+                matchEnd == null || matchEnd.IsFinished) return;
+            if (activeRivals + massBots.AliveCount == 0)
+            {
+                if (spawnedRivals == 0 && massBots.AliveCount == 0)
+                    matchEnd.FailMatchSetup();
+                else matchEnd.WinMatch();
+            }
         }
 
         internal void RivalDefeated(AarisOfflineRival rival)
         {
             if (activeRivals > 0) activeRivals--;
-            if (spawnComplete && spawnedRivals > 0 && activeRivals == 0 &&
-                playerHealth != null && !playerHealth.IsDead &&
-                matchEnd != null && !matchEnd.IsFinished)
-                matchEnd.WinMatch();
+            TryConcludeMatch();
         }
+
+        internal void VirtualBotDefeated() => TryConcludeMatch();
 
         internal bool CanEngage => started && !playerHealth.IsDead &&
             matchEnd != null && !matchEnd.IsFinished;
@@ -575,15 +603,42 @@ namespace Aaris.MapReview
             float candidateSqr = (candidate.transform.position - player.position).sqrMagnitude;
             if (candidateSqr > 42f * 42f) return false;
             int nearer = 0;
-            for (int i = 0; i < rivals.Length; i++)
+            int total = rivals.Length + (massBots != null ? massBots.ProxySlots : 0);
+            for (int i = 0; i < total; i++)
             {
-                AarisOfflineRival other = rivals[i];
+                AarisOfflineRival other = i < rivals.Length ? rivals[i] :
+                    massBots.PhysicalProxy(i - rivals.Length);
                 if (other == null || other == candidate || !other.IsAlive) continue;
                 float otherSqr = (other.transform.position - player.position).sqrMagnitude;
                 if (otherSqr + .01f < candidateSqr && otherSqr <= 42f * 42f)
                     nearer++;
             }
             return nearer < 2;
+        }
+
+        // At most nine live native actors are candidates. Distant roster
+        // records resolve fights in the time-sliced logical simulator.
+        internal void SelectCombatTarget(AarisOfflineRival seeker,
+            out Transform chosen, out AarisOfflineHealth chosenHealth)
+        {
+            chosen = player;
+            chosenHealth = playerHealth;
+            if (seeker == null || MayEngagePlayer(seeker)) return;
+
+            float best = 66f * 66f;
+            int total = rivals.Length + (massBots != null ? massBots.ProxySlots : 0);
+            for (int i = 0; i < total; i++)
+            {
+                AarisOfflineRival other = i < rivals.Length ? rivals[i] :
+                    massBots.PhysicalProxy(i - rivals.Length);
+                if (other == null || other == seeker || !other.IsAlive ||
+                    !other.gameObject.activeInHierarchy) continue;
+                float dist = (other.transform.position - seeker.transform.position).sqrMagnitude;
+                if (dist >= best) continue;
+                best = dist;
+                chosen = other.transform;
+                chosenHealth = other.Health;
+            }
         }
 
         // Scans only the already-active encounter slots; no scene-wide query.
@@ -600,9 +655,11 @@ namespace Aaris.MapReview
             Vector3 forward = view.transform.forward;
             float cosine = Mathf.Cos(Mathf.Clamp(coneDegrees, .1f, 4f) * Mathf.Deg2Rad);
             float best = float.PositiveInfinity;
-            for (int i = 0; i < rivals.Length; i++)
+            int total = rivals.Length + (massBots != null ? massBots.ProxySlots : 0);
+            for (int i = 0; i < total; i++)
             {
-                var rival = rivals[i];
+                var rival = i < rivals.Length ? rivals[i] :
+                    massBots.PhysicalProxy(i - rivals.Length);
                 if (rival == null || !rival.IsAlive || !rival.gameObject.activeInHierarchy)
                     continue;
                 Vector3 candidate = rival.transform.position + Vector3.up * 1.08f;
@@ -652,9 +709,10 @@ namespace Aaris.MapReview
                 wait > 0f ? "CLOSE IN " + Mathf.CeilToInt(wait) + "s" : "ZONE MOVING";
             // Until a valid rival actually exists, ALIVE 1 incorrectly
             // tells the player the BR has already been won.
-            string participants = spawnComplete
-                ? "ALIVE " + (activeRivals + 1)
-                : "RIVALS " + spawnedRivals + "/" + RivalCount;
+            int logical = massBots != null ? massBots.AliveCount : 0;
+            string participants = spawnComplete && massBots != null && massBots.IsReady
+                ? "ALIVE " + (activeRivals + logical + 1)
+                : "RIVALS " + (spawnedRivals + logical) + "/100";
             status.text = participants +
                 "    ZONE " + Mathf.CeilToInt(radius) + "m    " + label;
         }
@@ -814,7 +872,9 @@ namespace Aaris.MapReview
         // Kept per rival: retain correct closest-visible-target selection
         // without RaycastAll allocations when >20 cover hits overlap.
         private readonly RaycastHit[] crowdedSightHits = new RaycastHit[128];
-        private float nextThink, nextAttack, verticalSpeed, turnOffset, visualBlend;
+        private float nextThink, nextAttack, nextTargetScan, verticalSpeed, turnOffset, visualBlend;
+        private AarisMassBotPopulation streamedPopulation;
+        private int streamedRecordIndex = -1;
         // Outside the combat range, save mobile CPU by updating far capsules
         // at 10 Hz. Keep near opponents at full gameplay frame rate.
         private const float FarSimulationDistance = 90f;
@@ -832,6 +892,37 @@ namespace Aaris.MapReview
         private AnimationMixerPlayable animations;
         private bool hasAnimations;
         public bool IsAlive => health != null && !health.IsDead;
+        internal AarisOfflineHealth Health => health;
+        internal float CurrentHP => health != null ? health.CurrentHealth : 0f;
+
+        internal void ResumeStreamed(AarisMassBotPopulation roster, int record,
+            Vector3 location, float hitpoints)
+        {
+            streamedPopulation = roster;
+            streamedRecordIndex = record;
+            transform.position = location;
+            if (capsule != null) capsule.enabled = true;
+            health.ResetForStreamingRival(hitpoints);
+            target = owner.PlayerActor;
+            nextTargetScan = Time.time;
+            nextThink = Time.time;
+            nextAttack = Time.time + .5f;
+            lastSimulationTime = Time.time;
+            nextFarSimulation = Time.time;
+            if (!gameObject.activeSelf) gameObject.SetActive(true);
+        }
+
+        internal void SuspendForStreaming()
+        {
+            if (gameObject.activeSelf) gameObject.SetActive(false);
+            streamedRecordIndex = -1;
+            streamedPopulation = null;
+        }
+
+        internal void ReceiveSimulatedHit(float amount)
+        {
+            if (health != null && !health.IsDead) health.ApplyDamage(amount, null);
+        }
 
         internal void Initialize(AarisOfflineBRDirector director, AarisOfflineHealth self,
             Transform victim, AarisOfflineHealth victimHealth, int encounterSlot)
@@ -976,8 +1067,15 @@ namespace Aaris.MapReview
 
         private void Update()
         {
-            if (owner == null || !owner.CanEngage || !IsAlive ||
-                target == null || targetHealth == null || targetHealth.IsDead) return;
+            if (owner == null || !owner.CanEngage || !IsAlive) return;
+            if (Time.time >= nextTargetScan || target == null ||
+                targetHealth == null || targetHealth.IsDead)
+            {
+                nextTargetScan = Time.time + .38f + UnityEngine.Random.Range(0f, .12f);
+                owner.SelectCombatTarget(this, out target, out targetHealth);
+                nextThink = Time.time;
+            }
+            if (target == null || targetHealth == null || targetHealth.IsDead) return;
             Vector3 diff = target.position - transform.position;
             diff.y = 0f;
             float distance = diff.magnitude;
@@ -1019,11 +1117,12 @@ namespace Aaris.MapReview
             // Nearby player contact retains combat priority; distant bots
             // should not ignore a closing circle just to chase the player.
             bool retreat = outsideSafeArea && (distance > 23f || !canSee);
-            bool playerEngager = owner.MayEngagePlayer(this);
+            bool fightingPlayer = target == owner.PlayerActor;
+            bool playerEngager = fightingPlayer && owner.MayEngagePlayer(this);
             Vector3 travelDirection = retreat ? retreatDirection : toward;
             float moveSpeed = retreat ? 3.2f :
                 distance > 12f ? 2.85f : distance < 7f ? -1.15f : 0f;
-            if (!retreat && !playerEngager)
+            if (!retreat && fightingPlayer && !playerEngager)
             {
                 // Non-selected bots circle their own sector. They neither
                 // rush into the player nor consume additional LOS shots.
@@ -1079,7 +1178,7 @@ namespace Aaris.MapReview
                 float wanted = Mathf.Clamp01(groundSpeed / 2.9f);
                 UpdateAnimationBlend(wanted, dt);
             }
-            if (playerEngager && canSee && distance <= 38f &&
+            if ((!fightingPlayer || playerEngager) && canSee && distance <= 38f &&
                 Vector3.Dot(transform.forward, toward) > .84f &&
                 Time.time >= nextAttack && HasSight())
             {
@@ -1148,6 +1247,14 @@ namespace Aaris.MapReview
         private void OnDied(AarisOfflineHealth defeated)
         {
             if (capsule != null) capsule.enabled = false;
+            if (streamedPopulation != null)
+            {
+                var population = streamedPopulation;
+                int record = streamedRecordIndex;
+                population.OnProxyDefeated(this, record);
+                SuspendForStreaming();
+                return;
+            }
             if (owner != null) owner.RivalDefeated(this);
             Destroy(gameObject, 1.2f);
         }
