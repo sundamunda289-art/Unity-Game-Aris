@@ -476,6 +476,26 @@ internal static class AdditiveChunkStreamingTests
             Frame(manager, target, 30f + i * .3f, -1000000f);
         Check(ResidentCount(manager) == 0 && SceneManager.loadCount == 0,
             "empty world reconciliation must stay inactive and allocation-free");
+        Check(!(bool)typeof(AarisAdditiveChunkStreamer).GetField(
+                "spatialReady", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(manager),
+            "large spatial index must not allocate all 512 buckets in Awake");
+        Frame(manager, target, 36.0f, -1000000f);
+        Frame(manager, target, 36.3f, -1000000f);
+        Check((bool)typeof(AarisAdditiveChunkStreamer).GetField(
+                "spatialReady", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(manager),
+            "24-cell frame slices must complete without dropping any valid cell");
+        Frame(manager, target, 37.0f, 0f);
+        Check(SceneManager.loadCount == 1,
+            "near player detail must load from the finished spatial index");
+        SceneManager.Finish();
+        Frame(manager, target, 37.3f, 0f);
+        Check(ResidentCount(manager) == 1,
+            "indexed load must retain authoritative scene ownership");
+        Frame(manager, target, 38.0f, -1000000f);
+        Check(SceneManager.unloadCount == 1,
+            "far resident must retire after indexed near/far travel");
+
+
 
         // Sparse externally owned scenes must reconcile in resident order,
         // not by scanning hundreds of inactive authored chunk definitions.
