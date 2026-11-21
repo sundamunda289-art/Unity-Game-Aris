@@ -567,6 +567,77 @@ namespace Aaris.MapReview
         internal bool CanEngage => started && !playerHealth.IsDead &&
             matchEnd != null && !matchEnd.IsFinished;
 
+        // Only the two nearest visible-area rivals may pressure the player.
+        // Everyone else keeps roaming/avoiding cover instead of dog-piling.
+        internal bool MayEngagePlayer(AarisOfflineRival candidate)
+        {
+            if (!CanEngage || candidate == null || !candidate.IsAlive) return false;
+            float candidateSqr = (candidate.transform.position - player.position).sqrMagnitude;
+            if (candidateSqr > 42f * 42f) return false;
+            int nearer = 0;
+            for (int i = 0; i < rivals.Length; i++)
+            {
+                AarisOfflineRival other = rivals[i];
+                if (other == null || other == candidate || !other.IsAlive) continue;
+                float otherSqr = (other.transform.position - player.position).sqrMagnitude;
+                if (otherSqr + .01f < candidateSqr && otherSqr <= 42f * 42f)
+                    nearer++;
+            }
+            return nearer < 2;
+        }
+
+        // Scans only the already-active encounter slots; no scene-wide query.
+        // The first PHYSICAL hit from the camera must be the chosen rival,
+        // which prevents aim assist through walls or unloaded house cover.
+        internal bool TryAcquireAimAssist(Camera view, Transform shooter,
+            float coneDegrees, float maximumDistance, ref RaycastHit[] scratch,
+            out Vector3 aimPoint)
+        {
+            aimPoint = Vector3.zero;
+            if (!CanEngage || view == null || shooter == null || scratch == null)
+                return false;
+            Vector3 eye = view.transform.position;
+            Vector3 forward = view.transform.forward;
+            float cosine = Mathf.Cos(Mathf.Clamp(coneDegrees, .1f, 4f) * Mathf.Deg2Rad);
+            float best = float.PositiveInfinity;
+            for (int i = 0; i < rivals.Length; i++)
+            {
+                var rival = rivals[i];
+                if (rival == null || !rival.IsAlive || !rival.gameObject.activeInHierarchy)
+                    continue;
+                Vector3 candidate = rival.transform.position + Vector3.up * 1.08f;
+                Vector3 delta = candidate - eye;
+                float length = delta.magnitude;
+                if (length < .5f || length > maximumDistance) continue;
+                Vector3 direction = delta / length;
+                float alignment = Vector3.Dot(forward, direction);
+                if (alignment < cosine) continue;
+                int count = AarisPhysicsHitBuffer.Raycast(
+                    new Ray(eye, direction), length + .2f,
+                    Physics.DefaultRaycastLayers, ref scratch, 256,
+                    out RaycastHit[] hits);
+                float firstDistance = float.MaxValue;
+                Collider first = null;
+                for (int h = 0; h < count; h++)
+                {
+                    Collider hit = hits[h].collider;
+                    if (hit == null || hit.transform.IsChildOf(shooter) ||
+                        hits[h].distance >= firstDistance) continue;
+                    firstDistance = hits[h].distance;
+                    first = hit;
+                }
+                if (first == null || !first.transform.IsChildOf(rival.transform))
+                    continue;
+                float score = (1f - alignment) * 100f + length * .0004f;
+                if (score < best)
+                {
+                    best = score;
+                    aimPoint = candidate;
+                }
+            }
+            return best < float.PositiveInfinity;
+        }
+
         private void RefreshStatus(float elapsed)
         {
             if (status == null) return;
@@ -948,9 +1019,17 @@ namespace Aaris.MapReview
             // Nearby player contact retains combat priority; distant bots
             // should not ignore a closing circle just to chase the player.
             bool retreat = outsideSafeArea && (distance > 23f || !canSee);
+            bool playerEngager = owner.MayEngagePlayer(this);
             Vector3 travelDirection = retreat ? retreatDirection : toward;
             float moveSpeed = retreat ? 3.2f :
                 distance > 12f ? 2.85f : distance < 7f ? -1.15f : 0f;
+            if (!retreat && !playerEngager)
+            {
+                // Non-selected bots circle their own sector. They neither
+                // rush into the player nor consume additional LOS shots.
+                travelDirection = Quaternion.Euler(0f, avoidanceHandedness * 85f, 0f) * toward;
+                moveSpeed = distance < 55f ? 1.8f : 2.25f;
+            }
             Vector3 desired = Quaternion.Euler(0f, turnOffset, 0f) *
                 travelDirection * moveSpeed;
             if (canSee && !retreat) desired *= .23f; // Hold to fire without skating.
@@ -1000,7 +1079,7 @@ namespace Aaris.MapReview
                 float wanted = Mathf.Clamp01(groundSpeed / 2.9f);
                 UpdateAnimationBlend(wanted, dt);
             }
-            if (canSee && distance <= 38f &&
+            if (playerEngager && canSee && distance <= 38f &&
                 Vector3.Dot(transform.forward, toward) > .84f &&
                 Time.time >= nextAttack && HasSight())
             {
