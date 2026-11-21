@@ -24,7 +24,8 @@ namespace Aaris.MapReview
         private Canvas canvas;
         private RectTransform safeRoot;
         private Text healthLabel, scopeLabel, directionLabel;
-        private Image healthFill, flash, reticle;
+        private Image healthFill, flash, reticle, twoXRing, fourXRing;
+        private readonly Image[] fourXLines = new Image[4];
         private int lastHealth = -1, lastMaximum = -1, labelCursor;
         private float flashUntil, directionUntil, nextAim, nextSafeArea, nextDirectorLookup;
         private Vector2 previousScreen;
@@ -161,6 +162,33 @@ namespace Aaris.MapReview
                 // Children are independent to keep every element raycast-free.
                 strokes[i] = stroke;
             }
+            // Zero new meshes or cameras while ADS: prebuilt transparent
+            // 2x ring and finer 4x reticle share the same safe-area canvas.
+            twoXRing = MakeImage(safeRoot, "2X scope optical ring", Color.white);
+            twoXRing.sprite = AarisHudGlyphs.Ring;
+            twoXRing.rectTransform.anchorMin = twoXRing.rectTransform.anchorMax =
+                new Vector2(.5f, .5f);
+            twoXRing.rectTransform.sizeDelta = new Vector2(84f, 84f);
+            twoXRing.enabled = false;
+            fourXRing = MakeImage(safeRoot, "4X precision ring", Color.white);
+            fourXRing.sprite = AarisHudGlyphs.Ring;
+            fourXRing.rectTransform.anchorMin = fourXRing.rectTransform.anchorMax =
+                new Vector2(.5f, .5f);
+            fourXRing.rectTransform.sizeDelta = new Vector2(122f, 122f);
+            fourXRing.enabled = false;
+            for (int i = 0; i < fourXLines.Length; i++)
+            {
+                Image line = MakeImage(safeRoot, "4X precision hash", Color.white);
+                RectTransform cross = line.rectTransform;
+                cross.anchorMin = cross.anchorMax = new Vector2(.5f, .5f);
+                cross.sizeDelta = i < 2 ? new Vector2(17f, 2f) : new Vector2(2f, 17f);
+                cross.anchoredPosition = i == 0 ? new Vector2(-41f, 0f) :
+                    i == 1 ? new Vector2(41f, 0f) :
+                    i == 2 ? new Vector2(0f, 41f) : new Vector2(0f, -41f);
+                line.enabled = false;
+                fourXLines[i] = line;
+            }
+
             scopeLabel = MakeText(safeRoot, "Scope tier", 15,
                 TextAnchor.MiddleCenter, new Color(.92f, .96f, 1f, .95f));
             var sr = scopeLabel.rectTransform;
@@ -283,12 +311,21 @@ namespace Aaris.MapReview
             if (gun == null || health.IsDead || Time.timeScale <= 0f)
             {
                 scopeLabel.text = "NO SCOPE";
+                if (twoXRing != null) twoXRing.enabled = false;
+                if (fourXRing != null) fourXRing.enabled = false;
+                for (int i = 0; i < fourXLines.Length; i++)
+                    if (fourXLines[i] != null) fourXLines[i].enabled = false;
                 SetReticleColor(Color.white);
                 return;
             }
             var spec = gun.Spec;
             int tier = spec.category == "Sniper" || spec.adsFov <= 25f ? 4 :
                 spec.adsFov <= 44f ? 2 : 0;
+            bool zoomed = inventory.Aiming;
+            twoXRing.enabled = zoomed && tier == 2;
+            fourXRing.enabled = zoomed && tier == 4;
+            for (int i = 0; i < fourXLines.Length; i++)
+                fourXLines[i].enabled = zoomed && tier == 4;
             string scopeText = tier == 4 ? "4X SCOPE" :
                 tier == 2 ? "2X SCOPE" : "NO SCOPE";
             if (scopeLabel.text != scopeText) scopeLabel.text = scopeText;
@@ -343,6 +380,10 @@ namespace Aaris.MapReview
             if (reticle == null || reticle.color == color) return;
             reticle.color = color;
             for (int i = 0; i < strokes.Length; i++) strokes[i].color = color;
+            if (twoXRing != null) twoXRing.color = color;
+            if (fourXRing != null) fourXRing.color = color;
+            for (int i = 0; i < fourXLines.Length; i++)
+                if (fourXLines[i] != null) fourXLines[i].color = color;
         }
 
         private void LateUpdate()
