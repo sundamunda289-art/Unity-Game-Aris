@@ -53,7 +53,8 @@ class LootGridRegression(unittest.TestCase):
                           SOURCE.index("private void EnsureStarterLoot(")]
         check = "(spot - playerPosition).sqrMagnitude > ReleaseMetres * ReleaseMetres"
         self.assertLess(authored.index("TryResolveNearCandidate("), authored.index(check))
-        self.assertLess(authored.index(check), authored.index('new GameObject("Loot "'))
+        self.assertLess(authored.index(check), authored.index("TryReuseLootVisual(state, i,"))
+        self.assertLess(authored.index(check), authored.index("new GameObject(visualName)"))
 
     def test_each_authored_indoor_home_has_at_least_one_planned_slot(self):
         # Static/source-level contract plus independent seeded simulation;
