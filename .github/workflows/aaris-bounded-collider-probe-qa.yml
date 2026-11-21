@@ -63,12 +63,18 @@ jobs:
           from tree_sitter import Language, Parser
           import tree_sitter_c_sharp
           parser=Parser(Language(tree_sitter_c_sharp.language()))
-          for name in ['Assets/AarisWorld/Scripts/AarisNearbyColliders.cs',
-                       os.path.join(os.environ['RUNNER_TEMP'], 'BoundedColliderProbeTests.generated.cs')]:
-              path=Path(name)
-              data=path.read_bytes()
-              assert not parser.parse(data).root_node.has_error, name
-              assert all(line==line.rstrip() for line in data.decode().splitlines()), name
+          # Production Unity script uses the syntax parser; generated harness
+          # has already been compiled and executed by Mono above. Do not
+          # double-gate that valid stub source on parser-specific grammar.
+          name='Assets/AarisWorld/Scripts/AarisNearbyColliders.cs'
+          data=Path(name).read_bytes()
+          assert not parser.parse(data).root_node.has_error, name
+          assert all(line==line.rstrip() for line in data.decode().splitlines()), name
+          generated=Path(os.environ['RUNNER_TEMP']) / 'BoundedColliderProbeTests.generated.cs'
+          text=generated.read_text()
+          assert '/* PROBE_BODY */' not in text
+          assert '/* FINITE_BODY */' not in text
+          assert '/* PROBE_CAP */' not in text
           template=Path('Tools/Validation/BoundedColliderProbeTests.cs')
           assert all(line==line.rstrip() for line in template.read_text().splitlines())
           print('BOUNDED_COLLIDER_PROBE_CSHARP_PARSE_PASS')
