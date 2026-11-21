@@ -1,0 +1,70 @@
+name: Android bounded collider probe QA
+
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisNearbyColliders.cs'
+      - 'Tools/Validation/BoundedColliderProbeTests.cs'
+      - 'Tools/Validation/run_bounded_collider_probe_csharp.py'
+      - '.github/workflows/aaris-bounded-collider-probe-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisNearbyColliders.cs'
+      - 'Tools/Validation/BoundedColliderProbeTests.cs'
+      - 'Tools/Validation/run_bounded_collider_probe_csharp.py'
+      - '.github/workflows/aaris-bounded-collider-probe-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  actual-probe-body:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate existing collider safety and wide-probe source
+        run: |
+          python3 Tools/Validation/test_android_oversized_collider_grid.py
+          python3 Tools/Validation/test_android_collider_grid_lifecycle.py
+          python3 Tools/Validation/test_android_collider_wallclock_budget.py
+          python3 - <<'PY'
+          from pathlib import Path
+          code = Path('Assets/AarisWorld/Scripts/AarisNearbyColliders.cs').read_text()
+          body = code.split('internal bool HasPotentialInactiveObstacle(', 1)[1].split('private void OnEnable()', 1)[0]
+          assert 'MaxCellsPerProbe = 64' in code
+          assert 'long width = (long)lastX - firstX + 1;' in body
+          assert 'width * depth > MaxCellsPerProbe' in body
+          assert body.index('for (int i = 0; i < obstacles.Length; i++)') < body.index('for (int xCell = firstX;')
+          assert 'if (!Finite(probeMin) || !Finite(probeMax)) return true;' in body
+          print('BOUNDED_COLLIDER_PROBE_SOURCE_CONTRACT_PASS')
+          PY
+      - name: Compile and execute production probe under 1650+ randomized cases
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends mono-mcs
+          python3 Tools/Validation/run_bounded_collider_probe_csharp.py
+      - name: Parse touched C-sharp files and Python syntax
+        run: |
+          python3 -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
+          python3 - <<'PY'
+          from pathlib import Path
+          from tree_sitter import Language, Parser
+          import tree_sitter_c_sharp
+          parser=Parser(Language(tree_sitter_c_sharp.language()))
+          for name in ['Assets/AarisWorld/Scripts/AarisNearbyColliders.cs',
+                       'Tools/Validation/BoundedColliderProbeTests.cs']:
+              path=Path(name)
+              data=path.read_bytes()
+              assert not parser.parse(data).root_node.has_error, name
+              assert all(line==line.rstrip() for line in data.decode().splitlines()), name
+          print('BOUNDED_COLLIDER_PROBE_CSHARP_PARSE_PASS')
+          PY
+          python3 -m py_compile Tools/Validation/run_bounded_collider_probe_csharp.py
