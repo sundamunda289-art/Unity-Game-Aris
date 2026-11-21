@@ -16,7 +16,9 @@ namespace Aaris.MapReview
         [SerializeField, Range(0f, 1f)] private float helmetProtection = 0.35f;
         private float current, helmetDurability;
         private bool dead;
+        private GameObject lastAttacker;
 
+        public GameObject KillingAttacker => dead ? lastAttacker : null;
         public float CurrentHealth => current;
         public float MaximumHealth => maximumHealth;
         public bool IsDead => dead;
@@ -59,6 +61,7 @@ namespace Aaris.MapReview
             // a zero-HP notification must already report IsDead = true.
             if (current <= 0f) dead = true;
             float actual = previous - current;
+            if (actual > 0f) lastAttacker = attacker;
             if (actual > 0f) Damaged?.Invoke(this, actual, attacker);
             HealthChanged?.Invoke(this);
             if (!dead) return;
@@ -73,6 +76,7 @@ namespace Aaris.MapReview
             current = Mathf.Clamp(hitpoints, 1f, maximumHealth);
             helmetDurability = 0f;
             dead = false;
+            lastAttacker = null;
             HealthChanged?.Invoke(this);
         }
 
