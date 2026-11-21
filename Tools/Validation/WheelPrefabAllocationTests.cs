@@ -20,6 +20,8 @@ namespace UnityEngine
         public Vector3(float x,float y,float z) { this.x=x;this.y=y;this.z=z; }
         public static Vector3 operator -(Vector3 a,Vector3 b) =>
             new Vector3(a.x-b.x,a.y-b.y,a.z-b.z);
+        public static Vector3 operator *(Vector3 v,float n) =>
+            new Vector3(v.x*n,v.y*n,v.z*n);
         public static Vector3 operator *(Quaternion q,Vector3 v) => v;
     }
     public struct Quaternion
