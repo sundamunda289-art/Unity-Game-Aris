@@ -302,7 +302,12 @@ namespace Aaris.MapReview
             // Refresh after three metres of movement (and at least every second).
             // Geometry stays active 55m away; 3m travel cannot leave a
             // player without nearby solid walls. Teleports call RefreshNow().
-            if ((target.position - lastPosition).sqrMagnitude >= RefreshTravelSquared ||
+            // Only horizontal movement changes nearby X/Z collider cells.
+            // Vertical jumps and falls still get the periodic 1 Hz safety poll.
+            Vector3 current = target.position;
+            float dx = current.x - lastPosition.x;
+            float dz = current.z - lastPosition.z;
+            if (dx * dx + dz * dz >= RefreshTravelSquared ||
                 Time.unscaledTime >= nextCheck) RefreshNow(false);
         }
         // Explicit teleport and startup calls still synchronize immediately.
