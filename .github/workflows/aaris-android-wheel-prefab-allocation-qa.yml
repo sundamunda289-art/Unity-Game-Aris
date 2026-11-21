@@ -1,0 +1,63 @@
+name: Android wheel prefab allocation QA
+
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisVehicleMotor.cs'
+      - 'Tools/Validation/test_android_wheel_prefab_allocations.py'
+      - 'Tools/Validation/run_wheel_prefab_allocation_csharp.py'
+      - 'Tools/Validation/WheelPrefabAllocationTests.cs'
+      - '.github/workflows/aaris-android-wheel-prefab-allocation-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisVehicleMotor.cs'
+      - 'Tools/Validation/test_android_wheel_prefab_allocations.py'
+      - 'Tools/Validation/run_wheel_prefab_allocation_csharp.py'
+      - 'Tools/Validation/WheelPrefabAllocationTests.cs'
+      - '.github/workflows/aaris-android-wheel-prefab-allocation-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  wheel-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify wheel physics, imported models and visual contracts
+        run: |
+          python3 Tools/Validation/test_android_wheel_prefab_allocations.py
+          python3 Tools/Validation/test_vehicle_visible_body_guard.py
+          python3 Tools/Validation/test_vehicle_wheel_center_pivot.py
+          python3 Tools/Validation/test_vehicle_axle_road_failsafe.py
+          python3 Tools/Validation/test_android_vehicle_spawn_allocation_budget.py
+          python3 Tools/Validation/check_vehicle_system.py
+      - name: Compile and run exact production AttachWheelModels under Unity API stubs
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends mono-mcs
+          python3 Tools/Validation/run_wheel_prefab_allocation_csharp.py
+      - name: Parse production C-sharp and validate Python test syntax
+        run: |
+          python3 -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
+          python3 - <<'PY'
+          from pathlib import Path
+          from tree_sitter import Language, Parser
+          import tree_sitter_c_sharp
+          parser = Parser(Language(tree_sitter_c_sharp.language()))
+          path = Path('Assets/AarisWorld/Scripts/AarisVehicleMotor.cs')
+          data = path.read_bytes()
+          assert not parser.parse(data).root_node.has_error, path
+          assert all(line == line.rstrip() for line in data.decode('utf8').splitlines()), path
+          print('WHEEL_MOTOR_PRODUCTION_CSHARP_PARSE_PASS')
+          PY
+          python3 -m py_compile Tools/Validation/test_android_wheel_prefab_allocations.py \
+            Tools/Validation/run_wheel_prefab_allocation_csharp.py
