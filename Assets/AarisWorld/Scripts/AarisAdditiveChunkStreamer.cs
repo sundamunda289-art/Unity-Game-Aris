@@ -46,6 +46,14 @@ namespace Aaris.MapReview
         private AsyncOperation inFlight;
         private int inFlightCell = -1;
         private bool inFlightLoad;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // SceneManager operations consume native scene integration/retirement
+        // even across different streamer components. One globally shared
+        // in-flight operation prevents simultaneous additive scene transitions.
+        // No GameObjects, art, terrain, resolution or collider ranges change.
+        private static AsyncOperation sharedSceneOperation;
+        private static int sharedSceneCompletionFrame = -1;
+#endif
         private bool previousSampleValid;
         // Round-robin check of one resident scene per poll; other scene
         // managers can retire an authored cell after this streamer loaded it.
@@ -127,11 +135,33 @@ namespace Aaris.MapReview
                 else
                     AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();
 #endif
+#if UNITY_ANDROID && !UNITY_EDITOR
+                if (ReferenceEquals(sharedSceneOperation, inFlight))
+                {
+                    sharedSceneOperation = null;
+                    sharedSceneCompletionFrame = Time.frameCount;
+                }
+#endif
                 inFlight = null;
                 inFlightCell = -1;
                 nextTransitionAt = now + transitionCooldownSeconds;
                 return;
             }
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Another chunk manager may be loading or retiring a scene.
+            // Observe its completion without native work in the same frame.
+            // The owning streamer still reconciles its own in-flight state.
+            if (sharedSceneOperation != null)
+            {
+                if (sharedSceneOperation.isDone)
+                {
+                    sharedSceneOperation = null;
+                    sharedSceneCompletionFrame = Time.frameCount;
+                }
+                return;
+            }
+            if (sharedSceneCompletionFrame == Time.frameCount) return;
+#endif
             if (now < nextPollAt) return;
             nextPollAt = now + Mathf.Max(0.05f, pollSeconds);
             ReconcileOneLoadedChunk();
@@ -303,6 +333,9 @@ namespace Aaris.MapReview
                 // unrelated optional imports/diagnostics off this native work
                 // without pausing allowSceneActivation or Unity's IO queue.
                 if (load) AarisMobileStreamingFrameGate.TrackAdditiveSceneLoad(operation);
+#endif
+#if UNITY_ANDROID && !UNITY_EDITOR
+                sharedSceneOperation = operation;
 #endif
                 inFlight = operation;
                 inFlightCell = index;
