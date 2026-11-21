@@ -2454,7 +2454,23 @@ namespace Aaris.MapReview
                         Mathf.InverseLerp(0.18f, 0.60f, effectiveProneBlend)) *
                         (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(
                             0.96f, 0.995f, effectiveProneBlend)));
-                    transitionKneeSideTurn = 80f *
+                    // Large retargeted legs need more bend-circle rotation
+                    // during the *entering* prone crossfade. Scale from the
+                    // ACTUAL thigh length squared, not an FBX-specific angle;
+                    // the validated shorter rig retains the original 80deg.
+                    // Do not change settled prone, return-to-stand or pivots.
+                    float enteringProneLongRig = prone && !crouching &&
+                        effectiveProneBlend > 0.20f &&
+                        effectiveProneBlend < 0.82f &&
+                        leftThigh != null && leftShin != null
+                        ? Mathf.SmoothStep(0f, 1f,
+                            Mathf.InverseLerp(0.18f, 0.24f,
+                                (leftShin.position -
+                                 leftThigh.position).sqrMagnitude))
+                        : 0f;
+                    float enteringProneTurnDegrees =
+                        Mathf.Lerp(80f, 170f, enteringProneLongRig);
+                    transitionKneeSideTurn = enteringProneTurnDegrees *
                         Mathf.Max(crouchEntry, proneTransition) *
                         kneeStillness * kneeTurnStability;
                 }
