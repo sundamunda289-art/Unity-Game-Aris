@@ -1,0 +1,63 @@
+name: Android authored vehicle validation scratch QA
+
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisVehicleWorld.cs'
+      - 'Tools/Validation/AuthoredVehicleValidationScratchTests.cs'
+      - 'Tools/Validation/run_authored_vehicle_validation_scratch_csharp.py'
+      - 'Tools/Validation/test_android_authored_vehicle_validation_scratch.py'
+      - '.github/workflows/aaris-android-authored-validation-scratch-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisVehicleWorld.cs'
+      - 'Tools/Validation/AuthoredVehicleValidationScratchTests.cs'
+      - 'Tools/Validation/run_authored_vehicle_validation_scratch_csharp.py'
+      - 'Tools/Validation/test_android_authored_vehicle_validation_scratch.py'
+      - '.github/workflows/aaris-android-authored-validation-scratch-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  imported-car-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Preserve body size, lamp fit, road safety and wheel identity
+        run: |
+          python3 Tools/Validation/test_android_authored_vehicle_validation_scratch.py
+          python3 Tools/Validation/test_android_authored_wheel_name_buffer.py
+          python3 Tools/Validation/test_vehicle_visual_fidelity.py
+          python3 Tools/Validation/test_vehicle_axle_road_failsafe.py
+          python3 Tools/Validation/test_vehicle_real_metre_fleet_fit.py
+          python3 Tools/Validation/check_vehicle_system.py
+      - name: Compile exact production body and wheel validation methods
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends mono-mcs
+          python3 Tools/Validation/run_authored_vehicle_validation_scratch_csharp.py
+      - name: Parse production Unity C-sharp and Python test syntax
+        run: |
+          python3 -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
+          python3 - <<'PY'
+          from pathlib import Path
+          from tree_sitter import Language, Parser
+          import tree_sitter_c_sharp
+          parser=Parser(Language(tree_sitter_c_sharp.language()))
+          path=Path('Assets/AarisWorld/Scripts/AarisVehicleWorld.cs')
+          source=path.read_bytes()
+          assert not parser.parse(source).root_node.has_error,path
+          assert all(line==line.rstrip() for line in source.decode().splitlines()),path
+          print('AUTHORED_CAR_VALIDATION_PRODUCTION_CSHARP_PARSE_PASS')
+          PY
+          python3 -m py_compile Tools/Validation/test_android_authored_vehicle_validation_scratch.py \
+            Tools/Validation/run_authored_vehicle_validation_scratch_csharp.py
