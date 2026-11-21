@@ -19,6 +19,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           lfs: false
+          fetch-depth: 2
           persist-credentials: false
       - name: Compile evidence auditor Python
         run: |
