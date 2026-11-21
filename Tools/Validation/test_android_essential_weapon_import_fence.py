@@ -51,7 +51,7 @@ class EssentialWeaponImportFence(unittest.TestCase):
         self.assertIn("TrackEssentialAudioLoad(audio);", HARNESS)
         self.assertIn("TrackEssentialWeaponLoad(weapon);", HARNESS)
         self.assertIn("Configure(8192, \"Adreno 730\");", HARNESS)
-        self.assertIn("DiagnosticImportFence(); EssentialWeaponFence(); Pressure();", HARNESS)
+        self.assertIn("DiagnosticImportFence(); EssentialWeaponFence(); EssentialLootAndJsonParseFence(); Pressure();", HARNESS)
 
 
 if __name__ == "__main__":
