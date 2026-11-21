@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -72,9 +73,19 @@ namespace Aaris.MapReview
             trackedResidentIndices = new int[chunks.Length];
             trackedResidentSlots = new int[chunks.Length];
             string hostPath = gameObject.scene.path;
+            // A large authored partition can contain thousands of cells.
+            // Preserve the old zero-allocation tiny-scene path, but avoid the
+            // quadratic duplicate scan during cold boot of large manifests.
+            // Record even invalid earlier cells: the original scan considered
+            // all preceding scene paths when rejecting duplicates.
+            HashSet<string> seenPaths = chunks.Length >= 16
+                ? new HashSet<string>(chunks.Length, StringComparer.Ordinal)
+                : null;
             for (int i = 0; i < chunks.Length; i++)
             {
                 Chunk cell = chunks[i];
+                bool duplicateInIndex = cell != null && seenPaths != null &&
+                                        !seenPaths.Add(cell.scenePath);
                 if (cell == null || string.IsNullOrEmpty(cell.scenePath) ||
                     cell.scenePath == hostPath ||
                     cell.halfExtents.x <= 0f || cell.halfExtents.y <= 0f ||
@@ -87,10 +98,13 @@ namespace Aaris.MapReview
                     Debug.LogWarning("AARIS_CHUNK_INVALID: chunk must be a separate built scene");
                     continue;
                 }
-                bool duplicate = false;
-                for (int j = 0; j < i; j++)
-                    if (chunks[j] != null && chunks[j].scenePath == cell.scenePath)
-                    { duplicate = true; break; }
+                bool duplicate = duplicateInIndex;
+                if (seenPaths == null)
+                {
+                    for (int j = 0; j < i; j++)
+                        if (chunks[j] != null && chunks[j].scenePath == cell.scenePath)
+                        { duplicate = true; break; }
+                }
                 if (duplicate)
                 {
                     Debug.LogWarning("AARIS_CHUNK_DUPLICATE: " + cell.scenePath);
