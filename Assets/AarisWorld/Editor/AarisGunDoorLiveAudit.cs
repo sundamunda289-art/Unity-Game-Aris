@@ -212,6 +212,7 @@ namespace Aaris.MapReview.Editor
             CameraClearFlags previousClear = camera.clearFlags;
             Color previousBackground = camera.backgroundColor;
             float previousFov = camera.fieldOfView;
+            float previousFarClip = camera.farClipPlane;
             Texture2D pixels = null;
             try
             {
@@ -236,6 +237,12 @@ namespace Aaris.MapReview.Editor
                     camera.backgroundColor = new Color(.12f, .16f, .19f, 1f);
                 }
                 camera.fieldOfView = 54f;
+                // Screenshot-only culling budget: a 2 km terrain scene can
+                // stall llvmpipe CPU camera.Render even for a 960x540 crop.
+                // Ground-loot models are within a few metres of the camera;
+                // keep near geometry and real URP materials while avoiding
+                // irrelevant kilometre-distant draw calls. Restore afterward.
+                camera.farClipPlane = showTerrain ? 20f : 8f;
                 camera.targetTexture = output;
                 camera.Render();
                 RenderTexture.active = output;
@@ -257,6 +264,7 @@ namespace Aaris.MapReview.Editor
                 camera.clearFlags = previousClear;
                 camera.backgroundColor = previousBackground;
                 camera.fieldOfView = previousFov;
+                camera.farClipPlane = previousFarClip;
                 camera.targetTexture = previousTarget;
                 RenderTexture.active = previousActive;
                 if (pixels != null) Object.DestroyImmediate(pixels);
