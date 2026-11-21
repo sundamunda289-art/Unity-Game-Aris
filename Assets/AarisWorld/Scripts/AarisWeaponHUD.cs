@@ -26,6 +26,7 @@ namespace Aaris.MapReview
         private RectTransform safeRoot;
         private Vector2 previousScreen;
         private Rect previousSafe;
+        private float nextSafeAreaPollAt;
         private int shownMagazine = -1, shownReserve = -1;
         private bool shownReloading;
 
@@ -221,8 +222,11 @@ namespace Aaris.MapReview
 
         private void UpdateArea(bool force)
         {
-            Rect safe = Screen.safeArea;
             Vector2 screen = new Vector2(Screen.width, Screen.height);
+            if (!force && previousScreen == screen &&
+                Time.unscaledTime < nextSafeAreaPollAt) return;
+            nextSafeAreaPollAt = Time.unscaledTime + 0.4f;
+            Rect safe = Screen.safeArea;
             if (!force && previousScreen == screen && previousSafe == safe) return;
             previousScreen = screen;
             previousSafe = safe;
