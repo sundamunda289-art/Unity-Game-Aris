@@ -805,15 +805,33 @@ namespace Aaris.MapReview
             return false;
         }
 
+        // Imported high-detail vehicles resolve four semantic wheel names
+        // when facing the model and again when fitting tyre ground contact.
+        // Reuse the same Transform list instead of allocating eight arrays.
+        [ThreadStatic] private static List<Transform> namedWheelQueryScratch;
+
         private static Transform FindNamedWheel(Transform root, string token)
         {
             if (root == null) return null;
-            Transform[] all = root.GetComponentsInChildren<Transform>(true);
-            for (int i = 0; i < all.Length; i++)
-                if (all[i] != null &&
-                    all[i].name.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0)
-                    return all[i];
-            return null;
+            List<Transform> all = namedWheelQueryScratch;
+            if (all == null)
+                namedWheelQueryScratch = all = new List<Transform>(64);
+            try
+            {
+                all.Clear();
+                root.GetComponentsInChildren<Transform>(true, all);
+                for (int i = 0; i < all.Count; i++)
+                    if (all[i] != null &&
+                        all[i].name.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0)
+                        return all[i];
+                return null;
+            }
+            finally
+            {
+                // Never retain a streamed-out FBX hierarchy after the lookup,
+                // including early matches and unexpected native query errors.
+                all.Clear();
+            }
         }
 
         // Validate only imported high-fidelity art. The legacy fallback
