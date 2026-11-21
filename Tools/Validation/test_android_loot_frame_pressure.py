@@ -17,8 +17,11 @@ MOBILE = (ROOT / "Assets/AarisWorld/Scripts/AarisMobileRuntime.cs").read_text(
 )
 
 
-def budget(known_budget_phone, smooth_delta_seconds):
-    return 1 if known_budget_phone and smooth_delta_seconds > 1 / 45 else 2
+def budget(known_budget_phone, smooth_delta_seconds, target_fps=45):
+    # Same 8% jitter allowance as vehicle streaming and the shared frame gate.
+    return 1 if known_budget_phone and (
+        smooth_delta_seconds > (1 / target_fps) * 1.08
+    ) else 2
 
 
 class AndroidLootFramePressureTests(unittest.TestCase):
@@ -29,7 +32,11 @@ class AndroidLootFramePressureTests(unittest.TestCase):
         self.assertIn("private const int StreamFramesPerRefresh = 3;", SRC)
         self.assertIn("int modelBuildBudget = MaximumBuildAttemptsPerFrame;", SRC)
         self.assertIn("if (budgetAndroidLootStreaming &&", SRC)
-        self.assertIn("Time.smoothDeltaTime > (1f / 45f))", SRC)
+        self.assertIn("Time.smoothDeltaTime >", SRC)
+        self.assertIn(
+            "AarisMobileStreamingFrameGate.CurrentPacedFrameBudgetSeconds() * 1.08f",
+            SRC)
+        self.assertNotIn("Time.smoothDeltaTime > (1f / 45f)", SRC)
         self.assertIn("modelBuildBudget = 1;", SRC)
         init = SRC.split("private void Initialize()", 1)[1].split(
             "private IEnumerator CompleteAndroidInitialization", 1
@@ -91,6 +98,17 @@ class AndroidLootFramePressureTests(unittest.TestCase):
         self.assertEqual(budget(True, 0.050), 1)
         self.assertEqual(budget(True, 1 / 45), 2)
         self.assertEqual(budget(True, 0.012), 2)
+
+    def test_30_fps_healthy_is_not_always_throttled_by_45_fps_constant(self):
+        for target in (30, 45, 60, 90):
+            healthy = 1.0 / target
+            self.assertEqual(budget(True, healthy, target), 2)
+            self.assertEqual(budget(True, healthy * 1.06, target), 2)
+            self.assertEqual(budget(True, healthy * 1.16, target), 1)
+            self.assertEqual(budget(False, healthy * 2.5, target), 2)
+        self.assertEqual(budget(True, 0.034, 30), 2)
+        self.assertEqual(budget(True, 0.034, 60), 1)
+        self.assertEqual(budget(True, 0.051, 30), 1)
 
 
 if __name__ == "__main__":
