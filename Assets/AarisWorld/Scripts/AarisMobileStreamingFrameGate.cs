@@ -43,7 +43,12 @@ namespace Aaris.MapReview
         // hierarchy construction resumes. Essential gameplay is never gated.
         private const float LongHitchThresholdSeconds = 0.25f;
         private const int LongHitchRecoveryFrames = 3;
+        // Repeated 250ms hitches must not permanently suppress original-detail
+        // vehicles, houses and loot. After six deferred rendered frames, allow
+        // one optional job even if frame pacing has not yet recovered.
+        private const int MaximumLongHitchConsecutiveDeferrals = 6;
         private static int longHitchRecoveryThroughFrame = -1;
+        private static int consecutiveLongHitchDeferrals;
         internal static int ImportSettleDeferredAttempts { get; private set; }
         internal static int PressureDeferredFrames { get; private set; }
         // Essential player rig construction is one high-cost main-thread
@@ -390,11 +395,25 @@ namespace Aaris.MapReview
                 longHitchRecoveryThroughFrame = frame + LongHitchRecoveryFrames;
             if (frame <= longHitchRecoveryThroughFrame)
             {
-                pressureBlockedThisFrame = true;
+                if (consecutiveLongHitchDeferrals < MaximumLongHitchConsecutiveDeferrals)
+                {
+                    consecutiveLongHitchDeferrals++;
+                    pressureBlockedThisFrame = true;
+                    consecutivePressureDeferrals = 0;
+                    PressureDeferredFrames++;
+                    return true;
+                }
+                // The prior logic extended this cooldown indefinitely when
+                // every frame was >=250ms. This single bounded admission is
+                // exempt from the ordinary severe-pressure check below; other
+                // native import/cleanup/physics fences still take precedence.
+                consecutiveLongHitchDeferrals = 0;
+                longHitchRecoveryThroughFrame = -1;
                 consecutivePressureDeferrals = 0;
-                PressureDeferredFrames++;
-                return true;
+                pressureBlockedThisFrame = false;
+                return false;
             }
+            consecutiveLongHitchDeferrals = 0;
             float budget = CurrentFrameBudgetSeconds(frame);
             // Allow 8% pacing jitter, but protect the next frame when work has
             // already missed the real hardware-specific presentation budget.
@@ -426,6 +445,7 @@ namespace Aaris.MapReview
             consecutivePhysicsCatchupDeferrals = 0;
             PhysicsCatchupDeferredFrames = 0;
             longHitchRecoveryThroughFrame = -1;
+            consecutiveLongHitchDeferrals = 0;
             effectiveFrameBudgetSeconds = FallbackFrameBudgetSeconds;
             nextFrameBudgetRefresh = -1;
             cachedTargetFrameRate = int.MinValue;
