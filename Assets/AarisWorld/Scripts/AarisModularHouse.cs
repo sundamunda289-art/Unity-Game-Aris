@@ -238,7 +238,7 @@ namespace Aaris.MapReview
         // A pitched silhouette and eaves break the flat box look without
         // transparent surfaces, expensive shaders or extra roof colliders.
         private static void PitchedRoof(Transform root, float width,
-            float depth, float wallHeight)
+            float depth, float wallHeight, AarisOwnedMeshCleanup owned)
         {
             float x = width * .5f + .32f, z = depth * .5f + .34f;
             float baseY = wallHeight + .11f;
@@ -262,6 +262,7 @@ namespace Aaris.MapReview
             for (int i = 0; i < faceCorners.Length; i++)
                 vertices[i] = corners[faceCorners[i]];
             Mesh mesh = new Mesh { name = "Aaris_PitchedRoof" };
+            owned.Track(mesh);
             mesh.vertices = vertices;
             mesh.triangles = new[] {
                 0,1,2, 2,1,3, 4,5,6, 6,5,7, 8,9,10, 11,12,13
@@ -304,7 +305,7 @@ namespace Aaris.MapReview
         // Merge by material once at spawning time, while keeping every
         // original BoxCollider and interactive door/glass renderer intact.
         // Replaces dozens of renderer submissions with a few per house.
-        private static void CombineStaticSurfaces(Transform root)
+        private static void CombineStaticSurfaces(Transform root, AarisOwnedMeshCleanup owned)
         {
             Dictionary<Material, List<CombineInstance>> groups = scratchGroups;
             List<MeshRenderer> originals = scratchOriginals;
@@ -366,6 +367,7 @@ namespace Aaris.MapReview
                 foreach (var pair in groups)
                 {
                     Mesh combined = new Mesh { name = "Aaris_StaticHouse_" + pair.Key.name };
+                    owned.Track(combined);
                     combined.indexFormat = IndexFormat.UInt16;
                     // Copy to an exact-sized array. Repeated house layouts
                     // reuse it instead of allocating through List.ToArray().
@@ -438,6 +440,8 @@ namespace Aaris.MapReview
                 home.transform.SetParent(parent,false);
                 home.transform.SetPositionAndRotation(position,rotation);
                 Transform t=home.transform;
+                // Own only meshes generated for this house, never prefab/shared meshes.
+                AarisOwnedMeshCleanup owned = home.AddComponent<AarisOwnedMeshCleanup>();
                 float h=height-.48f;
                 Box(t,"FloorWithRealCollider",new Vector3(0f,-.075f,0f),
                     new Vector3(width-.18f,.15f,depth-.18f),roof);
@@ -447,7 +451,7 @@ namespace Aaris.MapReview
                 // Retain the original safe collision plane but render a
                 // more realistic pitched roof instead of a thick flat cube.
                 roofCollision.GetComponent<MeshRenderer>().enabled = false;
-                PitchedRoof(t,width,depth,h);
+                PitchedRoof(t,width,depth,h,owned);
                 Box(t,"WestSolidWall",new Vector3(-width*.5f,h*.5f,0f),
                     new Vector3(WallThickness,h,depth),wall);
                 Box(t,"EastSolidWall",new Vector3(width*.5f,h*.5f,0f),
@@ -466,7 +470,7 @@ namespace Aaris.MapReview
                 Box(t,"FrontPorchRightSupport",
                     new Vector3(1.28f,DoorHeight*.5f,-depth*.5f-.51f),
                     new Vector3(.13f,DoorHeight,.13f),trim,false);
-                CombineStaticSurfaces(t);
+                CombineStaticSurfaces(t,owned);
                 return home;
             }
             finally
