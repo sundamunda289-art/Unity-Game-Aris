@@ -24,7 +24,11 @@ for token in ('Math.Abs(x - centerX)', 'Math.Abs(z - centerZ)',
 assert 'RuntimeInitializeOnLoadMethod' not in streamer  # no auto-bootstrap
 assert 'maxSpeculativeResidentCells = 2;' in streamer
 assert 'speculativeResidentCount >= maxSpeculativeResidentCells' in streamer
-assert 'nearestLoad > entrySquared' in streamer  # only predicted-only loads capped
+assert 'bool loadIsUrgent = false;' in streamer
+assert 'loadIsUrgent = distance <= entrySquared;' in streamer
+assert 'if (unloadCell >= 0 && (loadCell < 0 || !loadIsUrgent))' in streamer
+assert 'if (!loadIsUrgent &&' in streamer  # even predicted-inside priority ties
+assert 'nearestLoad > entrySquared' not in streamer
 assert 'AarisMobileStreamingFrameGate.IsConstrainedDevice()' in streamer
 assert 'AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();' in streamer
 assert streamer.count('AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();') == 2
