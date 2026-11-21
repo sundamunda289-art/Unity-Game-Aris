@@ -2581,7 +2581,33 @@ namespace Aaris.MapReview
                     float rightReach = Vector3.Distance(rightThigh.position,
                         rightShin.position) +
                         Vector3.Distance(rightShin.position, rightFootBone.position);
-                    float commonExtension = Mathf.Min(leftReach, rightReach) * 0.985f;
+                    // A nearly straight horizontal heel goal ignores the
+                    // thigh-to-terrain height difference. Native prone frames
+                    // measured a ~0.703m hip/ankle span against ~0.708m of
+                    // bone reach, then the grounding goal moved the shoe
+                    // another 26-28cm vertically: the full 3D goal becomes
+                    // unreachable and the analytical IK leaves feet floating.
+                    // Spend the same two-bone reach on vertical drop FIRST,
+                    // using the authoritative grounded capsule floor as a
+                    // conservative floor proxy, then extend each heel along
+                    // the existing anatomical body-back direction. The
+                    // existing two raycasts still sample the FINAL shoe X/Z.
+                    // No physics, GC, collider or moving-crawl work added.
+                    float commonReach = Mathf.Min(leftReach, rightReach);
+                    float safeReach = Mathf.Max(0.10f, commonReach - 0.012f);
+                    float capsuleFootY = transform.TransformPoint(
+                        controller.center - Vector3.up *
+                        (controller.height * 0.5f)).y;
+                    float leftDrop = Mathf.Abs(
+                        leftThigh.position.y - capsuleFootY);
+                    float rightDrop = Mathf.Abs(
+                        rightThigh.position.y - capsuleFootY);
+                    float worstDrop = Mathf.Max(leftDrop, rightDrop);
+                    float horizontalReach = Mathf.Sqrt(Mathf.Max(
+                        0.0025f, safeReach * safeReach -
+                        worstDrop * worstDrop));
+                    float commonExtension = Mathf.Min(
+                        commonReach * 0.985f, horizontalReach);
                     Vector3 leftGoal = leftThigh.position + bodyBack * commonExtension;
                     Vector3 rightGoal = rightThigh.position + bodyBack * commonExtension;
                     float leftGround = SupportedAnkleY(leftFootBone, UprightAnkleClearanceMetres,
