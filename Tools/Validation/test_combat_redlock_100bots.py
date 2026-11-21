@@ -28,7 +28,7 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertEqual(by_id["Shotgun"]["scopePower"], 0)
         self.assertIn("AarisOfflineBRDirector.TryAcquireAimTarget", GUN)
         self.assertIn("TryAcquireAimTarget(aimCamera, transform", HUD)
-        self.assertIn("if (closest == null || !closest.transform.IsChildOf(candidate.transform))", BOTS)
+        self.assertIn("if (closest != null && closest.transform.IsChildOf(candidate.transform))", BOTS)
         self.assertIn("shotForward = Vector3.Slerp", GUN)
         self.assertIn('"NO SCOPE"', read("AarisWeaponCatalog.cs"))
         self.assertIn("opticalRing.gameObject.SetActive(showOptic)", HUD)
@@ -62,6 +62,21 @@ class CombatEndToEndContract(unittest.TestCase):
         eligible = [x for x in distances if x < 42.0]
         self.assertEqual(len(sorted(eligible)[:2]), 2)
         self.assertLessEqual(len(sorted(eligible)[:2]), 2)
+
+    def test_visible_two_attacker_selection(self):
+        self.assertIn("distance >= second || !bot.HasPlayerSightForSelection()", BOTS)
+        self.assertIn("private bool HasSightTo(Transform victim)", BOTS)
+        self.assertIn("HasSightTo(playerTarget)", BOTS)
+        candidates = [(4.0, False), (9.0, False), (13.0, True),
+                      (15.0, True), (20.0, True), (45.0, True)]
+        visible = sorted(d for d, seen in candidates if d < 42.0 and seen)
+        self.assertEqual(visible[:2], [13.0, 15.0])
+
+    def test_redlock_retries_visible_candidate_behind_cover(self):
+        self.assertIn("for (int attempt = 0; attempt < 3; attempt++)", BOTS)
+        self.assertIn("bot == rejectedFirst || bot == rejectedSecond", BOTS)
+        self.assertIn("if (attempt == 0) rejectedFirst = candidate;", BOTS)
+        self.assertIn("closest.transform.IsChildOf(candidate.transform)", BOTS)
 
     def test_real_loot_ownership_and_ammo(self):
         self.assertIn("internal bool TryTakeForRival", LOOT)
