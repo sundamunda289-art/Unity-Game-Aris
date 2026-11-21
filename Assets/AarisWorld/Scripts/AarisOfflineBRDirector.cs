@@ -312,7 +312,8 @@ namespace Aaris.MapReview
                         spawnComplete = true;
                         // A blocked/missing spawn map must not loop forever or
                         // report a fake solo victory. Offer a clean restart.
-                        if (spawnedRivals == 0)
+                        if (spawnedRivals == 0 && massBots != null &&
+                            massBots.IsReady && !massBots.HadValidBots)
                             matchEnd.FailMatchSetup();
                         else
                             TryConcludeMatch();
@@ -578,7 +579,7 @@ namespace Aaris.MapReview
                 matchEnd == null || matchEnd.IsFinished) return;
             if (activeRivals + massBots.AliveCount == 0)
             {
-                if (spawnedRivals == 0 && massBots.AliveCount == 0)
+                if (spawnedRivals == 0 && !massBots.HadValidBots)
                     matchEnd.FailMatchSetup();
                 else matchEnd.WinMatch();
             }
