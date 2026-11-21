@@ -324,10 +324,29 @@ namespace Aaris.MapReview.Editor
                 SessionState.SetInt(Key + "LootSites",
                     SessionState.GetInt(Key + "LootSites", 0) + 1);
             if (nearby > 0 && nearestPickup != null)
-                CaptureAuditPhoto("GroundLoot_Site_" + index,
-                    nearestPickup.transform.position + Vector3.up * 0.14f,
-                    player.transform.forward,
+            {
+                // Same real authored gun, camera and angle in both frames.
+                // First temporarily reproduce the previous 4cm root lift
+                // (current outdoor 28cm lift minus 24cm), then restore
+                // production placement for a genuine comparative URP render.
+                Vector3 raisedPosition = nearestPickup.transform.position;
+                Vector3 fixedFocus = raisedPosition + Vector3.up * 0.14f;
+                try
+                {
+                    nearestPickup.transform.position =
+                        raisedPosition - Vector3.up * 0.24f;
+                    CaptureAuditPhoto("GroundLoot_Before_Site_" + index,
+                        fixedFocus, player.transform.forward,
+                        nearestPickup.gameObject.layer);
+                }
+                finally
+                {
+                    nearestPickup.transform.position = raisedPosition;
+                }
+                CaptureAuditPhoto("GroundLoot_After_Site_" + index,
+                    fixedFocus, player.transform.forward,
                     nearestPickup.gameObject.layer);
+            }
             Note("SITE_" + index + "_PICKUPS active=" + active + " mesh=" +
                 models + " within50m=" + nearby + " invalidSize=" + oversize +
                 " longestNearby_m=" + longestNearby.ToString("F3") +
