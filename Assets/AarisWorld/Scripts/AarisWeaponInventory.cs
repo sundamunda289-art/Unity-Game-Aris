@@ -63,6 +63,8 @@ namespace Aaris.MapReview
         public AarisEquippedGun Current => equipped;
         public bool Aiming => aiming;
         public bool HasGun => equipped != null && equipped.Configured && !fistMode;
+        // Optics reflect the same paused/vehicle/flight handoff as real fire input.
+        internal bool CanShowCombatReticle => HasGun && AcceptsPlayerWeaponInput;
         public bool HasStowedGun => stowed != null && stowed.Configured;
         public bool HasAnyGun => equipped != null && equipped.Configured;
         public bool FistMode => fistMode;
