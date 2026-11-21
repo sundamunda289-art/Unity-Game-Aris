@@ -265,11 +265,30 @@ namespace Aaris.MapReview
         // Imported FBX wheel transforms may have valid bounds while their
         // renderer is disabled, forced off, inactive, or missing real geometry.
         // Validate only once at car creation; never query art per physics frame.
+        // Per imported car these queries run for each wheel and the authored
+        // material preflight. Reuse results, not one Renderer[] per wheel.
+        [ThreadStatic] private static List<Renderer> validationRenderers;
+        [ThreadStatic] private static List<Material> validationMaterials;
+
         internal static bool HasRenderableWheelGeometry(Transform wheelRoot)
         {
-            return wheelRoot != null && wheelRoot.gameObject.activeInHierarchy &&
-                HasRenderableVehicleBody(
-                    wheelRoot.GetComponentsInChildren<Renderer>(true));
+            if (wheelRoot == null || !wheelRoot.gameObject.activeInHierarchy)
+                return false;
+            List<Renderer> renderers = validationRenderers;
+            if (renderers == null)
+                validationRenderers = renderers = new List<Renderer>(12);
+            try
+            {
+                renderers.Clear();
+                wheelRoot.GetComponentsInChildren<Renderer>(true, renderers);
+                return HasRenderableVehicleBody(renderers);
+            }
+            finally
+            {
+                // Streamed-out wheel meshes must not remain referenced after
+                // an early return or failed native renderer query.
+                renderers.Clear();
+            }
         }
 
         internal static bool TryGetVisualBoundsLocal(Transform localSpace, out Bounds combined)
@@ -1184,22 +1203,41 @@ namespace Aaris.MapReview
         private static bool HasCompatibleUrpMaterials(GameObject source)
         {
             if (source == null) return false;
-            var renderers = source.GetComponentsInChildren<Renderer>(true);
-            if (renderers.Length == 0) return false;
-            foreach (var renderer in renderers)
+            List<Renderer> renderers = validationRenderers;
+            if (renderers == null)
+                validationRenderers = renderers = new List<Renderer>(12);
+            List<Material> materials = validationMaterials;
+            if (materials == null)
+                validationMaterials = materials = new List<Material>(8);
+            try
             {
-                var materials = renderer.sharedMaterials;
-                if (materials == null || materials.Length == 0) return false;
-                foreach (var material in materials)
+                renderers.Clear();
+                source.GetComponentsInChildren<Renderer>(true, renderers);
+                if (renderers.Count == 0) return false;
+                foreach (var renderer in renderers)
                 {
-                    if (material == null || material.shader == null ||
-                        material.shader.name != "Universal Render Pipeline/Lit" ||
-                        !material.HasProperty("_BaseColor") ||
-                        !material.HasProperty("_Metallic") ||
-                        !material.HasProperty("_Smoothness")) return false;
+                    if (renderer == null) return false;
+                    materials.Clear();
+                    // Unity's GetSharedMaterials(List<Material>) reads the
+                    // exact original shared slots without a new Material[].
+                    renderer.GetSharedMaterials(materials);
+                    if (materials.Count == 0) return false;
+                    foreach (var material in materials)
+                    {
+                        if (material == null || material.shader == null ||
+                            material.shader.name != "Universal Render Pipeline/Lit" ||
+                            !material.HasProperty("_BaseColor") ||
+                            !material.HasProperty("_Metallic") ||
+                            !material.HasProperty("_Smoothness")) return false;
+                    }
                 }
+                return true;
             }
-            return true;
+            finally
+            {
+                materials.Clear();
+                renderers.Clear();
+            }
         }
 
         private int TypeIndex(AarisVehicleType type)
