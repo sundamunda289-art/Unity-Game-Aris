@@ -14,6 +14,7 @@ namespace Aaris.MapReview
                 private RaycastHit[] assistedHits = new RaycastHit[32];
         private readonly Text[] damageLabels = new Text[8];
         private readonly float[] damageUntil = new float[8];
+        private readonly Vector2[] damageOrigin = new Vector2[8];
         private readonly string[] damageStrings = new string[601];
         private readonly string[] healthStrings = new string[201];
         private AarisThirdPersonPlayer player;
@@ -142,8 +143,10 @@ namespace Aaris.MapReview
             trackRect.anchoredPosition = new Vector2(0f, 10f);
             healthFill = MakeImage(trackRect, "Current HP", new Color(.31f, .94f, .55f, 1f));
             Stretch(healthFill.rectTransform);
-            healthFill.type = Image.Type.Filled;
-            healthFill.fillMethod = Image.FillMethod.Horizontal;
+            // UI Image with no sprite uses its built-in white quad.
+            // RectTransform scale, unlike Image.Type.Filled on a null sprite,
+            // reliably reflects HP without allocating a Sprite.
+            healthFill.rectTransform.pivot = new Vector2(0f, .5f);
 
             reticle = MakeImage(safeRoot, "Visible aim lock", Color.white);
             var rr = reticle.rectTransform;
@@ -216,10 +219,12 @@ namespace Aaris.MapReview
                 var rect = text.rectTransform;
                 rect.anchorMin = rect.anchorMax = new Vector2(.5f, .5f);
                 rect.sizeDelta = new Vector2(90f, 35f);
-                rect.anchoredPosition = new Vector2(34f + i % 4 * 11f, 30f + i / 4 * 29f);
+                damageOrigin[i] = new Vector2(34f + i % 4 * 11f, 30f + i / 4 * 29f);
+                rect.anchoredPosition = damageOrigin[i];
                 text.enabled = false;
                 damageLabels[i] = text;
             }
+            AarisHudGlyphs.ApplyCanvasShader(root.transform);
         }
 
         private readonly Image[] strokes = new Image[4];
@@ -250,8 +255,9 @@ namespace Aaris.MapReview
                 lastMaximum = max;
                 healthLabel.text = max == 200 ? healthStrings[hp] :
                     "HP " + hp + " / " + max;
-                healthFill.fillAmount = Mathf.Clamp01(health.CurrentHealth /
-                    Mathf.Max(1f, health.MaximumHealth));
+                healthFill.rectTransform.localScale = new Vector3(
+                    Mathf.Clamp01(health.CurrentHealth /
+                        Mathf.Max(1f, health.MaximumHealth)), 1f, 1f);
             }
         }
 
@@ -287,6 +293,7 @@ namespace Aaris.MapReview
             label.color = headshot ? new Color(1f, .34f, .18f, 1f) :
                 new Color(1f, .88f, .35f, 1f);
             label.enabled = true;
+            label.rectTransform.anchoredPosition = instance.damageOrigin[index];
             instance.damageUntil[index] = Time.unscaledTime + .48f;
         }
 
@@ -412,9 +419,20 @@ namespace Aaris.MapReview
             if (directionLabel != null && directionLabel.enabled &&
                 Time.unscaledTime >= directionUntil) directionLabel.enabled = false;
             for (int i = 0; i < damageLabels.Length; i++)
-                if (damageLabels[i] != null && damageLabels[i].enabled &&
-                    Time.unscaledTime >= damageUntil[i])
-                    damageLabels[i].enabled = false;
+            {
+                Text label = damageLabels[i];
+                if (label == null || !label.enabled) continue;
+                float remaining = damageUntil[i] - Time.unscaledTime;
+                if (remaining <= 0f)
+                {
+                    label.enabled = false;
+                    continue;
+                }
+                // Prebuilt screen-space floating feedback, no object spawn.
+                float rise = (1f - remaining / .48f) * 31f;
+                label.rectTransform.anchoredPosition =
+                    damageOrigin[i] + Vector2.up * rise;
+            }
         }
 
         private void OnDestroy()
