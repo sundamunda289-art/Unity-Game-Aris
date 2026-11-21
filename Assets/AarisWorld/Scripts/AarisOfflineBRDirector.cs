@@ -1125,7 +1125,16 @@ namespace Aaris.MapReview
                     target != null ? target.GetComponent<CharacterController>() : null;
                 canSee = target != null && targetHealth != null && !targetHealth.IsDead &&
                     (target.position - transform.position).sqrMagnitude < 42f * 42f && HasSight();
-                if (!canSee) turnOffset += UnityEngine.Random.Range(-35f, 35f);
+                if (!canSee)
+                {
+                    turnOffset += UnityEngine.Random.Range(-35f, 35f);
+                    // Escape close cover on the scheduled think tick.
+                    // The old second think check ran after nextThink advanced,
+                    // so this near-obstacle branch was never reached.
+                    if (target != null &&
+                        (target.position - transform.position).sqrMagnitude < 81f)
+                        turnOffset = UnityEngine.Random.Range(-55f, 55f);
+                }
                 if (medkits > 0 && !canSee && health.CurrentHealth < 90f)
                 {
                     medkits--;
@@ -1138,12 +1147,6 @@ namespace Aaris.MapReview
             diff.y = 0f;
             float distance = diff.magnitude;
             Vector3 toward = distance > .01f ? diff / distance : transform.forward;
-            if (Time.time >= nextThink)
-            {
-                nextThink = Time.time + .23f + UnityEngine.Random.Range(0f, .09f);
-                canSee = distance <= 42f && HasSight();
-                if (!canSee && distance < 9f) turnOffset = UnityEngine.Random.Range(-55f, 55f);
-            }
             bool outsideSafeArea = owner.TryZoneRetreatDirection(transform.position,
                 out Vector3 retreatDirection);
             // Nearby player contact retains combat priority; distant bots

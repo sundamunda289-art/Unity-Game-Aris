@@ -12,6 +12,8 @@ namespace Aaris.MapReview
     {
         private static AarisCombatFeedbackHUD instance;
         private static readonly string[] DamageLabels = CreateDamageLabels();
+        // Cached once: no string allocations on ordinary HP hit events.
+        private static readonly string[] Hp200Labels = CreateHp200Labels();
         private readonly Text[] numbers = new Text[10];
         private readonly float[] numberUntil = new float[10];
         private readonly Vector2[] numberOrigin = new Vector2[10];
@@ -34,6 +36,25 @@ namespace Aaris.MapReview
             var labels = new string[501];
             for (int i = 0; i < labels.Length; i++) labels[i] = i.ToString();
             return labels;
+        }
+
+        private static string[] CreateHp200Labels()
+        {
+            var labels = new string[201];
+            for (int i = 0; i < labels.Length; i++)
+                labels[i] = "HP " + i + " / 200";
+            return labels;
+        }
+
+        private static string ScopeHudText(int power, bool aiming)
+        {
+            switch (power)
+            {
+                case 4: return aiming ? "4X ADS" : "4X";
+                case 2: return aiming ? "2X ADS" : "2X";
+                case 1: return aiming ? "NORMAL ADS" : "NORMAL";
+                default: return aiming ? "NO SCOPE ADS" : "NO SCOPE";
+            }
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -177,7 +198,10 @@ namespace Aaris.MapReview
             if (current != lastHealth || max != lastMax)
             {
                 lastHealth = current; lastMax = max;
-                healthText.text = "HP " + current + " / " + max;
+                if (max == 200 && current >= 0 && current < Hp200Labels.Length)
+                    healthText.text = Hp200Labels[current];
+                else
+                    healthText.text = "HP " + current + " / " + max;
                 healthFill.rectTransform.sizeDelta = new Vector2(220f *
                     Mathf.Clamp01(changed.CurrentHealth /
                         Mathf.Max(1f, changed.MaximumHealth)), 10f);
@@ -196,8 +220,17 @@ namespace Aaris.MapReview
             from.y = 0f;
             if (from.sqrMagnitude < .001f) return;
             from.Normalize();
-            float side = Vector3.Dot(transform.right, from);
-            float front = Vector3.Dot(transform.forward, from);
+            // Camera-relative in independent look/strafe: screen FRONT
+            // need not equal the player's body forward.
+            if (aimCamera == null) aimCamera = Camera.main;
+            Vector3 facing = aimCamera != null
+                ? aimCamera.transform.forward : transform.forward;
+            facing.y = 0f;
+            if (facing.sqrMagnitude < .0001f) facing = transform.forward;
+            facing.y = 0f;
+            facing.Normalize();
+            float side = Vector3.Dot(Vector3.Cross(Vector3.up, facing), from);
+            float front = Vector3.Dot(facing, from);
             hitDirection.text = Mathf.Abs(side) > Mathf.Abs(front)
                 ? (side > 0f ? "HIT RIGHT" : "HIT LEFT")
                 : (front > 0f ? "HIT FRONT" : "HIT BEHIND");
@@ -260,8 +293,7 @@ namespace Aaris.MapReview
                     scope == 4 ? 1.4f : scope == 2 ? 2.3f : 3.7f,
                     out Vector3 ignoredDirection);
             string labelText = armed
-                ? inventory.Current.Spec.ScopeLabel + (inventory.Aiming ? " ADS" : "")
-                : "";
+                ? ScopeHudText(scope, inventory.Aiming) : "";
             if (scopeText.text != labelText) scopeText.text = labelText;
             bool showOptic = armed && inventory.Aiming && scope >= 2;
             if (opticalRing != null)
