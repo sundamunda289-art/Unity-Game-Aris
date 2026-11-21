@@ -636,8 +636,14 @@ namespace Aaris.MapReview
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
                 return false; // no inside-wall or furniture placement
 
-            spot = floor.point + Vector3.up *
-                (indoor ? LootRootFloorClearance : OutdoorLootPresentationClearance);
+            // Terrain grass hides a floor-contact silhouette, so lift outdoor
+            // terrain loot slightly. Roads, porches and indoor solid floors do
+            // not have terrain grass: keep those guns physically close to the
+            // support instead of visibly floating 28 cm above a paved surface.
+            // No additional physics query, allocation or render feature.
+            bool terrainGrassSupport = !indoor && floor.collider is TerrainCollider;
+            spot = floor.point + Vector3.up * (terrainGrassSupport
+                ? OutdoorLootPresentationClearance : LootRootFloorClearance);
             return true;
         }
 
