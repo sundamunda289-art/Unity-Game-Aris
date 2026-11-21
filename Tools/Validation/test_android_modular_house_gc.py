@@ -68,8 +68,9 @@ class AndroidModularHouseGc(unittest.TestCase):
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, HOUSE)
-        self.assertIn("CombineStaticSurfaces(t);", SOURCE)
-        self.assertIn("PitchedRoof(t,width,depth,h);", SOURCE)
+        self.assertIn("CombineStaticSurfaces(t,owned);", SOURCE)
+        self.assertIn("AarisOwnedMeshCleanup owned = home.AddComponent<AarisOwnedMeshCleanup>();", SOURCE)
+        self.assertIn("PitchedRoof(t,width,depth,h,owned);", SOURCE)
         self.assertIn("Front(t,width,depth,h,player,includePanels);", SOURCE)
         self.assertNotIn("QualitySettings.", HOUSE)
         self.assertNotIn("Destroy(", HOUSE)
