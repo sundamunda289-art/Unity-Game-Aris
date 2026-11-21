@@ -29,7 +29,12 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("AarisOfflineBRDirector.TryAcquireAimTarget", GUN)
         self.assertIn("TryAcquireAimTarget(aimCamera, transform", HUD)
         self.assertIn("if (closest != null && closest.transform.IsChildOf(candidate.transform))", BOTS)
-        self.assertIn("shotForward = Vector3.Slerp", GUN)
+        self.assertIn("shotForward = assisted;", GUN)
+        self.assertNotIn("Vector3.Slerp(shotForward, assisted, .82f)", GUN)
+        # Old 82% angular correction leaves a 0.252-degree error at the
+        # 4x assist-cone edge: ~0.44m lateral miss at 100m (> .31m radius).
+        residual_metres = math.tan(math.radians(1.4 * (1 - .82))) * 100.
+        self.assertGreater(residual_metres, .31)
         self.assertIn('"NO SCOPE"', read("AarisWeaponCatalog.cs"))
         self.assertIn("opticalRing.gameObject.SetActive(showOptic)", HUD)
 
@@ -71,6 +76,20 @@ class CombatEndToEndContract(unittest.TestCase):
                       (15.0, True), (20.0, True), (45.0, True)]
         visible = sorted(d for d, seen in candidates if d < 42.0 and seen)
         self.assertEqual(visible[:2], [13.0, 15.0])
+
+    def test_stance_aware_bot_line_of_sight(self):
+        # Real crouch/prone capsule positions, not fixed standing-height aim.
+        self.assertIn("playerTargetCapsule = victim != null ? victim.GetComponent<CharacterController>() : null;", BOTS)
+        self.assertIn("targetCapsule = target == playerTarget ? playerTargetCapsule", BOTS)
+        self.assertIn("victim.TransformPoint(body.center)", BOTS)
+        self.assertIn("Vector3 to = aimPoint - eye;", BOTS)
+        self.assertNotIn("victim.position + Vector3.up * 1.07f - eye;", BOTS)
+        # Floor-relative center on the actor, updated by AarisBattleActions.
+        actions = read("AarisBattleActions.cs")
+        self.assertIn("capsule.center = new Vector3(standingCenter.x, floorRelative + height * 0.5f", actions)
+        for height in (0.62, 1.14, 1.8):
+            self.assertGreater(height * 0.5, 0.0)
+            self.assertLess(height * 0.5, height)
 
     def test_redlock_retries_visible_candidate_behind_cover(self):
         self.assertIn("for (int attempt = 0; attempt < 3; attempt++)", BOTS)
