@@ -148,6 +148,9 @@ namespace Aaris.MapReview
         private readonly Dictionary<long, List<int>> candidateCells =
             new Dictionary<long, List<int>>();
         private readonly List<int> nearbyCandidateIndices = new List<int>(32);
+        // The four persistent terrain tiles do not change on ordinary loot polls.
+        // Cache the native active-terrain array; refresh if the world was not ready.
+        private Terrain[] cachedTerrains;
         // Match candidates and their grid are immutable after Initialize.
         // Do not rebuild/sort this list during every one of the stream frames
         // while the player stays inside the same 64m cell search rectangle.
@@ -1148,7 +1151,7 @@ namespace Aaris.MapReview
             // At most 3 extra ground probes per streaming frame on any device,
             // even when all nearby candidates overlap new scenery.
             int alternateProbeBudget = 3;
-            Terrain[] terrains = null;
+            Terrain[] terrains = cachedTerrains;
             CollectNearbyCandidateIndices(playerPosition);
             foreach (int i in nearbyCandidateIndices)
             {
@@ -1162,7 +1165,11 @@ namespace Aaris.MapReview
                     probes == MaximumCandidateProbesPerFrame) return true;
 
                 probes++;
-                terrains ??= Terrain.activeTerrains;
+                if (terrains == null || terrains.Length == 0)
+                {
+                    terrains = Terrain.activeTerrains;
+                    cachedTerrains = terrains;
+                }
                 if (!TryResolveNearCandidate(c, i, terrains,
                     ref alternateProbeBudget, out Vector3 spot))
                 {
