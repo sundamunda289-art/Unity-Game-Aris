@@ -28,6 +28,17 @@ namespace Aaris.MapReview
         private readonly Dictionary<int, Material[]> wheelPrefabSlotLayouts =
             new Dictionary<int, Material[]>(4);
         private Material wheelPrefabLayoutPalette;
+        // Authored full-body vehicle meshes can contain dozens of Transform
+        // nodes. Reuse lookup buffers and original four-slot axle validation
+        // storage instead of allocating one hierarchy array per car.
+        private static readonly string[] EmbeddedWheelTokens =
+            { "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr" };
+        private readonly List<Transform> embeddedWheelTransforms =
+            new List<Transform>(64);
+        private readonly List<Collider> embeddedWheelColliders =
+            new List<Collider>(8);
+        private readonly Transform[] embeddedWheelFound = new Transform[4];
+        private readonly Bounds[] embeddedWheelBounds = new Bounds[4];
         private readonly float[] surfaceGripMultipliers = new float[4];
         private readonly Transform[] visualWheels = new Transform[4];
         // The FBX chassis is visual-only. WheelCollider meshes remain under
@@ -508,74 +519,97 @@ namespace Aaris.MapReview
         public bool AttachEmbeddedWheelModels(Transform bodyRoot)
         {
             if (bodyRoot == null || body == null) return false;
-            string[] tokens = { "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr" };
-            Transform[] all = bodyRoot.GetComponentsInChildren<Transform>(true);
-            Transform[] found = new Transform[4];
-            for (int i = 0; i < all.Length; i++)
+            string[] tokens = EmbeddedWheelTokens;
+            Transform[] found = embeddedWheelFound;
+            Bounds[] bounds = embeddedWheelBounds;
+            Array.Clear(found, 0, found.Length);
+            try
             {
-                if (all[i] == null) continue;
-                string label = all[i].name.ToLowerInvariant();
-                for (int w = 0; w < tokens.Length; w++)
-                    if (found[w] == null && label.Contains(tokens[w]))
-                        found[w] = all[i];
+                embeddedWheelTransforms.Clear();
+                bodyRoot.GetComponentsInChildren<Transform>(true, embeddedWheelTransforms);
+                for (int i = 0; i < embeddedWheelTransforms.Count; i++)
+                {
+                    Transform candidate = embeddedWheelTransforms[i];
+                    if (candidate == null) continue;
+                    // Every actual wheel token is ASCII. Case-insensitive
+                    // comparison avoids allocating lowercase strings for
+                    // every bone, including irrelevant hierarchy nodes.
+                    string label = candidate.name;
+                    for (int w = 0; w < tokens.Length; w++)
+                        if (found[w] == null &&
+                            label.IndexOf(tokens[w], StringComparison.OrdinalIgnoreCase) >= 0)
+                            found[w] = candidate;
+                }
+                // Validate all four tyres before mutating any physics or art.
+                // Direct chassis-space mesh bounds cancel spawn yaw and slope;
+                // a world AABB can inflate the diameter of a diagonal tyre.
+                for (int i = 0; i < found.Length; i++)
+                {
+                    if (found[i] == null || wheels[i] == null ||
+                        !AarisVehicleWorld.HasRenderableWheelGeometry(found[i]) ||
+                        !AarisVehicleWorld.TryGetVisualBoundsLocal(
+                            transform, found[i], out bounds[i])) return false;
+                    Vector3 size = bounds[i].size;
+                    Vector3 center = bounds[i].center;
+                    if (size.x <= .001f || size.y <= .001f || size.z <= .001f ||
+                        float.IsNaN(size.sqrMagnitude) || float.IsInfinity(size.sqrMagnitude) ||
+                        float.IsNaN(center.sqrMagnitude) || float.IsInfinity(center.sqrMagnitude))
+                        return false;
+                }
+
+                // Reject a wrongly-imported or misnamed four-wheel source BEFORE
+                // modifying any WheelCollider, Transform, renderer, or Rigidbody.
+                // Otherwise a single inverted axle can make the entire car
+                // visually drive backwards despite a correctly-fitted shell.
+                if (!AreAuthoredWheelAxlesPlausible(bounds)) return false;
+
+                for (int i = 0; i < found.Length; i++)
+                {
+                    Transform wheelVisual = found[i];
+                    wheelVisual.GetComponentsInChildren<Collider>(
+                        true, embeddedWheelColliders);
+                    for (int c = 0; c < embeddedWheelColliders.Count; c++)
+                    {
+                        Collider obstacle = embeddedWheelColliders[c];
+                        if (obstacle != null) obstacle.enabled = false;
+                    }
+                    embeddedWheelColliders.Clear();
+
+                    // The roll axle is chassis X. Measure the Y/Z diameter
+                    // and center in that same frame used by WheelCollider.
+                    float diameter = Mathf.Max(bounds[i].size.y, bounds[i].size.z);
+                    wheels[i].radius = Mathf.Clamp(diameter * 0.5f, .27f, .46f);
+                    wheels[i].transform.localPosition = bounds[i].center;
+
+                    Quaternion restOffset =
+                        Quaternion.Inverse(transform.rotation) * wheelVisual.rotation;
+                    // Compute BEFORE detaching the wheel from its authored body.
+                    // Mesh.bounds centre may be 9-12 cm inward from the FBX/OBJ
+                    // Transform pivot. If we place that pivot on the WheelCollider
+                    // pose, the visible tyre shifts inward a second time.
+                    Vector3 visualCentreWorld =
+                        transform.TransformPoint(bounds[i].center);
+                    Vector3 centreOffset =
+                        Quaternion.Inverse(wheelVisual.rotation) *
+                        (visualCentreWorld - wheelVisual.position);
+                    wheelVisual.SetParent(transform, true);
+                    visualWheels[i] = wheelVisual;
+                    visualWheelRotationOffsets[i] = restOffset;
+                    visualWheelCenterOffsets[i] = centreOffset;
+                }
+                if (wheels[0] != null) wheels[0].ResetSprungMasses();
+                appliedSteeringAngle = float.NaN;
+                SyncVisibleWheels();
+                return true;
             }
-            // Validate all four tyres before mutating any physics or art.
-            // Direct chassis-space mesh bounds cancel spawn yaw and slope;
-            // a world AABB can inflate the diameter of a diagonal tyre.
-            var bounds = new Bounds[4];
-            for (int i = 0; i < found.Length; i++)
+            finally
             {
-                if (found[i] == null || wheels[i] == null ||
-                    !AarisVehicleWorld.HasRenderableWheelGeometry(found[i]) ||
-                    !AarisVehicleWorld.TryGetVisualBoundsLocal(
-                        transform, found[i], out bounds[i])) return false;
-                Vector3 size = bounds[i].size;
-                Vector3 center = bounds[i].center;
-                if (size.x <= .001f || size.y <= .001f || size.z <= .001f ||
-                    float.IsNaN(size.sqrMagnitude) || float.IsInfinity(size.sqrMagnitude) ||
-                    float.IsNaN(center.sqrMagnitude) || float.IsInfinity(center.sqrMagnitude))
-                    return false;
+                // Clear source-hierarchy references even on a rejected axle.
+                // Unity destroys/moves these when the vehicle streams away.
+                embeddedWheelColliders.Clear();
+                embeddedWheelTransforms.Clear();
+                Array.Clear(found, 0, found.Length);
             }
-
-            // Reject a wrongly-imported or misnamed four-wheel source BEFORE
-            // modifying any WheelCollider, Transform, renderer, or Rigidbody.
-            // Otherwise a single inverted axle can make the entire car
-            // visually drive backwards despite a correctly-fitted shell.
-            if (!AreAuthoredWheelAxlesPlausible(bounds)) return false;
-
-            for (int i = 0; i < found.Length; i++)
-            {
-                Transform wheelVisual = found[i];
-                foreach (var obstacle in
-                    wheelVisual.GetComponentsInChildren<Collider>(true))
-                    obstacle.enabled = false;
-
-                // The roll axle is chassis X. Measure the Y/Z diameter
-                // and center in that same frame used by WheelCollider.
-                float diameter = Mathf.Max(bounds[i].size.y, bounds[i].size.z);
-                wheels[i].radius = Mathf.Clamp(diameter * 0.5f, .27f, .46f);
-                wheels[i].transform.localPosition = bounds[i].center;
-
-                Quaternion restOffset =
-                    Quaternion.Inverse(transform.rotation) * wheelVisual.rotation;
-                // Compute BEFORE detaching the wheel from its authored body.
-                // Mesh.bounds centre may be 9-12 cm inward from the FBX/OBJ
-                // Transform pivot. If we place that pivot on the WheelCollider
-                // pose, the visible tyre shifts inward a second time.
-                Vector3 visualCentreWorld =
-                    transform.TransformPoint(bounds[i].center);
-                Vector3 centreOffset =
-                    Quaternion.Inverse(wheelVisual.rotation) *
-                    (visualCentreWorld - wheelVisual.position);
-                wheelVisual.SetParent(transform, true);
-                visualWheels[i] = wheelVisual;
-                visualWheelRotationOffsets[i] = restOffset;
-                visualWheelCenterOffsets[i] = centreOffset;
-            }
-            if (wheels[0] != null) wheels[0].ResetSprungMasses();
-            appliedSteeringAngle = float.NaN;
-            SyncVisibleWheels();
-            return true;
         }
 
         /// <summary>
