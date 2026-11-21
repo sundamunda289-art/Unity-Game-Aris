@@ -404,6 +404,61 @@ internal static class AdditiveChunkStreamingTests
         Check(ResidentCount(manager) == 3,
             "indexed dedupe must keep one resident owner plus case-distinct cells");
 
+        // Real open worlds can contain thousands of authored subscenes.
+        // Compare bucket retrieval against the EXACT outside-AABB oracle,
+        // including large fallback cells, negative coordinates, and teleports.
+        const int cellCount = 1025;
+        var spatial = new AarisChunkSpatialIndex(cellCount);
+        var random = new Random(20261121);
+        var xs = new float[cellCount];
+        var zs = new float[cellCount];
+        var halfXs = new float[cellCount];
+        var halfZs = new float[cellCount];
+        for (int i = 0; i < cellCount; i++)
+        {
+            xs[i] = random.Next(-7000, 7000);
+            zs[i] = random.Next(-7000, 7000);
+            halfXs[i] = random.Next(20, 240);
+            halfZs[i] = random.Next(20, 240);
+            if (i == cellCount - 1)
+            {
+                xs[i] = 0f; zs[i] = 0f;
+                halfXs[i] = 2000f; halfZs[i] = 1900f;
+            }
+            spatial.Add(i, xs[i], zs[i], halfXs[i], halfZs[i]);
+        }
+        var found = new bool[cellCount];
+        for (int step = 0; step < 160; step++)
+        {
+            float x = random.Next(-8500, 8500);
+            float z = random.Next(-8500, 8500);
+            float radius = random.Next(1, 300);
+            int hits = spatial.Query(x, z, radius);
+            Check(hits >= 0 && hits <= cellCount,
+                "ordinary large-world query must use bounded spatial bins");
+            Array.Clear(found, 0, found.Length);
+            for (int j = 0; j < hits; j++)
+            {
+                int index = spatial.CandidateAt(j);
+                Check(index >= 0 && index < cellCount && !found[index],
+                    "no duplicate or invalid cell from overlapping index bins");
+                found[index] = true;
+            }
+            for (int i = 0; i < cellCount; i++)
+            {
+                float distance = AarisChunkStreamingPolicy.OutsideDistanceSquared(
+                    x, z, xs[i], zs[i], halfXs[i], halfZs[i]);
+                Check(distance > radius * radius || found[i],
+                    "spatial index must never omit a near/urgent valid chunk");
+            }
+        }
+        Check(spatial.Query(0f, 0f, 100000000f) == -1,
+            "huge radius must fail open to the original complete scan");
+        var pathological = new AarisChunkSpatialIndex(1);
+        pathological.Add(0, 1e38f, 1e38f, 1e38f, 1e38f);
+        Check(pathological.Query(0f, 0f, 150f) == -1,
+            "extreme authored bounds must fail open to complete scan");
+
         // A 512-cell empty world used to scan every state on every poll.
         // Residency reconciliation must be independent of unloaded cell count.
         ResetScene();
