@@ -56,7 +56,8 @@ check("wall-occluded soft lock rejects other first hit", "first.transform.IsChil
 check("original gun fire authoritative", "FirstExternalHit(" in gun and "ApplyDamage(target.collider, spec.damage, owner, target.point)" in gun)
 check("stance-relative headshot zone", "bounds.size.y * .76f" in gun)
 check("headshot effective damage", "damage *= 1.65f" in gun)
-check("two-way damage", "targetHealth.ApplyDamage(" in director and "damageable.ApplyDamage(damage, attacker)" in gun)
+check("two-way damage", "targetHealth.ApplyBallisticDamage(" in director and
+      "health.ApplyBallisticDamage(damage, attacker, headshot)" in gun)
 check("1-2 player attackers", "AarisCombatSelectionPolicy.CanAttackPlayer(" in director
       and "candidate.HasPlayerSight" in director)
 check("AI targets can select other physical bots", "chosenHealth = other.Health;" in director)
