@@ -468,6 +468,10 @@ namespace Aaris.MapReview
         internal bool TryGetBotGround(float x, float z, out float height) =>
             TryGetGround(x, z, out height);
 
+        // Only a small number of pooled physical avatars call this (max
+        // once per 0.4-second streaming slot), not the 94 virtual agents.
+        internal bool CanMaterializeBot(Vector3 worldPosition) => SpawnClear(worldPosition);
+
         private bool SpawnClear(Vector3 point)
         {
             Vector3 low = point + Vector3.up * 0.36f;
@@ -611,7 +615,8 @@ namespace Aaris.MapReview
         // Everyone else keeps roaming/avoiding cover instead of dog-piling.
         internal bool MayEngagePlayer(AarisOfflineRival candidate)
         {
-            if (!CanEngage || candidate == null || !candidate.IsAlive) return false;
+            if (!CanEngage || candidate == null || !candidate.IsAlive ||
+                !candidate.HasPlayerSight) return false;
             float candidateSqr = (candidate.transform.position - player.position).sqrMagnitude;
             if (candidateSqr > 42f * 42f) return false;
             int nearer = 0;
@@ -620,9 +625,13 @@ namespace Aaris.MapReview
             {
                 AarisOfflineRival other = i < rivals.Length ? rivals[i] :
                     massBots.PhysicalProxy(i - rivals.Length);
-                if (other == null || other == candidate || !other.IsAlive) continue;
+                if (other == null || other == candidate || !other.IsAlive ||
+                    !other.HasPlayerSight) continue;
                 float otherSqr = (other.transform.position - player.position).sqrMagnitude;
-                if (otherSqr + .01f < candidateSqr && otherSqr <= 42f * 42f)
+                if (otherSqr <= 42f * 42f &&
+                    (otherSqr < candidateSqr - .01f ||
+                     (Mathf.Abs(otherSqr - candidateSqr) <= .01f &&
+                      other.EncounterId < candidate.EncounterId)))
                     nearer++;
             }
             return nearer < 2;
@@ -635,7 +644,7 @@ namespace Aaris.MapReview
         {
             chosen = player;
             chosenHealth = playerHealth;
-            if (seeker == null || MayEngagePlayer(seeker)) return;
+            if (seeker == null || (seeker.HasPlayerSight && MayEngagePlayer(seeker))) return;
 
             float best = 66f * 66f;
             int total = rivals.Length + (massBots != null ? massBots.ProxySlots : 0);
@@ -886,7 +895,9 @@ namespace Aaris.MapReview
         private readonly RaycastHit[] crowdedSightHits = new RaycastHit[128];
         private float nextThink, nextAttack, nextTargetScan, nextHealAt;
         private float lastDamagedAt = -100f;
-        private int medicine = 1, ammunition = 30;
+        private int medicine = 1, ammunition = 30, encounterId;
+        private float nextPlayerSight;
+        private bool seesPlayer;
         private float verticalSpeed, turnOffset, visualBlend;
         private AarisMassBotPopulation streamedPopulation;
         private int streamedRecordIndex = -1;
@@ -909,9 +920,13 @@ namespace Aaris.MapReview
         public bool IsAlive => health != null && !health.IsDead;
         internal AarisOfflineHealth Health => health;
         internal float CurrentHP => health != null ? health.CurrentHealth : 0f;
+        internal int CurrentAmmo => ammunition;
+        internal int RemainingMedkits => medicine;
+        internal int EncounterId => encounterId;
+        internal bool HasPlayerSight => seesPlayer;
 
         internal void ResumeStreamed(AarisMassBotPopulation roster, int record,
-            Vector3 location, float hitpoints)
+            Vector3 location, float hitpoints, int storedAmmo, int storedMedkits)
         {
             streamedPopulation = roster;
             streamedRecordIndex = record;
@@ -923,8 +938,10 @@ namespace Aaris.MapReview
             nextThink = Time.time;
             nextAttack = Time.time + .5f;
             lastDamagedAt = -100f;
-            medicine = 1;
-            ammunition = 30;
+            medicine = Mathf.Clamp(storedMedkits, 0, 2);
+            ammunition = Mathf.Clamp(storedAmmo, 0, 30);
+            seesPlayer = false;
+            nextPlayerSight = Time.time;
             nextHealAt = Time.time + 2f;
             lastSimulationTime = Time.time;
             nextFarSimulation = Time.time;
@@ -959,6 +976,7 @@ namespace Aaris.MapReview
         {
             owner = director;
             health = self;
+            encounterId = encounterSlot;
             target = victim;
             targetHealth = victimHealth;
             capsule = GetComponent<CharacterController>();
@@ -1099,6 +1117,20 @@ namespace Aaris.MapReview
         private void Update()
         {
             if (owner == null || !owner.CanEngage || !IsAlive) return;
+            if (Time.time >= nextPlayerSight)
+            {
+                // No extra ray on every rendered frame. Eight-to-nine
+                // physical bots each refresh player perception at 2 Hz.
+                nextPlayerSight = Time.time + .45f + (encounterId % 4) * .028f;
+                Transform person = owner.PlayerActor;
+                Vector3 offset = person != null ? person.position - transform.position :
+                    Vector3.zero;
+                float sqr = offset.sqrMagnitude;
+                bool inVision = sqr <= 42f * 42f &&
+                    (sqr <= 12f * 12f || Vector3.Dot(transform.forward,
+                        offset.normalized) >= .05f);
+                seesPlayer = inVision && HasSightTo(person);
+            }
             if (Time.time >= nextTargetScan || target == null ||
                 targetHealth == null || targetHealth.IsDead)
             {
@@ -1254,10 +1286,13 @@ namespace Aaris.MapReview
             animations.SetInputWeight(1, visualBlend);
         }
 
-        private bool HasSight()
+        private bool HasSight() => target != null && HasSightTo(target);
+
+        private bool HasSightTo(Transform selectedTarget)
         {
+            if (selectedTarget == null) return false;
             Vector3 eye = transform.position + transform.forward * .48f + Vector3.up * 1.28f;
-            Vector3 to = target.position + Vector3.up * 1.07f - eye;
+            Vector3 to = selectedTarget.position + Vector3.up * 1.07f - eye;
             float distance = to.magnitude;
             if (distance < .1f) return false;
             Ray ray = new Ray(eye, to / distance);
@@ -1290,7 +1325,7 @@ namespace Aaris.MapReview
                 if (hit.distance < first)
                 { first = hit.distance; closest = hit.collider; }
             }
-            return closest != null && closest.transform.IsChildOf(target);
+            return closest != null && closest.transform.IsChildOf(selectedTarget);
         }
 
         internal void TakeZoneDamage(float amount)
