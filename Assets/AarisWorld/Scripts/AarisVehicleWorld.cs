@@ -786,23 +786,39 @@ namespace Aaris.MapReview
         {
             bodyOnly = new Bounds();
             if (chassis == null || visual == null) return false;
-            foreach (var child in visual.GetComponentsInChildren<Transform>(true))
+            // The model may contain dozens of meshes/LOD helpers. A single
+            // caller-owned list also serves the exact wheel-name scans.
+            List<Transform> all = namedWheelQueryScratch;
+            if (all == null)
+                namedWheelQueryScratch = all = new List<Transform>(64);
+            try
             {
-                if (child == null ||
-                    !child.name.EndsWith("_body",
-                        StringComparison.OrdinalIgnoreCase) ||
-                    child.GetComponent<MeshFilter>() == null) continue;
-                if (!TryGetVisualBoundsLocal(chassis, child, out Bounds candidate))
-                    continue;
-                if (candidate.size.x < wholeCar.size.x * .55f ||
-                    candidate.size.z < wholeCar.size.z * .68f ||
-                    candidate.size.z > wholeCar.size.z * 1.04f ||
-                    candidate.size.y < .25f)
-                    continue;
-                bodyOnly = candidate;
-                return true;
+                all.Clear();
+                visual.GetComponentsInChildren<Transform>(true, all);
+                foreach (var child in all)
+                {
+                    if (child == null ||
+                        !child.name.EndsWith("_body",
+                            StringComparison.OrdinalIgnoreCase) ||
+                        child.GetComponent<MeshFilter>() == null) continue;
+                    if (!TryGetVisualBoundsLocal(chassis, child, out Bounds candidate))
+                        continue;
+                    if (candidate.size.x < wholeCar.size.x * .55f ||
+                        candidate.size.z < wholeCar.size.z * .68f ||
+                        candidate.size.z > wholeCar.size.z * 1.04f ||
+                        candidate.size.y < .25f)
+                        continue;
+                    bodyOnly = candidate;
+                    return true;
+                }
+                return false;
             }
-            return false;
+            finally
+            {
+                // A retired/failed imported car must not be retained by the
+                // long-lived shared scratch buffer, even on early success.
+                all.Clear();
+            }
         }
 
         // Imported high-detail vehicles resolve four semantic wheel names
@@ -920,16 +936,35 @@ namespace Aaris.MapReview
         {
             if (source == null) return false;
             bool fl = false, fr = false, rl = false, rr = false;
-            foreach (var t in source.GetComponentsInChildren<Transform>(true))
+            List<Transform> all = namedWheelQueryScratch;
+            if (all == null)
+                namedWheelQueryScratch = all = new List<Transform>(64);
+            try
             {
-                if (t == null) continue;
-                string n = t.name.ToLowerInvariant();
-                fl |= n.Contains("wheel_fl");
-                fr |= n.Contains("wheel_fr");
-                rl |= n.Contains("wheel_rl");
-                rr |= n.Contains("wheel_rr");
+                all.Clear();
+                source.GetComponentsInChildren<Transform>(true, all);
+                foreach (var t in all)
+                {
+                    if (t == null) continue;
+                    // The original wheel tokens are ASCII: compare names in
+                    // place instead of allocating one lowercased copy per node.
+                    string label = t.name;
+                    fl |= label.IndexOf("wheel_fl",
+                        StringComparison.OrdinalIgnoreCase) >= 0;
+                    fr |= label.IndexOf("wheel_fr",
+                        StringComparison.OrdinalIgnoreCase) >= 0;
+                    rl |= label.IndexOf("wheel_rl",
+                        StringComparison.OrdinalIgnoreCase) >= 0;
+                    rr |= label.IndexOf("wheel_rr",
+                        StringComparison.OrdinalIgnoreCase) >= 0;
+                    if (fl && fr && rl && rr) return true;
+                }
+                return false;
             }
-            return fl && fr && rl && rr;
+            finally
+            {
+                all.Clear();
+            }
         }
 
         private Material AuthoredUrpMaterial(Material source)
