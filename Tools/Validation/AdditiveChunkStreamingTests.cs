@@ -122,6 +122,12 @@ internal static class AdditiveChunkStreamingTests
         typeof(AarisAdditiveChunkStreamer).GetMethod(method,
             BindingFlags.NonPublic | BindingFlags.Instance).Invoke(instance, null);
     }
+    private static int ResidentCount(AarisAdditiveChunkStreamer instance)
+    {
+        return (int)typeof(AarisAdditiveChunkStreamer).GetField(
+            "trackedResidentCount", BindingFlags.NonPublic | BindingFlags.Instance)
+            .GetValue(instance);
+    }
     private static AarisAdditiveChunkStreamer Make(Transform player)
     {
         var manager = new AarisAdditiveChunkStreamer();
@@ -323,6 +329,44 @@ internal static class AdditiveChunkStreamingTests
         Frame(manager, target, 10.4f, 0f);
         Check(SceneManager.loadCount == 1,
             "retired externally owned scene must become streamable");
+
+        // A 512-cell empty world used to scan every state on every poll.
+        // Residency reconciliation must be independent of unloaded cell count.
+        SceneManager.Reset();
+        target = new Transform();
+        var emptyCells = new AarisAdditiveChunkStreamer.Chunk[512];
+        for (int i = 0; i < emptyCells.Length; i++)
+            emptyCells[i] = new AarisAdditiveChunkStreamer.Chunk {
+                scenePath = "Assets/CellEmpty" + i + ".unity",
+                center = new Vector2(i * 4000f, 0f),
+                halfExtents = new Vector2(100f, 100f)
+            };
+        manager = MakeMultiple(target, emptyCells);
+        Check(ResidentCount(manager) == 0, "empty authored grid must have no resident entries");
+        for (int i = 0; i < 20; i++)
+            Frame(manager, target, 30f + i * .3f, -1000000f);
+        Check(ResidentCount(manager) == 0 && SceneManager.loadCount == 0,
+            "empty world reconciliation must stay inactive and allocation-free");
+
+        // Sparse externally owned scenes must reconcile in resident order,
+        // not by scanning hundreds of inactive authored chunk definitions.
+        SceneManager.Reset();
+        SceneManager.loaded["Assets/CellEmpty2.unity"] = true;
+        SceneManager.loaded["Assets/CellEmpty509.unity"] = true;
+        manager = MakeMultiple(target, emptyCells);
+        Check(ResidentCount(manager) == 2,
+            "preloaded sparse scenes need both tracked resident slots");
+        SceneManager.loaded["Assets/CellEmpty2.unity"] = false;
+        Frame(manager, target, 50f, -1000000f);
+        Check(ResidentCount(manager) == 1,
+            "externally retired scene must leave the resident index");
+        SceneManager.loaded["Assets/CellEmpty509.unity"] = false;
+        Frame(manager, target, 50.3f, -1000000f);
+        Check(ResidentCount(manager) == 0,
+            "swap-remove must not skip the remaining external resident");
+        Frame(manager, target, 50.6f, -1000000f);
+        Check(SceneManager.unloadCount == 0,
+            "an external scene must never be unloaded by this streamer");
 
         Console.WriteLine("PASS: " + checks + " checked assertions (real production sources)");
         return 0;
