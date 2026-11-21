@@ -6,6 +6,7 @@ This does NOT simulate Unity WheelCollider forces or replace Play-mode QA.
 """
 from pathlib import Path
 import math
+import re
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "Assets" / "AarisWorld" / "Scripts"
@@ -225,7 +226,11 @@ def test():
     steering = motor.split("private void ApplyAckermannSteering(", 1)[1]
     assert steering.index("if (centerAngle == appliedSteeringAngle) return;") < (
         steering.index("wheels[0].steerAngle"))
-    assert motor.count("ResetSprungMasses();\n            appliedSteeringAngle = float.NaN;") == 2
+    # The source may indent axle integration inside an exception-safe
+    # cleanup guard. Verify both native spring-mass resets still invalidate
+    # steering, without hard-coding the old whitespace indentation.
+    assert len(re.findall(
+        r"ResetSprungMasses\\(\\);\\s*appliedSteeringAngle = float\\.NaN;", motor)) == 2
     for occupied in (False, True):
         for sleeping in (False, True):
             skip_physics = not occupied and sleeping
