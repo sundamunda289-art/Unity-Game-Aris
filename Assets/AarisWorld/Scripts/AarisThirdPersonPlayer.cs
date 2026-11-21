@@ -271,6 +271,7 @@ namespace Aaris.MapReview
             characterVisual = GetComponent<AarisCharacterVisual>();
             AarisOfflineDrop.EnsureForPlayer(this);
             AarisOfflineTacticalHUD.EnsureForPlayer(this);
+            AarisCombatFeedbackHUD.EnsureForPlayer(this);
         }
 
         private void OnDestroy()
