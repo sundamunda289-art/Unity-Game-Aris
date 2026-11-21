@@ -11,6 +11,7 @@ INVENTORY = (ROOT / "AarisWeaponInventory.cs").read_text("utf-8")
 LOOT = (ROOT / "AarisWeaponLootWorld.cs").read_text("utf-8")
 TACTICAL = (ROOT / "AarisOfflineTacticalHUD.cs").read_text("utf-8")
 ACTIONS = (ROOT / "AarisBattleActions.cs").read_text("utf-8")
+FEEDBACK = (ROOT / "AarisCombatFeedbackHUD.cs").read_text("utf-8")
 
 
 def section(src, start, end):
