@@ -45,7 +45,7 @@ namespace Aaris.MapReview
         private AarisOfflineMatchEnd matchEnd;
         private AarisNearbyColliders nearbyColliders;
         private Terrain[] terrains;
-        private int attemptedSlots, activeRivals, spawnedRivals;
+        private int attemptedSlots, activeRivals, spawnedRivals, playerEliminations;
         private float startedAt, nextSpawn, nextZoneTick, nextDamageTick, nextRingDraw;
         private float radius;
         private Vector2 center;
@@ -608,6 +608,15 @@ namespace Aaris.MapReview
 
         internal void VirtualBotDefeated() => TryConcludeMatch();
 
+        internal void RegisterPlayerElimination(AarisOfflineHealth defeated)
+        {
+            // A kill belongs to the player only if the actual fatal hit came
+            // from their own GameObject. Zone and NPC-vs-NPC deaths do not count.
+            if (defeated != null && player != null &&
+                defeated.KillingAttacker == player.gameObject)
+                playerEliminations++;
+        }
+
         internal bool CanEngage => started && !playerHealth.IsDead &&
             matchEnd != null && !matchEnd.IsFinished;
 
@@ -734,7 +743,7 @@ namespace Aaris.MapReview
             string participants = spawnComplete && massBots != null && massBots.IsReady
                 ? "ALIVE " + (activeRivals + logical + 1)
                 : "RIVALS " + (spawnedRivals + logical) + "/100";
-            status.text = participants +
+            status.text = participants + "    KILLS " + playerEliminations +
                 "    ZONE " + Mathf.CeilToInt(radius) + "m    " + label;
         }
 
@@ -1336,6 +1345,7 @@ namespace Aaris.MapReview
 
         private void OnDied(AarisOfflineHealth defeated)
         {
+            if (owner != null) owner.RegisterPlayerElimination(defeated);
             if (capsule != null) capsule.enabled = false;
             if (streamedPopulation != null)
             {
