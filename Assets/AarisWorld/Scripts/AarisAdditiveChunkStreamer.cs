@@ -28,6 +28,10 @@ namespace Aaris.MapReview
         [SerializeField, Min(0f)] private float loadMargin = 90f;
         [SerializeField, Min(0f)] private float unloadMargin = 170f;
         [SerializeField, Min(0f)] private float lookaheadSeconds = 1.25f;
+        // Scene IO latency differs sharply between a warm and cold Android
+        // launch. Predict detail arrival from observed load time, but cap
+        // speculative reach and never change the actual-position unload rule.
+        [SerializeField, Min(0f)] private float maxLoadAwareLeadSeconds = 3.5f;
         [SerializeField, Min(1f)] private float maxPredictedSpeed = 35f;
         [SerializeField, Min(1f)] private float teleportRejectSpeed = 90f;
         [SerializeField, Min(0.05f)] private float pollSeconds = 0.25f;
@@ -44,6 +48,8 @@ namespace Aaris.MapReview
         }
 
         private State[] states;
+        private AarisChunkSpatialIndex spatialIndex;
+        private float observedLoadSeconds, inFlightStartedAt;
         private AsyncOperation inFlight;
         private int inFlightCell = -1;
         private bool inFlightLoad;
@@ -72,6 +78,12 @@ namespace Aaris.MapReview
             states = new State[chunks.Length];
             trackedResidentIndices = new int[chunks.Length];
             trackedResidentSlots = new int[chunks.Length];
+            // Small authored pilots retain the original trivial scan.
+            // For a genuine partitioned world, query only cells whose bounds
+            // touch the player's actual unload boundary. Never skip a cell
+            // because its *predicted* position fell outside the index.
+            if (chunks.Length >= 32)
+                spatialIndex = new AarisChunkSpatialIndex(chunks.Length);
             string hostPath = gameObject.scene.path;
             // A large authored partition can contain thousands of cells.
             // Preserve the old zero-allocation tiny-scene path, but avoid the
@@ -111,6 +123,9 @@ namespace Aaris.MapReview
                     continue;
                 }
                 states[i].valid = true;
+                if (spatialIndex != null)
+                    spatialIndex.Add(i, cell.center.x, cell.center.y,
+                        cell.halfExtents.x, cell.halfExtents.y);
                 Scene preloaded = SceneManager.GetSceneByPath(cell.scenePath);
                 states[i].externallyOwned = preloaded.IsValid() && preloaded.isLoaded;
                 if (states[i].externallyOwned) TrackResident(i);
@@ -131,6 +146,10 @@ namespace Aaris.MapReview
                 int finished = inFlightCell;
                 if (inFlightLoad)
                 {
+                    float observed = now - inFlightStartedAt;
+                    if (observed >= 0.01f && observed < 20f)
+                        observedLoadSeconds = observedLoadSeconds <= 0f
+                            ? observed : observedLoadSeconds * 0.7f + observed * 0.3f;
                     Scene scene = SceneManager.GetSceneByPath(chunks[finished].scenePath);
                     states[finished].loadedByThisStreamer = scene.IsValid() && scene.isLoaded;
                     if (states[finished].loadedByThisStreamer) TrackResident(finished);
@@ -185,7 +204,9 @@ namespace Aaris.MapReview
             if (previousSampleValid)
                 AarisChunkStreamingPolicy.Predict(current.x, current.z,
                     previousSample.x, previousSample.z, now - previousSampleAt,
-                    lookaheadSeconds, maxPredictedSpeed, teleportRejectSpeed,
+                    Mathf.Max(lookaheadSeconds, System.Math.Min(maxLoadAwareLeadSeconds,
+                        observedLoadSeconds * 1.5f + 0.25f)),
+                    maxPredictedSpeed, teleportRejectSpeed,
                     out projectedX, out projectedZ);
             previousSample = current;
             previousSampleAt = now;
@@ -201,34 +222,54 @@ namespace Aaris.MapReview
             // is already inside a distant cell. Urgency must use actual position.
             bool loadIsUrgent = false;
             float nearestLoad = float.MaxValue, farthestUnload = -1f;
-            for (int i = 0; i < chunks.Length; i++)
+            // Residency retirement is a sparse pass, including distant owned
+            // cells that are OUTSIDE any near-player query. This is essential:
+            // querying only near bins for unload would leak memory on traversal.
+            for (int slot = 0; slot < trackedResidentCount; slot++)
             {
-                if (!states[i].valid || states[i].externallyOwned) continue;
+                int i = trackedResidentIndices[slot];
+                if (!states[i].valid || states[i].externallyOwned ||
+                    !states[i].loadedByThisStreamer) continue;
                 Chunk cell = chunks[i];
                 float distance = AarisChunkStreamingPolicy.OutsideDistanceSquared(
                     current.x, current.z, cell.center.x, cell.center.y,
                     cell.halfExtents.x, cell.halfExtents.y);
-                if (states[i].loadedByThisStreamer)
-                {
-                    // Already-resident cells beyond the urgent margin consume
-                    // speculative headroom until movement or normal retirement.
-                    if (distance > entrySquared && distance <= exitSquared)
-                        speculativeResidentCount++;
-                    // Always retain on *actual* position, including teleport.
-                    // A wider exit boundary prevents load/unload oscillation.
-                    if (distance > exitSquared && distance > farthestUnload)
-                    { unloadCell = i; farthestUnload = distance; }
-                    continue;
-                }
+                if (distance > entrySquared && distance <= exitSquared)
+                    speculativeResidentCount++;
+                if (distance > exitSquared &&
+                    (distance > farthestUnload ||
+                     (distance == farthestUnload && i < unloadCell)))
+                { unloadCell = i; farthestUnload = distance; }
+            }
+
+            // The original load condition ALWAYS required the *actual* player
+            // to be inside exitMargin, even when prefetch projected farther.
+            // Thus one current-position broad-phase query cannot omit a load.
+            // Invalid/extreme query bounds fail open to the original full scan.
+            int nearby = spatialIndex != null
+                ? spatialIndex.Query(current.x, current.z, exitMargin) : -1;
+            int count = nearby >= 0 ? nearby : chunks.Length;
+            for (int ordinal = 0; ordinal < count; ordinal++)
+            {
+                int i = nearby >= 0 ? spatialIndex.CandidateAt(ordinal) : ordinal;
+                if (!states[i].valid || states[i].externallyOwned ||
+                    states[i].loadedByThisStreamer) continue;
+                Chunk cell = chunks[i];
+                float distance = AarisChunkStreamingPolicy.OutsideDistanceSquared(
+                    current.x, current.z, cell.center.x, cell.center.y,
+                    cell.halfExtents.x, cell.halfExtents.y);
                 float predicted = AarisChunkStreamingPolicy.OutsideDistanceSquared(
                     projectedX, projectedZ, cell.center.x, cell.center.y,
                     cell.halfExtents.x, cell.halfExtents.y);
                 if (distance > exitSquared ||
                     (distance > entrySquared && predicted > entrySquared)) continue;
-                // Urgent current-position cells outrank speculative prefetch.
                 float priority = distance <= entrySquared
                     ? distance : entrySquared + predicted;
-                if (priority < nearestLoad)
+                // A bucket index has different traversal order from the old
+                // array scan. Deterministic tie-breaking preserves ownership
+                // and loading order for equal-distance neighbouring cells.
+                if (priority < nearestLoad ||
+                    (priority == nearestLoad && (loadCell < 0 || i < loadCell)))
                 {
                     nearestLoad = priority;
                     loadCell = i;
@@ -352,6 +393,7 @@ namespace Aaris.MapReview
                 sharedSceneOperation = operation;
 #endif
                 inFlight = operation;
+                inFlightStartedAt = Time.unscaledTime;
                 inFlightCell = index;
                 inFlightLoad = load;
             }
