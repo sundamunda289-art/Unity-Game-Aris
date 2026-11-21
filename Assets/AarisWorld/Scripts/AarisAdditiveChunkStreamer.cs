@@ -261,6 +261,12 @@ namespace Aaris.MapReview
                     return;
                 }
                 operation.priority = -1;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // Scene integration may finish on a later render frame. Keep
+                // unrelated optional imports/diagnostics off this native work
+                // without pausing allowSceneActivation or Unity's IO queue.
+                if (load) AarisMobileStreamingFrameGate.TrackAdditiveSceneLoad(operation);
+#endif
                 inFlight = operation;
                 inFlightCell = index;
                 inFlightLoad = load;
