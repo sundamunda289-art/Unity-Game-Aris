@@ -128,7 +128,7 @@ def audit():
 
     catalog = json.loads((ROOT / "Assets/Resources/AarisWeapons/weapon_catalog.json").read_text())
     ids = {x["id"] for x in catalog["weapons"]}
-    assert len(ids) == 5
+    assert len(ids) == 6 and "DMR" in ids
     points = json.loads((ROOT / "Assets/Resources/AarisWeapons/loot_candidates.json").read_text())
     c = points["candidates"]
     # The first 514 original candidate indices must never be renumbered.
