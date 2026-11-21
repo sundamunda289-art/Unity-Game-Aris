@@ -403,6 +403,7 @@ namespace Aaris.MapReview
             Material material = MuzzleFlashMaterial();
             if (material == null) return;
             GameObject tracer = new GameObject("Aaris Reused Bullet Tracer");
+            tracer.layer = gameObject.layer;
             tracer.transform.SetParent(transform, false);
             tracerRenderer = tracer.AddComponent<LineRenderer>();
             tracerRenderer.sharedMaterial = material;
