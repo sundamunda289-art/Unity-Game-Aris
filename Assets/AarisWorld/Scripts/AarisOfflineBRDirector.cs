@@ -586,6 +586,10 @@ namespace Aaris.MapReview
                 AarisOfflineRival bot = rivals[i];
                 if (bot == null || !bot.IsAlive) continue;
                 float distance = (bot.transform.position - player.position).sqrMagnitude;
+                // Do not let an occluded near rival reserve an attack slot.
+                // Distance gates bound the number of LOS rays on mobile.
+                if (distance >= second || !bot.HasPlayerSightForSelection())
+                    continue;
                 if (distance < first)
                 {
                     attackerTwo = attackerOne; second = first;
@@ -639,39 +643,53 @@ namespace Aaris.MapReview
             aimedDirection = Vector3.zero;
             if (camera == null || shooter == null || activeDirector == null) return false;
             Vector3 origin = camera.transform.position;
-            float threshold = Mathf.Cos(coneDegrees * Mathf.Deg2Rad);
-            AarisOfflineRival candidate = null;
-            Vector3 direction = Vector3.zero;
-            float distance = 0f;
-            for (int i = 0; i < activeDirector.rivals.Length; i++)
+            float minimumDot = Mathf.Cos(coneDegrees * Mathf.Deg2Rad);
+            AarisOfflineRival rejectedFirst = null, rejectedSecond = null;
+            // The most centered rival may be hidden behind a wall.
+            // Search at most three candidates; never aim through cover or
+            // allocate a list on mobile HUD/weapon-fire hot paths.
+            for (int attempt = 0; attempt < 3; attempt++)
             {
-                AarisOfflineRival bot = activeDirector.rivals[i];
-                if (bot == null || !bot.IsAlive) continue;
-                Vector3 delta = bot.transform.position + Vector3.up * 1.12f - origin;
-                float d = delta.magnitude;
-                if (d < 1f || d > range) continue;
-                Vector3 normalized = delta / d;
-                float alignment = Vector3.Dot(camera.transform.forward, normalized);
-                if (alignment <= threshold) continue;
-                candidate = bot; direction = normalized; distance = d;
-                threshold = alignment;
+                AarisOfflineRival candidate = null;
+                Vector3 direction = Vector3.zero;
+                float distance = 0f;
+                float threshold = minimumDot;
+                for (int i = 0; i < activeDirector.rivals.Length; i++)
+                {
+                    AarisOfflineRival bot = activeDirector.rivals[i];
+                    if (bot == null || !bot.IsAlive ||
+                        bot == rejectedFirst || bot == rejectedSecond) continue;
+                    Vector3 delta = bot.transform.position + Vector3.up * 1.12f - origin;
+                    float d = delta.magnitude;
+                    if (d < 1f || d > range) continue;
+                    Vector3 normalized = delta / d;
+                    float alignment = Vector3.Dot(camera.transform.forward, normalized);
+                    if (alignment <= threshold) continue;
+                    candidate = bot; direction = normalized; distance = d;
+                    threshold = alignment;
+                }
+                if (candidate == null) return false;
+                int count = AarisPhysicsHitBuffer.Raycast(new Ray(origin, direction),
+                    distance + .5f, Physics.DefaultRaycastLayers, ref assistHits, 256,
+                    out RaycastHit[] hits);
+                float nearest = float.PositiveInfinity;
+                Collider closest = null;
+                for (int i = 0; i < count; i++)
+                {
+                    Collider collider = hits[i].collider;
+                    if (collider == null || collider.transform.IsChildOf(shooter)) continue;
+                    if (hits[i].distance < nearest)
+                    { nearest = hits[i].distance; closest = collider; }
+                }
+                if (closest != null && closest.transform.IsChildOf(candidate.transform))
+                {
+                    aimedDirection = direction;
+                    return true;
+                }
+                if (attempt == 0) rejectedFirst = candidate;
+                else rejectedSecond = candidate;
             }
-            if (candidate == null) return false;
-            int count = AarisPhysicsHitBuffer.Raycast(new Ray(origin, direction),
-                distance + .5f, Physics.DefaultRaycastLayers, ref assistHits, 256,
-                out RaycastHit[] hits);
-            float nearest = float.PositiveInfinity;
-            Collider closest = null;
-            for (int i = 0; i < count; i++)
-            {
-                Collider collider = hits[i].collider;
-                if (collider == null || collider.transform.IsChildOf(shooter)) continue;
-                if (hits[i].distance < nearest) { nearest = hits[i].distance; closest = collider; }
-            }
-            if (closest == null || !closest.transform.IsChildOf(candidate.transform))
-                return false;
-            aimedDirection = direction;
-            return true;
+            return false;
         }
 
         private void RefreshStatus(float elapsed)
@@ -1220,10 +1238,20 @@ namespace Aaris.MapReview
             animations.SetInputWeight(1, visualBlend);
         }
 
-        private bool HasSight()
+        // Selection must check player LOS without mutating a bot-vs-bot target.
+        internal bool HasPlayerSightForSelection()
         {
+            return playerTarget != null && playerTargetHealth != null &&
+                !playerTargetHealth.IsDead && HasSightTo(playerTarget);
+        }
+
+        private bool HasSight() { return HasSightTo(target); }
+
+        private bool HasSightTo(Transform victim)
+        {
+            if (victim == null) return false;
             Vector3 eye = transform.position + transform.forward * .48f + Vector3.up * 1.28f;
-            Vector3 to = target.position + Vector3.up * 1.07f - eye;
+            Vector3 to = victim.position + Vector3.up * 1.07f - eye;
             float distance = to.magnitude;
             if (distance < .1f) return false;
             Ray ray = new Ray(eye, to / distance);
@@ -1256,7 +1284,7 @@ namespace Aaris.MapReview
                 if (hit.distance < first)
                 { first = hit.distance; closest = hit.collider; }
             }
-            return closest != null && closest.transform.IsChildOf(target);
+            return closest != null && closest.transform.IsChildOf(victim);
         }
 
         private void OnDamaged(AarisOfflineHealth victim, float loss, GameObject attacker)
