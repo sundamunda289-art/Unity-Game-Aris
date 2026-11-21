@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WORLD = (ROOT / "Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs").read_text()
 PICKUP = (ROOT / "Assets/AarisWorld/Scripts/AarisWeaponPickup.cs").read_text()
+AUDIT = (ROOT / "Assets/AarisWorld/Editor/AarisGunDoorLiveAudit.cs").read_text()
 
 
 def clearance(name):
@@ -48,6 +49,13 @@ class WeaponFloorSupportContract(unittest.TestCase):
         self.assertLess(
             WORLD.index("if (preferredNearGradeSolid && !nearGradeSolid) continue;"),
             WORLD.index("preferredNearGradeSolid = nearGradeSolid;"))
+
+    def test_native_camera_clip_is_restored_after_each_photo(self):
+        # A 2 km map renders too many distant objects with software OpenGL.
+        # The QA-only crop must restore original gameplay camera settings.
+        self.assertIn("float previousFarClip = camera.farClipPlane;", AUDIT)
+        self.assertIn("camera.farClipPlane = showTerrain ? 20f : 8f;", AUDIT)
+        self.assertIn("camera.farClipPlane = previousFarClip;", AUDIT)
 
     def test_no_extra_physics_or_allocation_on_placement(self):
         tail = WORLD.split("bool terrainGrassSupport = !indoor && floor.collider is TerrainCollider;", 1)[1]
