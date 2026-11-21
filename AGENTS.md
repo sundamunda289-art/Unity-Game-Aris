@@ -2,6 +2,48 @@
 
 Repository: sundamunda289-art/Unity-Game-Aris; branch: main. Public repository: NEVER commit or release passwords, tokens, Unity license files, Hub state, private content or secrets.
 
+## 2026-11-21: VERIFIED TERMUX UNITY LOGIN RECOVERY — USE THIS FIRST (LATEST)
+
+**Verified outcome, not a proposal:** On 2026-11-21, the owner successfully authenticated Unity and activated Unity Personal on the **existing** Ubuntu 22.04 Codespace `aaris-ai-ubuntu-minimal-4gvj7qgv7772v5g`, using Unity CLI 1.0.1 and Editor 6000.3.26f1. Termux displayed `SUCCESS: Unity login and Personal license verified on selected Codespace.` The AI independently rechecked that exact live machine through the private Cloudflare Turbo terminal: `unity auth status --format json --non-interactive` exited **0** and `unity license status --format json --non-interactive` exited **0**, with the CLI home `/home/vscode/.local/share/aaris-unity-cli`. Git remained clean. This proves authorization and licensing **only**, not GUI scene import, Play Mode or an APK build. There is no need to reinstall Unity or re-fetch 822 current LFS assets merely to fix sign-in.
+
+**The reproducible solution** is the repository script `Tools/Codespaces/termux_unity_login_recover.sh` (introduced in PR #909). Use it **instead of repeatedly running `termux_unity_allow.sh`** when the original CLI helper times out, no login URL opens, SSH fails without explanation, or Android needs a fallback for opening the official Unity login URL.
+
+**Why the previous flow failed / what the recovery changes:**
+- The older phone helper used one long `gh codespace ssh` pipe, and on error it wrote SSH stderr into a temporary file without displaying a meaningful failure category. It could exit with just `Unity auth was not verified`, even when the login URL never appeared. Never assume the owner failed to tap Allow.
+- The recovery verifies the *selected hosting-account GitHub profile*, exact **Available** Codespace, actual SSH/Python execution, and then copies the **reviewed** `mobile_license.py` into a private directory on that same Codespace. No new worktree, new Codespace, clone, source overwrite, public Issue comment, or Cloudflare token is required.
+- It starts the remote Unity login as a **detached process** independent of one interactive SSH pipe, then polls the private session using short SSH connections. This prevents a phone browser/app switch from severing the login monitor. Polls expose only approved state markers and the fresh Unity-owned authorization URL, never raw CLI logs, emails or tokens.
+- It validates the Unity HTTPS host, tries Android `termux-open-url`, then an Android `am` VIEW intent, and falls back to displaying/copying the **fresh** link on the user's phone for manual Chrome opening. A request to open a browser does **not** prove the browser actually displayed the page; if it does not appear, the owner opens the **fresh** URL manually and taps **Allow**. URLs are per-session: never reuse an expired OAuth URL or paste one into chat, GitHub, or Cloudflare logs.
+- The CLI 1.0.1 has `auth login --insecure-storage`; a minimal/headless Codespace may have no unlocked D-Bus Secret Service/keyring. This fallback stores credentials in user-private local files without keyring encryption. It must be enabled **only with the owner's explicit consent**, never as an unattended global default. Do not copy `.ulf`, cookies, login state, access tokens or Unity credentials between Codespaces.
+
+**Termux command (owner opt-in only):** First select the **current** Codespace under `$HOME/.config/aaris-ai/codespace-gh`, not the historical example name above. Then run:
+
+```bash
+curl -fsSL --retry 3 \
+  https://raw.githubusercontent.com/sundamunda289-art/Unity-Game-Aris/main/Tools/Codespaces/termux_unity_login_recover.sh \
+  -o "$HOME/aaris-unity-recover.sh"
+bash -n "$HOME/aaris-unity-recover.sh"
+AARIS_UNITY_INSECURE_STORAGE=1 \
+AARIS_CODESPACE_NAME="<exact-current-Available-Codespace-name>" \
+  bash "$HOME/aaris-unity-recover.sh"
+```
+
+The `AARIS_UNITY_INSECURE_STORAGE=1` flag is consent to **unencrypted but owner-restricted credential storage** on this Codespace. Do not enable it silently. If a secure unlocked keyring is working, prefer secure storage instead. The script must never publish credentials or the fresh private OAuth URL to public CI logs or GitHub Issues. If Android does not actually open the page, use the script's fresh phone-side link in Chrome and approve it before expiration; return to Termux and observe the actual result. If SSH preflight or the remote helper fails, report that *stage*, not a generic permission or user-delay guess.
+
+**Independent non-secret verification on the exact selected Codespace** (after the owner's browser approval):
+
+```bash
+export UNITY_CLI_HOME="$HOME/.local/share/aaris-unity-cli"
+CLI="$UNITY_CLI_HOME/bin/unity"
+"$CLI" auth status --format json --non-interactive >/tmp/aaris-unity-auth-check-private.log 2>&1
+echo "UNITY_AUTH_STATUS_EXIT=$?"
+"$CLI" license status --format json --non-interactive >/tmp/aaris-unity-license-check-private.log 2>&1
+echo "UNITY_LICENSE_STATUS_EXIT=$?"
+```
+
+Read **only the exit codes**, not the raw private JSON/log files: both must be `0` to claim verified login and license. Check the same-machine Cloudflare heartbeat plus a real `pwd` command before remote claims. If these commands fail, diagnose privately; do not reset Git, reinstall Editor/LFS, create another Codespace, bypass the license, or disclose the URL. Do not mark `UNITY_LICENSE_VERIFIED` merely because the Termux script printed a link or opened a browser.
+
+**Scope guard:** Keep the canonical repository `sundamunda289-art/Unity-Game-Aris` authoritative, work on the existing machine, preserve all native assets and Git LFS objects, and never claim that licensing alone verifies Unity rendering or gameplay.
+
 ## 2026-11-19: HEADLESS UNITY PERSONAL LOGIN — FAST RECOVERY (READ FIRST)
 
 **Confirmed on the new hosting account:** On 2026-11-19, the owner switched to the *existing* `Aaridkhab/Unity-Game-Aris` Ubuntu 22.04 Codespace (Unity CLI 1.0.1, Editor 6000.3.26f1 installed, canonical `sundamunda289-art/Unity-Game-Aris` `main` synchronized, 822/822 LFS files hydrated). The normal Android Termux Unity login **twice** produced `Unity Allow/login not completed in time` and `Unity auth was not verified` despite the owner tapping Allow. The headless Codespace had no available Secret Service/keyring (`secret-tool`, D-Bus daemon and GNOME keyring absent). **Do not assume the user was too slow; do not keep retrying the default login, reinstall Unity/LFS, rebuild the Codespace, or create a new machine.** An existing 2026-11-17 verified solution is detailed further below.
