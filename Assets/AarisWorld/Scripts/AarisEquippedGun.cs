@@ -165,6 +165,7 @@ namespace Aaris.MapReview
             Material material = MuzzleFlashMaterial();
             if (material == null) return;
             GameObject flash = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            flash.layer = gameObject.layer;
             flash.name = "Aaris Pooled Muzzle Flash";
             flash.transform.SetParent(transform, false);
             flash.transform.localPosition =
@@ -240,6 +241,7 @@ namespace Aaris.MapReview
             Material material = CasingMaterial(shotgun);
             if (material == null) return;
             GameObject casing = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            casing.layer = gameObject.layer;
             casing.name = shotgun ? "Aaris Pooled Shotgun Shell" :
                 "Aaris Pooled Brass Casing";
             casing.transform.SetParent(transform, false);
