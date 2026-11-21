@@ -263,3 +263,13 @@ for start_angle in [-3.0,-2.5,-2.0,-1.5,-0.4,0.0,0.4,1.5,2.0,2.5,3.0]:
 
 print("PASS: anatomy-scaled crouch/prone IK, grounded knee hint and bend-circle stability")
 print("NOT TESTED: Unity retargeted visuals, real collisions or Android FPS")
+
+# Preserve the existing animated knee side when the ankle axis reverses.
+assert "axisDot < -0.985f" in solver
+assert "Vector3.ProjectOnPlane(currentKnee, axis)" in solver
+for axis in ((0.,0.,1.),(0.,0.,-1.)):
+    knee=(0.15,0.25,0.0)
+    dot=sum(x*y for x,y in zip(axis,knee))
+    bend=tuple(x-dot*y for x,y in zip(knee,axis))
+    assert bend == knee
+print("PASS: antiparallel knee pole stays in original anatomical plane")
