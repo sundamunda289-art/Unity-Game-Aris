@@ -65,6 +65,11 @@ check("two-way damage", "targetHealth.ApplyBallisticDamage(" in director and
       "health.ApplyBallisticDamage(damage, attacker, headshot)" in gun)
 check("1-2 player attackers", "AarisCombatSelectionPolicy.CanAttackPlayer(" in director
       and "candidate.HasPlayerSight" in director)
+check("staggered AI aim and player stance fairness",
+      "Mathf.Lerp(.91f, .54f" in director
+      and "AarisBattleActions.PlayerStance.Crouching" in director
+      and "AarisBattleActions.PlayerStance.Prone" in director
+      and "if (UnityEngine.Random.value <= accuracy)" in director)
 check("AI targets can select other physical bots", "chosenHealth = other.Health;" in director)
 check("no ghost virtual bullet into active physics bot",
       "other.proxySlot >= 0) continue;" in population and
