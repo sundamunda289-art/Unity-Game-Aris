@@ -55,6 +55,11 @@ namespace Aaris.MapReview
         public bool FireHeld => fireHeld;
         public bool IsArmed => equippedGun != null &&
             equippedGun.isActiveAndEnabled && equippedGun.Configured;
+        // Flight, vehicle seats and application pauses disable the sole on-foot
+        // motor. Never let a stale touch press or queued melee hit bypass it.
+        private bool AcceptsCombatInput =>
+            isActiveAndEnabled && Time.timeScale > 0f &&
+            motor != null && motor.isActiveAndEnabled;
         public float CameraEyeHeight => stance == PlayerStance.Prone ? 0.54f
             : stance == PlayerStance.Crouching ? 0.94f : 1.45f;
         public int AttackSequence => attackSequence;
@@ -93,6 +98,11 @@ namespace Aaris.MapReview
 
         public void SetFireHeld(bool held)
         {
+            if (!AcceptsCombatInput)
+            {
+                CancelPendingCombatInput();
+                return;
+            }
             // Unity's EventSystem can process both Down and Up between combat
             // Updates on 10-20 FPS phones. Fire immediately on the new press:
             // otherwise a quick tap is discarded before Update can see it.
@@ -114,8 +124,7 @@ namespace Aaris.MapReview
             // Do not bypass the gun's ammo, reload, cooldown or cover checks.
             // An unarmed tap must also begin its punch wind-up immediately,
             // otherwise a short Down/Up pair is lost before the next Update.
-            if (!isActiveAndEnabled || Time.timeScale <= 0f ||
-                Time.time < nextAttack) return;
+            if (Time.time < nextAttack) return;
             if (IsArmed) ShootEquippedWeapon();
             else QueuePunch();
         }
@@ -345,6 +354,11 @@ namespace Aaris.MapReview
 
         private void Update()
         {
+            if (!AcceptsCombatInput)
+            {
+                CancelPendingCombatInput();
+                return;
+            }
             if (punchContactTime >= 0f && Time.time >= punchContactTime)
             {
                 punchContactTime = -1f;
