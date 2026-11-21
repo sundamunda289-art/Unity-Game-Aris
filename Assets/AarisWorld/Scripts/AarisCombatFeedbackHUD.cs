@@ -11,7 +11,7 @@ namespace Aaris.MapReview
     public sealed class AarisCombatFeedbackHUD : MonoBehaviour
     {
         private static AarisCombatFeedbackHUD instance;
-                private RaycastHit[] assistedHits = new RaycastHit[32];
+        private RaycastHit[] assistedHits = new RaycastHit[32];
         private readonly Text[] damageLabels = new Text[8];
         private readonly float[] damageUntil = new float[8];
         private readonly Vector2[] damageOrigin = new Vector2[8];
