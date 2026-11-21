@@ -28,7 +28,7 @@ namespace Aaris.MapReview
         private Image healthFill, flash, reticle, twoXRing, fourXRing;
         private readonly Image[] fourXLines = new Image[4];
         private int lastHealth = -1, lastMaximum = -1, labelCursor;
-        private float flashUntil, directionUntil, nextAim, nextSafeArea, nextDirectorLookup;
+        private float flashUntil, directionUntil, nextAim, nextSafeArea;
         private Vector2 previousScreen;
         private Rect previousSafe;
         private Vector3 assistedDirection;
@@ -309,6 +309,11 @@ namespace Aaris.MapReview
             return direction.sqrMagnitude > .99f;
         }
 
+        internal void BindDirector(AarisOfflineBRDirector match)
+        {
+            director = match;
+        }
+
         private void RefreshAim()
         {
             locked = false;
@@ -398,11 +403,6 @@ namespace Aaris.MapReview
             if (canvas == null || health == null) return;
             UpdateSafeArea(false);
             if (aimCamera == null) aimCamera = Camera.main;
-            if (director == null && Time.unscaledTime >= nextDirectorLookup)
-            {
-                nextDirectorLookup = Time.unscaledTime + 1.5f;
-                director = FindFirstObjectByType<AarisOfflineBRDirector>();
-            }
             if (Time.unscaledTime >= nextAim)
             {
                 nextAim = Time.unscaledTime + .10f;
