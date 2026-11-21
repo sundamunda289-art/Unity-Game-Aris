@@ -1232,7 +1232,7 @@ namespace Aaris.MapReview
             if (hasTarget && canSee && distance <= 38f &&
                 (target != playerTarget || owner.MayAttackPlayer(this)) &&
                 Vector3.Dot(transform.forward, toward) > .84f &&
-                Time.time >= nextAttack && HasSight())
+                Time.time >= nextAttack && TryGetSightHit(target, out RaycastHit shotHit))
             {
                 // Physical loot changes the bot's magazine, fire interval,
                 // damage and gunshot sound; no runtime gun model clone required.
@@ -1253,7 +1253,10 @@ namespace Aaris.MapReview
                     transform.position + Vector3.up);
                 float damage = carriedGun != null
                     ? Mathf.Clamp(carriedGun.damage * .23f, 4f, 26f) : 6f;
-                targetHealth.ApplyDamage(damage, gameObject);
+                // A physical LOS bullet feeds the SAME hitbox receiver as player guns.
+                // Reuse this scheduled shot ray; no extra physics query or GC.
+                AarisEquippedGun.ApplyDamage(shotHit.collider, damage,
+                    gameObject, shotHit.point);
             }
         }
 
@@ -1279,6 +1282,12 @@ namespace Aaris.MapReview
 
         private bool HasSightTo(Transform victim)
         {
+            return TryGetSightHit(victim, out RaycastHit ignored);
+        }
+
+        private bool TryGetSightHit(Transform victim, out RaycastHit shotHit)
+        {
+            shotHit = default(RaycastHit);
             if (victim == null) return false;
             Vector3 eye = transform.position + transform.forward * .48f + Vector3.up * 1.28f;
             CharacterController body = victim == playerTarget ? playerTargetCapsule :
@@ -1319,7 +1328,11 @@ namespace Aaris.MapReview
                 if (hit.collider == null || hit.collider.transform.IsChildOf(transform))
                     continue;
                 if (hit.distance < first)
-                { first = hit.distance; closest = hit.collider; }
+                {
+                    first = hit.distance;
+                    closest = hit.collider;
+                    shotHit = hit;
+                }
             }
             return closest != null && closest.transform.IsChildOf(victim);
         }
