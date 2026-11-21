@@ -50,7 +50,7 @@ check("player HUD bootstrapped", "AarisCombatFeedbackHUD.EnsureForPlayer(this)" 
 check("incoming flash & direction", "flashUntil" in feedback and "HIT FROM LEFT" in feedback)
 check("no new objects on each damage notification",
       "new GameObject" not in feedback.split("public static void NotifyOutgoingDamage(")[1].split("internal static bool TryGetAssistedDirection")[0])
-check("health text and bar", 'HP 200 / 200' in feedback and "healthFill.fillAmount" in feedback)
+check("health text and bar", 'HP 200 / 200' in feedback and "healthFill.rectTransform.localScale" in feedback)
 check("shot uses scope assist only when aiming", "TryGetAssistedDirection" in gun and "inventory.Aiming" in feedback)
 check("wall-occluded soft lock rejects other first hit", "first.transform.IsChildOf(rival.transform)" in director)
 check("original gun fire authoritative", "FirstExternalHit(" in gun and "ApplyDamage(target.collider, spec.damage, owner, target.point)" in gun)
