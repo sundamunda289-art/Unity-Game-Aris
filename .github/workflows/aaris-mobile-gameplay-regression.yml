@@ -40,6 +40,9 @@ on:
       - 'Tools/Validation/test_gloo_preview_pose_budget.py'
       - 'Tools/Validation/test_loot_visibility_pacing.py'
       - 'Tools/Validation/test_loot_pickup_one_time_native_cost.py'
+      - 'Tools/Validation/test_android_idle_loot_visual_reuse.py'
+      - 'Tools/Validation/test_android_loot_visual_rebind_csharp.py'
+      - 'Tools/Validation/test_mobile_asset_lifecycle_budget.py'
       - 'Tools/Validation/test_open_combat_houses.py'
       - 'Tools/Validation/test_house_facade_details.py'
       - 'Tools/Validation/test_house_facade_lod_texture.py'
@@ -95,6 +98,9 @@ on:
       - 'Tools/Validation/test_gloo_preview_pose_budget.py'
       - 'Tools/Validation/test_loot_visibility_pacing.py'
       - 'Tools/Validation/test_loot_pickup_one_time_native_cost.py'
+      - 'Tools/Validation/test_android_idle_loot_visual_reuse.py'
+      - 'Tools/Validation/test_android_loot_visual_rebind_csharp.py'
+      - 'Tools/Validation/test_mobile_asset_lifecycle_budget.py'
       - 'Tools/Validation/test_open_combat_houses.py'
       - 'Tools/Validation/test_house_facade_details.py'
       - 'Tools/Validation/test_house_facade_lod_texture.py'
@@ -164,6 +170,7 @@ jobs:
           python Tools/Validation/test_weapon_pause_input_authority.py
           python Tools/Validation/test_loot_visibility_pacing.py
           python Tools/Validation/test_loot_pickup_one_time_native_cost.py
+          python Tools/Validation/test_android_idle_loot_visual_reuse.py
           python Tools/Validation/test_audio_footstep_gait.py
           python Tools/Validation/test_jump_contact_transition.py
           python Tools/Validation/test_balanced_low_stance_ik.py
@@ -193,6 +200,8 @@ jobs:
           python Tools/Validation/run_runtime_native_work_csharp.py
           python Tools/Validation/run_idle_audio_animation_csharp.py
           python Tools/Validation/run_streaming_admission_csharp.py
+          python Tools/Validation/test_android_loot_visual_rebind_csharp.py
+          python Tools/Validation/test_mobile_asset_lifecycle_budget.py
       - name: Parse every saved AarisWorld C# gameplay script
         run: |
           python - <<'PY'
