@@ -1208,7 +1208,8 @@ namespace Aaris.MapReview
             }
             Vector3 desired = Quaternion.Euler(0f, turnOffset, 0f) *
                 travelDirection * moveSpeed;
-            if (canSee && !retreat) desired *= .23f; // Hold to fire without skating.
+            if (canSee && !retreat && Time.time - lastDamagedAt >= 2.3f)
+                desired *= .23f; // Keep true evasive movement after taking damage.
             Vector3 displacement = desired * dt;
             if (displacement.sqrMagnitude > 0.000001f &&
                 owner.WouldCrossInactiveCover(transform.position, displacement))
