@@ -1,0 +1,65 @@
+name: Android vehicle bounds query reuse QA
+
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisVehicleWorld.cs'
+      - 'Tools/Validation/test_android_vehicle_bounds_query_reuse.py'
+      - 'Tools/Validation/VehicleBoundsQueryTests.cs'
+      - 'Tools/Validation/run_vehicle_bounds_query_csharp.py'
+      - 'Tools/Validation/check_vehicle_system.py'
+      - '.github/workflows/aaris-android-vehicle-bounds-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisVehicleWorld.cs'
+      - 'Tools/Validation/test_android_vehicle_bounds_query_reuse.py'
+      - 'Tools/Validation/VehicleBoundsQueryTests.cs'
+      - 'Tools/Validation/run_vehicle_bounds_query_csharp.py'
+      - 'Tools/Validation/check_vehicle_system.py'
+      - '.github/workflows/aaris-android-vehicle-bounds-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  production-car-bounds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check original wheel size, body visibility and placement contracts
+        run: |
+          python3 Tools/Validation/test_android_vehicle_bounds_query_reuse.py
+          python3 Tools/Validation/test_vehicle_renderable_bounds.py
+          python3 Tools/Validation/test_vehicle_wheel_center_pivot.py
+          python3 Tools/Validation/test_vehicle_axle_road_failsafe.py
+          python3 Tools/Validation/test_android_vehicle_spawn_allocation_budget.py
+          python3 Tools/Validation/check_vehicle_system.py
+      - name: Compile and exercise real vehicle bounds method in Mono
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends mono-mcs
+          python3 Tools/Validation/run_vehicle_bounds_query_csharp.py
+      - name: Parse production C-sharp and validate Python scripts
+        run: |
+          python3 -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
+          python3 - <<'PY'
+          from pathlib import Path
+          from tree_sitter import Language, Parser
+          import tree_sitter_c_sharp
+          parser=Parser(Language(tree_sitter_c_sharp.language()))
+          path=Path('Assets/AarisWorld/Scripts/AarisVehicleWorld.cs')
+          data=path.read_bytes()
+          assert not parser.parse(data).root_node.has_error, path
+          assert all(line==line.rstrip() for line in data.decode().splitlines()),path
+          print('VEHICLE_BOUNDS_PRODUCTION_CSHARP_PARSE_PASS')
+          PY
+          python3 -m py_compile Tools/Validation/test_android_vehicle_bounds_query_reuse.py \
+            Tools/Validation/run_vehicle_bounds_query_csharp.py
