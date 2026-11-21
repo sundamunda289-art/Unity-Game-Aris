@@ -213,8 +213,6 @@ namespace Aaris.MapReview.Editor
             Color previousBackground = camera.backgroundColor;
             float previousFov = camera.fieldOfView;
             Texture2D pixels = null;
-            Transform[] photoNodes = null;
-            int[] photoNodeLayers = null;
             try
             {
                 Vector3 orbit = lookFrom.sqrMagnitude > 0.01f
@@ -227,25 +225,13 @@ namespace Aaris.MapReview.Editor
                     camera.cullingMask |= 1 << subjectLayer;
                 else
                 {
-                    // Real gun/player renderers only, not the expensive 2km
-                    // terrain. This is camera isolation for QA, not a substitute
-                    // mesh or a change to the actual gameplay scene.
-                    // Isolate only authentic runtime player/gun meshes in a
-                    // temporary QA rendering layer. The project Default layer
-                    // also contains map terrain, so filtering by the owner's
-                    // original layer would still render the entire 2km world.
-                    AarisThirdPersonPlayer player =
-                        Object.FindFirstObjectByType<AarisThirdPersonPlayer>();
-                    if (player == null)
-                        throw new InvalidOperationException("PHOTO_PLAYER_MISSING");
-                    photoNodes = player.GetComponentsInChildren<Transform>(true);
-                    photoNodeLayers = new int[photoNodes.Length];
-                    for (int i = 0; i < photoNodes.Length; i++)
-                    {
-                        photoNodeLayers[i] = photoNodes[i].gameObject.layer;
-                        photoNodes[i].gameObject.layer = 30;
-                    }
-                    camera.cullingMask = 1 << 30;
+                    // Real player/held-gun meshes are on the saved Player
+                    // layer (8), explicitly included in URP RendererData's
+                    // Opaque/Transparent masks. Layer 30 is excluded by URP;
+                    // moving gun meshes there produced all-background JPEGs.
+                    // Keep the authored layers untouched and isolate only the
+                    // actual player's layer, excluding default-layer terrain.
+                    camera.cullingMask = 1 << subjectLayer;
                     camera.clearFlags = CameraClearFlags.SolidColor;
                     camera.backgroundColor = new Color(.12f, .16f, .19f, 1f);
                 }
@@ -265,10 +251,6 @@ namespace Aaris.MapReview.Editor
             }
             finally
             {
-                if (photoNodes != null && photoNodeLayers != null)
-                    for (int i = 0; i < photoNodes.Length; i++)
-                        if (photoNodes[i] != null)
-                            photoNodes[i].gameObject.layer = photoNodeLayers[i];
                 camera.transform.SetPositionAndRotation(
                     previousPosition, previousRotation);
                 camera.cullingMask = previousMask;
