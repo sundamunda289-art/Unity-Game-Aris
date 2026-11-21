@@ -577,6 +577,7 @@ namespace Aaris.MapReview
             }
             RaycastHit floor = default(RaycastHit);
             bool foundFloor = false;
+            bool preferredNearGradeSolid = false;
             float closestHeight = .85f;
             for (int i = 0; i < hits; i++)
             {
@@ -592,9 +593,23 @@ namespace Aaris.MapReview
                      Mathf.Abs(candidate.point.y - expectedGround) > 0.38f))
                     continue;
                 float difference = Mathf.Abs(candidate.point.y - expectedGround);
-                if (difference >= closestHeight) continue;
+                // A native terrain hit has zero height error, so a nearest-
+                // height-only selector always hides a valid road 10-20 cm
+                // above it. Prefer static, near-grade solid support, but never
+                // promote a buried mesh or an elevated roof into ground loot.
+                bool nearGradeSolid = !indoor &&
+                    !(candidate.collider is TerrainCollider) &&
+                    candidate.point.y >= expectedGround - 0.02f &&
+                    candidate.point.y <= expectedGround + 0.22f;
+                if (foundFloor)
+                {
+                    if (preferredNearGradeSolid && !nearGradeSolid) continue;
+                    if (preferredNearGradeSolid == nearGradeSolid &&
+                        difference >= closestHeight) continue;
+                }
                 floor = candidate;
                 closestHeight = difference;
+                preferredNearGradeSolid = nearGradeSolid;
                 foundFloor = true;
             }
             if (!foundFloor) return false;
