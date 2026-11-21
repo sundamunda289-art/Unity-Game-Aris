@@ -56,6 +56,16 @@ namespace Aaris.MapReview
             Debug.Log("Aaris offline combat: combatant defeated.");
         }
 
+        // Used only when a near-player bot record reclaims an inactive
+        // pooled character. Does not revive a defeated roster entry.
+        internal void ResetForStreamingRival(float hitpoints)
+        {
+            current = Mathf.Clamp(hitpoints, 1f, maximumHealth);
+            helmetDurability = 0f;
+            dead = false;
+            HealthChanged?.Invoke(this);
+        }
+
         public void RestoreHealth(float amount)
         {
             if (dead || amount <= 0f || float.IsNaN(amount) || float.IsInfinity(amount)) return;
