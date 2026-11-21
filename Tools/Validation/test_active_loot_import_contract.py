@@ -18,10 +18,18 @@ class LiveGroundLootImport(unittest.TestCase):
         self.assertIn('r.enabled && r.gameObject.activeSelf', s)
         self.assertIn('AarisWeapons/loot_candidates', s)
         self.assertNotIn('string basePath = "Assets/Resources/AarisWeapons/Models/"', s)
+        self.assertNotIn('parsed.weapons.Length != 5', s)
+        self.assertIn('importedModels.Add(spec.modelResource)', s)
+        self.assertIn('if (!seenIds.Add(spec.id))', s)
 
     def test_all_live_model_files_exist_for_authored_loot(self):
         models = json.loads(CAT.read_text())['weapons']
-        self.assertEqual(len(models), 5)
+        # Five distinct meshes now back six playable gun variants (DMR shares BattleRifle).
+        self.assertGreaterEqual(len(models), 6)
+        self.assertGreaterEqual(len({model['modelResource'] for model in models}), 5)
+        self.assertEqual(len({model['id'] for model in models}), len(models))
+        self.assertEqual({0, 1, 2, 4}, {model['scopePower'] for model in models})
+        self.assertIn('DMR', {model['id'] for model in models})
         for model in models:
             p = ROOT / 'Assets/Resources' / model['modelResource']
             self.assertTrue(p.with_suffix('.fbx').is_file()
