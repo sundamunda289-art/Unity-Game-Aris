@@ -57,8 +57,21 @@ check("original gun fire authoritative", "FirstExternalHit(" in gun and "ApplyDa
 check("stance-relative headshot zone", "bounds.size.y * .76f" in gun)
 check("headshot effective damage", "damage *= 1.65f" in gun)
 check("two-way damage", "targetHealth.ApplyDamage(" in director and "damageable.ApplyDamage(damage, attacker)" in gun)
-check("1-2 player attackers", "return nearer < 2;" in director)
+check("1-2 player attackers", "AarisCombatSelectionPolicy.CanAttackPlayer(" in director
+      and "candidate.HasPlayerSight" in director)
 check("AI targets can select other physical bots", "chosenHealth = other.Health;" in director)
+check("no ghost virtual bullet into active physics bot",
+      "other.proxySlot >= 0) continue;" in population and
+      "proxy.ReceiveSimulatedHit(hit)" not in population)
+check("streaming preserves physical ammo and medkits",
+      "record.ammo = proxy.CurrentAmmo;" in population and
+      "bot.ammo, bot.medkits" in population and
+      "int storedAmmo, int storedMedkits" in director)
+check("physical activation checks authored blockers",
+      "director.CanMaterializeBot(bot.position)" in population)
+check("vision-aware two attacker arbitration",
+      "other.HasPlayerSight" in director and
+      "HasSightTo(person)" in director)
 check("only 3 virtual records simulated per rendered frame", "for (int i = 0; i < 3; i++)" in population)
 check("no per-distant-bot MonoBehaviour", "sealed class BotRecord" in population and
       "sealed class AarisMassBotPopulation : MonoBehaviour" in population)
