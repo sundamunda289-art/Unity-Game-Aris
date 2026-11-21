@@ -315,22 +315,32 @@ namespace Aaris.MapReview
             int empty = -1;
             for (int i = 0; i < scheduled.Length; i++)
                 if (scheduled[i].Key == null) { empty = i; break; }
-            // At high rates, drop only the oldest noncritical tail cue.
-            // Recompute the deadline when replacing it: the old minimum
-            // might no longer be in the queue.
-            bool replacedOldest = empty < 0;
-            if (replacedOldest)
+            // If automatic gunfire fills the queue with shell tails, a delayed
+            // grenade throw must not be replaced by another shell sound.
+            // Only an important incoming cue can evict a low-priority tail.
+            bool replacedQueuedCue = empty < 0;
+            if (replacedQueuedCue)
             {
-                empty = 0;
-                for (int i = 1; i < scheduled.Length; i++)
-                    if (scheduled[i].At < scheduled[empty].At) empty = i;
+                if (IsLowPriorityCue(key)) return;
+                // Evict the furthest-future disposable tail, preserving
+                // already-due and near-due sounds. No allocations or sort.
+                float furthestLowPriorityAt = float.NegativeInfinity;
+                for (int i = 0; i < scheduled.Length; i++)
+                {
+                    if (!IsLowPriorityCue(scheduled[i].Key) ||
+                        scheduled[i].At <= furthestLowPriorityAt) continue;
+                    empty = i;
+                    furthestLowPriorityAt = scheduled[i].At;
+                }
+                // The full queue contains only important cues; retain them.
+                if (empty < 0) return;
             }
             float at = Time.time + seconds;
             scheduled[empty] = new TimedCue
             {
                 Key = key, Position = point, At = at, Volume = volume
             };
-            if (replacedOldest)
+            if (replacedQueuedCue)
             {
                 nextScheduledAt = float.PositiveInfinity;
                 for (int i = 0; i < scheduled.Length; i++)
