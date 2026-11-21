@@ -140,6 +140,9 @@ namespace Aaris.MapReview
             float exitSquared = exitMargin * exitMargin;
             int loadCell = -1, unloadCell = -1;
             int speculativeResidentCount = 0;
+            // Numeric priority can tie the entry threshold when predicted position
+            // is already inside a distant cell. Urgency must use actual position.
+            bool loadIsUrgent = false;
             float nearestLoad = float.MaxValue, farthestUnload = -1f;
             for (int i = 0; i < chunks.Length; i++)
             {
@@ -169,7 +172,11 @@ namespace Aaris.MapReview
                 float priority = distance <= entrySquared
                     ? distance : entrySquared + predicted;
                 if (priority < nearestLoad)
-                { nearestLoad = priority; loadCell = i; }
+                {
+                    nearestLoad = priority;
+                    loadCell = i;
+                    loadIsUrgent = distance <= entrySquared;
+                }
             }
             // One integration operation in flight across the *entire* world.
             // Essential visible cells win over memory retirement; distant
@@ -178,7 +185,7 @@ namespace Aaris.MapReview
             // prefetch. Otherwise rapid traversal can stack old resident
             // scenes with new predicted ones and spike Android RAM. Cells
             // needed at the player's actual position always load first.
-            if (unloadCell >= 0 && (loadCell < 0 || nearestLoad > entrySquared))
+            if (unloadCell >= 0 && (loadCell < 0 || !loadIsUrgent))
             {
 #if UNITY_ANDROID && !UNITY_EDITOR
                 AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();
@@ -190,7 +197,7 @@ namespace Aaris.MapReview
 #if UNITY_ANDROID && !UNITY_EDITOR
                 // Bound predicted-only residency on constrained devices. A cell
                 // inside the player's real load margin ALWAYS bypasses this cap.
-                if (nearestLoad > entrySquared &&
+                if (!loadIsUrgent &&
                     AarisMobileStreamingFrameGate.IsConstrainedDevice() &&
                     speculativeResidentCount >= maxSpeculativeResidentCells)
                     return;
