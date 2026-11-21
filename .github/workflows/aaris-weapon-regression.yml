@@ -10,6 +10,14 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs'
       - 'Assets/AarisWorld/Scripts/AarisWeaponCatalog.cs'
       - 'Assets/AarisWorld/Scripts/AarisEquippedGun.cs'
+      - 'Assets/AarisWorld/Scripts/AarisBattleActions.cs'
+      - 'Assets/AarisWorld/Scripts/AarisOfflineBRDirector.cs'
+      - 'Assets/AarisWorld/Scripts/AarisCombatFeedbackHUD.cs'
+      - 'Assets/AarisWorld/Scripts/AarisOfflineHealth.cs'
+      - 'Tools/Validation/test_weapon_pause_input_authority.py'
+      - 'Tools/Validation/test_combat_redlock_100bots.py'
+      - 'Tools/Validation/test_combat_camera_hud_ai.py'
+      - 'Tools/Validation/test_offline_rival_attacker_threat_budget.py'
       - 'Tools/Validation/check_weapon_loot.py'
       - 'Tools/Validation/test_loot_visibility_pacing.py'
       - 'Tools/Validation/check_single_weapon_transactions.py'
@@ -25,6 +33,14 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs'
       - 'Assets/AarisWorld/Scripts/AarisWeaponCatalog.cs'
       - 'Assets/AarisWorld/Scripts/AarisEquippedGun.cs'
+      - 'Assets/AarisWorld/Scripts/AarisBattleActions.cs'
+      - 'Assets/AarisWorld/Scripts/AarisOfflineBRDirector.cs'
+      - 'Assets/AarisWorld/Scripts/AarisCombatFeedbackHUD.cs'
+      - 'Assets/AarisWorld/Scripts/AarisOfflineHealth.cs'
+      - 'Tools/Validation/test_weapon_pause_input_authority.py'
+      - 'Tools/Validation/test_combat_redlock_100bots.py'
+      - 'Tools/Validation/test_combat_camera_hud_ai.py'
+      - 'Tools/Validation/test_offline_rival_attacker_threat_budget.py'
       - 'Tools/Validation/check_weapon_loot.py'
       - 'Tools/Validation/test_loot_visibility_pacing.py'
       - 'Tools/Validation/check_single_weapon_transactions.py'
@@ -56,3 +72,12 @@ jobs:
         run: python3 Tools/Validation/check_armed_locomotion.py
       - name: Verify off-screen gun visual pacing and camera-free beacon budget
         run: python3 Tools/Validation/test_loot_visibility_pacing.py
+      - name: Verify combat input safety during flight, pause and vehicle handoff
+        run: python3 Tools/Validation/test_weapon_pause_input_authority.py
+      - name: Verify scopes, physical damage, readable HP and 100-bot attack budget
+        run: |
+          python3 Tools/Validation/test_combat_redlock_100bots.py
+          python3 Tools/Validation/test_combat_camera_hud_ai.py
+          python3 Tools/Validation/test_offline_rival_attacker_threat_budget.py
+          python3 Tools/Validation/test_combat_visible_target_gate.py
+
