@@ -134,6 +134,25 @@ namespace Aaris.MapReview
         private const float CandidateCellMetres = 64f;
 
         private readonly List<AarisWeaponPickup> active = new List<AarisWeaponPickup>(32);
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // A tiny, lazy, exact-spec idle pool: never preinstantiate guns on boot.
+        // 2 GB phones hold no spare native models; even 4/6 GB retain at most
+        // two/four idle models. Expiration and OS low-memory flush prevent
+        // retained FBX hierarchies accumulating across a 2 km world traversal.
+        private const int MaximumIdleLootVisuals = 4;
+        private const float IdleLootLifetimeSeconds = 18f;
+        private const float LowMemoryPoolCooldownSeconds = 45f;
+        private struct IdleLootVisual
+        {
+            internal AarisWeaponPickup pickup;
+            internal float expiresAt;
+        }
+        private readonly List<IdleLootVisual> idleLootVisuals =
+            new List<IdleLootVisual>(MaximumIdleLootVisuals);
+        private int idleLootCapacity;
+        private bool idlePoolTrimPending;
+        private float poolSuppressedUntil, nextIdlePoolTrimAt;
+#endif
         private readonly List<AarisDroppedWeapon> dropped = new List<AarisDroppedWeapon>(16);
         private readonly RaycastHit[] pickupObstructions = new RaycastHit[24];
         private readonly RaycastHit[] dropFloorHits = new RaycastHit[32];
@@ -232,6 +251,130 @@ namespace Aaris.MapReview
         private void Start()
         {
             if (player != null) drop = player.GetComponent<AarisOfflineDrop>();
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Compute the hardware capacity once, not in loot-stream hot paths.
+            int ramMb = SystemInfo.systemMemorySize;
+            idleLootCapacity = ramMb <= 0 || ramMb <= 3072 ? 0 :
+                ramMb < 6144 ? 2 : MaximumIdleLootVisuals;
+#endif
+        }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private void OnEnable() { Application.lowMemory += OnLowMemory; }
+
+        private void OnDisable()
+        {
+            Application.lowMemory -= OnLowMemory;
+            DrainIdleLootVisuals();
+        }
+
+        private void OnDestroy()
+        {
+            Application.lowMemory -= OnLowMemory;
+            DrainIdleLootVisuals();
+        }
+
+        private void OnLowMemory()
+        {
+            // Signal only. Do not destroy native renderer hierarchies inside
+            // an OS callback; let Update amortize actual teardown.
+            idlePoolTrimPending = true;
+            poolSuppressedUntil = Time.unscaledTime + LowMemoryPoolCooldownSeconds;
+        }
+
+        private void DrainIdleLootVisuals()
+        {
+            for (int i = idleLootVisuals.Count - 1; i >= 0; i--)
+            {
+                AarisWeaponPickup pickup = idleLootVisuals[i].pickup;
+                if (pickup != null) Destroy(pickup.gameObject);
+            }
+            idleLootVisuals.Clear();
+            idlePoolTrimPending = false;
+        }
+
+        private void TrimIdleLootVisuals(float now)
+        {
+            // Normal TTL expiration is at most one Destroy per half-second.
+            // A low-memory signal doubles that budget without a teardown burst.
+            int destroyBudget = idlePoolTrimPending ? 2 : 1;
+            for (int i = idleLootVisuals.Count - 1; i >= 0 &&
+                 destroyBudget > 0; i--)
+            {
+                IdleLootVisual idle = idleLootVisuals[i];
+                if (!idlePoolTrimPending && idle.pickup != null &&
+                    now < idle.expiresAt) continue;
+                idleLootVisuals.RemoveAt(i);
+                if (idle.pickup != null) Destroy(idle.pickup.gameObject);
+                destroyBudget--;
+            }
+            if (idleLootVisuals.Count == 0) idlePoolTrimPending = false;
+        }
+
+        private bool TryRecycleFarVisual(AarisWeaponPickup pickup, float now)
+        {
+            if (pickup == null || pickup.IsConsumed || idleLootCapacity == 0 ||
+                idleLootVisuals.Count >= idleLootCapacity ||
+                idlePoolTrimPending || now < poolSuppressedUntil)
+                return false;
+
+            // A hidden pooled object no longer participates in active pickup
+            // discovery, beacon rendering or spin updates: OnDisable removes it
+            // from the global live registry. Real record state stays in plans.
+            pickup.gameObject.SetActive(false);
+            idleLootVisuals.Add(new IdleLootVisual {
+                pickup = pickup, expiresAt = now + IdleLootLifetimeSeconds
+            });
+            return true;
+        }
+
+        private AarisWeaponPickup TryRentIdleVisual(AarisWeaponState gunState,
+            int candidateIndex, Vector3 position, string rootName)
+        {
+            if (gunState == null || gunState.Spec == null ||
+                idleLootCapacity == 0 || idlePoolTrimPending ||
+                Time.unscaledTime < poolSuppressedUntil) return null;
+
+            // Tiny bounded scan; exact weapon identity prevents a sniper
+            // renderer/material from being reassigned to another gun type.
+            for (int i = idleLootVisuals.Count - 1; i >= 0; i--)
+            {
+                IdleLootVisual idle = idleLootVisuals[i];
+                AarisWeaponPickup pickup = idle.pickup;
+                if (pickup == null)
+                {
+                    idleLootVisuals.RemoveAt(i);
+                    continue;
+                }
+                if (Time.unscaledTime >= idle.expiresAt ||
+                    pickup.Spec == null ||
+                    pickup.Spec.id != gunState.Spec.id) continue;
+                idleLootVisuals.RemoveAt(i);
+                if (!pickup.RebindForStreaming(gunState, candidateIndex))
+                {
+                    Destroy(pickup.gameObject);
+                    continue;
+                }
+                pickup.transform.SetPositionAndRotation(position,
+                    Quaternion.identity);
+                pickup.gameObject.name = rootName;
+                pickup.gameObject.SetActive(true);
+                return pickup;
+            }
+            return null;
+        }
+#endif
+
+        // On all non-Android platforms, original new-prefab path is unchanged.
+        private AarisWeaponPickup TryReuseLootVisual(AarisWeaponState gunState,
+            int candidateIndex, Vector3 position, string rootName)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return TryRentIdleVisual(gunState, candidateIndex,
+                position, rootName);
+#else
+            return null;
+#endif
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -990,6 +1133,15 @@ namespace Aaris.MapReview
 
         private void Update()
         {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Reclaim expired/low-memory idle models even when airborne or
+            // gameplay is paused. Zero native work on ordinary frames.
+            if (idlePoolTrimPending || Time.unscaledTime >= nextIdlePoolTrimAt)
+            {
+                nextIdlePoolTrimAt = Time.unscaledTime + 0.5f;
+                TrimIdleLootVisuals(Time.unscaledTime);
+            }
+#endif
             if (player == null || inventory == null || candidates == null) return;
             // Streamed loot uses unscaled time, so a game pause otherwise still
             // completes pickup/drop transactions while the character is frozen.
@@ -1079,7 +1231,10 @@ namespace Aaris.MapReview
                     if (unloaded == 0)
                         AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();
 #endif
-                    Destroy(pickup.gameObject);
+#if UNITY_ANDROID && !UNITY_EDITOR
+                    if (!TryRecycleFarVisual(pickup, now))
+#endif
+                        Destroy(pickup.gameObject);
                     unloaded++;
                     continue;
                 }
@@ -1133,15 +1288,21 @@ namespace Aaris.MapReview
                 if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()) return true;
 #endif
                 buildAttempts++;
-                var root = new GameObject("Dropped " + record.state.Spec.displayName);
-                root.transform.SetParent(transform, false);
-                root.transform.position = record.position;
-                var pickup = root.AddComponent<AarisWeaponPickup>();
-                if (!pickup.Initialize(record.state, record.id))
+                string visualName = "Dropped " + record.state.Spec.displayName;
+                AarisWeaponPickup pickup = TryReuseLootVisual(record.state,
+                    record.id, record.position, visualName);
+                if (pickup == null)
                 {
-                    record.nextVisualAttemptAt = now + RetryDelaySeconds;
-                    Destroy(root);
-                    continue;
+                    var root = new GameObject(visualName);
+                    root.transform.SetParent(transform, false);
+                    root.transform.position = record.position;
+                    pickup = root.AddComponent<AarisWeaponPickup>();
+                    if (!pickup.Initialize(record.state, record.id))
+                    {
+                        record.nextVisualAttemptAt = now + RetryDelaySeconds;
+                        Destroy(root);
+                        continue;
+                    }
                 }
                 record.visible = pickup;
                 active.Add(pickup);
@@ -1189,17 +1350,23 @@ namespace Aaris.MapReview
                 if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()) return true;
 #endif
                 buildAttempts++;
-                var root = new GameObject("Loot " + choices[i].displayName + " #" + i);
-                root.transform.SetParent(transform, false);
-                root.transform.position = spot;
-                var pickup = root.AddComponent<AarisWeaponPickup>();
                 var state = new AarisWeaponState(choices[i],
                     matchSeed ^ (uint)(i + 1));
-                if (!pickup.Initialize(state, i))
+                string visualName = "Loot " + choices[i].displayName + " #" + i;
+                AarisWeaponPickup pickup = TryReuseLootVisual(state, i, spot,
+                    visualName);
+                if (pickup == null)
                 {
-                    nextCandidateProbeAt[i] = now + RetryDelaySeconds;
-                    Destroy(root);
-                    continue;
+                    var root = new GameObject(visualName);
+                    root.transform.SetParent(transform, false);
+                    root.transform.position = spot;
+                    pickup = root.AddComponent<AarisWeaponPickup>();
+                    if (!pickup.Initialize(state, i))
+                    {
+                        nextCandidateProbeAt[i] = now + RetryDelaySeconds;
+                        Destroy(root);
+                        continue;
+                    }
                 }
                 active.Add(pickup);
                 if (Debug.isDebugBuild)
