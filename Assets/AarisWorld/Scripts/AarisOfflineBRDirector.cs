@@ -657,7 +657,7 @@ namespace Aaris.MapReview
                 for (int i = 0; i < activeDirector.rivals.Length; i++)
                 {
                     AarisOfflineRival bot = activeDirector.rivals[i];
-                    if (bot == null || !bot.IsAlive ||
+                    if (bot == null || !bot.IsAlive || !bot.HasVisibleBody ||
                         bot == rejectedFirst || bot == rejectedSecond) continue;
                     Vector3 delta = bot.transform.position + Vector3.up * 1.12f - origin;
                     float d = delta.magnitude;
@@ -901,6 +901,9 @@ namespace Aaris.MapReview
         private AnimationMixerPlayable animations;
         private bool hasAnimations;
         public bool IsAlive => health != null && !health.IsDead;
+        // The physical collider may spawn before its streamed visual. Do not
+        // permit invisible opponents to claim player attack slots or Red-Lock.
+        internal bool HasVisibleBody => visualRoot != null && visualRoot.activeInHierarchy;
 
         internal void Initialize(AarisOfflineBRDirector director, AarisOfflineHealth self,
             Transform victim, AarisOfflineHealth victimHealth, int encounterSlot)
@@ -1251,7 +1254,7 @@ namespace Aaris.MapReview
         // Selection must check player LOS without mutating a bot-vs-bot target.
         internal bool HasPlayerSightForSelection()
         {
-            return playerTarget != null && playerTargetHealth != null &&
+            return HasVisibleBody && playerTarget != null && playerTargetHealth != null &&
                 !playerTargetHealth.IsDead && HasSightTo(playerTarget);
         }
 
