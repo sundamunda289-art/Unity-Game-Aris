@@ -918,8 +918,12 @@ def audit():
     assert "private float nextScheduledAt = float.PositiveInfinity;" in audio
     scheduler = audio[audio.index("private void Schedule("):
                       audio.index("/// <summary>Only successful weapon shots")]
-    assert "bool replacedOldest = empty < 0;" in scheduler
-    assert "if (replacedOldest)" in scheduler
+    assert "bool replacedQueuedCue = empty < 0;" in scheduler
+    assert "if (replacedQueuedCue)" in scheduler
+    assert "if (IsLowPriorityCue(key)) return;" in scheduler
+    assert "if (!IsLowPriorityCue(scheduled[i].Key) ||" in scheduler
+    assert "scheduled[i].At <= furthestLowPriorityAt" in scheduler
+    assert "if (empty < 0) return;" in scheduler
     assert "nextScheduledAt = Mathf.Min(nextScheduledAt, at);" in scheduler
     assert "float now = Time.time;" in scheduler
     assert "if (now < nextScheduledAt) return;" in scheduler
@@ -956,14 +960,32 @@ def audit():
         assert scans <= len(cues), (fps, scans)
         assert simulate_cues(fps, [])[1] == 0
 
-    # Saturation keeps 16 total sounds, replacing the earliest tail.
-    slots = [(i, 0.2 + i * 0.02) for i in range(16)]
-    oldest = min(range(len(slots)), key=lambda i: slots[i][1])
-    slots[oldest] = (99, 0.08)
-    retained = sorted(slots, key=lambda item: item[1])
-    assert len(retained) == 16 and retained[0] == (99, 0.08)
-    assert 0 not in [item[0] for item in slots]
-    assert min(due for _, due in slots) == 0.08
+    # Full delayed-voice queues must preserve critical grenade/bolt cues.
+    # Model the source's no-allocation priority admission with sixteen slots.
+    def schedule_full(slots, incoming, at):
+        if incoming == "shell_drop":
+            return slots, False
+        disposable = [i for i, (key, _) in enumerate(slots)
+                      if key == "shell_drop"]
+        if not disposable:
+            return slots, False
+        victim = max(disposable, key=lambda i: slots[i][1])
+        result = slots.copy()
+        result[victim] = (incoming, at)
+        return result, True
+
+    pending = [("grenade_throw", 0.21), ("bolt_reload", 0.39)] + [
+        ("shell_drop", 0.2 + i * 0.02) for i in range(14)]
+    assert len(pending) == 16
+    assert schedule_full(pending, "shell_drop", 0.99) == (pending, False)
+    changed, accepted = schedule_full(pending, "grenade_throw", 0.08)
+    assert accepted and len(changed) == 16
+    assert ("grenade_throw", 0.21) in changed
+    assert ("bolt_reload", 0.39) in changed
+    assert ("grenade_throw", 0.08) in changed
+    assert ("shell_drop", 0.46) not in changed  # furthest-future tail removed
+    important = [("grenade_throw", 0.2 + i * 0.01) for i in range(16)]
+    assert schedule_full(important, "bolt_reload", 0.1) == (important, False)
 
     # An already-converged audio loop must make zero native volume/pitch
     # writes. Changed targets preserve MoveTowards's bounded fades and snap.
