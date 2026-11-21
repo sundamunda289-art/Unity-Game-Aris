@@ -21,8 +21,8 @@ namespace Aaris.MapReview
         public float MaximumHealth => maximumHealth;
         public bool IsDead => dead;
         public float HelmetDurability => helmetDurability;
-        // IAarisDamageable has no hit-bone data; armor currently absorbs
-        // capped generic damage until headshot-specific hits are available.
+        // Actual hitscan headshots use ApplyBallisticDamage. Older
+        // IAarisDamageable callers retain generic mitigation for compatibility.
         public bool TryEquipHelmet()
         {
             if (dead || helmetDurability >= maximumHelmetDurability - 0.01f) return false;
@@ -38,11 +38,21 @@ namespace Aaris.MapReview
 
         private void Awake() => current = maximumHealth;
 
-        public void ApplyDamage(float amount, GameObject attacker)
+        // IAarisDamageable legacy callers keep existing generic mitigation.
+        // Hitscan guns supply true hit location via ApplyBallisticDamage so
+        // a body shot no longer consumes protective HEAD gear.
+        public void ApplyDamage(float amount, GameObject attacker) =>
+            ApplyDamageInternal(amount, attacker, true);
+
+        public void ApplyBallisticDamage(float amount, GameObject attacker, bool headshot) =>
+            ApplyDamageInternal(amount, attacker, headshot);
+
+        private void ApplyDamageInternal(float amount, GameObject attacker, bool helmetEligible)
         {
             if (dead || float.IsNaN(amount) || float.IsInfinity(amount) || amount <= 0f) return;
             float previous = current;
-            float absorbed = Mathf.Min(helmetDurability, amount * helmetProtection);
+            float absorbed = helmetEligible
+                ? Mathf.Min(helmetDurability, amount * helmetProtection) : 0f;
             helmetDurability = Mathf.Max(0f, helmetDurability - absorbed);
             current = Mathf.Max(0f, current - (amount - absorbed));
             // Publish fatality before notifying HUD/AI health observers:
