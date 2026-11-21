@@ -56,10 +56,15 @@ namespace Aaris.MapReview
         // Reserve its NEXT frame before yielding; optional models/materials
         // must not begin another import or hierarchy build on that frame.
         private static int essentialRigFrame = -1;
+        // A second next-frame reservation must not erase a fence that is due
+        // on the CURRENT frame. Two slots cover consecutive reservations with
+        // no collections, frame-loop work, or permanent optional starvation.
+        private static int previousEssentialRigFrame = -1;
         // The high-detail cargo plane has its own unavoidable native
         // Instantiate + material/renderer setup. A separate reservation
         // preserves a simultaneous character-rig fence rather than replacing it.
         private static int essentialAircraftFrame = -1;
+        private static int previousEssentialAircraftFrame = -1;
         internal static int RigReservedDeferredAttempts { get; private set; }
         // One shared native import slot across optional model prewarmers.
         // Completed requests release the slot even when a coroutine stops.
@@ -450,8 +455,8 @@ namespace Aaris.MapReview
             nextFrameBudgetRefresh = -1;
             cachedTargetFrameRate = int.MinValue;
             ImportSettleDeferredAttempts = PressureDeferredFrames = 0;
-            essentialRigFrame = -1;
-            essentialAircraftFrame = -1;
+            essentialRigFrame = previousEssentialRigFrame = -1;
+            essentialAircraftFrame = previousEssentialAircraftFrame = -1;
             RigReservedDeferredAttempts = 0;
             optionalLoadInFlight = null;
             essentialAudioLoadInFlight = null;
@@ -576,7 +581,12 @@ namespace Aaris.MapReview
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (IsConstrainedDevice())
             {
-                essentialRigFrame = Time.frameCount + 1;
+                int nextFrame = Time.frameCount + 1;
+                if (essentialRigFrame != nextFrame)
+                {
+                    previousEssentialRigFrame = essentialRigFrame;
+                    essentialRigFrame = nextFrame;
+                }
                 return true;
             }
 #endif
@@ -591,7 +601,12 @@ namespace Aaris.MapReview
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (IsConstrainedDevice())
             {
-                essentialAircraftFrame = Time.frameCount + 1;
+                int nextFrame = Time.frameCount + 1;
+                if (essentialAircraftFrame != nextFrame)
+                {
+                    previousEssentialAircraftFrame = essentialAircraftFrame;
+                    essentialAircraftFrame = nextFrame;
+                }
                 return true;
             }
 #endif
@@ -602,7 +617,9 @@ namespace Aaris.MapReview
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             return Time.frameCount == essentialRigFrame ||
-                   Time.frameCount == essentialAircraftFrame;
+                   Time.frameCount == previousEssentialRigFrame ||
+                   Time.frameCount == essentialAircraftFrame ||
+                   Time.frameCount == previousEssentialAircraftFrame;
 #else
             return false;
 #endif
