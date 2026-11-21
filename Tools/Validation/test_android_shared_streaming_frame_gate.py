@@ -211,6 +211,30 @@ class SharedStreamingAdmission(unittest.TestCase):
         self.assertNotIn("QualitySettings", probe)
         self.assertNotIn("renderScale", probe)
 
+    def test_repeated_long_hitches_do_not_starve_optional_assets(self):
+        # Source-level guard alongside the production C# fixture's 70-frame
+        # continuous-hitch and isolated-hitch execution tests.
+        policy = GATE.split(
+            "private static bool ShouldDeferForFramePressure(int frame)", 1
+        )[1].split("[RuntimeInitializeOnLoadMethod", 1)[0]
+        self.assertIn("private const int MaximumLongHitchConsecutiveDeferrals = 6;", GATE)
+        self.assertIn("consecutiveLongHitchDeferrals < MaximumLongHitchConsecutiveDeferrals", policy)
+        self.assertIn("consecutiveLongHitchDeferrals++;", policy)
+        self.assertIn("longHitchRecoveryThroughFrame = -1;", policy)
+        self.assertIn("consecutiveLongHitchDeferrals = 0;", policy)
+        self.assertLess(policy.index("longHitchRecoveryThroughFrame = -1;"),
+                        policy.index("float budget = CurrentFrameBudgetSeconds(frame);"))
+        reset = GATE.split("private static void Reset()", 1)[1].split(
+            "internal static void TrackAdditiveSceneLoad(", 1
+        )[0]
+        self.assertIn("consecutiveLongHitchDeferrals = 0;", reset)
+        fixture = (ROOT / "Tools/Validation/StreamingAdmissionTests.cs").read_text()
+        self.assertIn("longHitchAdmitted == 10", fixture)
+        self.assertIn("PressureDeferredFrames == 60", fixture)
+        # No fidelity reduction is a valid substitute for progress fairness.
+        self.assertNotIn("renderScale", policy)
+        self.assertNotIn("QualitySettings", policy)
+
     def test_diagnostic_first_or_streamer_first_never_double_claims(self):
         # Pure frame-admission simulation: regardless of Unity Update order,
         # only the first nonessential task gets the slot on a 4GB phone.
