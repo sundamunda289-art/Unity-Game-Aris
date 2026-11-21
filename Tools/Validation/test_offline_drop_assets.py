@@ -224,7 +224,7 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("private bool HasSightTo(Transform victim)", br)
         self.assertIn("closest.transform.IsChildOf(victim)", br)
         self.assertIn("HasPlayerSightForSelection()", br)
-        self.assertIn("targetHealth.ApplyDamage(damage, gameObject);", br)
+        self.assertIn("AarisEquippedGun.ApplyDamage(shotHit.collider, damage,", br)
         self.assertIn("private void OnDied(AarisOfflineHealth defeated)", br)
         self.assertIn("spawnComplete && spawnedRivals > 0 && activeRivals == 0", br)
         self.assertIn("matchEnd.WinMatch();", br)
