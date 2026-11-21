@@ -2,7 +2,8 @@
 """Audit 30 real Unity Editor locomotion frames from measured humanoid bones.
 
 The three camera angles are captured at DIFFERENT time samples. This report
-detects outlying knee spread for review; it does not infer foot sliding,
+can strictly reject grounded low-stance knee excursions, without treating
+airborne jumping poses as grounded errors. It does not infer foot sliding,
 mesh clipping, or mobile FPS from a still image.
 """
 import argparse
@@ -16,11 +17,12 @@ STATES = (
     "05_Crouching", "06_CrouchWalking", "07_Prone", "08_Crawling",
     "09_GettingUp", "10_Jumping",
 )
+LOW_STANCE_STATES = frozenset(STATES[4:9])
 REQUIRED_BONES = (
     "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg",
     "LeftFoot", "RightFoot",
 )
-FRAME = re.compile(r"^FRAME (\S+) ([012]) stance=\w+ ")
+FRAME = re.compile(r"^FRAME (\S+) ([012]) stance=\w+ .*?\bair=(True|False)\b")
 TIME = re.compile(
     r"^MOTION_TIMESTAMP stage=(\S+) frame=([012]) "
     r"unscaledSeconds=([0-9.]+)$"
@@ -32,7 +34,7 @@ BONE = re.compile(
 )
 
 
-def evaluate(report: str):
+def evaluate(report: str, strict_grounded_low_stance: bool = False):
     if "SUCCESS_30_MOTION_MATRIX_FRAMES" not in report.splitlines():
         raise ValueError("Missing native Unity 30-frame success marker")
     samples = {}
@@ -43,8 +45,11 @@ def evaluate(report: str):
             current = (frame.group(1), int(frame.group(2)))
             if current in samples:
                 raise ValueError(f"Duplicate native frame: {current}")
-            samples[current] = {"bones": {}, "seconds": None}
+            samples[current] = {"bones": {}, "seconds": None,
+                                "airborne": frame.group(3) == "True"}
             continue
+        if line.startswith("FRAME "):
+            raise ValueError(f"Unparseable native frame or missing air flag: {line}")
         stamp = TIME.match(line)
         if stamp:
             key = (stamp.group(1), int(stamp.group(2)))
@@ -68,6 +73,7 @@ def evaluate(report: str):
 
     summary = {}
     review_flags = []
+    blocking_flags = []
     last_time = -float("inf")
     for state in STATES:
         rows = []
@@ -113,18 +119,30 @@ def evaluate(report: str):
             }
             rows.append(row)
             if max(abs(left_lateral), abs(right_lateral)) > 0.30:
-                review_flags.append({
+                flag = {
                     "state": state, "frame": frame,
                     "reason": "Knee lateral offset >0.30m (needs visual review)",
                     "knee_lateral_m": row["knee_lateral_m"],
-                })
+                }
+                review_flags.append(flag)
+                if state in LOW_STANCE_STATES and not obj["airborne"]:
+                    blocking_flags.append(flag)
         summary[state] = rows
+    if strict_grounded_low_stance and blocking_flags:
+        first = blocking_flags[0]
+        raise ValueError(
+            "Grounded low-stance knee flare >0.30m at "
+            f"{first['state']} frame {first['frame']}: "
+            f"{first['knee_lateral_m']}; "
+            f"{len(blocking_flags)} unsafe frames"
+        )
     return {
         "status": "PASS_TELEMETRY_COMPLETE",
         "sample_count": 30,
         "camera_angles_are_sequential": True,
         "states": summary,
         "review_flags": review_flags,
+        "grounded_low_stance_blocking_flags": blocking_flags,
         "limitations": (
             "Terrain height is sampled at actor position, not each shoe. "
             "Still frames cannot prove stance-foot sliding or continuous "
@@ -136,8 +154,11 @@ def evaluate(report: str):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("report", type=Path)
+    parser.add_argument("--strict-grounded-low-stance", action="store_true",
+                        help="Fail when a grounded crouch/prone/crawl/get-up knee exceeds 0.30m")
     args = parser.parse_args()
-    result = evaluate(args.report.read_text(encoding="utf-8"))
+    result = evaluate(args.report.read_text(encoding="utf-8"),
+                      strict_grounded_low_stance=args.strict_grounded_low_stance)
     print(json.dumps(result, indent=2))
 
 
