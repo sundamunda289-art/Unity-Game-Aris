@@ -20,7 +20,7 @@ namespace Aaris.MapReview
         private sealed class BotRecord
         {
             internal Vector3 position, direction;
-            internal float hp, previousTick, nextDecision, nextShot, lastHit;
+            internal float hp, previousTick, nextDecision, nextShot, lastHit, retryMaterializeAt;
             internal int proxySlot = -1, medkits = 1, ammo = 30;
             internal bool alive;
         }
@@ -161,7 +161,9 @@ namespace Aaris.MapReview
             {
                 if (j == id) continue;
                 BotRecord other = bots[j];
-                if (other == null || !other.alive) continue;
+                // Off-screen firefights must never damage a materialized bot
+                // through an unloaded wall or bypass its physical sight gate.
+                if (other == null || !other.alive || other.proxySlot >= 0) continue;
                 Vector3 diff = other.position - bot.position;
                 float d = diff.sqrMagnitude;
                 if (d >= nearestSqr) continue;
@@ -174,17 +176,8 @@ namespace Aaris.MapReview
                 BotRecord other = bots[nearest];
                 float hit = 5f + Random01() * 9f;
                 other.lastHit = Time.time;
-                if (other.proxySlot >= 0)
-                {
-                    var proxy = proxies[other.proxySlot];
-                    if (proxy != null && proxy.IsAlive)
-                        proxy.ReceiveSimulatedHit(hit);
-                }
-                else
-                {
-                    other.hp -= hit;
-                    if (other.hp <= 0f) EliminateVirtual(nearest);
-                }
+                other.hp -= hit;
+                if (other.hp <= 0f) EliminateVirtual(nearest);
             }
             else
             {
@@ -214,9 +207,11 @@ namespace Aaris.MapReview
         {
             if (index < 0 || index >= bots.Length) return;
             BotRecord bot = bots[index];
-            if (bot == null || !bot.alive) return;
-            EliminateVirtual(index);
+            if (bot == null) return;
             int slot = bot.proxySlot;
+            // Retire the native proxy mapping first. Death events can
+            // synchronously finish the match and halt Update callbacks.
+            if (bot.alive) EliminateVirtual(index);
             if (slot >= 0 && slot < proxyIds.Length && proxies[slot] == rival)
                 proxyIds[slot] = -1;
             bot.proxySlot = -1;
@@ -249,6 +244,8 @@ namespace Aaris.MapReview
                 BotRecord record = bots[id];
                 record.position = proxy.transform.position;
                 record.hp = proxy.CurrentHP;
+                record.ammo = proxy.CurrentAmmo;
+                record.medkits = proxy.RemainingMedkits;
                 record.previousTick = Time.time;
                 record.proxySlot = -1;
                 proxy.SuspendForStreaming();
@@ -265,7 +262,8 @@ namespace Aaris.MapReview
             for (int i = 0; i < bots.Length; i++)
             {
                 BotRecord candidate = bots[i];
-                if (candidate == null || !candidate.alive || candidate.proxySlot >= 0)
+                if (candidate == null || !candidate.alive || candidate.proxySlot >= 0 ||
+                    Time.time < candidate.retryMaterializeAt)
                     continue;
                 float distance = (candidate.position - player.position).sqrMagnitude;
                 if (distance >= best) continue;
@@ -273,6 +271,15 @@ namespace Aaris.MapReview
                 closest = i;
             }
             if (closest < 0) return;
+            BotRecord bot = bots[closest];
+            // Serialized proxy activation is physical world creation. Check
+            // inactive buildings and active capsule collision once here, not
+            // every virtual AI step. An obstructed record remains logical.
+            if (!director.CanMaterializeBot(bot.position))
+            {
+                bot.retryMaterializeAt = Time.time + 2.5f;
+                return;
+            }
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (proxies[free] == null &&
                 !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
@@ -281,22 +288,26 @@ namespace Aaris.MapReview
             if (proxies[free] == null)
             {
                 var actor = new GameObject("Aaris streamed BR rival " + free);
+                // Build the Humanoid and its bounds at the REAL ground point,
+                // not the world origin. Avoid a transient physics actor at 0.
+                actor.transform.position = bot.position;
                 var capsule = actor.AddComponent<CharacterController>();
                 capsule.height = 1.8f;
                 capsule.radius = .31f;
                 capsule.center = new Vector3(0f, .9f, 0f);
                 capsule.skinWidth = .05f;
                 capsule.stepOffset = .28f;
+                capsule.slopeLimit = 43f;
                 var health = actor.AddComponent<AarisOfflineHealth>();
                 var rival = actor.AddComponent<AarisOfflineRival>();
                 rival.Initialize(director, health, player, playerHealth,
                     6 + free);
                 proxies[free] = rival;
             }
-            BotRecord bot = bots[closest];
             bot.proxySlot = free;
             proxyIds[free] = closest;
-            proxies[free].ResumeStreamed(this, closest, bot.position, bot.hp);
+            proxies[free].ResumeStreamed(this, closest, bot.position, bot.hp,
+                bot.ammo, bot.medkits);
         }
 
         private void OnDestroy()
