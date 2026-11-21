@@ -54,17 +54,23 @@ jobs:
       - name: Parse touched C-sharp files and Python syntax
         run: |
           python3 -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
+          # The fixture template intentionally has an unexpanded numeric
+          # token; parse the generated C# already compiled in the prior step.
+          python3 Tools/Validation/run_bounded_collider_probe_csharp.py --emit "$RUNNER_TEMP/BoundedColliderProbeTests.generated.cs"
           python3 - <<'PY'
+          import os
           from pathlib import Path
           from tree_sitter import Language, Parser
           import tree_sitter_c_sharp
           parser=Parser(Language(tree_sitter_c_sharp.language()))
           for name in ['Assets/AarisWorld/Scripts/AarisNearbyColliders.cs',
-                       'Tools/Validation/BoundedColliderProbeTests.cs']:
+                       os.path.join(os.environ['RUNNER_TEMP'], 'BoundedColliderProbeTests.generated.cs')]:
               path=Path(name)
               data=path.read_bytes()
               assert not parser.parse(data).root_node.has_error, name
               assert all(line==line.rstrip() for line in data.decode().splitlines()), name
+          template=Path('Tools/Validation/BoundedColliderProbeTests.cs')
+          assert all(line==line.rstrip() for line in template.read_text().splitlines())
           print('BOUNDED_COLLIDER_PROBE_CSHARP_PARSE_PASS')
           PY
           python3 -m py_compile Tools/Validation/run_bounded_collider_probe_csharp.py
