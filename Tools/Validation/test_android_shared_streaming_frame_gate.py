@@ -66,8 +66,8 @@ class SharedStreamingAdmission(unittest.TestCase):
         body = LOOT.split("private bool StreamNearby(", 1)[1].split(
             "private void EnsureStarterLoot(", 1)[0]
         self.assertEqual(body.count(CLAIM), 2)
-        self.assertLess(body.index(CLAIM), body.index('new GameObject("Dropped "'))
-        self.assertLess(body.rindex(CLAIM), body.index('new GameObject("Loot "'))
+        self.assertLess(body.index(CLAIM), body.index("TryReuseLootVisual(record.state,"))
+        self.assertLess(body.rindex(CLAIM), body.index("TryReuseLootVisual(state, i,"))
         self.assertEqual(body.count("if (!" + CLAIM + ") return true;"), 2)
         self.assertIn("if (buildAttempts >= modelBuildBudget)", body)
 
