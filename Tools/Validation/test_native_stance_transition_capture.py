@@ -18,7 +18,13 @@ assert 'bool transitions=portrait&&SessionState.GetBool("pose.transitions",false
 assert "transitionFrames=transitions&&(n==1||n==2||n==3)" in editor
 assert "transitionFrames?.10+count*.18" in editor
 assert "transitionFrames?.84" in editor
-assert 'if(transitionFrames)LogTransitionContact(p,b,count);' in editor
+# The merged native chronology gate now timestamps each transition
+# before measuring contacts. Preserve both the transition-only guard and
+# actual bone/foot logging rather than asserting obsolete one-line syntax.
+assert 'if(transitionFrames){' in editor
+transition_log = editor.split('if(transitionFrames){', 1)[1].split('if(motionMatrix)', 1)[0]
+assert 'Log("TRANSITION_TIMESTAMP stance="+b.Stance+' in transition_log
+assert 'LogTransitionContact(p,b,count);' in transition_log
 assert '"TRANSITION_CONTACT stance="' in editor
 assert '"TRANSITION_LEGS stance="' in editor
 assert '"TRANSITION_FOOT_ANCHOR_STALE"' in editor
