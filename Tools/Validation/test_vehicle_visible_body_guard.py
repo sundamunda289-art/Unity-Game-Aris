@@ -43,7 +43,9 @@ class VehicleVisibleBodyGuard(unittest.TestCase):
             "internal static bool TryGetVisualBoundsLocal(", 1)[0]
         self.assertIn("wheelRoot.gameObject.activeInHierarchy", helper)
         self.assertIn("HasRenderableVehicleBody(", helper)
-        self.assertIn("GetComponentsInChildren<Renderer>(true)", helper)
+        self.assertIn("wheelRoot.GetComponentsInChildren<Renderer>(true, renderers);", helper)
+        self.assertIn("HasRenderableVehicleBody(renderers)", helper)
+        self.assertIn("renderers.Clear();", helper)
 
     def test_embedded_and_separate_wheels_require_visible_geometry(self):
         motor = (Path(__file__).resolve().parents[2] /
