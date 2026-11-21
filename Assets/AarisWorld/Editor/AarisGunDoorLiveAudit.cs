@@ -33,11 +33,27 @@ namespace Aaris.MapReview.Editor
 
         static AarisGunDoorLiveAudit() { EditorApplication.update += Tick; }
 
+        // Fast separate graphical modes avoid rendering the entire four-tile
+        // terrain for every gun view on CPU-only Unity/Xvfb test machines.
+        public static void RunGroundPhoto()
+        {
+            Run();
+            SessionState.SetBool(Key + "GroundOnly", true);
+        }
+
+        public static void RunGunPhotos()
+        {
+            Run();
+            SessionState.SetBool(Key + "GunOnly", true);
+        }
+
         [MenuItem("Aaris/CI/Native gun-door collision and grip Play Mode audit")]
         public static void Run()
         {
             Directory.CreateDirectory(Folder);
             SessionState.SetInt(Key, 0);
+            SessionState.SetBool(Key + "GroundOnly", false);
+            SessionState.SetBool(Key + "GunOnly", false);
             SessionState.SetString(Key + "Report", "UNITY=" + Application.unityVersion + "\n");
             SessionState.SetInt(Key + "LootSites", 0);
             SessionState.SetFloat(Key + "Deadline",
@@ -193,6 +209,8 @@ namespace Aaris.MapReview.Editor
             Vector3 previousPosition = camera.transform.position;
             Quaternion previousRotation = camera.transform.rotation;
             int previousMask = camera.cullingMask;
+            CameraClearFlags previousClear = camera.clearFlags;
+            Color previousBackground = camera.backgroundColor;
             float previousFov = camera.fieldOfView;
             Texture2D pixels = null;
             try
@@ -202,7 +220,18 @@ namespace Aaris.MapReview.Editor
                 Vector3 viewpoint = focus + orbit * 2.25f + Vector3.up * 0.32f;
                 camera.transform.SetPositionAndRotation(
                     viewpoint, Quaternion.LookRotation(focus - viewpoint, Vector3.up));
-                camera.cullingMask |= 1 << subjectLayer;
+                bool showTerrain = label.StartsWith("GroundLoot_", StringComparison.Ordinal);
+                if (showTerrain)
+                    camera.cullingMask |= 1 << subjectLayer;
+                else
+                {
+                    // Real gun/player renderers only, not the expensive 2km
+                    // terrain. This is camera isolation for QA, not a substitute
+                    // mesh or a change to the actual gameplay scene.
+                    camera.cullingMask = 1 << subjectLayer;
+                    camera.clearFlags = CameraClearFlags.SolidColor;
+                    camera.backgroundColor = new Color(.12f, .16f, .19f, 1f);
+                }
                 camera.fieldOfView = 54f;
                 camera.targetTexture = output;
                 camera.Render();
@@ -222,6 +251,8 @@ namespace Aaris.MapReview.Editor
                 camera.transform.SetPositionAndRotation(
                     previousPosition, previousRotation);
                 camera.cullingMask = previousMask;
+                camera.clearFlags = previousClear;
+                camera.backgroundColor = previousBackground;
                 camera.fieldOfView = previousFov;
                 camera.targetTexture = previousTarget;
                 RenderTexture.active = previousActive;
@@ -382,8 +413,37 @@ namespace Aaris.MapReview.Editor
                         if (land == null) throw new MissingMethodException("AarisOfflineDrop.Land");
                         land.Invoke(drop, null);
                     }
+                    if (SessionState.GetBool(Key + "GroundOnly", false))
+                    {
+                        if (!StartSite(1, player)) { Abort("GROUND_SITE_NOT_FOUND"); return; }
+                        SessionState.SetInt(Key, 7);
+                        return;
+                    }
+                    if (SessionState.GetBool(Key + "GunOnly", false))
+                    {
+                        if (!StartSite(1, player)) { Abort("GUN_SITE_NOT_FOUND"); return; }
+                        SessionState.SetInt(Key, 8);
+                        return;
+                    }
                     if (!StartSite(0, player)) { Abort("SITE0_NOT_FOUND"); return; }
                     SessionState.SetInt(Key, 2);
+                    return;
+                }
+                if (stage == 7 || stage == 8)
+                {
+                    float elapsed = (float)EditorApplication.timeSinceStartup -
+                        SessionState.GetFloat(Key + "SiteStart", 0);
+                    if (elapsed < (stage == 7 ? 8.5f : 3.0f)) return;
+                    if (stage == 7)
+                    {
+                        CheckLootSite(1, player);
+                        Finish(SessionState.GetInt(Key + "LootSites", 0) > 0 ? 0 : 1);
+                    }
+                    else
+                    {
+                        bool hands = TestHeldMeshes(player);
+                        Finish(hands ? 0 : 1);
+                    }
                     return;
                 }
                 int index = stage - 2;
