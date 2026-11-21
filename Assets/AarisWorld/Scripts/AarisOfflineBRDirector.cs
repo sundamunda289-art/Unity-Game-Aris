@@ -36,6 +36,8 @@ namespace Aaris.MapReview
         private readonly System.Random random = new System.Random();
         private Transform player;
         private AarisOfflineHealth playerHealth;
+        private AarisMassBotPopulation massBots;
+        internal Transform PlayerActor => player;
         private AarisOfflineDrop drop;
         // Flight component may be attached after this director starts. Limit
         // missing-component native lookups during the cold-start render path.
@@ -43,7 +45,7 @@ namespace Aaris.MapReview
         private AarisOfflineMatchEnd matchEnd;
         private AarisNearbyColliders nearbyColliders;
         private Terrain[] terrains;
-        private int attemptedSlots, activeRivals, spawnedRivals;
+        private int attemptedSlots, activeRivals, spawnedRivals, playerEliminations;
         private float startedAt, nextSpawn, nextZoneTick, nextDamageTick, nextRingDraw;
         private float radius;
         private Vector2 center;
@@ -310,12 +312,22 @@ namespace Aaris.MapReview
                         spawnComplete = true;
                         // A blocked/missing spawn map must not loop forever or
                         // report a fake solo victory. Offer a clean restart.
-                        if (spawnedRivals == 0)
+                        if (spawnedRivals == 0 && massBots != null &&
+                            massBots.IsReady && !massBots.HadValidBots)
                             matchEnd.FailMatchSetup();
-                        else if (activeRivals == 0)
-                            matchEnd.WinMatch();
+                        else
+                            TryConcludeMatch();
                     }
                 }
+            }
+
+            // A seeded roster can complete after physical spawn retries.
+            // Handle the all-invalid terrain case even without an elimination.
+            if (spawnComplete && spawnedRivals == 0 && massBots != null &&
+                massBots.IsReady && !massBots.HadValidBots)
+            {
+                matchEnd.FailMatchSetup();
+                return;
             }
 
             if (Time.time >= nextZoneTick)
@@ -391,6 +403,10 @@ namespace Aaris.MapReview
             radius = ZoneRadii[0];
             CreateStatus();
             CreateBoundary();
+            massBots = gameObject.AddComponent<AarisMassBotPopulation>();
+            massBots.Initialize(this, player, playerHealth);
+            var combatHud = player.GetComponent<AarisCombatFeedbackHUD>();
+            if (combatHud != null) combatHud.BindDirector(this);
             RefreshStatus(0f);
         }
 
@@ -448,6 +464,13 @@ namespace Aaris.MapReview
             }
             return false;
         }
+
+        internal bool TryGetBotGround(float x, float z, out float height) =>
+            TryGetGround(x, z, out height);
+
+        // Only a small number of pooled physical avatars call this (max
+        // once per 0.4-second streaming slot), not the 94 virtual agents.
+        internal bool CanMaterializeBot(Vector3 worldPosition) => SpawnClear(worldPosition);
 
         private bool SpawnClear(Vector3 point)
         {
@@ -544,6 +567,8 @@ namespace Aaris.MapReview
             return dx * dx + dz * dz > safe * safe;
         }
 
+        internal bool BotOutsideZone(Vector3 location) => Outside(location);
+
         private void ApplyZoneDamage()
         {
             if (!spawnComplete || playerHealth == null || playerHealth.IsDead) return;
@@ -553,19 +578,152 @@ namespace Aaris.MapReview
                 if (rivals[i] != null && rivals[i].IsAlive &&
                     Outside(rivals[i].transform.position))
                     rivals[i].TakeZoneDamage(9f);
+            if (massBots != null)
+                for (int i = 0; i < massBots.ProxySlots; i++)
+                {
+                    AarisOfflineRival proxy = massBots.PhysicalProxy(i);
+                    if (proxy != null && Outside(proxy.transform.position))
+                        proxy.TakeZoneDamage(9f);
+                }
+        }
+
+        private void TryConcludeMatch()
+        {
+            if (!spawnComplete || massBots == null || !massBots.IsReady ||
+                playerHealth == null || playerHealth.IsDead ||
+                matchEnd == null || matchEnd.IsFinished) return;
+            if (activeRivals + massBots.AliveCount == 0)
+            {
+                if (spawnedRivals == 0 && !massBots.HadValidBots)
+                    matchEnd.FailMatchSetup();
+                else matchEnd.WinMatch();
+            }
         }
 
         internal void RivalDefeated(AarisOfflineRival rival)
         {
             if (activeRivals > 0) activeRivals--;
-            if (spawnComplete && spawnedRivals > 0 && activeRivals == 0 &&
-                playerHealth != null && !playerHealth.IsDead &&
-                matchEnd != null && !matchEnd.IsFinished)
-                matchEnd.WinMatch();
+            TryConcludeMatch();
+        }
+
+        internal void VirtualBotDefeated() => TryConcludeMatch();
+
+        internal void RegisterPlayerElimination(AarisOfflineHealth defeated)
+        {
+            // A kill belongs to the player only if the actual fatal hit came
+            // from their own GameObject. Zone and NPC-vs-NPC deaths do not count.
+            if (defeated != null && player != null &&
+                defeated.KillingAttacker == player.gameObject)
+                playerEliminations++;
         }
 
         internal bool CanEngage => started && !playerHealth.IsDead &&
             matchEnd != null && !matchEnd.IsFinished;
+
+        // Only the two nearest visible-area rivals may pressure the player.
+        // Everyone else keeps roaming/avoiding cover instead of dog-piling.
+        internal bool MayEngagePlayer(AarisOfflineRival candidate)
+        {
+            if (!CanEngage || candidate == null || !candidate.IsAlive ||
+                !candidate.HasPlayerSight) return false;
+            float candidateSqr = (candidate.transform.position - player.position).sqrMagnitude;
+            if (candidateSqr > AarisCombatSelectionPolicy.PlayerAwarenessDistanceSquared) return false;
+            int nearer = 0;
+            int total = rivals.Length + (massBots != null ? massBots.ProxySlots : 0);
+            for (int i = 0; i < total; i++)
+            {
+                AarisOfflineRival other = i < rivals.Length ? rivals[i] :
+                    massBots.PhysicalProxy(i - rivals.Length);
+                if (other == null || other == candidate || !other.IsAlive ||
+                    !other.HasPlayerSight) continue;
+                float otherSqr = (other.transform.position - player.position).sqrMagnitude;
+                if (otherSqr <= AarisCombatSelectionPolicy.PlayerAwarenessDistanceSquared &&
+                    AarisCombatSelectionPolicy.HigherPriority(otherSqr,
+                        other.EncounterId, candidateSqr, candidate.EncounterId))
+                    nearer++;
+            }
+            return AarisCombatSelectionPolicy.CanAttackPlayer(
+                candidate.HasPlayerSight, candidateSqr, nearer);
+        }
+
+        // At most nine live native actors are candidates. Distant roster
+        // records resolve fights in the time-sliced logical simulator.
+        internal void SelectCombatTarget(AarisOfflineRival seeker,
+            out Transform chosen, out AarisOfflineHealth chosenHealth)
+        {
+            chosen = player;
+            chosenHealth = playerHealth;
+            if (seeker == null || (seeker.HasPlayerSight && MayEngagePlayer(seeker))) return;
+
+            float best = 66f * 66f;
+            int total = rivals.Length + (massBots != null ? massBots.ProxySlots : 0);
+            for (int i = 0; i < total; i++)
+            {
+                AarisOfflineRival other = i < rivals.Length ? rivals[i] :
+                    massBots.PhysicalProxy(i - rivals.Length);
+                if (other == null || other == seeker || !other.IsAlive ||
+                    !other.gameObject.activeInHierarchy) continue;
+                float dist = (other.transform.position - seeker.transform.position).sqrMagnitude;
+                if (dist >= best) continue;
+                best = dist;
+                chosen = other.transform;
+                chosenHealth = other.Health;
+            }
+        }
+
+        // Scans only the already-active encounter slots; no scene-wide query.
+        // The first PHYSICAL hit from the camera must be the chosen rival,
+        // which prevents aim assist through walls or unloaded house cover.
+        internal bool TryAcquireAimAssist(Camera view, Transform shooter,
+            float coneDegrees, float maximumDistance, ref RaycastHit[] scratch,
+            out Vector3 aimPoint)
+        {
+            aimPoint = Vector3.zero;
+            if (!CanEngage || view == null || shooter == null || scratch == null)
+                return false;
+            Vector3 eye = view.transform.position;
+            Vector3 forward = view.transform.forward;
+            float cosine = Mathf.Cos(Mathf.Clamp(coneDegrees, .1f, 4f) * Mathf.Deg2Rad);
+            float best = float.PositiveInfinity;
+            int total = rivals.Length + (massBots != null ? massBots.ProxySlots : 0);
+            for (int i = 0; i < total; i++)
+            {
+                var rival = i < rivals.Length ? rivals[i] :
+                    massBots.PhysicalProxy(i - rivals.Length);
+                if (rival == null || !rival.IsAlive || !rival.gameObject.activeInHierarchy)
+                    continue;
+                Vector3 candidate = rival.transform.position + Vector3.up * 1.08f;
+                Vector3 delta = candidate - eye;
+                float length = delta.magnitude;
+                if (length < .5f || length > maximumDistance) continue;
+                Vector3 direction = delta / length;
+                float alignment = Vector3.Dot(forward, direction);
+                if (alignment < cosine) continue;
+                int count = AarisPhysicsHitBuffer.Raycast(
+                    new Ray(eye, direction), length + .2f,
+                    Physics.DefaultRaycastLayers, ref scratch, 256,
+                    out RaycastHit[] hits);
+                float firstDistance = float.MaxValue;
+                Collider first = null;
+                for (int h = 0; h < count; h++)
+                {
+                    Collider hit = hits[h].collider;
+                    if (hit == null || hit.transform.IsChildOf(shooter) ||
+                        hits[h].distance >= firstDistance) continue;
+                    firstDistance = hits[h].distance;
+                    first = hit;
+                }
+                if (first == null || !first.transform.IsChildOf(rival.transform))
+                    continue;
+                float score = (1f - alignment) * 100f + length * .0004f;
+                if (score < best)
+                {
+                    best = score;
+                    aimPoint = candidate;
+                }
+            }
+            return best < float.PositiveInfinity;
+        }
 
         private void RefreshStatus(float elapsed)
         {
@@ -581,10 +739,11 @@ namespace Aaris.MapReview
                 wait > 0f ? "CLOSE IN " + Mathf.CeilToInt(wait) + "s" : "ZONE MOVING";
             // Until a valid rival actually exists, ALIVE 1 incorrectly
             // tells the player the BR has already been won.
-            string participants = spawnComplete
-                ? "ALIVE " + (activeRivals + 1)
-                : "RIVALS " + spawnedRivals + "/" + RivalCount;
-            status.text = participants +
+            int logical = massBots != null ? massBots.AliveCount : 0;
+            string participants = spawnComplete && massBots != null && massBots.IsReady
+                ? "ALIVE " + (activeRivals + logical + 1)
+                : "RIVALS " + (spawnedRivals + logical) + "/100";
+            status.text = participants + "    KILLS " + playerEliminations +
                 "    ZONE " + Mathf.CeilToInt(radius) + "m    " + label;
         }
 
@@ -737,13 +896,21 @@ namespace Aaris.MapReview
     {
         private AarisOfflineBRDirector owner;
         private AarisOfflineHealth health, targetHealth;
+        private AarisBattleActions playerStanceState;
         private Transform target;
         private CharacterController capsule;
         private readonly RaycastHit[] sightHits = new RaycastHit[20];
         // Kept per rival: retain correct closest-visible-target selection
         // without RaycastAll allocations when >20 cover hits overlap.
         private readonly RaycastHit[] crowdedSightHits = new RaycastHit[128];
-        private float nextThink, nextAttack, verticalSpeed, turnOffset, visualBlend;
+        private float nextThink, nextAttack, nextTargetScan, nextHealAt;
+        private float lastDamagedAt = -100f;
+        private int medicine = 1, ammunition = 30, encounterId;
+        private float nextPlayerSight;
+        private bool seesPlayer;
+        private float verticalSpeed, turnOffset, visualBlend;
+        private AarisMassBotPopulation streamedPopulation;
+        private int streamedRecordIndex = -1;
         // Outside the combat range, save mobile CPU by updating far capsules
         // at 10 Hz. Keep near opponents at full gameplay frame rate.
         private const float FarSimulationDistance = 90f;
@@ -761,16 +928,71 @@ namespace Aaris.MapReview
         private AnimationMixerPlayable animations;
         private bool hasAnimations;
         public bool IsAlive => health != null && !health.IsDead;
+        internal AarisOfflineHealth Health => health;
+        internal float CurrentHP => health != null ? health.CurrentHealth : 0f;
+        internal int CurrentAmmo => ammunition;
+        internal int RemainingMedkits => medicine;
+        internal int EncounterId => encounterId;
+        internal bool HasPlayerSight => seesPlayer;
+
+        internal void ResumeStreamed(AarisMassBotPopulation roster, int record,
+            Vector3 location, float hitpoints, int storedAmmo, int storedMedkits)
+        {
+            streamedPopulation = roster;
+            streamedRecordIndex = record;
+            transform.position = location;
+            if (capsule != null) capsule.enabled = true;
+            health.ResetForStreamingRival(hitpoints);
+            target = owner.PlayerActor;
+            nextTargetScan = Time.time;
+            nextThink = Time.time;
+            nextAttack = Time.time + .5f;
+            lastDamagedAt = -100f;
+            medicine = Mathf.Clamp(storedMedkits, 0, 2);
+            ammunition = Mathf.Clamp(storedAmmo, 0, 30);
+            seesPlayer = false;
+            nextPlayerSight = Time.time;
+            nextHealAt = Time.time + 2f;
+            lastSimulationTime = Time.time;
+            nextFarSimulation = Time.time;
+            if (!gameObject.activeSelf) gameObject.SetActive(true);
+        }
+
+        internal void SuspendForStreaming()
+        {
+            if (gameObject.activeSelf) gameObject.SetActive(false);
+            streamedRecordIndex = -1;
+            streamedPopulation = null;
+        }
+
+        internal void ReceiveSimulatedHit(float amount)
+        {
+            if (health != null && !health.IsDead) health.ApplyDamage(amount, null);
+        }
+
+        private void OnDamaged(AarisOfflineHealth victim, float amount, GameObject attacker)
+        {
+            if (victim != health || amount <= 0f) return;
+            lastDamagedAt = Time.time;
+            avoidanceHandedness = -avoidanceHandedness;
+            turnOffset = UnityEngine.Random.Range(-25f, 25f);
+            // Preserve the two-player-attacker limit: retaliation only
+            // changes attention. The actual fire gate is still checked.
+            nextTargetScan = Time.time;
+        }
 
         internal void Initialize(AarisOfflineBRDirector director, AarisOfflineHealth self,
             Transform victim, AarisOfflineHealth victimHealth, int encounterSlot)
         {
             owner = director;
             health = self;
+            encounterId = encounterSlot;
             target = victim;
             targetHealth = victimHealth;
+            playerStanceState = victim != null ? victim.GetComponent<AarisBattleActions>() : null;
             capsule = GetComponent<CharacterController>();
             health.Died += OnDied;
+            health.Damaged += OnDamaged;
             turnOffset = UnityEngine.Random.Range(-12f, 12f);
             avoidanceHandedness = UnityEngine.Random.value < 0.5f ? 1f : -1f;
             lastSimulationTime = Time.time;
@@ -905,8 +1127,36 @@ namespace Aaris.MapReview
 
         private void Update()
         {
-            if (owner == null || !owner.CanEngage || !IsAlive ||
-                target == null || targetHealth == null || targetHealth.IsDead) return;
+            if (owner == null || !owner.CanEngage || !IsAlive) return;
+            if (Time.time >= nextPlayerSight)
+            {
+                // No extra ray on every rendered frame. Eight-to-nine
+                // physical bots each refresh player perception at 2 Hz.
+                nextPlayerSight = Time.time + .45f + (encounterId % 4) * .028f;
+                Transform person = owner.PlayerActor;
+                Vector3 offset = person != null ? person.position - transform.position :
+                    Vector3.zero;
+                float sqr = offset.sqrMagnitude;
+                bool inVision = sqr <= 42f * 42f &&
+                    (sqr <= 12f * 12f || Vector3.Dot(transform.forward,
+                        offset.normalized) >= .05f);
+                seesPlayer = inVision && HasSightTo(person);
+            }
+            if (Time.time >= nextTargetScan || target == null ||
+                targetHealth == null || targetHealth.IsDead)
+            {
+                nextTargetScan = Time.time + .38f + UnityEngine.Random.Range(0f, .12f);
+                owner.SelectCombatTarget(this, out target, out targetHealth);
+                nextThink = Time.time;
+            }
+            if (target == null || targetHealth == null || targetHealth.IsDead) return;
+            if (medicine > 0 && health.CurrentHealth < 115f &&
+                Time.time >= nextHealAt && Time.time - lastDamagedAt > 7f)
+            {
+                medicine--;
+                health.RestoreHealth(50f);
+                nextHealAt = Time.time + 12f;
+            }
             Vector3 diff = target.position - transform.position;
             diff.y = 0f;
             float distance = diff.magnitude;
@@ -948,12 +1198,29 @@ namespace Aaris.MapReview
             // Nearby player contact retains combat priority; distant bots
             // should not ignore a closing circle just to chase the player.
             bool retreat = outsideSafeArea && (distance > 23f || !canSee);
+            bool fightingPlayer = target == owner.PlayerActor;
+            bool playerEngager = fightingPlayer && owner.MayEngagePlayer(this);
             Vector3 travelDirection = retreat ? retreatDirection : toward;
             float moveSpeed = retreat ? 3.2f :
                 distance > 12f ? 2.85f : distance < 7f ? -1.15f : 0f;
+            if (!retreat && fightingPlayer && !playerEngager)
+            {
+                // Non-selected bots circle their own sector. They neither
+                // rush into the player nor consume additional LOS shots.
+                travelDirection = Quaternion.Euler(0f, avoidanceHandedness * 85f, 0f) * toward;
+                moveSpeed = distance < 55f ? 1.8f : 2.25f;
+            }
+            if (!retreat && Time.time - lastDamagedAt < 2.3f)
+            {
+                // A lightweight cover-seeking strafe: the existing solid
+                // obstacle test below prevents clipping into authored houses.
+                travelDirection = Quaternion.Euler(0f, avoidanceHandedness * 115f, 0f) * toward;
+                moveSpeed = 3.15f;
+            }
             Vector3 desired = Quaternion.Euler(0f, turnOffset, 0f) *
                 travelDirection * moveSpeed;
-            if (canSee && !retreat) desired *= .23f; // Hold to fire without skating.
+            if (canSee && !retreat && Time.time - lastDamagedAt >= 2.3f)
+                desired *= .23f; // Keep true evasive movement after taking damage.
             Vector3 displacement = desired * dt;
             if (displacement.sqrMagnitude > 0.000001f &&
                 owner.WouldCrossInactiveCover(transform.position, displacement))
@@ -1000,14 +1267,43 @@ namespace Aaris.MapReview
                 float wanted = Mathf.Clamp01(groundSpeed / 2.9f);
                 UpdateAnimationBlend(wanted, dt);
             }
-            if (canSee && distance <= 38f &&
+            if ((!fightingPlayer || playerEngager) && canSee && distance <= 38f &&
                 Vector3.Dot(transform.forward, toward) > .84f &&
                 Time.time >= nextAttack && HasSight())
             {
-                // Offline damage contract, not real-world ballistics.
-                nextAttack = Time.time + UnityEngine.Random.Range(1.15f, 1.65f);
-                AarisAudioDirector.GunShot("SMG", "Rival", transform.position + Vector3.up);
-                targetHealth.ApplyDamage(6f, gameObject);
+                // Shared offline damage contract, not real-world ballistics.
+                if (ammunition <= 0)
+                {
+                    ammunition = 30;
+                    nextAttack = Time.time + 2f; // visible silent reload window
+                }
+                else
+                {
+                    ammunition--;
+                    nextAttack = Time.time + UnityEngine.Random.Range(1.15f, 1.65f);
+                    AarisAudioDirector.GunShot("SMG", "Rival", transform.position + Vector3.up);
+                    // The earlier offline bots always hit after passing LOS,
+                    // making two riflemen unfair even at maximum 38m range.
+                    // Keep actual LOS mandatory, but allow believable misses.
+                    float accuracy = Mathf.Lerp(.91f, .54f, Mathf.Clamp01(distance / 38f));
+                    if (fightingPlayer && playerStanceState != null)
+                    {
+                        // A lower physical profile is harder to hit. This
+                        // respects standing/crouching/prone state at shot time,
+                        // without reducing the player's own shooting authority.
+                        switch (playerStanceState.Stance)
+                        {
+                            case AarisBattleActions.PlayerStance.Crouching:
+                                accuracy *= .83f;
+                                break;
+                            case AarisBattleActions.PlayerStance.Prone:
+                                accuracy *= .64f;
+                                break;
+                        }
+                    }
+                    if (UnityEngine.Random.value <= accuracy)
+                        targetHealth.ApplyBallisticDamage(6f, gameObject, false);
+                }
             }
         }
 
@@ -1022,10 +1318,13 @@ namespace Aaris.MapReview
             animations.SetInputWeight(1, visualBlend);
         }
 
-        private bool HasSight()
+        private bool HasSight() => target != null && HasSightTo(target);
+
+        private bool HasSightTo(Transform selectedTarget)
         {
+            if (selectedTarget == null) return false;
             Vector3 eye = transform.position + transform.forward * .48f + Vector3.up * 1.28f;
-            Vector3 to = target.position + Vector3.up * 1.07f - eye;
+            Vector3 to = selectedTarget.position + Vector3.up * 1.07f - eye;
             float distance = to.magnitude;
             if (distance < .1f) return false;
             Ray ray = new Ray(eye, to / distance);
@@ -1058,7 +1357,7 @@ namespace Aaris.MapReview
                 if (hit.distance < first)
                 { first = hit.distance; closest = hit.collider; }
             }
-            return closest != null && closest.transform.IsChildOf(target);
+            return closest != null && closest.transform.IsChildOf(selectedTarget);
         }
 
         internal void TakeZoneDamage(float amount)
@@ -1068,14 +1367,27 @@ namespace Aaris.MapReview
 
         private void OnDied(AarisOfflineHealth defeated)
         {
+            if (owner != null) owner.RegisterPlayerElimination(defeated);
             if (capsule != null) capsule.enabled = false;
+            if (streamedPopulation != null)
+            {
+                var population = streamedPopulation;
+                int record = streamedRecordIndex;
+                population.OnProxyDefeated(this, record);
+                SuspendForStreaming();
+                return;
+            }
             if (owner != null) owner.RivalDefeated(this);
             Destroy(gameObject, 1.2f);
         }
 
         private void OnDestroy()
         {
-            if (health != null) health.Died -= OnDied;
+            if (health != null)
+            {
+                health.Died -= OnDied;
+                health.Damaged -= OnDamaged;
+            }
             if (graph.IsValid()) graph.Destroy();
         }
     }

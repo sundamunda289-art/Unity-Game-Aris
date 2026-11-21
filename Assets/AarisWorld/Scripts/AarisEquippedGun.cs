@@ -628,8 +628,11 @@ namespace Aaris.MapReview
                 Vector2 spread = new Vector2(AarisWeaponRandom.Next01(ref spreadSeed) * 2f - 1f,
                     AarisWeaponRandom.Next01(ref spreadSeed) * 2f - 1f);
                 spread = Vector2.ClampMagnitude(spread, 1f) * spec.spreadDegrees;
+                Vector3 desiredLook = camera.transform.forward;
+                if (AarisCombatFeedbackHUD.TryGetAssistedDirection(camera, owner, this,
+                    out Vector3 assistedLook)) desiredLook = assistedLook;
                 Vector3 look = Quaternion.AngleAxis(spread.x, camera.transform.up) *
-                    Quaternion.AngleAxis(-spread.y, camera.transform.right) * camera.transform.forward;
+                    Quaternion.AngleAxis(-spread.y, camera.transform.right) * desiredLook;
                 Ray aim = new Ray(camera.transform.position, look);
                 RaycastHit target = closeCover;
                 bool targetFound = muzzleBlocked || FirstExternalHit(aim, spec.rangeMetres,
@@ -677,7 +680,7 @@ namespace Aaris.MapReview
                         TriggerImpactParticles(impactPoint, impactNormal);
                         impactSoundEmitted = true;
                     }
-                    ApplyDamage(target.collider, spec.damage, owner);
+                    ApplyDamage(target.collider, spec.damage, owner, target.point);
                 }
             }
             if (cachedMotor != null) cachedMotor.ApplyWeaponRecoil(spec.recoilPitchDegrees,
@@ -687,26 +690,54 @@ namespace Aaris.MapReview
             return true;
         }
 
+        // Punches/frag callers retain the original body-damage contract.
         internal static void ApplyDamage(Collider collider, float amount, GameObject attacker)
         {
-            if (collider == null) return;
+            ApplyDamage(collider, amount, attacker, null);
+        }
+
+        // Physical hit point is supplied by the real gun ray, not guessed from
+        // the camera centre. Collider bounds follow crouch/prone capsule sizes.
+        internal static void ApplyDamage(Collider collider, float amount,
+            GameObject attacker, Vector3? physicalHitPoint)
+        {
+            if (collider == null || amount <= 0f) return;
             for (Transform node = collider.transform; node != null; node = node.parent)
             {
-                // GetComponents<T>(List<T>) fills the reusable list without
-                // allocating a new managed array for every bullet/pellet.
                 damageScratch.Clear();
                 node.GetComponents(damageScratch);
                 for (int i = 0; i < damageScratch.Count; i++)
                 {
-                    if (!(damageScratch[i] is IAarisDamageable damageable)) continue;
+                    IAarisDamageable damageable = damageScratch[i] as IAarisDamageable;
+                    if (damageable == null) continue;
+                    var health = damageable as AarisOfflineHealth;
+                    bool wasAlive = health == null || !health.IsDead;
+                    bool headshot = false;
+                    float damage = amount;
+                    float previous = health != null ? health.CurrentHealth : 0f;
+                    if (health != null && physicalHitPoint.HasValue)
+                    {
+                        Bounds bounds = collider.bounds;
+                        // Top 24% of the CURRENT capsule, not a standing-only
+                        // world Y. This also works when the player is crouched
+                        // or prone; hand/punch impacts remain body damage.
+                        headshot = bounds.size.y >= .30f &&
+                            physicalHitPoint.Value.y >= bounds.min.y +
+                                bounds.size.y * .76f;
+                        if (headshot) damage *= 1.65f;
+                    }
+                    if (health != null)
+                        health.ApplyBallisticDamage(damage, attacker, headshot);
+                    else damageable.ApplyDamage(damage, attacker);
+                    float actual = health != null ?
+                        Mathf.Max(0f, previous - health.CurrentHealth) : damage;
                     damageScratch.Clear();
-                    // No marker for an already defeated actor or a self-hit.
-                    bool canRegister = !(damageable is AarisOfflineHealth health) ||
-                        !health.IsDead;
-                    damageable.ApplyDamage(amount, attacker);
-                    if (canRegister && attacker != null &&
+                    if (wasAlive && actual > 0f && attacker != null &&
                         !node.IsChildOf(attacker.transform))
+                    {
                         AarisWeaponHUD.NotifyHit(attacker);
+                        AarisCombatFeedbackHUD.NotifyOutgoingDamage(attacker, actual, headshot);
+                    }
                     return;
                 }
             }
