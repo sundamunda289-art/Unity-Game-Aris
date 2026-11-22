@@ -99,6 +99,7 @@ namespace Aaris.MapReview.Editor
                 VerifyDestructibleHitConfirmation(report);
                 VerifyBots(report, active);
                 VerifyBotLootCover(report);
+                VerifyStreamedCover(report, active);
             }
             catch (Exception ex)
             {
@@ -122,6 +123,66 @@ namespace Aaris.MapReview.Editor
             File.WriteAllText(Path.Combine(directory, "report.txt"), report.ToString());
             Debug.Log(report.ToString());
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);
+        }
+
+        // EditMode PhysX QA: a cached disabled wall must block the exact
+        // 160m segment, but not an off-axis or shorter unobstructed ray.
+        private static void VerifyStreamedCover(StringBuilder report, FieldInfo active)
+        {
+            var root = new GameObject("Temporary streamed-cover LOS QA");
+            object previous = active.GetValue(null);
+            try
+            {
+                var actor = new GameObject("Streamed-cover shooter");
+                actor.transform.SetParent(root.transform, false);
+                actor.transform.position = Origin + new Vector3(400f, 0f, 400f);
+                var wallObject = new GameObject("Distant streamed static wall");
+                wallObject.transform.SetParent(root.transform, false);
+                wallObject.transform.position = actor.transform.position +
+                    new Vector3(0f, 1f, 80f);
+                BoxCollider wall = wallObject.AddComponent<BoxCollider>();
+                wall.size = new Vector3(5f, 2f, .4f);
+                Physics.SyncTransforms();
+                var grid = root.AddComponent<AarisNearbyColliders>();
+                Set(grid, "target", actor.transform);
+                Set(grid, "obstacles", new Collider[] { wall });
+                Set(grid, "worldBounds", new Bounds[1]);
+                Set(grid, "streamed", new bool[1]);
+                Set(grid, "probeVisited", new int[1]);
+                // Index real enabled authored bounds without EditMode coroutines.
+                Call(grid, "IndexCollider", 0);
+                Set(grid, "indexReady", true);
+                wall.enabled = false;
+                var director = root.AddComponent<AarisOfflineBRDirector>();
+                Set(director, "nearbyColliders", grid);
+                active.SetValue(null, director);
+                MethodInfo query = typeof(AarisOfflineBRDirector).GetMethod(
+                    "HasInactiveShotCover", Static);
+                if (query == null) throw new InvalidOperationException("Hidden-cover contract absent");
+                Vector3 start = actor.transform.position + Vector3.up * 1.15f;
+                object[] inputs = { start, start + Vector3.forward * 160f, Vector3.zero };
+                bool blocked = (bool)query.Invoke(null, inputs);
+                Vector3 hit = (Vector3)inputs[2];
+                Check(blocked && Mathf.Abs(hit.z -
+                    (wallObject.transform.position.z - .2f)) < .3f,
+                    "Streamed-out wall blocks scoped shot at actual segment", report);
+                inputs[1] = start + Vector3.right * 160f;
+                Check(!(bool)query.Invoke(null, inputs),
+                    "Off-axis streamed wall does not block clear aim", report);
+                inputs[1] = start + Vector3.forward * 60f;
+                bool shortBlocked = (bool)query.Invoke(null, inputs);
+                Check(!shortBlocked,
+                    "Wall behind target cannot steal hit", report);
+                wall.enabled = true;
+                inputs[1] = start + Vector3.forward * 160f;
+                Check(!(bool)query.Invoke(null, inputs),
+                    "Enabled static wall defers to real PhysX", report);
+            }
+            finally
+            {
+                active.SetValue(null, previous);
+                Object.DestroyImmediate(root);
+            }
         }
 
         // Actual PhysX cover validation of the shared bot/player pickup ray.
