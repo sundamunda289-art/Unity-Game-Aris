@@ -53,7 +53,7 @@ class FarRivalBudget(unittest.TestCase):
         update = bot.split("private void Update()", 1)[1].split("private bool HasSight()", 1)[0]
         self.assertIn("private const float FarSimulationDistance = 90f;", bot)
         self.assertIn("private const float FarSimulationInterval = 0.35f;", bot)
-        guard = update.index("if (farSimulation && now < nextFarSimulation) return;")
+        guard = update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera) return;")
         self.assertLess(guard, update.index("owner.TryZoneRetreatDirection"))
         self.assertLess(guard, update.index("capsule.Move("))
         self.assertIn("now - lastSimulationTime", update)
