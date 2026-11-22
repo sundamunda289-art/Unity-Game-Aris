@@ -13,6 +13,10 @@ SOURCE = (Path(__file__).resolve().parents[2] /
 RIVAL_UPDATE = SOURCE.split("internal sealed class AarisOfflineRival", 1)[1]
 RIVAL_UPDATE = RIVAL_UPDATE.split("private void Update()", 1)[1]
 RIVAL_UPDATE = RIVAL_UPDATE.split("private void UpdateAnimationBlend", 1)[0]
+# Physical and virtual opponents deliberately have independent reload paths.
+PHYSICAL_UPDATE, VIRTUAL_UPDATE = RIVAL_UPDATE.split(
+    "// Distant bots stay fully alive as logical actors", 1)
+
 
 
 class BotCoverReloadTests(unittest.TestCase):
@@ -20,11 +24,15 @@ class BotCoverReloadTests(unittest.TestCase):
         reload_gate = ("if (carriedGun != null && carriedMagazine == 0 "
                        "&& now >= nextAttack)")
         combat_gate = "if (hasTarget && canSee &&"
-        self.assertEqual(RIVAL_UPDATE.count(reload_gate), 1)
-        self.assertLess(RIVAL_UPDATE.index(reload_gate),
-                        RIVAL_UPDATE.index(combat_gate))
+        self.assertEqual(PHYSICAL_UPDATE.count(reload_gate), 1)
+        self.assertEqual(VIRTUAL_UPDATE.count(reload_gate), 1)
+        self.assertLess(PHYSICAL_UPDATE.index(reload_gate),
+                        PHYSICAL_UPDATE.index(combat_gate))
         self.assertNotIn("if (carriedGun != null && carriedMagazine == 0)",
-                         RIVAL_UPDATE[RIVAL_UPDATE.index(combat_gate):])
+                         PHYSICAL_UPDATE[PHYSICAL_UPDATE.index(combat_gate):])
+        # Virtual enemies may reload while fighting each other offscreen.
+        self.assertLess(VIRTUAL_UPDATE.index(reload_gate),
+                        VIRTUAL_UPDATE.index("targetHealth.ApplyDamage"))
 
     def test_reload_cannot_grant_infinite_bullets(self):
         self.assertIn("int refill = Mathf.Min(carriedGun.magazineSize, "
