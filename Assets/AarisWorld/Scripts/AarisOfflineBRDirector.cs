@@ -1762,25 +1762,22 @@ namespace Aaris.MapReview
                     cameraRelevant = owner.IsDistantRivalOnScreen(transform.position);
                     // Entering OR leaving the viewport changes expensive visual/receiver
                     // admission immediately rather than waiting for a second 0.55s tick.
-                    if (cameraRelevant != lastCameraRelevant)
+                    if (cameraRelevant != lastCameraRelevant) nextVisualCheck = now;
+                    if (!cameraRelevant && lastCameraRelevant)
                     {
-                        nextVisualCheck = now;
-                        if (!cameraRelevant)
+                        // Evict offscreen visuals and remote hit receivers on
+                        // this 120ms camera probe, NOT the slower 350ms AI tick.
+                        // Keep close (<55m) enemies fully simulated and visible.
+                        if (playerDistanceSqr >= 55f * 55f &&
+                            visualRoot != null && visualRoot.activeSelf)
                         {
-                            // Evict offscreen visuals and remote hit receivers on
-                            // this 120ms camera probe, NOT the slower 350ms AI tick.
-                            // Keep close (<55m) enemies fully simulated and visible.
-                            if (playerDistanceSqr >= 55f * 55f &&
-                                visualRoot != null && visualRoot.activeSelf)
-                            {
-                                visualRoot.SetActive(false);
-                                if (hasAnimations && graph.IsValid()) graph.Stop();
-                            }
-                            if (farVisualRoot != null && farVisualRoot.activeSelf)
-                                farVisualRoot.SetActive(false);
-                            if (virtualBody && capsule != null && capsule.enabled)
-                                capsule.enabled = false;
+                            visualRoot.SetActive(false);
+                            if (hasAnimations && graph.IsValid()) graph.Stop();
                         }
+                        if (farVisualRoot != null && farVisualRoot.activeSelf)
+                            farVisualRoot.SetActive(false);
+                        if (virtualBody && capsule != null && capsule.enabled)
+                            capsule.enabled = false;
                     }
                     lastCameraRelevant = cameraRelevant;
                 }
@@ -1821,10 +1818,9 @@ namespace Aaris.MapReview
                     carriedReserve = found.reserveAmmo;
                 }
             }
-            float dt = 0f;
+            float dt = Mathf.Min(Time.deltaTime, 0.12f);
             if (simulationDue)
             {
-                dt = Mathf.Min(Time.deltaTime, 0.12f);
                 if (farSimulation)
                     dt = Mathf.Clamp(now - lastSimulationTime, 0f, 0.46f);
                 lastSimulationTime = now;
