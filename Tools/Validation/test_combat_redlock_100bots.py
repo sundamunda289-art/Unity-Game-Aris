@@ -31,6 +31,10 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("Clear far-bot stride remains unblocked", qa)
         self.assertIn("displacement.sqrMagnitude > 0.72f * 0.72f", BOTS)
         self.assertIn("nearbyColliders.TryInactiveCoverHit(from + footToChest", BOTS)
+        self.assertIn("c == null || !c.enabled || c.isTrigger", grid)
+        self.assertIn("c == null || c.enabled || c.isTrigger", grid)
+        self.assertIn("Streamed-out trigger volume cannot block Red-Lock", qa)
+        self.assertIn("Authored trigger sensors stay live during collider indexing", qa)
         self.assertIn("c == null || c.enabled", grid)
         self.assertIn("probeVisited[i] == stamp", grid)
         self.assertIn("foreach (int i in oversizedIndices)", grid)
@@ -45,6 +49,8 @@ class CombatEndToEndContract(unittest.TestCase):
 
     def test_red_lock_uses_physical_muzzle_path(self):
         self.assertIn("MuzzlePathOpenTo(shooter, candidate.transform, closestPoint)", BOTS)
+        self.assertIn("!HasInactiveShotCover(origin, closestPoint, out Vector3 cameraCover)", BOTS)
+        self.assertIn("!HasInactiveShotCover(origin, point, out Vector3 cameraCover)", BOTS)
         self.assertIn("new Ray(anchor, shooter.forward), 0.24f", BOTS)
         self.assertIn("new Ray(muzzle, to / distance)", BOTS)
         self.assertIn("first.transform.IsChildOf(victim)", BOTS)
