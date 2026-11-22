@@ -235,6 +235,84 @@ internal static class BoundedProbeTests
         Check(!fixture.Probe(new Vector3(0,0,0),
             new Vector3(1,1,1),Quaternion.identity),
             "pre-index probe must retain previous fail-solid behavior");
+        // Execute the exact production streamed-cover C# methods. This
+        // fixture tests broadphase/OBB decisions, not Unity PhysX or FPS.
+        var walls=new ProbeFixture(5);
+        walls.Add(0,new Bounds(new Vector3(0f,1f,80f),new Vector3(5f,2f,.4f)),
+            false,true);
+        walls.obstacles[0]=new BoxCollider { enabled=false,
+            transform=new Transform { position=new Vector3(0f,0f,80f) },
+            center=new Vector3(0f,1f,0f),size=new Vector3(5f,2f,.4f) };
+        float d=(float)(Math.Sqrt(2)*15.2);
+        walls.Add(1,new Bounds(new Vector3(40f,1f,80f),new Vector3(d,2f,d)),
+            false,true);
+        walls.obstacles[1]=new BoxCollider { enabled=false,
+            transform=new Transform { position=new Vector3(40f,0f,80f),
+                yaw=(float)(Math.PI/4) },
+            center=new Vector3(0f,1f,0f), size=new Vector3(.4f,2f,30f) };
+        walls.Add(2,new Bounds(new Vector3(80f,1f,80f),new Vector3(5f,2f,.4f)),
+            false,true);
+        walls.obstacles[2]=new BoxCollider { enabled=false,isTrigger=true,
+            transform=new Transform { position=new Vector3(80f,0f,80f) },
+            center=new Vector3(0f,1f,0f),size=new Vector3(5f,2f,.4f) };
+        walls.Add(3,new Bounds(new Vector3(120f,1f,80f),new Vector3(5f,2f,.4f)),
+            true,true);
+        walls.obstacles[3]=new BoxCollider { enabled=true,
+            transform=new Transform { position=new Vector3(120f,0f,80f) },
+            center=new Vector3(0f,1f,0f),size=new Vector3(5f,2f,.4f) };
+        walls.Add(4,new Bounds(new Vector3(200f,1f,1000f),
+            new Vector3(40000f,2f,.5f)),false,true);
+        Vector3 hit;
+        Check(walls.TryInactiveCoverHit(new Vector3(0f,1f,0f),
+            new Vector3(0f,1f,160f),out hit) && Math.Abs(hit.z-79.8f)<.05f,
+            "disabled box wall should block at its actual near face");
+        Check(!walls.TryInactiveCoverHit(new Vector3(0f,1f,0f),
+            new Vector3(0f,1f,60f),out hit),
+            "wall behind target is not a hit");
+        Check(!walls.TryInactiveCoverHit(new Vector3(0f,1f,0f),
+            new Vector3(-20f,1f,160f),out hit),
+            "off-axis ray must not hit the wall");
+        Check(!walls.TryInactiveCoverHit(new Vector3(49f,1f,0f),
+            new Vector3(49f,1f,78f),out hit),
+            "rotated wall AABB alone must not block flank ray");
+        Check(walls.TryInactiveCoverHit(new Vector3(49f,1f,0f),
+            new Vector3(49f,1f,160f),out hit) &&
+            Math.Abs(hit.z-89f)<1f,
+            "rotated wall must block actual oriented-box contact");
+        Check(!walls.TryInactiveCoverHit(new Vector3(80f,1f,0f),
+            new Vector3(80f,1f,160f),out hit),
+            "disabled trigger sensors are not solid walls");
+        Check(!walls.TryInactiveCoverHit(new Vector3(120f,1f,0f),
+            new Vector3(120f,1f,160f),out hit),
+            "enabled walls defer to PhysX");
+        Check(walls.TryInactiveCoverHit(new Vector3(200f,1f,0f),
+            new Vector3(200f,1f,2000f),out hit) &&
+            Math.Abs(hit.z-999.75f)<.1f,
+            "long rays check oversized authored static members");
+        var scaled=new ProbeFixture(1);
+        scaled.Add(0,new Bounds(new Vector3(0f,1f,80f),
+            new Vector3(4f,2f,.2f)),false,true);
+        scaled.obstacles[0]=new BoxCollider { enabled=false,
+            transform=new Transform { position=new Vector3(0f,0f,80f),
+                lossyScale=new Vector3(2f,1f,.5f) },
+            center=new Vector3(0f,1f,0f),size=new Vector3(2f,2f,.4f) };
+        Check(scaled.TryInactiveCoverHit(new Vector3(0f,1f,0f),
+            new Vector3(0f,1f,160f),out hit) && Math.Abs(hit.z-79.9f)<.04f,
+            "nonuniform scaled BoxCollider returns world-metre contact");
+
+        for(int i=0;i<1400;i++)
+        {
+            Vector3 from=new Vector3(Range(rng,-4500,4500),
+                Range(rng,-3f,5f),Range(rng,-4500,4500));
+            Vector3 to=from+new Vector3(Range(rng,-900,900),
+                Range(rng,-15,15),Range(rng,-900,900));
+            Vector3 actual,expected;
+            bool fast=fixture.TryInactiveCoverHit(from,to,out actual);
+            bool full=fixture.ExhaustiveInactiveRay(from,to,out expected);
+            Check(fast==full && (!fast || (actual-expected).magnitude<.02f),
+                "indexed disabled-cover ray differs from exhaustive bounds scan");
+        }
+        Console.WriteLine("STREAMED_COVER_RAY_PRODUCTION_CSHARP_PASS");
         Console.WriteLine("BOUNDED_COLLIDER_PROBE_PASS checks="+checks);
         Console.WriteLine("PRODUCTION_CSHARP_METHOD_TEST; no Unity Editor/Android FPS claim");
     }
