@@ -27,6 +27,12 @@ namespace Aaris.MapReview
         private static AarisOfflineBRDirector activeDirector;
         private static RaycastHit[] assistHits = new RaycastHit[32];
         private static RaycastHit[] muzzleAssistHits = new RaycastHit[48];
+        // Preallocated main-thread Red-Lock shortlist: never scan PhysX for all 100 actors.
+        private const int AimBudget = 3;
+        private static readonly AarisOfflineRival[] aimBots = new AarisOfflineRival[AimBudget];
+        private static readonly Vector3[] aimDirs = new Vector3[AimBudget];
+        private static readonly float[] aimRanges = new float[AimBudget];
+        private static readonly float[] aimDots = new float[AimBudget];
         private AarisOfflineRival attackerOne, attackerTwo;
         private AarisOfflineRival scanAttackerOne, scanAttackerTwo;
         private const int AttackerSelectionPerFrame = 12;
@@ -660,6 +666,9 @@ namespace Aaris.MapReview
         // Distant opponents are strategic hunt targets, not shooting targets.
         // Only the existing 42 m LOS gate and 38 m firing gate permit damage.
         private const float RivalHuntRadius = 110f;
+        private const int AlternativeBudget = 6;
+        private readonly AarisOfflineRival[] alternativeBots = new AarisOfflineRival[AlternativeBudget];
+        private readonly float[] alternativeDistSq = new float[AlternativeBudget];
 
         internal bool FindRivalOpponent(AarisOfflineRival self,
             out Transform victim, out AarisOfflineHealth victimHealth)
@@ -683,49 +692,41 @@ namespace Aaris.MapReview
         // then try at most THREE nearest alternate LOS paths. This avoids
         // 100 expensive raycasts per thinking bot on 2 GB Android devices.
         internal bool TryFindVisibleRivalAlternative(AarisOfflineRival hunter,
-            Transform blocked, out Transform victim,
-            out AarisOfflineHealth victimHealth)
+            Transform blocked, out Transform victim, out AarisOfflineHealth victimHealth)
         {
-            victim = null;
-            victimHealth = null;
+            victim = null; victimHealth = null;
             if (hunter == null) return false;
-            const float maxRangeSqr = 42f * 42f;
-            AarisOfflineRival first = null, second = null, third = null;
-            float d1 = maxRangeSqr, d2 = maxRangeSqr, d3 = maxRangeSqr;
-            Vector3 from = hunter.transform.position;
+            const float maxSqr = 42f * 42f;
+            int used = 0;
+            Vector3 origin = hunter.transform.position;
             for (int i = 0; i < rivals.Length; i++)
             {
                 AarisOfflineRival bot = rivals[i];
                 if (bot == null || bot == hunter || !bot.IsAlive ||
                     bot.transform == blocked) continue;
-                float sqr = (bot.transform.position - from).sqrMagnitude;
-                if (sqr >= d3) continue;
-                if (sqr < d1)
+                float sqr = (bot.transform.position - origin).sqrMagnitude;
+                if (sqr >= maxSqr || (used == AlternativeBudget &&
+                    sqr >= alternativeDistSq[AlternativeBudget - 1])) continue;
+                int slot = 0;
+                while (slot < used && sqr >= alternativeDistSq[slot]) slot++;
+                if (slot >= AlternativeBudget) continue;
+                for (int j = Mathf.Min(used, AlternativeBudget - 1); j > slot; j--)
                 {
-                    third = second; d3 = d2;
-                    second = first; d2 = d1;
-                    first = bot; d1 = sqr;
+                    alternativeBots[j] = alternativeBots[j - 1];
+                    alternativeDistSq[j] = alternativeDistSq[j - 1];
                 }
-                else if (sqr < d2)
-                {
-                    third = second; d3 = d2;
-                    second = bot; d2 = sqr;
-                }
-                else
-                {
-                    third = bot; d3 = sqr;
-                }
+                alternativeBots[slot] = bot;
+                alternativeDistSq[slot] = sqr;
+                if (used < AlternativeBudget) used++;
             }
-            // No list, allocations or unrestricted per-candidate raycasts.
-            AarisOfflineRival candidate = first;
-            for (int i = 0; i < 3; i++)
+            // A fourth or fifth clear combatant must not be masked by three
+            // nearer occluded rivals. Six nearest LOS tests maximum, no GC.
+            for (int i = 0; i < used; i++)
             {
-                if (i == 1) candidate = second;
-                else if (i == 2) candidate = third;
-                if (candidate == null) continue;
-                if (!hunter.HasSightToRival(candidate.transform)) continue;
-                victim = candidate.transform;
-                victimHealth = candidate.Health;
+                AarisOfflineRival bot = alternativeBots[i];
+                if (bot == null || !bot.IsAlive ||
+                    !hunter.HasSightToRival(bot.transform)) continue;
+                victim = bot.transform; victimHealth = bot.Health;
                 return true;
             }
             return false;
@@ -854,7 +855,10 @@ namespace Aaris.MapReview
                     return true;
                 }
             }
-            return false;
+            // Keep the original top-three fast path; only investigate the
+            // next three when every centered body is physically obstructed.
+            return TryAcquireAimFallback(origin, cameraForward, shooter,
+                maximumRangeSqr, minimumDot, first, second, third, out aimedDirection);
         }
 
         private void RefreshStatus(float elapsed)
@@ -876,6 +880,76 @@ namespace Aaris.MapReview
                 : "RIVALS " + spawnedRivals + "/" + RivalCount;
             status.text = participants +
                 "    ZONE " + Mathf.CeilToInt(radius) + "m    " + label;
+        }
+
+        private static bool TryAcquireAimFallback(Vector3 origin, Vector3 forward,
+            Transform shooter, float maxRangeSqr, float minimumDot,
+            AarisOfflineRival first, AarisOfflineRival second,
+            AarisOfflineRival third, out Vector3 aimedDirection)
+        {
+            aimedDirection = Vector3.zero;
+            int used = 0;
+            for (int i = 0; i < activeDirector.rivals.Length; i++)
+            {
+                AarisOfflineRival bot = activeDirector.rivals[i];
+                if (bot == null || bot == first || bot == second || bot == third ||
+                    !bot.IsAlive || !bot.HasVisibleBody) continue;
+                Vector3 delta = bot.transform.position + Vector3.up * 1.12f - origin;
+                float sqr = delta.sqrMagnitude;
+                if (sqr < .0625f || sqr > maxRangeSqr) continue;
+                float projected = Vector3.Dot(forward, delta);
+                float cutoff = used < AimBudget ? minimumDot : aimDots[AimBudget - 1];
+                if (projected <= 0f || projected * projected <= cutoff * cutoff * sqr)
+                    continue;
+                float distance = Mathf.Sqrt(sqr);
+                float score = projected / distance;
+                if (score <= cutoff) continue;
+                int slot = 0;
+                while (slot < used && score <= aimDots[slot]) slot++;
+                if (slot >= AimBudget) continue;
+                for (int j = Mathf.Min(used, AimBudget - 1); j > slot; j--)
+                {
+                    aimBots[j] = aimBots[j - 1];
+                    aimDirs[j] = aimDirs[j - 1];
+                    aimRanges[j] = aimRanges[j - 1];
+                    aimDots[j] = aimDots[j - 1];
+                }
+                aimBots[slot] = bot;
+                aimDirs[slot] = delta / distance;
+                aimRanges[slot] = distance;
+                aimDots[slot] = score;
+                if (used < AimBudget) used++;
+            }
+            // Only after the original three fail: up to three more true
+            // camera AND muzzle LOS checks; never fire through cover.
+            for (int attempt = 0; attempt < used; attempt++)
+            {
+                AarisOfflineRival bot = aimBots[attempt];
+                if (bot == null || !bot.IsAlive || !bot.HasVisibleBody) continue;
+                Vector3 direction = aimDirs[attempt];
+                int count = AarisPhysicsHitBuffer.Raycast(new Ray(origin, direction),
+                    aimRanges[attempt] + .5f, Physics.DefaultRaycastLayers,
+                    ref assistHits, 256, out RaycastHit[] hits);
+                float nearest = float.PositiveInfinity;
+                Collider closest = null;
+                Vector3 point = Vector3.zero;
+                for (int i = 0; i < count; i++)
+                {
+                    Collider hit = hits[i].collider;
+                    if (hit == null || hit.transform.IsChildOf(shooter) ||
+                        hits[i].distance >= nearest) continue;
+                    nearest = hits[i].distance;
+                    closest = hit;
+                    point = hits[i].point;
+                }
+                if (closest != null && closest.transform.IsChildOf(bot.transform) &&
+                    MuzzlePathOpenTo(shooter, bot.transform, point))
+                {
+                    aimedDirection = direction;
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void CreateStatus()
