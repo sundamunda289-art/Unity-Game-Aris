@@ -1528,7 +1528,9 @@ namespace Aaris.MapReview
                 {
                     nextCameraProbe = now + 0.12f;
                     cameraRelevant = owner.IsDistantRivalOnScreen(transform.position);
-                    if (cameraRelevant && !lastCameraRelevant) nextVisualCheck = now;
+                    // Entering OR leaving the viewport changes expensive visual/receiver
+                    // admission immediately rather than waiting for a second 0.55s tick.
+                    if (cameraRelevant != lastCameraRelevant) nextVisualCheck = now;
                     lastCameraRelevant = cameraRelevant;
                 }
             }
@@ -1587,11 +1589,18 @@ namespace Aaris.MapReview
                 nextVisualCheck = now + .55f;
                 if (!visualBuilt && playerDistanceSqr < 105f * 105f)
                 {
-                    bool permitted = true;
+                    // An unseen 55-105 m opponent needs no resident Humanoid,
+                    // PlayableGraph, skinning buffers or native import yet.
+                    // When the camera turns, the lightweight shared LOD can
+                    // appear while the high-quality rig is admitted safely.
+                    if (playerDistanceSqr < 55f * 55f || cameraRelevant)
+                    {
+                        bool permitted = true;
 #if UNITY_ANDROID && !UNITY_EDITOR
-                    permitted = AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild();
+                        permitted = AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild();
 #endif
-                    if (permitted) BuildVisual();
+                        if (permitted) BuildVisual();
+                    }
                 }
                 if (visualRoot != null)
                 {
