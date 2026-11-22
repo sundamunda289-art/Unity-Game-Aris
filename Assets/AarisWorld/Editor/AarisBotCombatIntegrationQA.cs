@@ -173,6 +173,17 @@ namespace Aaris.MapReview.Editor
                 bool shortBlocked = (bool)query.Invoke(null, inputs);
                 Check(!shortBlocked,
                     "Wall behind target cannot steal hit", report);
+                // A bot crossing four metres in one far-LOD update would
+                // skip a 40cm disabled wall with a destination-only overlap.
+                Vector3 beforeWall = actor.transform.position +
+                    Vector3.forward * 78f;
+                Check((bool)Call(director, "WouldCrossInactiveCover",
+                    beforeWall, Vector3.forward * 4f),
+                    "Long bot stride cannot tunnel across a streamed thin wall", report);
+                Check(!(bool)Call(director, "WouldCrossInactiveCover",
+                    actor.transform.position + Vector3.forward * 65f,
+                    Vector3.forward * 4f),
+                    "Clear far-bot stride remains unblocked", report);
                 wall.enabled = true;
                 inputs[1] = start + Vector3.forward * 160f;
                 Check(!(bool)query.Invoke(null, inputs),
