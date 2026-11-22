@@ -33,7 +33,7 @@ class RivalDamageReactionTests(unittest.TestCase):
         body = SOURCE.split("private void OnDamaged(", 1)[1].split(
             "internal void TakeZoneDamage(", 1)[0]
         gate = body.index("if (Time.time >= nextHitReaction)")
-        cover = body.index("if (Time.time < nextCoverQuery) return;")
+        cover = body.index("if (virtualBody || Time.time < nextCoverQuery) return;")
         self.assertLess(gate, cover)
         self.assertIn("nextHitReaction = Time.time + 0.22f;", body)
         self.assertIn("turnOffset += avoidanceHandedness * 65f;", body)
