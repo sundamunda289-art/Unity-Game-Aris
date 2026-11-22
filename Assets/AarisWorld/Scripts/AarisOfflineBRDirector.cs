@@ -1620,10 +1620,17 @@ namespace Aaris.MapReview
                 }
                 float damage = carriedGun != null
                     ? Mathf.Clamp(carriedGun.damage * .23f, 4f, 26f) : 6f;
-                // A physical LOS bullet feeds the SAME hitbox receiver as player guns.
-                // Reuse this scheduled shot ray; no extra physics query or GC.
-                AarisEquippedGun.ApplyDamage(shotHit.collider, damage,
-                    gameObject, shotHit.point);
+                // Keep the same physical LOS for guns and punches. A punch
+                // has no bullet hit coordinate and must never receive the
+                // headshot multiplier reserved for physical gun impacts.
+                // The unpositioned receiver still reports real body HP loss
+                // and its pooled damage number at the victim bounds center.
+                if (carriedGun != null)
+                    AarisEquippedGun.ApplyDamage(shotHit.collider, damage,
+                        gameObject, shotHit.point);
+                else
+                    AarisEquippedGun.ApplyDamage(shotHit.collider, damage,
+                        gameObject);
             }
         }
 
