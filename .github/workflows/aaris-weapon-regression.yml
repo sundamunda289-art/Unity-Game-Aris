@@ -17,6 +17,7 @@ on:
       - 'Tools/Validation/test_weapon_pause_input_authority.py'
       - 'Tools/Validation/test_combat_redlock_100bots.py'
       - 'Tools/Validation/test_combat_cover_zone_steering.py'
+      - 'Tools/Validation/test_combat_hit_reaction_dense_cover.py'
       - 'Tools/Validation/test_combat_camera_hud_ai.py'
       - 'Tools/Validation/test_offline_rival_attacker_threat_budget.py'
       - 'Tools/Validation/check_weapon_loot.py'
@@ -41,6 +42,7 @@ on:
       - 'Tools/Validation/test_weapon_pause_input_authority.py'
       - 'Tools/Validation/test_combat_redlock_100bots.py'
       - 'Tools/Validation/test_combat_cover_zone_steering.py'
+      - 'Tools/Validation/test_combat_hit_reaction_dense_cover.py'
       - 'Tools/Validation/test_combat_camera_hud_ai.py'
       - 'Tools/Validation/test_offline_rival_attacker_threat_budget.py'
       - 'Tools/Validation/check_weapon_loot.py'
@@ -80,6 +82,7 @@ jobs:
         run: |
           python3 Tools/Validation/test_combat_redlock_100bots.py
           python3 Tools/Validation/test_combat_cover_zone_steering.py
+          python3 Tools/Validation/test_combat_hit_reaction_dense_cover.py
           python3 Tools/Validation/test_combat_camera_hud_ai.py
           python3 Tools/Validation/test_offline_rival_attacker_threat_budget.py
           python3 Tools/Validation/test_combat_visible_target_gate.py
