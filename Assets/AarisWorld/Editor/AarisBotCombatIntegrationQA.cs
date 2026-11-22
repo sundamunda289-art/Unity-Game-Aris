@@ -213,6 +213,18 @@ namespace Aaris.MapReview.Editor
                 Check(grid.HasPotentialInactiveObstacle(wallObject.transform.position +
                     new Vector3(9f, 0f, 9f), footprint, Quaternion.identity),
                     "Distant bot stops at actual diagonal wall", report);
+                // The vehicle and wall can have overlapping world AABBs
+                // yet a true gap between two similarly rotated hulls.
+                Quaternion parallel = Quaternion.Euler(0f, 45f, 0f);
+                Vector3 carHalf = new Vector3(1f, .9f, 2.1f);
+                float carOffset = 2.5f / Mathf.Sqrt(2f);
+                Check(!grid.HasPotentialInactiveObstacle(wallObject.transform.position +
+                    new Vector3(carOffset, 0f, -carOffset), carHalf, parallel),
+                    "Diagonal roadside car fits beside wall without phantom collision", report);
+                float touchingOffset = .7f / Mathf.Sqrt(2f);
+                Check(grid.HasPotentialInactiveObstacle(wallObject.transform.position +
+                    new Vector3(touchingOffset, 0f, -touchingOffset), carHalf, parallel),
+                    "Diagonal roadside car still rejects actual wall overlap", report);
                 // A disabled imported trigger is not world cover and must
                 // not block the scope merely because its old bounds remain.
                 wall.isTrigger = true;
