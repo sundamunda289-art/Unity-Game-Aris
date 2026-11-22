@@ -522,8 +522,11 @@ namespace Aaris.MapReview
                 if (cachedRivalCamera == null && player != null)
                     cachedRivalCamera = player.GetComponentInChildren<Camera>(true);
             }
-            // Fail visible when the camera has not yet been initialized.
-            if (cachedRivalCamera == null || !cachedRivalCamera.isActiveAndEnabled) return true;
+            // A missing or disabled gameplay camera is NOT evidence that a remote
+            // fighter is visible. Avoid admitting distant meshes, animation and
+            // PhysX receivers during Android startup/camera handover. Close
+            // encounters below 55m still use the independent near-distance gate.
+            if (cachedRivalCamera == null || !cachedRivalCamera.isActiveAndEnabled) return false;
             Vector3 v = cachedRivalCamera.WorldToViewportPoint(position + Vector3.up * 0.95f);
             return v.z > 0f && v.x >= -0.07f && v.x <= 1.07f &&
                 v.y >= -0.1f && v.y <= 1.1f;
