@@ -10,11 +10,20 @@ namespace UnityEngine
     {
         public float x, y, z;
         public Vector3(float x, float y, float z) { this.x=x; this.y=y; this.z=z; }
+        public static Vector3 zero => new Vector3(0, 0, 0);
         public static Vector3 right => new Vector3(1, 0, 0);
         public static Vector3 up => new Vector3(0, 1, 0);
         public static Vector3 forward => new Vector3(0, 0, 1);
+        public float magnitude => (float)Math.Sqrt(x*x + y*y + z*z);
+        public static Vector3 operator +(Vector3 a, Vector3 b) => new Vector3(a.x+b.x, a.y+b.y, a.z+b.z);
+        public static Vector3 operator -(Vector3 a, Vector3 b) => new Vector3(a.x-b.x, a.y-b.y, a.z-b.z);
+        public static Vector3 operator /(Vector3 a, float k) => new Vector3(a.x/k, a.y/k, a.z/k);
         public static Vector3 operator *(Vector3 v, float k) => new Vector3(v.x*k, v.y*k, v.z*k);
         public static Vector3 operator *(float k, Vector3 v) => v*k;
+        public static Vector3 Min(Vector3 a, Vector3 b) => new Vector3(
+            Math.Min(a.x,b.x), Math.Min(a.y,b.y), Math.Min(a.z,b.z));
+        public static Vector3 Max(Vector3 a, Vector3 b) => new Vector3(
+            Math.Max(a.x,b.x), Math.Max(a.y,b.y), Math.Max(a.z,b.z));
     }
     public struct Quaternion
     {
@@ -35,13 +44,64 @@ namespace UnityEngine
             Math.Abs(center.x-b.center.x) <= extents.x+b.extents.x &&
             Math.Abs(center.y-b.center.y) <= extents.y+b.extents.y &&
             Math.Abs(center.z-b.center.z) <= extents.z+b.extents.z;
+        public bool IntersectRay(Ray ray, out float distance)
+        {
+            distance=0f;
+            float start=0f, end=float.PositiveInfinity;
+            float[] from={ray.origin.x,ray.origin.y,ray.origin.z};
+            float[] dir={ray.direction.x,ray.direction.y,ray.direction.z};
+            Vector3 minB=min,maxB=max;
+            float[] low={minB.x,minB.y,minB.z};
+            float[] high={maxB.x,maxB.y,maxB.z};
+            for(int k=0;k<3;k++)
+            {
+                if(Math.Abs(dir[k]) < 0.0000001f)
+                { if(from[k]<low[k] || from[k]>high[k]) return false; continue; }
+                float a=(low[k]-from[k])/dir[k], b=(high[k]-from[k])/dir[k];
+                start=Math.Max(start,Math.Min(a,b));
+                end=Math.Min(end,Math.Max(a,b));
+                if(start>end) return false;
+            }
+            distance=start;
+            return true;
+        }
+    }
+    public struct Ray
+    {
+        public Vector3 origin, direction;
+        public Ray(Vector3 origin, Vector3 direction)
+        { this.origin=origin; this.direction=direction; }
+        public Vector3 GetPoint(float t) => origin + direction*t;
+    }
+    public struct Matrix4x4
+    {
+        public Vector3 position, scale;
+        public float cos, sin;
+        public Vector3 MultiplyPoint3x4(Vector3 p) => MultiplyVector(p-position);
+        public Vector3 MultiplyVector(Vector3 d) => new Vector3(
+            (cos*d.x - sin*d.z)/scale.x,
+            d.y/scale.y,
+            (sin*d.x + cos*d.z)/scale.z);
+    }
+    public sealed class Transform
+    {
+        public Vector3 position, lossyScale = new Vector3(1f,1f,1f);
+        public float yaw;
+        public Matrix4x4 worldToLocalMatrix => new Matrix4x4 {
+            position=position, scale=lossyScale,
+            cos=(float)Math.Cos(yaw), sin=(float)Math.Sin(yaw) };
     }
     public static class Mathf
     {
         public static float Abs(float f) => Math.Abs(f);
         public static int FloorToInt(float f) => (int)Math.Floor(f);
     }
-    public sealed class Collider { public bool enabled; }
+    public class Collider { public bool enabled, isTrigger; }
+    public sealed class BoxCollider : Collider
+    {
+        public Transform transform;
+        public Vector3 center, size;
+    }
 }
 
 internal sealed class ProbeFixture
@@ -66,6 +126,25 @@ internal sealed class ProbeFixture
     private int Cell(float value) => Mathf.FloorToInt(value / cellSize);
     private static long Key(int x, int z) => ((long)x << 32) ^ (uint)z;
     private static bool Finite(Vector3 value) { /* FINITE_BODY */ }
+    private bool TestInactiveRayIndex(int i, Ray ray, ref float nearest)
+    { /* INACTIVE_RAY_INDEX_BODY */ }
+    internal bool TryInactiveCoverHit(Vector3 from, Vector3 to, out Vector3 contact)
+    { /* INACTIVE_RAY_BODY */ }
+    internal bool ExhaustiveInactiveRay(Vector3 from, Vector3 to,
+        out Vector3 contact)
+    {
+        contact=Vector3.zero;
+        Vector3 delta=to-from;
+        float length=delta.magnitude;
+        if(length<=.025f) return false;
+        Ray ray=new Ray(from,delta/length);
+        float nearest=length-.025f;
+        bool found=false;
+        for(int i=0;i<obstacles.Length;i++)
+            if(TestInactiveRayIndex(i,ray,ref nearest)) found=true;
+        if(found) contact=ray.GetPoint(nearest);
+        return found;
+    }
 
     internal void Add(int i, Bounds b, bool on, bool spatial)
     {
