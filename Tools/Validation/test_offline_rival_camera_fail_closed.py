@@ -58,8 +58,11 @@ class RemoteCameraFailClosed(unittest.TestCase):
 
     def test_camera_recovers_remote_rendering_without_combat_restart(self):
         for distance in (90, 155, 300, 480):
-            self.assertFalse(permitted_distant_mesh(distance, False))
-            self.assertTrue(permitted_distant_mesh(distance, True))
+            self.assertFalse(permitted_full_rig(distance, False) or
+                             permitted_distant_mesh(distance, False))
+            close_rig = permitted_full_rig(distance, True)
+            self.assertTrue(close_rig or
+                            permitted_distant_mesh(distance, True, close_rig))
         self.assertFalse(virtual_physics(300, True, True))
         self.assertTrue(virtual_physics(300, False, False))
         self.assertIn("TickVirtualCombat(now, dt);", RIVAL)
