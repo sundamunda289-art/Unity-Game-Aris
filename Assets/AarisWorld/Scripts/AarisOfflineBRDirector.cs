@@ -1500,8 +1500,12 @@ namespace Aaris.MapReview
             float moveSpeed = seekingCover ? 3.45f : retreat ? 3.2f :
                 carriedGun == null ? (distance > 1.7f ? 2.85f : 0f) :
                 distance > 12f ? 2.85f : distance < 7f ? -1.15f : 0f;
-            Vector3 desired = Quaternion.Euler(0f, turnOffset, 0f) *
-                travelDirection * moveSpeed;
+            // Tactical cover and safe-zone escape must outrank random hunt
+            // steering. Otherwise a recent hit's turnOffset can rotate the bot
+            // away from its chosen cover position or the safe-zone center.
+            Vector3 steering = seekingCover || retreat ? travelDirection :
+                Quaternion.Euler(0f, turnOffset, 0f) * travelDirection;
+            Vector3 desired = steering * moveSpeed;
             if (canSee && !retreat && !seekingCover && carriedGun != null)
                 desired *= .23f; // Armed only; unarmed bots close to melee.
             Vector3 displacement = desired * dt;
