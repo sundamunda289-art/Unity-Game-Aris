@@ -1399,7 +1399,7 @@ namespace Aaris.MapReview
             if (rigFarSince < 0f) rigFarSince = now;
             if (now - rigFarSince < RigRetireAfterSeconds ||
                 lastRigRetireFrame == Time.frameCount) return;
-            if (playerDistanceSqr < FarVisualDistance * FarVisualDistance &&
+            if (!simulatedOnly && playerDistanceSqr < FarVisualDistance * FarVisualDistance &&
                 (farVisualRoot == null || !farVisualRoot.activeInHierarchy))
                 return;
             lastRigRetireFrame = Time.frameCount;
@@ -1726,6 +1726,14 @@ namespace Aaris.MapReview
             // Its position and actual health continue to advance on the far tick.
             if (simulatedOnly)
             {
+                // No visible mesh is needed while sleeping. Still dispose an
+                // old Humanoid/PlayableGraph after the existing five-second
+                // grace period or a 100-bot match retains hidden expensive rigs.
+                if (now >= nextVisualCheck)
+                {
+                    nextVisualCheck = now + .55f;
+                    RetireHiddenRig(now, playerDistanceSqr);
+                }
                 SimulateVirtual(now, dt);
                 return;
             }
