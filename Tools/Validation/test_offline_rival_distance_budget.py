@@ -180,7 +180,7 @@ class FarRivalBudget(unittest.TestCase):
             "private void TickVirtualCombat(", 1)[0]
         exit_block = update.split("if (cameraRelevant != lastCameraRelevant)", 1)[1].split(
             "lastCameraRelevant = cameraRelevant;", 1)[0]
-        self.assertIn("if (!cameraRelevant)", exit_block)
+        self.assertIn("if (!cameraRelevant && lastCameraRelevant)", exit_block)
         self.assertIn("playerDistanceSqr >= 55f * 55f", exit_block)
         self.assertIn("visualRoot.SetActive(false);", exit_block)
         self.assertIn("if (hasAnimations && graph.IsValid()) graph.Stop();", exit_block)
