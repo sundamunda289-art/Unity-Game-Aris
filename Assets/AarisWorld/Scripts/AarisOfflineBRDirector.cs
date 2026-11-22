@@ -1059,6 +1059,10 @@ namespace Aaris.MapReview
         private readonly Collider[] crowdedCoverCandidates = new Collider[128];
         private Vector3 coverDestination;
         private float coverUntil, nextCoverQuery, nextHitReaction;
+        // Briefly remember the real rival who landed damage. This is bot-vs-bot
+        // awareness only; player attack reservations still require the director.
+        private AarisOfflineRival recentRivalAttacker;
+        private float recentRivalAttackerUntil;
         internal AarisOfflineHealth Health => health;
         // Outside the combat range, save mobile CPU by updating far capsules
         // at 10 Hz. Keep near opponents at full gameplay frame rate.
@@ -1453,6 +1457,16 @@ namespace Aaris.MapReview
                     target = playerTarget;
                     targetHealth = playerTargetHealth;
                 }
+                else if (recentRivalAttacker != null && recentRivalAttacker.IsAlive &&
+                    now < recentRivalAttackerUntil &&
+                    (recentRivalAttacker.transform.position - transform.position).sqrMagnitude <
+                        110f * 110f)
+                {
+                    // A hit from another bot briefly overrides nearest-bot hunting.
+                    // Never assign the player here: the two-slot cap has priority.
+                    target = recentRivalAttacker.transform;
+                    targetHealth = recentRivalAttacker.Health;
+                }
                 else if (!owner.FindRivalOpponent(this, out target, out targetHealth))
                 {
                     target = null;
@@ -1778,7 +1792,16 @@ namespace Aaris.MapReview
 
         private void OnDamaged(AarisOfflineHealth victim, float loss, GameObject attacker)
         {
-            if (attacker == null || attacker == gameObject) return;
+            if (attacker == null || attacker == gameObject || loss <= 0f) return;
+            // Damage callbacks only arrive on real HP loss. Prefer a recent
+            // living rival aggressor over a random nearby rival for four seconds.
+            // This must never let a player bypass MayAttackPlayer's two slots.
+            if (attacker.TryGetComponent<AarisOfflineRival>(out AarisOfflineRival rivalAttacker) &&
+                rivalAttacker != this && rivalAttacker.IsAlive)
+            {
+                recentRivalAttacker = rivalAttacker;
+                recentRivalAttackerUntil = Time.time + 4f;
+            }
             // Shotguns may report eight damage events in one frame. React to
             // the burst once instead of accumulating 8 * 65 degrees of
             // wandering and an unbounded turnOffset on successive pellets.
