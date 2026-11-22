@@ -14,7 +14,11 @@ namespace UnityEngine
         public static Vector3 right => new Vector3(1, 0, 0);
         public static Vector3 up => new Vector3(0, 1, 0);
         public static Vector3 forward => new Vector3(0, 0, 1);
-        public float magnitude => (float)Math.Sqrt(x*x + y*y + z*z);
+        public float sqrMagnitude => x*x + y*y + z*z;
+        public float magnitude => (float)Math.Sqrt(sqrMagnitude);
+        public static float Dot(Vector3 a, Vector3 b) => a.x*b.x + a.y*b.y + a.z*b.z;
+        public static Vector3 Cross(Vector3 a, Vector3 b) => new Vector3(
+            a.y*b.z-a.z*b.y, a.z*b.x-a.x*b.z, a.x*b.y-a.y*b.x);
         public static Vector3 operator +(Vector3 a, Vector3 b) => new Vector3(a.x+b.x, a.y+b.y, a.z+b.z);
         public static Vector3 operator -(Vector3 a, Vector3 b) => new Vector3(a.x-b.x, a.y-b.y, a.z-b.z);
         public static Vector3 operator /(Vector3 a, float k) => new Vector3(a.x/k, a.y/k, a.z/k);
@@ -77,18 +81,24 @@ namespace UnityEngine
     {
         public Vector3 position, scale;
         public float cos, sin;
-        public Vector3 MultiplyPoint3x4(Vector3 p) => MultiplyVector(p-position);
-        public Vector3 MultiplyVector(Vector3 d) => new Vector3(
-            (cos*d.x - sin*d.z)/scale.x,
-            d.y/scale.y,
-            (sin*d.x + cos*d.z)/scale.z);
+        public bool inverse;
+        public Vector3 MultiplyPoint3x4(Vector3 p) =>
+            inverse ? MultiplyVector(p-position) : MultiplyVector(p)+position;
+        public Vector3 MultiplyVector(Vector3 d) => inverse ?
+            new Vector3((cos*d.x-sin*d.z)/scale.x,
+                d.y/scale.y,(sin*d.x+cos*d.z)/scale.z) :
+            new Vector3(cos*d.x*scale.x+sin*d.z*scale.z,
+                d.y*scale.y,-sin*d.x*scale.x+cos*d.z*scale.z);
     }
     public sealed class Transform
     {
         public Vector3 position, lossyScale = new Vector3(1f,1f,1f);
         public float yaw;
         public Matrix4x4 worldToLocalMatrix => new Matrix4x4 {
-            position=position, scale=lossyScale,
+            position=position, scale=lossyScale, inverse=true,
+            cos=(float)Math.Cos(yaw), sin=(float)Math.Sin(yaw) };
+        public Matrix4x4 localToWorldMatrix => new Matrix4x4 {
+            position=position, scale=lossyScale, inverse=false,
             cos=(float)Math.Cos(yaw), sin=(float)Math.Sin(yaw) };
     }
     public static class Mathf
@@ -126,6 +136,11 @@ internal sealed class ProbeFixture
     private int Cell(float value) => Mathf.FloorToInt(value / cellSize);
     private static long Key(int x, int z) => ((long)x << 32) ^ (uint)z;
     private static bool Finite(Vector3 value) { /* FINITE_BODY */ }
+    private static bool SeparatedBoxAxis(Vector3 axis, Vector3 between,
+        Vector3 probeExtents, Vector3 edgeX, Vector3 edgeY, Vector3 edgeZ)
+    { /* BOX_AXIS_BODY */ }
+    private static bool IntersectsInactiveBox(BoxCollider box, Bounds probe)
+    { /* BOX_OVERLAP_BODY */ }
     private bool TestInactiveRayIndex(int i, Ray ray, ref float nearest)
     { /* INACTIVE_RAY_INDEX_BODY */ }
     internal bool TryInactiveCoverHit(Vector3 from, Vector3 to, out Vector3 contact)
@@ -207,7 +222,9 @@ internal sealed class ProbeFixture
         Bounds probe=new Bounds(center,2f*e);
         for (int i=0;i<obstacles.Length;i++)
            if (streamed[i] && worldBounds[i].Intersects(probe) &&
-               obstacles[i]!=null && !obstacles[i].enabled)
+               obstacles[i]!=null && !obstacles[i].enabled &&
+               !obstacles[i].isTrigger &&
+               (!(obstacles[i] is BoxCollider b) || IntersectsInactiveBox(b,probe)))
                return true;
         return false;
     }
