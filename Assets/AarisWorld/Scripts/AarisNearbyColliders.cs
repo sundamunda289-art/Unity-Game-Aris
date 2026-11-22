@@ -523,8 +523,27 @@ namespace Aaris.MapReview
             if (!streamed[i]) return false;
             Collider c = obstacles[i];
             if (c == null || c.enabled) return false;
+            // The world AABB is only broadphase. A rotated BoxCollider may
+            // occupy a tiny fraction of its AABB; using that as actual cover
+            // falsely denies legitimate red-lock and shots around diagonals.
             if (!worldBounds[i].IntersectRay(ray, out float t) ||
                 t < 0f || t >= nearest) return false;
+            if (c is BoxCollider box)
+            {
+                Matrix4x4 inverse = box.transform.worldToLocalMatrix;
+                Vector3 localOrigin = inverse.MultiplyPoint3x4(ray.origin);
+                Vector3 localDirection = inverse.MultiplyVector(ray.direction);
+                float localRate = localDirection.magnitude;
+                if (localRate < 0.000001f || float.IsNaN(localRate) ||
+                    float.IsInfinity(localRate)) return false;
+                // The ray is normalized in local space; translate the contact
+                // back to WORLD metres before comparing the segment endpoint.
+                Ray localRay = new Ray(localOrigin, localDirection / localRate);
+                if (!new Bounds(box.center, box.size).IntersectRay(localRay,
+                    out float localT)) return false;
+                t = localT / localRate;
+            }
+            if (t < 0f || t >= nearest) return false;
             nearest = t;
             return true;
         }
