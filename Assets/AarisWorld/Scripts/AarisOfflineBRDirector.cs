@@ -1645,8 +1645,8 @@ namespace Aaris.MapReview
                 verticalSpeed = -1.5f;
             }
             bool needsPhysicalReceiver = !virtualBody ||
-                (cameraRelevant && playerDistanceSqr <
-                 FarVisualDistance * FarVisualDistance);
+                (cameraRelevant && HasVisibleBody &&
+                 playerDistanceSqr < FarVisualDistance * FarVisualDistance);
             if (capsule.enabled != needsPhysicalReceiver)
                 capsule.enabled = needsPhysicalReceiver;
             if (virtualBody)
