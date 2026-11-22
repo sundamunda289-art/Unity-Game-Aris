@@ -138,9 +138,11 @@ internal sealed class ProbeFixture
     private static long Key(int x, int z) => ((long)x << 32) ^ (uint)z;
     private static bool Finite(Vector3 value) { /* FINITE_BODY */ }
     private static bool SeparatedBoxAxis(Vector3 axis, Vector3 between,
-        Vector3 probeExtents, Vector3 edgeX, Vector3 edgeY, Vector3 edgeZ)
+        Vector3 probeX, Vector3 probeY, Vector3 probeZ,
+        Vector3 edgeX, Vector3 edgeY, Vector3 edgeZ)
     { /* BOX_AXIS_BODY */ }
-    private static bool IntersectsInactiveBox(BoxCollider box, Bounds probe)
+    private static bool IntersectsInactiveBox(BoxCollider box,
+        Vector3 probeCenter, Vector3 probeHalfExtents, Quaternion probeRotation)
     { /* BOX_OVERLAP_BODY */ }
     private bool TestInactiveRayIndex(int i, Ray ray, ref float nearest)
     { /* INACTIVE_RAY_INDEX_BODY */ }
@@ -225,7 +227,8 @@ internal sealed class ProbeFixture
            if (streamed[i] && worldBounds[i].Intersects(probe) &&
                obstacles[i]!=null && !obstacles[i].enabled &&
                !obstacles[i].isTrigger &&
-               (!(obstacles[i] is BoxCollider b) || IntersectsInactiveBox(b,probe)))
+               (!(obstacles[i] is BoxCollider b) ||
+                IntersectsInactiveBox(b,center,halfExtents,rotation)))
                return true;
         return false;
     }
