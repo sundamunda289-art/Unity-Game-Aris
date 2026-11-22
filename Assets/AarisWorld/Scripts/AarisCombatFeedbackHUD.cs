@@ -232,6 +232,11 @@ namespace Aaris.MapReview
             if (changed == null || healthText == null) return;
             int current = Mathf.CeilToInt(changed.CurrentHealth);
             int max = Mathf.CeilToInt(changed.MaximumHealth);
+            // Fractional HP loss must not continue to advertise a FULL bar.
+            // Preserve 1 HP for a living combatant rather than rounding down
+            // to 0, but show 199/200 if the actual HP fell below 200.
+            if (changed.CurrentHealth < changed.MaximumHealth && current >= max)
+                current = Mathf.Max(0, max - 1);
             if (current != lastHealth || max != lastMax)
             {
                 lastHealth = current; lastMax = max;
@@ -239,13 +244,16 @@ namespace Aaris.MapReview
                     healthText.text = Hp200Labels[current];
                 else
                     healthText.text = "HP " + current + " / " + max;
-                healthFill.rectTransform.sizeDelta = new Vector2(220f *
-                    Mathf.Clamp01(changed.CurrentHealth /
-                        Mathf.Max(1f, changed.MaximumHealth)), 10f);
                 healthFill.color = current <= max * .25f
                     ? new Color(1f, .23f, .18f, 1f)
                     : new Color(.20f, .92f, .42f, 1f);
             }
+            // Keep the actual fill width authoritative even if sub-1 HP
+            // damage or healing leaves the rounded integer label unchanged.
+            float fillWidth = 220f * Mathf.Clamp01(changed.CurrentHealth /
+                Mathf.Max(1f, changed.MaximumHealth));
+            if (healthFill.rectTransform.sizeDelta.x != fillWidth)
+                healthFill.rectTransform.sizeDelta = new Vector2(fillWidth, 10f);
         }
 
         // The weapon fires through the motor's authored camera, which need not
