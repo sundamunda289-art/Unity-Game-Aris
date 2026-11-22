@@ -1160,6 +1160,9 @@ namespace Aaris.MapReview
         private AarisOfflineHealth health, targetHealth;
         private Transform target;
         private CharacterController capsule;
+        // Raycast-only scoped target. A distant on-screen rival stays in math
+        // simulation; only this simple capsule enters PhysX for bullet hits.
+        private CapsuleCollider scopedHitbox;
         private readonly RaycastHit[] sightHits = new RaycastHit[20];
         // Kept per rival: retain correct closest-visible-target selection
         // without RaycastAll allocations when >20 cover hits overlap.
@@ -1180,6 +1183,12 @@ namespace Aaris.MapReview
         private static Mesh sharedFarVisualMesh;
         private static Material sharedFarVisualMaterial;
         private const float FarVisualDistance = 485f;
+        // Close combat uses CharacterController.Move. Far opponents never
+        // re-enable it merely because a 4x scope points at them.
+        private const float VirtualEntryDistance = 185f;
+        private const float VirtualExitDistance = 145f;
+        private const float PhysicalHitboxInterestDistance = 220f;
+        private const float OffscreenRigKeepDistance = 48f;
         private bool visualBuilt;
         private float nextVisualCheck, staggeredVisualDelay;
         // A hidden close Humanoid still retains its skinned meshes and
@@ -1240,6 +1249,16 @@ namespace Aaris.MapReview
             playerTargetHealth = victimHealth;
             playerTargetCapsule = victim != null ? victim.GetComponent<CharacterController>() : null;
             capsule = GetComponent<CharacterController>();
+            // Only one collision body is enabled at a time. Creation happens
+            // during the already staggered spawn, not inside the frame hot path.
+            if (capsule != null)
+            {
+                scopedHitbox = gameObject.AddComponent<CapsuleCollider>();
+                scopedHitbox.enabled = false;
+                scopedHitbox.center = capsule.center;
+                scopedHitbox.height = capsule.height;
+                scopedHitbox.radius = capsule.radius;
+            }
             health.Died += OnDied;
             health.Damaged += OnDamaged;
             turnOffset = UnityEngine.Random.Range(-12f, 12f);
@@ -1255,7 +1274,8 @@ namespace Aaris.MapReview
             nextCameraProbe = Time.time + encounterSlot * 0.0012f;
             nextLootAt = Time.time + encounterSlot * 0.035f + 1f;
             remoteLootSeed = 0x9E3779B9u ^ ((uint)encounterSlot + 1u);
-            if ((transform.position - victim.position).sqrMagnitude < 100f * 100f)
+            if (victim != null &&
+                (transform.position - victim.position).sqrMagnitude < 55f * 55f)
                 BuildVisual();
         }
 
@@ -1289,6 +1309,8 @@ namespace Aaris.MapReview
             // imported once and six opponents reuse the same URP materials.
             foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
             {
+                if (renderer is SkinnedMeshRenderer skinned)
+                    skinned.updateWhenOffscreen = false;
                 Material[] materials = renderer.sharedMaterials;
                 bool changed = false;
                 for (int i = 0; i < materials.Length; i++)
@@ -1302,6 +1324,8 @@ namespace Aaris.MapReview
             }
             var animator = visual.GetComponentInChildren<Animator>(true);
             if (animator == null) animator = visual.AddComponent<Animator>();
+            // Also cull imported fallback animators when no playable can be built.
+            animator.cullingMode = AnimatorCullingMode.CullCompletely;
             if (animator.avatar == null || !animator.avatar.isValid || !animator.avatar.isHuman)
                 animator.avatar = cachedAvatar;
             bool boneFitted = TryFitHumanoidModel(visual.transform, animator);
@@ -1580,7 +1604,9 @@ namespace Aaris.MapReview
             if (now >= nextVisualCheck && now >= staggeredVisualDelay)
             {
                 nextVisualCheck = now + .55f;
-                if (!visualBuilt && playerDistanceSqr < 105f * 105f)
+                if (!visualBuilt && playerDistanceSqr < 105f * 105f &&
+                    (cameraRelevant ||
+                     playerDistanceSqr < OffscreenRigKeepDistance * OffscreenRigKeepDistance))
                 {
                     bool permitted = true;
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -1590,7 +1616,9 @@ namespace Aaris.MapReview
                 }
                 if (visualRoot != null)
                 {
-                    bool visible = playerDistanceSqr < 155f * 155f;
+                    bool visible = playerDistanceSqr < 155f * 155f &&
+                        (cameraRelevant ||
+                         playerDistanceSqr < OffscreenRigKeepDistance * OffscreenRigKeepDistance);
                     if (visualRoot.activeSelf != visible)
                         visualRoot.SetActive(visible);
                 }
@@ -1615,23 +1643,43 @@ namespace Aaris.MapReview
                     farVisualRoot.SetActive(farBand);
                 RetireHiddenRig(now, playerDistanceSqr);
             }
-            // 165/185m hysteresis stops frequent PhysX re-registration.
-            if (!virtualBody && playerDistanceSqr >= 185f * 185f && !cameraRelevant)
+            // Render/physics split: a far on-screen bot has only an unskinned
+            // LOD and cheap target hitbox, NEVER CharacterController.Move.
+            // Hysteresis avoids re-registering colliders near the boundary.
+            bool enterVirtual = playerDistanceSqr >=
+                VirtualEntryDistance * VirtualEntryDistance ||
+                (!cameraRelevant && playerDistanceSqr >= 165f * 165f);
+            bool exitVirtual = playerDistanceSqr <=
+                VirtualExitDistance * VirtualExitDistance ||
+                (cameraRelevant && playerDistanceSqr < 165f * 165f);
+            if (!virtualBody && enterVirtual)
             {
-                capsule.enabled = false;
+                if (capsule != null) capsule.enabled = false;
                 virtualBody = true;
             }
-            else if (virtualBody && (playerDistanceSqr <= 165f * 165f || cameraRelevant))
+            else if (virtualBody && exitVirtual)
             {
-                capsule.enabled = true;
+                if (scopedHitbox != null) scopedHitbox.enabled = false;
+                if (capsule != null) capsule.enabled = true;
                 verticalSpeed = -1.5f;
                 virtualBody = false;
             }
             if (virtualBody)
             {
+                // Preserve raycast damage from close rival gunfire across the
+                // physics boundary, plus 4x player shots against visible LODs.
+                // Offscreen bots beyond this narrow border have NO collider.
+                bool needHitbox = playerDistanceSqr <
+                    PhysicalHitboxInterestDistance * PhysicalHitboxInterestDistance ||
+                    (cameraRelevant && playerDistanceSqr <
+                     FarVisualDistance * FarVisualDistance && HasVisibleBody);
+                if (scopedHitbox != null && scopedHitbox.enabled != needHitbox)
+                    scopedHitbox.enabled = needHitbox;
                 TickVirtualCombat(now, dt);
                 return;
             }
+            if (scopedHitbox != null && scopedHitbox.enabled)
+                scopedHitbox.enabled = false;
             if (now >= nextThink)
             {
                 nextThink = now + .35f + UnityEngine.Random.Range(0f, .14f);
@@ -2179,6 +2227,7 @@ namespace Aaris.MapReview
         private void OnDied(AarisOfflineHealth defeated)
         {
             if (capsule != null) capsule.enabled = false;
+            if (scopedHitbox != null) scopedHitbox.enabled = false;
             if (owner != null) owner.RivalDefeated(this);
             Destroy(gameObject, 1.2f);
         }

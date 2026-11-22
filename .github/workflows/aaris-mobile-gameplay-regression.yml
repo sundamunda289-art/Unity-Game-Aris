@@ -155,6 +155,7 @@ jobs:
           python Tools/Validation/test_android_shared_streaming_frame_gate.py
           python Tools/Validation/test_android_async_upload_governor.py
           python Tools/Validation/test_offline_rival_distance_budget.py
+          python Tools/Validation/test_bot_render_sim_split.py
           python Tools/Validation/test_android_plane_async_boot.py
           python Tools/Validation/test_android_collider_release_burst.py
           python Tools/Validation/test_android_predictive_vehicle_prewarm.py
