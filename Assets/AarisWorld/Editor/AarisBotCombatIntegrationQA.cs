@@ -182,7 +182,7 @@ namespace Aaris.MapReview.Editor
                 // rotated BoxCollider, even when its PhysX shape is disabled.
                 wallObject.transform.rotation = Quaternion.Euler(0f, 45f, 0f);
                 wall.size = new Vector3(.4f, 2f, 30f);
-                ((IDictionary)Get(grid, "cells")).Clear();
+                ((System.Collections.IDictionary)Get(grid, "cells")).Clear();
                 Set(grid, "worldBounds", new Bounds[1]);
                 Set(grid, "streamed", new bool[1]);
                 Call(grid, "IndexCollider", 0);
