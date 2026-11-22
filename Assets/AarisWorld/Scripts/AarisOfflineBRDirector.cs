@@ -278,7 +278,7 @@ namespace Aaris.MapReview
 
         private void Update()
         {
-            if (player == null || playerHealth == null || playerHealth.IsDead ||
+            if (Time.timeScale <= 0f || player == null || playerHealth == null || playerHealth.IsDead ||
                 matchEnd == null || matchEnd.IsFinished) return;
             if (!started)
             {
@@ -580,7 +580,7 @@ namespace Aaris.MapReview
                 matchEnd.WinMatch();
         }
 
-        internal bool CanEngage => started && playerHealth != null &&
+        internal bool CanEngage => Time.timeScale > 0f && started && playerHealth != null &&
             !playerHealth.IsDead && matchEnd != null && !matchEnd.IsFinished;
 
         private void RefreshPlayerAttackers()
@@ -1816,7 +1816,8 @@ namespace Aaris.MapReview
 
         private void OnDamaged(AarisOfflineHealth victim, float loss, GameObject attacker)
         {
-            if (attacker == null || attacker == gameObject || loss <= 0f) return;
+            if (victim == null || victim.IsDead || attacker == null ||
+                attacker == gameObject || loss <= 0f) return;
             // Damage callbacks only arrive on real HP loss. Prefer a recent
             // living rival aggressor over a random nearby rival for four seconds.
             // This must never let a player bypass MayAttackPlayer's two slots.
