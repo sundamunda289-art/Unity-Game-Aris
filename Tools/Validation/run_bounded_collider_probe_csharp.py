@@ -26,12 +26,20 @@ def fixture_source():
         raise ValueError("missing bounded probe budget")
     body = braced(code, "internal bool HasPotentialInactiveObstacle(")
     finite = braced(code, "private static bool Finite(Vector3 value)")
-    for marker in ("/* PROBE_BODY */", "/* FINITE_BODY */", "/* PROBE_CAP */"):
+    index_ray = braced(code, "private bool TestInactiveRayIndex(")
+    inactive_ray = braced(code, "internal bool TryInactiveCoverHit(")
+    bodies = {
+        "/* PROBE_BODY */": body,
+        "/* FINITE_BODY */": finite,
+        "/* INACTIVE_RAY_INDEX_BODY */": index_ray,
+        "/* INACTIVE_RAY_BODY */": inactive_ray,
+        "/* PROBE_CAP */": match.group(1),
+    }
+    for marker, replacement in bodies.items():
         if tests.count(marker) != 1:
             raise ValueError(f"fixture marker mismatch: {marker}")
-    return (tests.replace("/* PROBE_BODY */", body)
-                 .replace("/* FINITE_BODY */", finite)
-                 .replace("/* PROBE_CAP */", match.group(1)))
+        tests = tests.replace(marker, replacement)
+    return tests
 
 
 def main():
