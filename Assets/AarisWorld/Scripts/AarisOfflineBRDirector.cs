@@ -1304,6 +1304,11 @@ namespace Aaris.MapReview
             if (animator == null) animator = visual.AddComponent<Animator>();
             if (animator.avatar == null || !animator.avatar.isValid || !animator.avatar.isHuman)
                 animator.avatar = cachedAvatar;
+            // Native skinning must not continue while the rig is off-screen.
+            // Keep the original high-quality close mesh and its materials.
+            foreach (SkinnedMeshRenderer skin in
+                visual.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                skin.updateWhenOffscreen = false;
             bool boneFitted = TryFitHumanoidModel(visual.transform, animator);
             if (!boneFitted)
             {
@@ -1590,9 +1595,20 @@ namespace Aaris.MapReview
                 }
                 if (visualRoot != null)
                 {
-                    bool visible = playerDistanceSqr < 155f * 155f;
+                    // Near threats remain fully detailed; unseen 55-155m
+                    // rivals have no mesh, shadow pass or active animation graph.
+                    // Camera entry forces an immediate visual check above.
+                    bool visible = playerDistanceSqr < 155f * 155f &&
+                        (playerDistanceSqr < 55f * 55f || cameraRelevant);
                     if (visualRoot.activeSelf != visible)
+                    {
                         visualRoot.SetActive(visible);
+                        if (hasAnimations && graph.IsValid())
+                        {
+                            if (visible) graph.Play();
+                            else graph.Stop();
+                        }
+                    }
                 }
                 // The real rig is never replaced inside its current 155 m
                 // quality band. Beyond it, a single shared unskinned mesh
@@ -1615,18 +1631,24 @@ namespace Aaris.MapReview
                     farVisualRoot.SetActive(farBand);
                 RetireHiddenRig(now, playerDistanceSqr);
             }
-            // 165/185m hysteresis stops frequent PhysX re-registration.
-            if (!virtualBody && playerDistanceSqr >= 185f * 185f && !cameraRelevant)
-            {
-                capsule.enabled = false;
+            // Simulation LOD must be independent of camera visibility.
+            // At 185m+ even on-screen 4x targets use abstract movement/combat,
+            // not CharacterController.Move or per-rival physical sight rays.
+            // Retain a stationary capsule ONLY for a camera-visible long-range
+            // physical bullet receiver; outside the view it is unregistered.
+            // 165/185m hysteresis prevents toggling physical simulation.
+            if (!virtualBody && playerDistanceSqr >= 185f * 185f)
                 virtualBody = true;
-            }
-            else if (virtualBody && (playerDistanceSqr <= 165f * 165f || cameraRelevant))
+            else if (virtualBody && playerDistanceSqr <= 165f * 165f)
             {
-                capsule.enabled = true;
-                verticalSpeed = -1.5f;
                 virtualBody = false;
+                verticalSpeed = -1.5f;
             }
+            bool needsPhysicalReceiver = !virtualBody ||
+                (cameraRelevant && playerDistanceSqr <
+                 FarVisualDistance * FarVisualDistance);
+            if (capsule.enabled != needsPhysicalReceiver)
+                capsule.enabled = needsPhysicalReceiver;
             if (virtualBody)
             {
                 TickVirtualCombat(now, dt);
@@ -1763,7 +1785,7 @@ namespace Aaris.MapReview
             if ((hit & CollisionFlags.Sides) != 0 && !canSee)
                 turnOffset = -turnOffset + UnityEngine.Random.Range(-28f, 28f);
 
-            if (hasAnimations)
+            if (hasAnimations && visualRoot != null && visualRoot.activeSelf)
             {
                 // Animate based on *actual* capsule travel. Against a house
                 // or blocked corner the rival must not sprint in place.
