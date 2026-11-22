@@ -79,7 +79,7 @@ class FarRivalBudget(unittest.TestCase):
         self.assertIn(
             "else if (virtualBody && playerDistanceSqr <= 165f * 165f)", update)
         self.assertIn("bool needsPhysicalReceiver = !virtualBody ||", update)
-        self.assertIn("cameraRelevant && playerDistanceSqr <", update)
+        self.assertIn("cameraRelevant && HasVisibleBody &&", update)
         self.assertIn("capsule.enabled = needsPhysicalReceiver;", update)
         self.assertLess(update.index("TickVirtualCombat(now, dt);"),
                         update.index("capsule.Move("))
