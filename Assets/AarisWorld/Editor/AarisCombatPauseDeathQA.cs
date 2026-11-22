@@ -29,6 +29,7 @@ namespace Aaris.MapReview.Editor
                 var player = new GameObject("Player");
                 player.transform.SetParent(root.transform);
                 var hp = player.AddComponent<AarisOfflineHealth>();
+                Field(typeof(AarisOfflineHealth), "current").SetValue(hp, 200f);
                 var matchEnd = player.AddComponent<AarisOfflineMatchEnd>();
                 var directorObject = new GameObject("Director");
                 directorObject.transform.SetParent(root.transform);
@@ -52,6 +53,7 @@ namespace Aaris.MapReview.Editor
                 var botObject = new GameObject("Rival");
                 botObject.transform.SetParent(root.transform);
                 var victim = botObject.AddComponent<AarisOfflineHealth>();
+                Field(typeof(AarisOfflineHealth), "current").SetValue(victim, 200f);
                 Type rivalType = directorType.Assembly.GetType("Aaris.MapReview.AarisOfflineRival", true);
                 var bot = botObject.AddComponent(rivalType);
                 Field(rivalType, "health").SetValue(bot, victim);
