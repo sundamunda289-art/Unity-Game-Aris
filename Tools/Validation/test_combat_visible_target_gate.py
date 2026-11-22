@@ -49,6 +49,25 @@ class StreamedRivalTargetGates(unittest.TestCase):
         self.assertEqual(lod(485, True), (False, False))
         self.assertEqual(lod(300, False), (False, True))
 
+    def test_hidden_midrange_bot_does_not_prebuild_a_humanoid(self):
+        # At 55-105m, the camera-facing transition must request a rig;
+        # offscreen bots must continue logical simulation without one.
+        bot = SOURCE.split("internal sealed class AarisOfflineRival", 1)[1]
+        segment = bot.split("private void Update()", 1)[1].split(
+            "private void TickVirtualCombat", 1)[0]
+        self.assertIn("if (cameraRelevant != lastCameraRelevant) nextVisualCheck = now;", segment)
+        gate = segment.split("if (!visualBuilt && playerDistanceSqr < 105f * 105f)", 1)[1].split(
+            "if (visualRoot != null)", 1)[0]
+        self.assertIn("if (playerDistanceSqr < 55f * 55f || cameraRelevant)", gate)
+        self.assertLess(gate.index("if (playerDistanceSqr < 55f * 55f || cameraRelevant)"),
+                        gate.index("if (permitted) BuildVisual();"))
+        for distance, on_camera, expected in (
+            (30, False, True), (60, False, False), (100, False, False),
+            (60, True, True), (100, True, True), (110, True, False),
+        ):
+            should_build = distance < 105 and (distance < 55 or on_camera)
+            self.assertEqual(should_build, expected)
+
     def test_red_lock_skips_unrendered_opponents(self):
         target_search = SOURCE.split("internal static bool TryAcquireAimTarget", 1)[1].split("private void RefreshStatus", 1)[0]
         self.assertIn("!bot.HasVisibleBody", target_search)
