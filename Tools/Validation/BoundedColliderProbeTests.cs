@@ -262,6 +262,9 @@ internal static class BoundedProbeTests
         Check(!fixture.Probe(new Vector3(0,0,0),
             new Vector3(1,1,1),Quaternion.identity),
             "pre-index probe must retain previous fail-solid behavior");
+        // The pre-index lifecycle assertion above intentionally disabled this
+        // fixture. Restore readiness before testing its 1,400 live ray queries.
+        fixture.indexReady=true;
         // Execute the exact production streamed-cover C# methods. This
         // fixture tests broadphase/OBB decisions, not Unity PhysX or FPS.
         var walls=new ProbeFixture(5);
