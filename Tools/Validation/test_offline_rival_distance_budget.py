@@ -134,6 +134,64 @@ class FarRivalBudget(unittest.TestCase):
                     self.assertGreaterEqual(ticks, 28)
                     self.assertLessEqual(ticks, 31)
 
+    def test_camera_entry_does_not_force_distant_math_combat(self):
+        bot = SOURCE.split("internal sealed class AarisOfflineRival", 1)[1]
+        update = bot.split("private void Update()", 1)[1].split(
+            "private void TickVirtualCombat(", 1)[0]
+        due = update.index("bool simulationDue = !farSimulation || now >= nextFarSimulation;")
+        self.assertLess(due, update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera) return;"))
+        self.assertIn("if (simulationDue)\n            {", update)
+        self.assertIn("if (!simulationDue) return;", update)
+        self.assertLess(update.index("if (!simulationDue) return;"),
+                        update.index("TickVirtualCombat(now, dt);"))
+
+        # A 100-rival phone-camera sweep may wake representation immediately,
+        # but it must not increase movement, damage or the 350ms AI tick count.
+        def simulate_camera_sweep(trigger_entrances):
+            next_ticks = [0.] * 100
+            last_on_camera = [False] * 100
+            counts = [0] * 100
+            presentation_wakes = 0
+            for frame in range(1, 30 * 8 + 1):
+                now = frame / 30.
+                for slot in range(100):
+                    on_camera = trigger_entrances and ((frame + slot) % 11 == 0)
+                    entered = on_camera and not last_on_camera[slot]
+                    last_on_camera[slot] = on_camera
+                    simulation_due = now >= next_ticks[slot]
+                    if not simulation_due and not entered:
+                        continue
+                    if entered:
+                        presentation_wakes += 1
+                    if simulation_due:
+                        counts[slot] += 1
+                        next_ticks[slot] = now + .35
+            return counts, presentation_wakes
+
+        baseline, no_wakes = simulate_camera_sweep(False)
+        sweeping, wakes = simulate_camera_sweep(True)
+        self.assertEqual(sweeping, baseline)
+        self.assertEqual(no_wakes, 0)
+        self.assertGreater(wakes, 100)
+
+    def test_camera_exit_immediately_culls_remote_native_work(self):
+        bot = SOURCE.split("internal sealed class AarisOfflineRival", 1)[1]
+        update = bot.split("private void Update()", 1)[1].split(
+            "private void TickVirtualCombat(", 1)[0]
+        exit_block = update.split("if (cameraRelevant != lastCameraRelevant)", 1)[1].split(
+            "lastCameraRelevant = cameraRelevant;", 1)[0]
+        self.assertIn("if (!cameraRelevant)", exit_block)
+        self.assertIn("playerDistanceSqr >= 55f * 55f", exit_block)
+        self.assertIn("visualRoot.SetActive(false);", exit_block)
+        self.assertIn("if (hasAnimations && graph.IsValid()) graph.Stop();", exit_block)
+        self.assertIn("farVisualRoot.SetActive(false);", exit_block)
+        self.assertIn("if (virtualBody && capsule != null && capsule.enabled)", exit_block)
+        self.assertIn("capsule.enabled = false;", exit_block)
+        self.assertNotIn("new ", exit_block)
+        self.assertLess(update.index("if (!cameraRelevant)"),
+                        update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera) return;"))
+        self.assertIn("nextCameraProbe = now + 0.12f;", update)
+
     def test_near_bot_is_full_frame_rate(self):
         for fps in (15, 30, 60, 120):
             with self.subTest(fps=fps):
