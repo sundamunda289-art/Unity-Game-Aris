@@ -53,7 +53,7 @@ class FarRivalBudget(unittest.TestCase):
         update = bot.split("private void Update()", 1)[1].split("private bool HasSight()", 1)[0]
         self.assertIn("private const float FarSimulationDistance = 90f;", bot)
         self.assertIn("private const float FarSimulationInterval = 0.35f;", bot)
-        guard = update.index("if (farSimulation && now < nextFarSimulation) return;")
+        guard = update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera) return;")
         self.assertLess(guard, update.index("owner.TryZoneRetreatDirection"))
         self.assertLess(guard, update.index("capsule.Move("))
         self.assertIn("now - lastSimulationTime", update)
@@ -61,6 +61,48 @@ class FarRivalBudget(unittest.TestCase):
         self.assertIn("(target.position - transform.position).sqrMagnitude < 42f * 42f && HasSight()", update)
         self.assertIn("distance <= (carriedGun == null ? 2.25f : 38f)", update)
         self.assertIn("owner.WouldCrossInactiveCover", update)
+
+    def test_render_and_simulation_lods_are_independent(self):
+        bot = SOURCE.split("internal sealed class AarisOfflineRival", 1)[1]
+        update = bot.split("private void Update()", 1)[1].split(
+            "private void UpdateAnimationBlend", 1)[0]
+        self.assertIn("skin.updateWhenOffscreen = false;", bot)
+        self.assertIn("animator.cullingMode = AnimatorCullingMode.CullCompletely;", bot)
+        self.assertIn("playerDistanceSqr < 55f * 55f || cameraRelevant", update)
+        self.assertIn("if (visible) graph.Play();", update)
+        self.assertIn("else graph.Stop();", update)
+        # A 4x-visible, 300m bot needs a stationary physical hit receiver,
+        # but MUST remain a math-only combat agent (no capsule.Move).
+        self.assertIn("if (!virtualBody && playerDistanceSqr >= 185f * 185f)", update)
+        self.assertNotIn(
+            "playerDistanceSqr >= 185f * 185f && !cameraRelevant", update)
+        self.assertIn(
+            "else if (virtualBody && playerDistanceSqr <= 165f * 165f)", update)
+        self.assertIn("bool needsPhysicalReceiver = !virtualBody ||", update)
+        self.assertIn("cameraRelevant && playerDistanceSqr <", update)
+        self.assertIn("capsule.enabled = needsPhysicalReceiver;", update)
+        self.assertLess(update.index("TickVirtualCombat(now, dt);"),
+                        update.index("capsule.Move("))
+        self.assertIn("hasAnimations && visualRoot != null && visualRoot.activeSelf", update)
+        self.assertIn("targetHealth.ApplyDamage(damage, gameObject);", bot)
+        self.assertIn("owner.ReportRivalElimination(attacker, gameObject);", bot)
+        self.assertIn("if (virtualBody || Time.time < nextCoverQuery) return;", bot)
+
+        # Control-plane model for the two independent LODs. The 485m
+        # visual band is deliberately not claimed to cost zero GPU.
+        def lod(distance, on_camera):
+            virtual = distance >= 185
+            full = distance < 155 and (distance < 55 or on_camera)
+            far_mesh = distance < 485 and on_camera and not full
+            collider = not virtual or (on_camera and distance < 485)
+            return virtual, full, far_mesh, collider
+
+        self.assertEqual(lod(1000, False), (True, False, False, False))
+        self.assertEqual(lod(300, False), (True, False, False, False))
+        self.assertEqual(lod(300, True), (True, False, True, True))
+        self.assertEqual(lod(100, False), (False, False, False, True))
+        self.assertEqual(lod(100, True), (False, True, False, True))
+        self.assertEqual(lod(30, False), (False, True, False, True))
 
     def test_far_movement_stays_near_realtime(self):
         for fps in (15, 30, 60, 90, 120):
