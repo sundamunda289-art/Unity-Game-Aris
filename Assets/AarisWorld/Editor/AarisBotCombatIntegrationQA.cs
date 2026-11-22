@@ -324,6 +324,44 @@ namespace Aaris.MapReview.Editor
                 Check(permissions == 2, "100 rivals allow exactly two player attackers", report);
                 Check(!(bool)Call(director, "MayAttackPlayer", bots[50]),
                     "Far rival cannot swarm player", report);
+
+                // Remote 200m+ actors must own NO active skinned visual or
+                // CharacterController, while preserving the real 200-HP receiver.
+                var remoteHunter = bots[80];
+                var remoteVictim = bots[81];
+                var remoteBody = remoteHunter.GetComponent<CharacterController>();
+                var remoteVictimBody = remoteVictim.GetComponent<CharacterController>();
+                var remoteVisual = (GameObject)Get(remoteHunter, "visualRoot");
+                Set(remoteHunter, "capsule", remoteBody);
+                Set(remoteVictim, "capsule", remoteVictimBody);
+                Set(remoteHunter, "owner", director);
+                Set(remoteVictim, "owner", director);
+                Set(director, "center", new Vector2(Origin.x, Origin.z));
+                Set(director, "radius", 1080f);
+                remoteHunter.transform.position = Origin + new Vector3(260f, 0f, 180f);
+                remoteVictim.transform.position = remoteHunter.transform.position +
+                    Vector3.forward * 1.7f;
+                Call(remoteHunter, "SetVirtualized", true);
+                Call(remoteVictim, "SetVirtualized", true);
+                Check(!remoteBody.enabled && !remoteVictimBody.enabled &&
+                    !remoteVisual.activeSelf &&
+                    (bool)Get(remoteHunter, "simulatedOnly"),
+                    "Distant virtual bot has no active visual or native capsule", report);
+                Check(health[80].CurrentHealth == 200f && health[81].CurrentHealth == 200f,
+                    "Virtual bots retain authoritative 200 HP", report);
+                float virtualStartHp = health[81].CurrentHealth;
+                float virtualNow = Time.time + 1f;
+                for (int t = 0; t < 14; t++)
+                    Call(remoteHunter, "SimulateVirtual", virtualNow + 1.3f * t, 0.35f);
+                Check(health[81].CurrentHealth < virtualStartHp,
+                    "Real receiver loses HP during math-only remote bot combat", report);
+                Call(remoteHunter, "SetVirtualized", false);
+                Check(remoteBody.enabled && !(bool)Get(remoteHunter, "simulatedOnly"),
+                    "Return to player restores same live native capsule", report);
+                // Leave QA's other 98 physical LOS fixtures unchanged.
+                Call(remoteVictim, "SetVirtualized", false);
+                Check(remoteVictimBody.enabled,
+                    "Opponent also restores the same physical collider", report);
                 var firstVisible = (GameObject)Get(first, "visualRoot");
                 firstVisible.SetActive(false);
                 Check(!(bool)Call(director, "MayAttackPlayer", first),

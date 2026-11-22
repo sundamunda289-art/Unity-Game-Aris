@@ -50,6 +50,11 @@ namespace Aaris.MapReview
         private readonly Collider[] crowdedSpawnHits = new Collider[96];
         private readonly System.Random random = new System.Random();
         private Transform player;
+        private AarisThirdPersonPlayer playerMotor;
+        private Camera playerCamera;
+        private float nextCameraProbe;
+        private int cameraConeFrame = -1;
+        private float cameraConeCosSqr = 0.6f;
         private AarisOfflineHealth playerHealth;
         private AarisOfflineDrop drop;
         // Flight component may be attached after this director starts. Limit
@@ -67,6 +72,8 @@ namespace Aaris.MapReview
         private bool started, spawnComplete;
         private Canvas statusCanvas;
         private Text status;
+        private Text killFeed;
+        private float killFeedUntil;
         private LineRenderer boundary;
         private readonly Vector3[] boundaryPoints = new Vector3[65];
         private LineRenderer drawnBoundary;
@@ -270,6 +277,7 @@ namespace Aaris.MapReview
         private void Start()
         {
             if (player == null) { enabled = false; return; }
+            playerMotor = player.GetComponent<AarisThirdPersonPlayer>();
             playerHealth = player.GetComponent<AarisOfflineHealth>();
             if (playerHealth == null)
                 playerHealth = player.gameObject.AddComponent<AarisOfflineHealth>();
@@ -346,6 +354,8 @@ namespace Aaris.MapReview
                 EvaluateZone(elapsed);
                 RefreshStatus(elapsed);
             }
+            if (killFeed != null && killFeed.enabled && Time.time >= killFeedUntil)
+                killFeed.enabled = false;
             if (Time.time >= nextDamageTick)
             {
                 nextDamageTick = Time.time + 2f;
@@ -508,6 +518,19 @@ namespace Aaris.MapReview
         // Android. CharacterController.Move cannot hit disabled geometry,
         // so check the prebuilt no-allocation obstacle grid before each
         // rival displacement; NEVER activate thousands of distant colliders.
+        // Terrain samples are much cheaper than a remote CharacterController.Move.
+        // Use the same spawn slope / ocean bounds, so virtual bots cannot leave
+        // the authored walkable map through a math-only position update.
+        internal bool TryVirtualGround(float x, float z, out float height)
+        {
+            return TryGetGround(x, z, out height);
+        }
+
+        // An intentionally terrain-free isolated 100-bot CPU test must remain
+        // a meaningful movement benchmark. In the real map a failed terrain
+        // sample still blocks travel across cliffs, oceans and map edges.
+        internal bool VirtualWorldHasNoTerrain => terrains == null || terrains.Length == 0;
+
         internal bool WouldCrossInactiveCover(Vector3 from, Vector3 displacement)
         {
             if (nearbyColliders == null || displacement.sqrMagnitude < 0.000001f)
@@ -579,6 +602,15 @@ namespace Aaris.MapReview
 
         internal void RivalDefeated(AarisOfflineRival rival)
         {
+            if (rival != null && killFeed != null && rival.RecentEliminator != null &&
+                rival.RecentEliminator != rival && rival.RecentEliminator.IsAlive)
+            {
+                // A feed item represents an actual AarisOfflineHealth death,
+                // never a fabricated scripted elimination or fake alive count.
+                killFeed.text = rival.RecentEliminator.name + "  >  " + rival.name;
+                killFeed.enabled = true;
+                killFeedUntil = Time.time + 4f;
+            }
             if (activeRivals > 0) activeRivals--;
             if (spawnComplete && spawnedRivals > 0 && activeRivals == 0 &&
                 playerHealth != null && !playerHealth.IsDead &&
@@ -684,6 +716,65 @@ namespace Aaris.MapReview
                 nearest = d; victim = bot.transform; victimHealth = bot.Health;
             }
             return victim != null;
+        }
+
+        // No expensive Camera.main tag lookup inside each of 100 rival Updates.
+        // Use the real horizontal AND vertical camera FOV, with a small edge
+        // margin: a fixed 14-degree cone would wrongly cull on-screen rivals
+        // at ordinary landscape FOV, producing visual and collision pop-in.
+        internal bool IsRivalInCameraView(Vector3 position)
+        {
+            if (playerCamera == null && Time.unscaledTime >= nextCameraProbe)
+            {
+                nextCameraProbe = Time.unscaledTime + 0.75f;
+                // Prefer the real game/ADS camera, which is not guaranteed
+                // to have the MainCamera tag during third-person transitions.
+                playerCamera = playerMotor != null && playerMotor.AimCamera != null
+                    ? playerMotor.AimCamera : Camera.main;
+            }
+            if (playerCamera == null || !playerCamera.isActiveAndEnabled)
+                return false;
+            if (cameraConeFrame != Time.frameCount)
+            {
+                cameraConeFrame = Time.frameCount;
+                float verticalHalf = Mathf.Clamp(
+                    playerCamera.fieldOfView * 0.5f, 1f, 85f) * Mathf.Deg2Rad;
+                float horizontalHalf = Mathf.Atan(
+                    Mathf.Tan(verticalHalf) * Mathf.Max(1f, playerCamera.aspect));
+                float conservativeHalf = Mathf.Min(87f * Mathf.Deg2Rad,
+                    Mathf.Max(verticalHalf, horizontalHalf) + 10f * Mathf.Deg2Rad);
+                float cos = Mathf.Cos(conservativeHalf);
+                cameraConeCosSqr = cos * cos;
+            }
+            Vector3 toward = position + Vector3.up * 1.0f -
+                playerCamera.transform.position;
+            float squared = toward.sqrMagnitude;
+            float projected = Vector3.Dot(playerCamera.transform.forward, toward);
+            return squared > 0.01f && projected > 0f &&
+                projected * projected > squared * cameraConeCosSqr;
+        }
+
+        // Remote-only opponent search: one bounded 100-slot sweep every
+        // ~1.2-1.65 seconds per sleeping bot, not every rendered frame.
+        // The player and any nearby physically simulated actors are excluded.
+        internal AarisOfflineRival FindVirtualRivalOpponent(AarisOfflineRival hunter)
+        {
+            if (hunter == null) return null;
+            const float maxDistanceSqr = 240f * 240f;
+            float best = maxDistanceSqr;
+            AarisOfflineRival nearest = null;
+            Vector3 origin = hunter.transform.position;
+            for (int i = 0; i < rivals.Length; i++)
+            {
+                AarisOfflineRival bot = rivals[i];
+                if (bot == null || bot == hunter || !bot.IsAlive || !bot.IsVirtualized)
+                    continue;
+                float sqr = (bot.transform.position - origin).sqrMagnitude;
+                if (sqr >= best) continue;
+                best = sqr;
+                nearest = bot;
+            }
+            return nearest;
         }
 
         // The closest rival may be behind cover while another is visible.
@@ -974,6 +1065,20 @@ namespace Aaris.MapReview
             status.alignment = TextAnchor.MiddleCenter;
             status.color = Color.white;
             status.raycastTarget = false;
+
+            var feedObject = new GameObject("Real bot eliminations",
+                typeof(RectTransform), typeof(Text));
+            feedObject.transform.SetParent(canvasRoot.transform, false);
+            var feedRect = feedObject.GetComponent<RectTransform>();
+            feedRect.anchorMin = feedRect.anchorMax = new Vector2(.5f, .91f);
+            feedRect.sizeDelta = new Vector2(670f, 28f);
+            killFeed = feedObject.GetComponent<Text>();
+            killFeed.font = status.font;
+            killFeed.fontSize = 15;
+            killFeed.alignment = TextAnchor.MiddleCenter;
+            killFeed.color = Color.white;
+            killFeed.raycastTarget = false;
+            killFeed.enabled = false;
         }
 
         private void CreateBoundary()
@@ -1119,6 +1224,8 @@ namespace Aaris.MapReview
         private GameObject farVisualRoot;
         private static Mesh sharedFarVisualMesh;
         private static Material sharedFarVisualMaterial;
+        // Retain 4x scope reach, but draw this cheap LOD only when the
+        // camera points at it; off-camera distances have zero renderer work.
         private const float FarVisualDistance = 485f;
         private bool visualBuilt;
         private float nextVisualCheck, staggeredVisualDelay;
@@ -1153,6 +1260,17 @@ namespace Aaris.MapReview
         // Sparse far ticks can span two frames on a 15 FPS phone; do not
         // truncate ordinary 133 ms travel, but cap extreme app-resume hitches.
         private float nextFarSimulation, lastSimulationTime;
+        // Two thresholds avoid switching the native collider repeatedly as
+        // the player hovers near the 155m full-presentation boundary.
+        private const float VirtualSleepDistance = 150f;
+        private const float VirtualWakeDistance = 135f;
+        private bool simulatedOnly;
+        private AarisOfflineRival virtualOpponent;
+        private float nextVirtualOpponentSearch, nextVirtualWanderTurn;
+        internal bool IsVirtualized => simulatedOnly;
+        internal AarisOfflineRival RecentEliminator =>
+            recentRivalAttacker != null && Time.time < recentRivalAttackerUntil
+                ? recentRivalAttacker : null;
 #if UNITY_ANDROID && !UNITY_EDITOR
         // Six 10Hz phases distribute distant capsules across rendered frames.
         private float farSimulationPhase;
@@ -1194,6 +1312,8 @@ namespace Aaris.MapReview
             staggeredVisualDelay = Time.time + encounterSlot * 0.015f;
             nextLootAt = Time.time + encounterSlot * 0.035f + 1f;
             remoteLootSeed = 0x9E3779B9u ^ ((uint)encounterSlot + 1u);
+            nextVirtualOpponentSearch = Time.time + encounterSlot * 0.016f;
+            nextVirtualWanderTurn = Time.time + 3f + encounterSlot * 0.07f;
             if ((transform.position - victim.position).sqrMagnitude < 100f * 100f)
                 BuildVisual();
         }
@@ -1228,6 +1348,8 @@ namespace Aaris.MapReview
             // imported once and six opponents reuse the same URP materials.
             foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
             {
+                if (renderer is SkinnedMeshRenderer skin)
+                    skin.updateWhenOffscreen = false;
                 Material[] materials = renderer.sharedMaterials;
                 bool changed = false;
                 for (int i = 0; i < materials.Length; i++)
@@ -1271,7 +1393,7 @@ namespace Aaris.MapReview
             if (animator.avatar == null || !animator.avatar.isValid ||
                 !animator.avatar.isHuman || idle == null || run == null) return;
             animator.applyRootMotion = false;
-            animator.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
+            animator.cullingMode = AnimatorCullingMode.CullCompletely;
             graph = PlayableGraph.Create("Aaris Offline Rival");
             graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
             animations = AnimationMixerPlayable.Create(graph, 2);
@@ -1300,7 +1422,7 @@ namespace Aaris.MapReview
             if (rigFarSince < 0f) rigFarSince = now;
             if (now - rigFarSince < RigRetireAfterSeconds ||
                 lastRigRetireFrame == Time.frameCount) return;
-            if (playerDistanceSqr < FarVisualDistance * FarVisualDistance &&
+            if (!simulatedOnly && playerDistanceSqr < FarVisualDistance * FarVisualDistance &&
                 (farVisualRoot == null || !farVisualRoot.activeInHierarchy))
                 return;
             lastRigRetireFrame = Time.frameCount;
@@ -1443,6 +1565,132 @@ namespace Aaris.MapReview
             return true;
         }
 
+        // Far bots retain HP, inventory, match identity and transform, but own
+        // no active skinned meshes, Animator graph evaluation, capsule or PhysX
+        // movement. Waking restores the very same health and inventory record.
+        private void SetVirtualized(bool value)
+        {
+            if (simulatedOnly == value) return;
+            simulatedOnly = value;
+            if (capsule != null) capsule.enabled = !value;
+            if (value)
+            {
+                // A paused PlayableGraph cannot evaluate animation jobs even
+                // if its last renderer was disabled after this frame's cull.
+                if (graph.IsValid() && graph.IsPlaying()) graph.Stop();
+                if (visualRoot != null && visualRoot.activeSelf)
+                    visualRoot.SetActive(false);
+                if (farVisualRoot != null && farVisualRoot.activeSelf)
+                    farVisualRoot.SetActive(false);
+                target = null;
+                targetHealth = null;
+                targetCapsule = null;
+                cachedTargetCapsuleOwner = null;
+                canSee = false;
+            }
+            else
+            {
+                // The next near-frame can immediately rehydrate the model, LOS
+                // and physical combat; no shadow/rig/object is constructed here.
+                nextThink = 0f;
+                nextVisualCheck = 0f;
+            }
+        }
+
+        // One deterministic, allocation-free combat decision on each far tick.
+        // This is deliberately NOT a fake kill timer: actual shots consume finite
+        // ammo and call the same 200-HP receiver as a physical gunshot. No remote
+        // sounds, particles, raycasts, animation or GameObject spawn is required.
+        private void SimulateVirtual(float now, float dt)
+        {
+            if (now >= nextVirtualOpponentSearch || virtualOpponent == null ||
+                !virtualOpponent.IsAlive || !virtualOpponent.IsVirtualized)
+            {
+                nextVirtualOpponentSearch = now + 1.2f +
+                    ((remoteLootSeed >> 8) & 3u) * 0.15f;
+                virtualOpponent = owner.FindVirtualRivalOpponent(this);
+            }
+
+            Vector3 origin = transform.position;
+            bool retreat = owner.TryZoneRetreatDirection(origin, out Vector3 inward);
+            Vector3 heading = transform.forward;
+            float distanceSqr = float.PositiveInfinity;
+            if (!retreat && virtualOpponent != null && virtualOpponent.IsAlive)
+            {
+                heading = virtualOpponent.transform.position - origin;
+                heading.y = 0f;
+                distanceSqr = heading.sqrMagnitude;
+            }
+            else if (retreat) heading = inward;
+            else if (now >= nextVirtualWanderTurn)
+            {
+                // Stable pseudorandom wander, never UnityEngine.Random every tick.
+                remoteLootSeed = remoteLootSeed * 1664525u + 1013904223u;
+                turnOffset = (float)(remoteLootSeed % 130u) - 65f;
+                nextVirtualWanderTurn = now + 4f;
+            }
+            if (!retreat && virtualOpponent == null)
+                heading = Quaternion.Euler(0f, turnOffset, 0f) * heading;
+            heading.y = 0f;
+            if (heading.sqrMagnitude > 0.0001f) heading.Normalize();
+            else heading = transform.forward;
+
+            bool inFireRange = !retreat && virtualOpponent != null &&
+                distanceSqr <= (carriedGun == null ? 2.25f * 2.25f : 35f * 35f);
+            float speed = inFireRange ? 0f : retreat ? 3.2f : 2.85f;
+            Vector3 step = heading * (speed * dt);
+            if (step.sqrMagnitude > 0f && owner.WouldCrossInactiveCover(origin, step))
+            {
+                // Keep disabled authored buildings solid without PhysX.
+                Vector3 tangent = Quaternion.Euler(0f, avoidanceHandedness * 80f, 0f) * step;
+                step = owner.WouldCrossInactiveCover(origin, tangent)
+                    ? Vector3.zero : tangent;
+            }
+            Vector3 destination = origin + step;
+            if (step.sqrMagnitude > 0f)
+            {
+                if (owner.TryVirtualGround(destination.x, destination.z, out float ground))
+                    transform.position = new Vector3(destination.x, ground + 0.08f, destination.z);
+                else if (owner.VirtualWorldHasNoTerrain)
+                    transform.position = new Vector3(destination.x, origin.y, destination.z);
+            }
+            if (heading.sqrMagnitude > 0.001f)
+                transform.rotation = Quaternion.Slerp(transform.rotation,
+                    Quaternion.LookRotation(heading), Mathf.Clamp01(dt * 5f));
+
+            // Retain the original magazine/reload economy even off-camera.
+            if (carriedGun != null && carriedMagazine <= 0 && now >= nextAttack)
+            {
+                if (carriedReserve <= 0)
+                {
+                    carriedGun = null;
+                    nextLootAt = now + 1f;
+                }
+                else
+                {
+                    int refill = Mathf.Min(carriedGun.magazineSize, carriedReserve);
+                    carriedMagazine = refill;
+                    carriedReserve -= refill;
+                    nextAttack = now + carriedGun.reloadSeconds;
+                }
+            }
+            if (!inFireRange || virtualOpponent == null ||
+                !virtualOpponent.IsAlive || !virtualOpponent.IsVirtualized ||
+                now < nextAttack) return;
+
+            float interval = carriedGun == null ? 1.15f :
+                Mathf.Clamp(carriedGun.ShotInterval * 3f, .35f, 2.4f);
+            nextAttack = now + interval + .12f;
+            if (carriedGun != null) carriedMagazine--;
+            remoteLootSeed = remoteLootSeed * 1664525u + 1013904223u;
+            // A deterministic sub-100% hit chance models distant aiming without
+            // claiming a precise physical line-of-sight for unloaded geometry.
+            if ((remoteLootSeed & 65535u) >= 42598u) return;
+            float damage = carriedGun == null ? 6f :
+                Mathf.Clamp(carriedGun.damage * .23f, 4f, 26f);
+            virtualOpponent.Health.ApplyDamage(damage, gameObject);
+        }
+
         private void Update()
         {
             if (owner == null || !owner.CanEngage || !IsAlive ||
@@ -1453,6 +1701,29 @@ namespace Aaris.MapReview
             // thresholds below are distances squared; the 90m policy is unchanged.
             float playerDistanceSqr =
                 (playerTarget.position - transform.position).sqrMagnitude;
+            bool cameraDetail = playerDistanceSqr < FarVisualDistance * FarVisualDistance &&
+                owner.IsRivalInCameraView(transform.position);
+            bool shouldVirtualize = !cameraDetail && (simulatedOnly
+                ? playerDistanceSqr >= VirtualWakeDistance * VirtualWakeDistance
+                : playerDistanceSqr >= VirtualSleepDistance * VirtualSleepDistance);
+            SetVirtualized(shouldVirtualize);
+            // Camera turn/ADS must wake both existing and first-time 4x LOD
+            // renderers before the 350ms far-AI tick. Android's shared gate
+            // limits the first native mesh build to one optional model/frame.
+            if (cameraDetail && !simulatedOnly &&
+                (visualRoot == null || !visualRoot.activeSelf))
+            {
+                if (farVisualRoot == null)
+                {
+                    bool canBuild = true;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                    canBuild = AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild();
+#endif
+                    if (canBuild) BuildDistantVisual();
+                }
+                if (farVisualRoot != null && !farVisualRoot.activeSelf)
+                    farVisualRoot.SetActive(true);
+            }
             bool farSimulation = playerDistanceSqr >=
                 FarSimulationDistance * FarSimulationDistance;
             if (farSimulation && now < nextFarSimulation) return;
@@ -1492,6 +1763,21 @@ namespace Aaris.MapReview
                 nextFarSimulation = now + FarSimulationInterval;
 #endif
             }
+            // The virtual branch does no capsule movement, LOS or rendering.
+            // Its position and actual health continue to advance on the far tick.
+            if (simulatedOnly)
+            {
+                // No visible mesh is needed while sleeping. Still dispose an
+                // old Humanoid/PlayableGraph after the existing five-second
+                // grace period or a 100-bot match retains hidden expensive rigs.
+                if (now >= nextVisualCheck)
+                {
+                    nextVisualCheck = now + .55f;
+                    RetireHiddenRig(now, playerDistanceSqr);
+                }
+                SimulateVirtual(now, dt);
+                return;
+            }
             // Only instantiate expensive humanoids for local encounters.
             // Keep remote logical fighters alive and avoid imported visual spikes.
             if (now >= nextVisualCheck && now >= staggeredVisualDelay)
@@ -1510,12 +1796,21 @@ namespace Aaris.MapReview
                     bool visible = playerDistanceSqr < 155f * 155f;
                     if (visualRoot.activeSelf != visible)
                         visualRoot.SetActive(visible);
+                    // Avoid even a hidden PlayableGraph evaluation on the
+                    // 155m-150m hysteresis fringe. Resume the SAME authored
+                    // graph when the original full-quality mesh reappears.
+                    if (graph.IsValid())
+                    {
+                        if (visible && !graph.IsPlaying()) graph.Play();
+                        else if (!visible && graph.IsPlaying()) graph.Stop();
+                    }
                 }
                 // The real rig is never replaced inside its current 155 m
                 // quality band. Beyond it, a single shared unskinned mesh
                 // remains visible within the longest 480 m 4x rifle range.
                 // Keep this check on the existing 0.55 s staggered visual tick.
                 bool farBand = playerDistanceSqr < FarVisualDistance * FarVisualDistance &&
+                    (playerDistanceSqr < 155f * 155f || cameraDetail) &&
                     (visualRoot == null || !visualRoot.activeSelf);
                 if (farBand && farVisualRoot == null)
                 {
@@ -1890,7 +2185,7 @@ namespace Aaris.MapReview
 
         private void OnDamaged(AarisOfflineHealth victim, float loss, GameObject attacker)
         {
-            if (victim == null || victim.IsDead || attacker == null ||
+            if (victim == null || attacker == null ||
                 attacker == gameObject || loss <= 0f) return;
             // Damage callbacks only arrive on real HP loss. Prefer a recent
             // living rival aggressor over a random nearby rival for four seconds.
@@ -1901,6 +2196,7 @@ namespace Aaris.MapReview
                 recentRivalAttacker = rivalAttacker;
                 recentRivalAttackerUntil = Time.time + 4f;
             }
+            if (victim.IsDead || simulatedOnly) return;
             // Shotguns may report eight damage events in one frame. React to
             // the burst once instead of accumulating 8 * 65 degrees of
             // wandering and an unbounded turnOffset on successive pellets.
