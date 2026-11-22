@@ -610,6 +610,65 @@ namespace Aaris.MapReview
             return true;
         }
 
+        // Narrow rotated houses occupy much less space than their cached
+        // world AABB. AABB-only overlap makes distant AI/vehicles treat an
+        // empty flank as an impassable building. SAT tests the true transformed
+        // BoxCollider against the probe's world AABB without allocations.
+        // MeshCollider bounds remain conservative (no expensive mesh reads).
+        private static bool SeparatedBoxAxis(Vector3 axis, Vector3 between,
+            Vector3 probeExtents, Vector3 edgeX, Vector3 edgeY, Vector3 edgeZ)
+        {
+            float axisLengthSqr = axis.sqrMagnitude;
+            if (axisLengthSqr < 0.0000000001f) return false;
+            float probeRadius = Mathf.Abs(axis.x) * probeExtents.x +
+                Mathf.Abs(axis.y) * probeExtents.y +
+                Mathf.Abs(axis.z) * probeExtents.z;
+            float boxRadius = Mathf.Abs(Vector3.Dot(axis, edgeX)) +
+                Mathf.Abs(Vector3.Dot(axis, edgeY)) +
+                Mathf.Abs(Vector3.Dot(axis, edgeZ));
+            // Small tolerance for imported transforms / float coordinates.
+            return Mathf.Abs(Vector3.Dot(axis, between)) >
+                probeRadius + boxRadius + 0.001f * Mathf.Sqrt(axisLengthSqr);
+        }
+
+        private static bool IntersectsInactiveBox(BoxCollider box, Bounds probe)
+        {
+            Matrix4x4 matrix = box.transform.localToWorldMatrix;
+            Vector3 center = matrix.MultiplyPoint3x4(box.center);
+            Vector3 edgeX = matrix.MultiplyVector(Vector3.right * (box.size.x * 0.5f));
+            Vector3 edgeY = matrix.MultiplyVector(Vector3.up * (box.size.y * 0.5f));
+            Vector3 edgeZ = matrix.MultiplyVector(Vector3.forward * (box.size.z * 0.5f));
+            Vector3 offset = center - probe.center;
+            Vector3 radius = probe.extents;
+            // The cached world AABB already tests the three world axes.
+            // Remaining SAT axes: three box-face normals and nine cross
+            // products of a world basis axis with each box edge.
+            return !SeparatedBoxAxis(Vector3.Cross(edgeY, edgeZ), offset,
+                       radius, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(edgeZ, edgeX), offset,
+                       radius, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(edgeX, edgeY), offset,
+                       radius, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(Vector3.right, edgeX), offset,
+                       radius, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(Vector3.right, edgeY), offset,
+                       radius, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(Vector3.right, edgeZ), offset,
+                       radius, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(Vector3.up, edgeX), offset,
+                       radius, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(Vector3.up, edgeY), offset,
+                       radius, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(Vector3.up, edgeZ), offset,
+                       radius, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(Vector3.forward, edgeX), offset,
+                       radius, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(Vector3.forward, edgeY), offset,
+                       radius, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(Vector3.forward, edgeZ), offset,
+                       radius, edgeX, edgeY, edgeZ);
+        }
+
         // Parked cars can stream as far as 105 m away, while authored house/wall
         // colliders only activate near the player. A remote Physics overlap query
         // cannot see the disabled geometry. Reject such candidate locations using
@@ -649,7 +708,10 @@ namespace Aaris.MapReview
                     if (!streamed[i] || !worldBounds[i].Intersects(probe))
                         continue;
                     Collider candidate = obstacles[i];
-                    if (candidate != null && !candidate.enabled)
+                    if (candidate != null && !candidate.enabled &&
+                        !candidate.isTrigger &&
+                        (!(candidate is BoxCollider box) ||
+                         IntersectsInactiveBox(box, probe)))
                         return true;
                 }
                 return false;
@@ -672,7 +734,9 @@ namespace Aaris.MapReview
                         probeVisited[i] = probeStamp;
                         Collider c = obstacles[i];
                         if (worldBounds[i].Intersects(probe) &&
-                            streamed[i] && c != null && !c.enabled)
+                            streamed[i] && c != null && !c.enabled &&
+                            !c.isTrigger && (!(c is BoxCollider box) ||
+                                IntersectsInactiveBox(box, probe)))
                             return true;
                     }
                 }
@@ -684,7 +748,9 @@ namespace Aaris.MapReview
                 probeVisited[i] = probeStamp;
                 Collider c = obstacles[i];
                 if (worldBounds[i].Intersects(probe) &&
-                    streamed[i] && c != null && !c.enabled)
+                    streamed[i] && c != null && !c.enabled &&
+                    !c.isTrigger && (!(c is BoxCollider box) ||
+                        IntersectsInactiveBox(box, probe)))
                     return true;
             }
             return false;
