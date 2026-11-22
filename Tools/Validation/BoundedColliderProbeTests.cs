@@ -367,6 +367,63 @@ internal static class BoundedProbeTests
                         from,to));
             Check(true,"indexed and exhaustive ray agree");
         }
+        // Regression for the phantom wall: the 45-degree building's world
+        // AABB covers both points, but only one is inside the actual box.
+        var obb=new ProbeFixture(1);
+        var diagonal=new Transform { position=new Vector3(40f,0f,80f),
+            yaw=(float)(Math.PI/4) };
+        var diagonalCollider=new BoxCollider { enabled=false,
+            transform=diagonal, center=new Vector3(0f,1f,0f),
+            size=new Vector3(.4f,2f,30f) };
+        obb.Add(0,new Bounds(new Vector3(40f,1f,80f),
+            new Vector3(d,2f,d)),false,true);
+        obb.obstacles[0]=diagonalCollider;
+        Vector3 smallFootprint=new Vector3(.36f,.9f,.36f);
+        Check(!obb.Probe(new Vector3(49f,1f,78f),smallFootprint,Quaternion.identity),
+            "rotated box must not invent an invisible flank wall for bot steering");
+        Check(obb.Probe(new Vector3(49f,1f,89f),smallFootprint,Quaternion.identity),
+            "actual angled wall must still stop bot movement");
+        Check(obb.Probe(new Vector3(49f,1f,89f),smallFootprint,
+            Quaternion.Yaw(Math.PI/3)),
+            "rotated vehicle footprint must still respect actual wall");
+
+        // Compare the exact injected production SAT against an independent
+        // two-dimensional yaw-only rectangle-vs-AABB reference (four axes).
+        var shape=new ProbeFixture(1);
+        var shapeTransform=new Transform { position=new Vector3(0f,0f,0f) };
+        var shapeBox=new BoxCollider { enabled=false, transform=shapeTransform,
+            center=new Vector3(0f,1f,0f), size=new Vector3(1f,2f,1f) };
+        for(int i=0;i<1200;i++)
+        {
+            shape.cells.Clear();
+            shape.oversizedIndices.Clear();
+            shapeTransform.yaw=Range(rng,-3.14159f,3.14159f);
+            shapeTransform.lossyScale=new Vector3(Range(rng,.5f,2.8f),1f,
+                Range(rng,.5f,2.8f));
+            shapeBox.size=new Vector3(Range(rng,.2f,22f),2f,
+                Range(rng,.2f,22f));
+            float halfX=shapeBox.size.x*shapeTransform.lossyScale.x*.5f;
+            float halfZ=shapeBox.size.z*shapeTransform.lossyScale.z*.5f;
+            float c=(float)Math.Cos(shapeTransform.yaw),
+                sn=(float)Math.Sin(shapeTransform.yaw);
+            float bbX=Math.Abs(c)*halfX+Math.Abs(sn)*halfZ;
+            float bbZ=Math.Abs(sn)*halfX+Math.Abs(c)*halfZ;
+            shape.Add(0,new Bounds(new Vector3(0f,1f,0f),
+                new Vector3(bbX*2f,2f,bbZ*2f)),false,true);
+            shape.obstacles[0]=shapeBox;
+            float px=Range(rng,-34f,34f), pz=Range(rng,-34f,34f);
+            float rx=Range(rng,.1f,3f), rz=Range(rng,.1f,3f);
+            Vector3 pos=new Vector3(px,1f,pz);
+            Vector3 half=new Vector3(rx,.8f,rz);
+            bool worldX=Math.Abs(px)<=bbX+rx+.0001f;
+            bool worldZ=Math.Abs(pz)<=bbZ+rz+.0001f;
+            bool localX=Math.Abs(px*c-pz*sn)<=halfX+Math.Abs(c)*rx+Math.Abs(sn)*rz+.001f;
+            bool localZ=Math.Abs(px*sn+pz*c)<=halfZ+Math.Abs(sn)*rx+Math.Abs(c)*rz+.001f;
+            bool reference=worldX && worldZ && localX && localZ;
+            bool actual=shape.Probe(pos,half,Quaternion.identity);
+            Check(actual==reference,"rotated-box SAT differs from independent 2D overlap");
+        }
+        Console.WriteLine("STREAMED_BOX_SAT_PRODUCTION_CSHARP_PASS checks=1203");
         Console.WriteLine("STREAMED_COVER_RAY_PRODUCTION_CSHARP_PASS");
         Console.WriteLine("BOUNDED_COLLIDER_PROBE_PASS checks="+checks);
         Console.WriteLine("PRODUCTION_CSHARP_METHOD_TEST; no Unity Editor/Android FPS claim");
