@@ -255,7 +255,13 @@ namespace Aaris.MapReview
             if (attacker == null) { hitDirection.gameObject.SetActive(false); return; }
             Vector3 from = attacker.transform.position - transform.position;
             from.y = 0f;
-            if (from.sqrMagnitude < .001f) return;
+            if (from.sqrMagnitude < .001f)
+            {
+                // Self-inflicted damage (e.g. a grenade) has no incoming
+                // bearing. Never reuse the last enemy's HIT LEFT/RIGHT label.
+                hitDirection.gameObject.SetActive(false);
+                return;
+            }
             from.Normalize();
             // Camera-relative in independent look/strafe: screen FRONT
             // need not equal the player's body forward.
