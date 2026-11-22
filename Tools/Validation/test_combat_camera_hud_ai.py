@@ -28,6 +28,26 @@ class CombatRegression(unittest.TestCase):
         for tier in ("NO SCOPE ADS", "NORMAL ADS", "2X ADS", "4X ADS"):
             self.assertIn('"' + tier + '"', HUD)
 
+    def test_fractional_hp_feedback_is_truthful_and_exact(self):
+        hp = HUD.split("private void HealthChanged(", 1)[1].split(
+            "private void RefreshAimCamera", 1)[0]
+        self.assertIn(
+            "changed.CurrentHealth < changed.MaximumHealth && current >= max", hp)
+        self.assertIn("current = Mathf.Max(0, max - 1);", hp)
+        self.assertIn("float fillWidth = 220f * Mathf.Clamp01(changed.CurrentHealth /", hp)
+        self.assertIn("new Vector2(fillWidth, 10f)", hp)
+        # Regression: the original integer-gated bar froze during multiple
+        # fractional hits and displayed 200/200 immediately after damage.
+        def displayed(current, maximum):
+            label = __import__("math").ceil(current)
+            full = __import__("math").ceil(maximum)
+            return max(0, full - 1) if current < maximum and label >= full else label
+        self.assertEqual(displayed(200.0, 200.0), 200)
+        self.assertEqual(displayed(199.8, 200.0), 199)
+        self.assertEqual(displayed(0.25, 200.0), 1)
+        self.assertEqual(displayed(0.0, 200.0), 0)
+        self.assertNotEqual(220 * (199.8 / 200), 220 * (199.2 / 200))
+
     def test_hp_readability_avoids_joystick_and_cutout(self):
         build = HUD.split("private void Build()", 1)[1].split(
             "private void RefreshHealthSafeArea", 1)[0]
