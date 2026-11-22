@@ -1395,10 +1395,24 @@ namespace Aaris.MapReview
         {
             if (!HasVisibleBody || playerTarget == null || playerTargetHealth == null ||
                 playerTargetHealth.IsDead) return false;
+            Vector3 towardPlayer = playerTarget.position - transform.position;
+            float playerRangeSqr = towardPlayer.sqrMagnitude;
             if ((carriedGun == null || (carriedMagazine <= 0 && carriedReserve <= 0)) &&
-                (playerTarget.position - transform.position).sqrMagnitude >
-                UnarmedPlayerInterestRadius * UnarmedPlayerInterestRadius)
+                playerRangeSqr > UnarmedPlayerInterestRadius * UnarmedPlayerInterestRadius)
                 return false;
+            // A nearby 12m radar contact is visible in any direction, but at
+            // 12-42m a bot must actually face the player before reserving one
+            // of only two attack slots. The 120-degree horizontal sight cone
+            // rejects rear contacts BEFORE any expensive LOS physics ray.
+            if (playerRangeSqr > UnarmedPlayerInterestRadius * UnarmedPlayerInterestRadius)
+            {
+                towardPlayer.y = 0f;
+                float planarSqr = towardPlayer.sqrMagnitude;
+                float facing = Vector3.Dot(transform.forward, towardPlayer);
+                if (facing <= 0f || facing * facing < planarSqr * 0.25f)
+                    return false;
+            }
+            // Radar/sight never bypasses actual cover collision.
             return HasSightTo(playerTarget);
         }
 
