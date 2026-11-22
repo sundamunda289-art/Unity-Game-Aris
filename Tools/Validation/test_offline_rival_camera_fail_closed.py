@@ -32,6 +32,8 @@ class RemoteCameraFailClosed(unittest.TestCase):
         self.assertIn(expected, method)
         self.assertNotIn("!cachedRivalCamera.isActiveAndEnabled) return true;", method)
         self.assertIn("Time.unscaledTime + 2f", method)
+        self.assertIn("(cachedRivalCamera == null || !cachedRivalCamera.isActiveAndEnabled) &&", method)
+        self.assertIn("cachedRivalCamera = Camera.main;", method)
         self.assertIn("cachedRivalCamera.WorldToViewportPoint(", method)
 
     def test_startup_remote_bodies_remain_math_only(self):
