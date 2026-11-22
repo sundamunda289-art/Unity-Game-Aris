@@ -871,7 +871,12 @@ namespace Aaris.MapReview
                     if (hits[i].distance < nearest)
                     { nearest = hits[i].distance; closest = collider; closestPoint = hits[i].point; }
                 }
+                // Physics sees the rival when distant static cover is
+                // streamed out, so check BOTH scope-camera and muzzle LOS.
+                // Muzzle alone can peek around a wall while the player
+                // camera is still behind it: that must not promise RED lock.
                 if (closest != null && closest.transform.IsChildOf(candidate.transform) &&
+                    !HasInactiveShotCover(origin, closestPoint, out Vector3 cameraCover) &&
                     MuzzlePathOpenTo(shooter, candidate.transform, closestPoint))
                 {
                     aimedDirection = direction;
@@ -965,7 +970,11 @@ namespace Aaris.MapReview
                     closest = hit;
                     point = hits[i].point;
                 }
+                // Same streamed-cover camera gate in the fallback shortlist:
+                // a fifth or sixth candidate cannot bypass what the first
+                // three correctly treat as an occluded sightline.
                 if (closest != null && closest.transform.IsChildOf(bot.transform) &&
+                    !HasInactiveShotCover(origin, point, out Vector3 cameraCover) &&
                     MuzzlePathOpenTo(shooter, bot.transform, point))
                 {
                     aimedDirection = direction;
