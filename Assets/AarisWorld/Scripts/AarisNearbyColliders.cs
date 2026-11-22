@@ -515,6 +515,78 @@ namespace Aaris.MapReview
             deferredColliderRelease = null;
         }
 
+        // Cached bounds of unloaded distant static cover remain authoritative
+        // for player Red-Lock, gunshots and rival LOS without MeshCollider reactivation.
+        // Only genuine segment intersections count; float sentinels are NOT hits.
+        private bool TestInactiveRayIndex(int i, Ray ray, ref float nearest)
+        {
+            if (!streamed[i]) return false;
+            Collider c = obstacles[i];
+            if (c == null || c.enabled) return false;
+            if (!worldBounds[i].IntersectRay(ray, out float t) ||
+                t < 0f || t >= nearest) return false;
+            nearest = t;
+            return true;
+        }
+
+        internal bool TryInactiveCoverHit(Vector3 from, Vector3 to,
+            out Vector3 contact)
+        {
+            contact = Vector3.zero;
+            if (!isActiveAndEnabled || !indexReady || obstacles == null ||
+                streamed == null || worldBounds == null || probeVisited == null ||
+                !Finite(from) || !Finite(to)) return false;
+            Vector3 delta = to - from;
+            float length = delta.magnitude;
+            if (length <= .025f || float.IsNaN(length) ||
+                float.IsInfinity(length)) return false;
+            Ray ray = new Ray(from, delta / length);
+            float nearest = length - .025f;
+            bool found = false;
+            Vector3 low = Vector3.Min(from, to), high = Vector3.Max(from, to);
+            int x0 = Cell(low.x), x1 = Cell(high.x);
+            int z0 = Cell(low.z), z1 = Cell(high.z);
+            long w = (long)x1 - x0 + 1, h = (long)z1 - z0 + 1;
+            if (probeQuery == int.MaxValue)
+            {
+                Array.Clear(probeVisited, 0, probeVisited.Length);
+                probeQuery = 0;
+            }
+            int stamp = ++probeQuery;
+            if (w <= 0 || h <= 0 || w > MaxCellsPerProbe ||
+                h > MaxCellsPerProbe || w * h > MaxCellsPerProbe)
+            {
+                // Malformed/huge segments scan a bounded authored array,
+                // never an unbounded number of spatial grid cells.
+                for (int i = 0; i < obstacles.Length; i++)
+                    if (TestInactiveRayIndex(i, ray, ref nearest)) found = true;
+            }
+            else
+            {
+                for (int x = x0; x <= x1; x++)
+                    for (int z = z0; z <= z1; z++)
+                    {
+                        if (!cells.TryGetValue(Key(x, z), out List<int> ids))
+                            continue;
+                        foreach (int i in ids)
+                        {
+                            if (probeVisited[i] == stamp) continue;
+                            probeVisited[i] = stamp;
+                            if (TestInactiveRayIndex(i, ray, ref nearest)) found = true;
+                        }
+                    }
+                foreach (int i in oversizedIndices)
+                {
+                    if (probeVisited[i] == stamp) continue;
+                    probeVisited[i] = stamp;
+                    if (TestInactiveRayIndex(i, ray, ref nearest)) found = true;
+                }
+            }
+            if (!found) return false;
+            contact = ray.GetPoint(nearest);
+            return true;
+        }
+
         // Parked cars can stream as far as 105 m away, while authored house/wall
         // colliders only activate near the player. A remote Physics overlap query
         // cannot see the disabled geometry. Reject such candidate locations using
