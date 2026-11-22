@@ -104,6 +104,7 @@ namespace UnityEngine
     public static class Mathf
     {
         public static float Abs(float f) => Math.Abs(f);
+        public static float Sqrt(float f) => (float)Math.Sqrt(f);
         public static int FloorToInt(float f) => (int)Math.Floor(f);
     }
     public class Collider { public bool enabled, isTrigger; }
