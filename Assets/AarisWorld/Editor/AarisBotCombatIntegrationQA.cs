@@ -206,6 +206,13 @@ namespace Aaris.MapReview.Editor
                 inputs[1] = flank + Vector3.forward * 160f;
                 Check((bool)query.Invoke(null, inputs),
                     "Rotated disabled box still blocks a real through-wall ray", report);
+                Vector3 footprint = new Vector3(.36f, .9f, .36f);
+                Check(!grid.HasPotentialInactiveObstacle(wallObject.transform.position +
+                    new Vector3(9f, 0f, -2f), footprint, Quaternion.identity),
+                    "Distant bot may move through diagonal wall AABB's empty flank", report);
+                Check(grid.HasPotentialInactiveObstacle(wallObject.transform.position +
+                    new Vector3(9f, 0f, 9f), footprint, Quaternion.identity),
+                    "Distant bot stops at actual diagonal wall", report);
                 // A disabled imported trigger is not world cover and must
                 // not block the scope merely because its old bounds remain.
                 wall.isTrigger = true;
