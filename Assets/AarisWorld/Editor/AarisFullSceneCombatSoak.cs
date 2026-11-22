@@ -627,13 +627,23 @@ namespace Aaris.MapReview.Editor
                 throw new InvalidOperationException("MELEE_DAMAGE_FLOATING_NUMBER_MISSING");
             Note("PASS unpositioned melee hits body HP and shows pooled damage popup");
 
-            // Incoming victim damage must update 200-HP text/bar AND flash.
+            // Real incoming damage must report a camera-relative hit bearing,
+            // not just flash a red overlay. The calibrated rival is directly
+            // in front of the same authored camera used by the weapon.
             health.ApplyDamage(25f, victim.gameObject);
+            var directionLabel = (Text)Read(hud, "hitDirection");
             if (healthLabel.text != "HP 175 / 200" ||
                 Mathf.Abs(fill.rectTransform.sizeDelta.x - 192.5f) > .2f ||
-                !((Image)Read(hud, "hitFlash")).gameObject.activeSelf)
-                throw new InvalidOperationException("HP175_BAR_OR_INCOMING_FLASH_FAILED");
-            Note("PASS native HP 175 / 200 text, 87.5% bar and incoming hit flash");
+                !((Image)Read(hud, "hitFlash")).gameObject.activeSelf ||
+                directionLabel == null || !directionLabel.gameObject.activeSelf ||
+                directionLabel.text != "HIT FRONT")
+                throw new InvalidOperationException("HP175_FLASH_OR_HIT_BEARING_FAILED");
+            Note("PASS native HP 175 / 200, 87.5% bar, hit flash and HIT FRONT");
+            // A self-inflicted hit must never keep the previous enemy bearing.
+            health.ApplyDamage(1f, player.gameObject);
+            if (directionLabel.gameObject.activeSelf)
+                throw new InvalidOperationException("SELF_DAMAGE_STALE_ENEMY_DIRECTION");
+            Note("PASS self damage clears the old enemy hit direction");
             Note("SCOPE_TIERS_VERIFIED=" + verified + "/4");
         }
 
