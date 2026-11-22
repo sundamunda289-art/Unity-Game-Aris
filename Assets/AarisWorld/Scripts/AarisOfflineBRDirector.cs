@@ -50,6 +50,8 @@ namespace Aaris.MapReview
         private readonly Collider[] crowdedSpawnHits = new Collider[96];
         private readonly System.Random random = new System.Random();
         private Transform player;
+        private Camera playerCamera;
+        private float nextCameraProbe;
         private AarisOfflineHealth playerHealth;
         private AarisOfflineDrop drop;
         // Flight component may be attached after this director starts. Limit
@@ -707,6 +709,28 @@ namespace Aaris.MapReview
             return victim != null;
         }
 
+        // No expensive Camera.main tag lookup inside each of 100 rival Updates.
+        // Only a narrow camera-facing slice receives the previously-authored
+        // 4x LOD and physical hit capsule; everything else stays math-only.
+        internal bool IsRivalInCameraView(Vector3 position)
+        {
+            if (playerCamera == null && Time.unscaledTime >= nextCameraProbe)
+            {
+                nextCameraProbe = Time.unscaledTime + 0.75f;
+                playerCamera = Camera.main;
+            }
+            if (playerCamera == null || !playerCamera.isActiveAndEnabled)
+                return false;
+            Vector3 toward = position + Vector3.up * 1.0f -
+                playerCamera.transform.position;
+            float squared = toward.sqrMagnitude;
+            float projected = Vector3.Dot(playerCamera.transform.forward, toward);
+            // 14 degrees; wider than any red-lock scope reticle. If the
+            // player turns toward a rival, it is immediately rehydrated.
+            return squared > 0.01f && projected > 0f &&
+                projected * projected > squared * 0.94f;
+        }
+
         // Remote-only opponent search: one bounded 100-slot sweep every
         // ~1.2-1.65 seconds per sleeping bot, not every rendered frame.
         // The player and any nearby physically simulated actors are excluded.
@@ -1177,9 +1201,9 @@ namespace Aaris.MapReview
         private GameObject farVisualRoot;
         private static Mesh sharedFarVisualMesh;
         private static Material sharedFarVisualMaterial;
-        // Keep the original full-quality rig band; do not render the 4x
-        // placeholder for distant off-screen simulation-only actors.
-        private const float FarVisualDistance = 155f;
+        // Retain 4x scope reach, but draw this cheap LOD only when the
+        // camera points at it; off-camera distances have zero renderer work.
+        private const float FarVisualDistance = 485f;
         private bool visualBuilt;
         private float nextVisualCheck, staggeredVisualDelay;
         // A hidden close Humanoid still retains its skinned meshes and
@@ -1647,10 +1671,18 @@ namespace Aaris.MapReview
             // thresholds below are distances squared; the 90m policy is unchanged.
             float playerDistanceSqr =
                 (playerTarget.position - transform.position).sqrMagnitude;
-            bool shouldVirtualize = simulatedOnly
+            bool cameraDetail = playerDistanceSqr < FarVisualDistance * FarVisualDistance &&
+                owner.IsRivalInCameraView(transform.position);
+            bool shouldVirtualize = !cameraDetail && (simulatedOnly
                 ? playerDistanceSqr >= VirtualWakeDistance * VirtualWakeDistance
-                : playerDistanceSqr >= VirtualSleepDistance * VirtualSleepDistance;
+                : playerDistanceSqr >= VirtualSleepDistance * VirtualSleepDistance);
             SetVirtualized(shouldVirtualize);
+            // React to a sudden scope turn without a 0.35-second cold visual
+            // penalty when the LOD mesh was already built.
+            if (cameraDetail && !simulatedOnly && farVisualRoot != null &&
+                (visualRoot == null || !visualRoot.activeSelf) &&
+                !farVisualRoot.activeSelf)
+                farVisualRoot.SetActive(true);
             bool farSimulation = playerDistanceSqr >=
                 FarSimulationDistance * FarSimulationDistance;
             if (farSimulation && now < nextFarSimulation) return;
@@ -1721,6 +1753,7 @@ namespace Aaris.MapReview
                 // remains visible within the longest 480 m 4x rifle range.
                 // Keep this check on the existing 0.55 s staggered visual tick.
                 bool farBand = playerDistanceSqr < FarVisualDistance * FarVisualDistance &&
+                    (playerDistanceSqr < 155f * 155f || cameraDetail) &&
                     (visualRoot == null || !visualRoot.activeSelf);
                 if (farBand && farVisualRoot == null)
                 {
