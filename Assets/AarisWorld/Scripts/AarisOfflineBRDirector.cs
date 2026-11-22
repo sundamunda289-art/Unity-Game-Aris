@@ -1040,8 +1040,11 @@ namespace Aaris.MapReview
         private uint remoteLootSeed;
         private bool remoteLoadoutGiven;
         private readonly Collider[] coverCandidates = new Collider[24];
+        // Nearby settlements can fill the small unordered NonAlloc result.
+        // Retry only saturated damage-triggered searches in a reusable buffer.
+        private readonly Collider[] crowdedCoverCandidates = new Collider[128];
         private Vector3 coverDestination;
-        private float coverUntil, nextCoverQuery;
+        private float coverUntil, nextCoverQuery, nextHitReaction;
         internal AarisOfflineHealth Health => health;
         // Outside the combat range, save mobile CPU by updating far capsules
         // at 10 Hz. Keep near opponents at full gameplay frame rate.
@@ -1750,23 +1753,41 @@ namespace Aaris.MapReview
         private void OnDamaged(AarisOfflineHealth victim, float loss, GameObject attacker)
         {
             if (attacker == null || attacker == gameObject) return;
-            turnOffset += avoidanceHandedness * 65f;
-            nextThink = 0f;
-            // Scan cover once per damage burst, not every pellet. Distant
-            // house collision checks still constrain the actual movement.
+            // Shotguns may report eight damage events in one frame. React to
+            // the burst once instead of accumulating 8 * 65 degrees of
+            // wandering and an unbounded turnOffset on successive pellets.
+            // Subsequent genuine bursts can still provoke another reaction.
+            if (Time.time >= nextHitReaction)
+            {
+                nextHitReaction = Time.time + 0.22f;
+                turnOffset += avoidanceHandedness * 65f;
+                nextThink = 0f;
+            }
+            // A cover search is more expensive: retain its 1.5 s cadence.
             if (Time.time < nextCoverQuery) return;
             nextCoverQuery = Time.time + 1.5f;
             Vector3 away = transform.position - attacker.transform.position;
             away.y = 0f;
             if (away.sqrMagnitude < .01f) return;
             away.Normalize();
-            int count = Physics.OverlapSphereNonAlloc(transform.position + Vector3.up,
+            Vector3 coverSearchCenter = transform.position + Vector3.up;
+            int count = Physics.OverlapSphereNonAlloc(coverSearchCenter,
                 11f, coverCandidates, Physics.DefaultRaycastLayers,
                 QueryTriggerInteraction.Ignore);
+            Collider[] candidates = coverCandidates;
+            if (count >= coverCandidates.Length)
+            {
+                // NonAlloc overlap hits are unordered. The first 24 may
+                // contain only foliage, missing useful building cover.
+                candidates = crowdedCoverCandidates;
+                count = Physics.OverlapSphereNonAlloc(coverSearchCenter,
+                    11f, crowdedCoverCandidates, Physics.DefaultRaycastLayers,
+                    QueryTriggerInteraction.Ignore);
+            }
             float best = float.PositiveInfinity;
             for (int i = 0; i < count; i++)
             {
-                Collider obstacle = coverCandidates[i];
+                Collider obstacle = candidates[i];
                 if (obstacle == null || obstacle is TerrainCollider ||
                     obstacle is CharacterController ||
                     obstacle.transform.IsChildOf(transform)) continue;
