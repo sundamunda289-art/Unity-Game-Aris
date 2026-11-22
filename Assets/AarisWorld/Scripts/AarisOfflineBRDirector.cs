@@ -1762,7 +1762,26 @@ namespace Aaris.MapReview
                     cameraRelevant = owner.IsDistantRivalOnScreen(transform.position);
                     // Entering OR leaving the viewport changes expensive visual/receiver
                     // admission immediately rather than waiting for a second 0.55s tick.
-                    if (cameraRelevant != lastCameraRelevant) nextVisualCheck = now;
+                    if (cameraRelevant != lastCameraRelevant)
+                    {
+                        nextVisualCheck = now;
+                        if (!cameraRelevant)
+                        {
+                            // Evict offscreen visuals and remote hit receivers on
+                            // this 120ms camera probe, NOT the slower 350ms AI tick.
+                            // Keep close (<55m) enemies fully simulated and visible.
+                            if (playerDistanceSqr >= 55f * 55f &&
+                                visualRoot != null && visualRoot.activeSelf)
+                            {
+                                visualRoot.SetActive(false);
+                                if (hasAnimations && graph.IsValid()) graph.Stop();
+                            }
+                            if (farVisualRoot != null && farVisualRoot.activeSelf)
+                                farVisualRoot.SetActive(false);
+                            if (virtualBody && capsule != null && capsule.enabled)
+                                capsule.enabled = false;
+                        }
+                    }
                     lastCameraRelevant = cameraRelevant;
                 }
             }
@@ -1777,6 +1796,9 @@ namespace Aaris.MapReview
             bool farSimulation = playerDistanceSqr >=
                 FarSimulationDistance * FarSimulationDistance;
             bool justEnteredCamera = cameraRelevant && !wasCameraRelevant;
+            // A camera-entry event may admit a render mesh and hit receiver,
+            // but must never advance the independent abstract combat clock.
+            bool simulationDue = !farSimulation || now >= nextFarSimulation;
             if (farSimulation && now < nextFarSimulation && !justEnteredCamera) return;
             // Near the player use the actual shared floor pickup record.
             // Off-screen guns are not streamed: simulate ONE bounded scavenge
@@ -1799,20 +1821,24 @@ namespace Aaris.MapReview
                     carriedReserve = found.reserveAmmo;
                 }
             }
-            float dt = Mathf.Min(Time.deltaTime, 0.12f);
-            if (farSimulation)
-                dt = Mathf.Clamp(now - lastSimulationTime, 0f, 0.46f);
-            lastSimulationTime = now;
-            if (farSimulation)
+            float dt = 0f;
+            if (simulationDue)
             {
+                dt = Mathf.Min(Time.deltaTime, 0.12f);
+                if (farSimulation)
+                    dt = Mathf.Clamp(now - lastSimulationTime, 0f, 0.46f);
+                lastSimulationTime = now;
+                if (farSimulation)
+                {
 #if UNITY_ANDROID && !UNITY_EDITOR
-                float nextTick = (Mathf.Floor((now - farSimulationPhase) /
-                    FarSimulationInterval) + 1f) * FarSimulationInterval + farSimulationPhase;
-                if (nextTick <= now + 0.0001f) nextTick += FarSimulationInterval;
-                nextFarSimulation = nextTick;
+                    float nextTick = (Mathf.Floor((now - farSimulationPhase) /
+                        FarSimulationInterval) + 1f) * FarSimulationInterval + farSimulationPhase;
+                    if (nextTick <= now + 0.0001f) nextTick += FarSimulationInterval;
+                    nextFarSimulation = nextTick;
 #else
-                nextFarSimulation = now + FarSimulationInterval;
+                    nextFarSimulation = now + FarSimulationInterval;
 #endif
+                }
             }
             // Only instantiate expensive humanoids for local encounters.
             // Keep remote logical fighters alive and avoid imported visual spikes.
@@ -1904,6 +1930,9 @@ namespace Aaris.MapReview
             if (capsule != null && capsule.enabled != needsPhysicalReceiver)
                 capsule.enabled = needsPhysicalReceiver;
             RetireUnusedPhysicalReceiver(now, playerDistanceSqr, needsPhysicalReceiver);
+            // Camera-entry presentation cannot spend an extra movement, attack,
+            // loot or virtual-combat tick before its scheduled simulation turn.
+            if (!simulationDue) return;
             if (virtualBody)
             {
                 TickVirtualCombat(now, dt);
