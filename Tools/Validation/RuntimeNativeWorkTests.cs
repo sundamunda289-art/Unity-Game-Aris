@@ -21,6 +21,7 @@ namespace UnityEngine
         public float x, y, z;
         public Vector3(float a, float b, float c) { x=a; y=b; z=c; }
     }
+    public struct Quaternion { public static Quaternion identity => new Quaternion(); }
     public struct Bounds
     {
         public Vector3 center, extents;
@@ -91,10 +92,13 @@ internal sealed class ColliderFixture
         foreach(int i in new[]{0}) { /* OVERSIZED_BODY */ }
         return nextActive.Count==1 && wanted[0]==query;
     }
-    private static bool IntersectsInactiveBox(BoxCollider box, Bounds probe) => true;
+    private static bool IntersectsInactiveBox(BoxCollider box,
+        Vector3 center, Vector3 halfExtents, Quaternion rotation) => true;
     internal bool Probe(Collider c, Bounds probe)
     {
         int i=0;
+        Vector3 center=probe.center,halfExtents=probe.extents;
+        Quaternion rotation=Quaternion.identity;
         return /* PROBE_EXPRESSION */ false;
     }
 }
