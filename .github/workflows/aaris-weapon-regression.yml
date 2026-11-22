@@ -17,6 +17,7 @@ on:
       - 'Tools/Validation/test_weapon_pause_input_authority.py'
       - 'Tools/Validation/test_combat_redlock_100bots.py'
       - 'Tools/Validation/test_combat_cover_zone_steering.py'
+      - 'Tools/Validation/test_combat_bot_cover_reload.py'
       - 'Tools/Validation/test_combat_hit_reaction_dense_cover.py'
       - 'Tools/Validation/test_combat_camera_hud_ai.py'
       - 'Tools/Validation/test_offline_rival_attacker_threat_budget.py'
@@ -42,6 +43,7 @@ on:
       - 'Tools/Validation/test_weapon_pause_input_authority.py'
       - 'Tools/Validation/test_combat_redlock_100bots.py'
       - 'Tools/Validation/test_combat_cover_zone_steering.py'
+      - 'Tools/Validation/test_combat_bot_cover_reload.py'
       - 'Tools/Validation/test_combat_hit_reaction_dense_cover.py'
       - 'Tools/Validation/test_combat_camera_hud_ai.py'
       - 'Tools/Validation/test_offline_rival_attacker_threat_budget.py'
@@ -82,6 +84,7 @@ jobs:
         run: |
           python3 Tools/Validation/test_combat_redlock_100bots.py
           python3 Tools/Validation/test_combat_cover_zone_steering.py
+          python3 Tools/Validation/test_combat_bot_cover_reload.py
           python3 Tools/Validation/test_combat_hit_reaction_dense_cover.py
           python3 Tools/Validation/test_combat_camera_hud_ai.py
           python3 Tools/Validation/test_offline_rival_attacker_threat_budget.py
