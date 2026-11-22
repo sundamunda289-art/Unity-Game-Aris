@@ -130,6 +130,32 @@ internal sealed class ProbeFixture
     { /* INACTIVE_RAY_INDEX_BODY */ }
     internal bool TryInactiveCoverHit(Vector3 from, Vector3 to, out Vector3 contact)
     { /* INACTIVE_RAY_BODY */ }
+    internal int ExhaustiveInactiveRayIndex(Vector3 from, Vector3 to)
+    {
+        Vector3 delta=to-from;
+        float distance=delta.magnitude-.025f;
+        if(distance<=0f) return -1;
+        Ray ray=new Ray(from,delta/delta.magnitude);
+        int winner=-1;
+        for(int i=0;i<obstacles.Length;i++)
+            if(TestInactiveRayIndex(i,ray,ref distance)) winner=i;
+        return winner;
+    }
+    internal string GridDebug(int i, Vector3 from, Vector3 to)
+    {
+        Bounds b=worldBounds[i];
+        int x=Cell((from.x+to.x)*.5f), z=Cell((from.z+to.z)*.5f);
+        var name=Key(x,z);
+        bool inCell=cells.TryGetValue(name,out List<int> hits) && hits.Contains(i);
+        int hx=Cell(b.center.x), hz=Cell(b.center.z);
+        bool inBoxCell=cells.TryGetValue(Key(hx,hz),out List<int> bh) && bh.Contains(i);
+        return "hitIndex="+i+" boundsMin="+b.min.x+","+b.min.y+","+b.min.z+
+            " boundsMax="+b.max.x+","+b.max.y+","+b.max.z+
+            " streamed="+streamed[i]+" enabled="+obstacles[i].enabled+
+            " oversized="+oversizedIndices.Contains(i)+
+            " midpointCell="+x+","+z+" inMidpointCell="+inCell+
+            " boundsCenterCell="+hx+","+hz+" inBoundsCell="+inBoxCell;
+    }
     internal bool ExhaustiveInactiveRay(Vector3 from, Vector3 to,
         out Vector3 contact)
     {
@@ -315,7 +341,9 @@ internal static class BoundedProbeTests
                     +" to="+to.x+","+to.y+","+to.z
                     +" fast="+fast+" full="+full
                     +" actual="+actual.x+","+actual.y+","+actual.z
-                    +" expected="+expected.x+","+expected.y+","+expected.z);
+                    +" expected="+expected.x+","+expected.y+","+expected.z+
+                    " details="+fixture.GridDebug(fixture.ExhaustiveInactiveRayIndex(from,to),
+                        from,to));
             Check(true,"indexed and exhaustive ray agree");
         }
         Console.WriteLine("STREAMED_COVER_RAY_PRODUCTION_CSHARP_PASS");
