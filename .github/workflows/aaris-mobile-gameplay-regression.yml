@@ -28,6 +28,7 @@ on:
       - 'Tools/Validation/test_android_hotloop_blocking_calls.py'
       - 'Tools/Validation/test_android_shared_streaming_frame_gate.py'
       - 'Tools/Validation/test_offline_rival_distance_budget.py'
+      - 'Tools/Validation/test_offline_rival_camera_fail_closed.py'
       - 'Tools/Validation/test_android_runtime_diagnostics_analysis.py'
       - 'Tools/Validation/test_android_plane_async_boot.py'
       - 'Tools/Validation/test_android_collider_release_burst.py'
@@ -88,6 +89,7 @@ on:
       - 'Tools/Validation/test_android_hotloop_blocking_calls.py'
       - 'Tools/Validation/test_android_shared_streaming_frame_gate.py'
       - 'Tools/Validation/test_offline_rival_distance_budget.py'
+      - 'Tools/Validation/test_offline_rival_camera_fail_closed.py'
       - 'Tools/Validation/test_android_runtime_diagnostics_analysis.py'
       - 'Tools/Validation/test_android_plane_async_boot.py'
       - 'Tools/Validation/test_android_collider_release_burst.py'
@@ -155,6 +157,7 @@ jobs:
           python Tools/Validation/test_android_shared_streaming_frame_gate.py
           python Tools/Validation/test_android_async_upload_governor.py
           python Tools/Validation/test_offline_rival_distance_budget.py
+          python Tools/Validation/test_offline_rival_camera_fail_closed.py
           python Tools/Validation/test_android_plane_async_boot.py
           python Tools/Validation/test_android_collider_release_burst.py
           python Tools/Validation/test_android_predictive_vehicle_prewarm.py
