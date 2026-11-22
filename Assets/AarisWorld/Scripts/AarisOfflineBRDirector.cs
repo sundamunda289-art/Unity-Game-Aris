@@ -1206,8 +1206,8 @@ namespace Aaris.MapReview
         private AarisOfflineRival recentRivalAttacker;
         private float recentRivalAttackerUntil;
         internal AarisOfflineHealth Health => health;
-        // Outside the combat range, save mobile CPU by updating far capsules
-        // at 10 Hz. Keep near opponents at full gameplay frame rate.
+        // Outside the combat range, save mobile CPU by updating far rivals
+        // about 2.86 times/second. Near opponents retain frame-rate movement.
         private const float FarSimulationDistance = 90f;
         private const float FarSimulationInterval = 0.35f;
         // Sparse far ticks can span two frames on a 15 FPS phone; do not
@@ -1289,6 +1289,10 @@ namespace Aaris.MapReview
             // imported once and six opponents reuse the same URP materials.
             foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
             {
+                // Never skin distant/off-camera bones merely because an
+                // imported model opted into Update When Offscreen.
+                if (renderer is SkinnedMeshRenderer skin)
+                    skin.updateWhenOffscreen = false;
                 Material[] materials = renderer.sharedMaterials;
                 bool changed = false;
                 for (int i = 0; i < materials.Length; i++)
@@ -1590,7 +1594,11 @@ namespace Aaris.MapReview
                 }
                 if (visualRoot != null)
                 {
-                    bool visible = playerDistanceSqr < 155f * 155f;
+                    // Frustum-irrelevant nearby rigs must not cast shadows or
+                    // evaluate any hidden skinning/IK. Keep their independent
+                    // hit capsule active for real nearby combat.
+                    bool visible = cameraRelevant &&
+                        playerDistanceSqr < 155f * 155f;
                     if (visualRoot.activeSelf != visible)
                         visualRoot.SetActive(visible);
                 }
@@ -1615,18 +1623,26 @@ namespace Aaris.MapReview
                     farVisualRoot.SetActive(farBand);
                 RetireHiddenRig(now, playerDistanceSqr);
             }
-            // 165/185m hysteresis stops frequent PhysX re-registration.
-            if (!virtualBody && playerDistanceSqr >= 185f * 185f && !cameraRelevant)
-            {
-                capsule.enabled = false;
+            // Physics simulation LOD and visual LOD are independent. A
+            // 4x-scoped rival 300-480m away still needs a real raycast hit
+            // receiver, but NEVER needs CharacterController.Move, bot LOS
+            // raycasts, IK or full-frame physical combat just to be visible.
+            // 165/185m hysteresis avoids state thrashing on the boundary.
+            if (!virtualBody && playerDistanceSqr >= 185f * 185f)
                 virtualBody = true;
-            }
-            else if (virtualBody && (playerDistanceSqr <= 165f * 165f || cameraRelevant))
+            else if (virtualBody && playerDistanceSqr <= 165f * 165f)
             {
-                capsule.enabled = true;
                 verticalSpeed = -1.5f;
                 virtualBody = false;
             }
+            // The remote capsule is enabled only while it can be targeted
+            // on-screen; all other remote actors have NO PhysX body. Nearby
+            // physical rivals retain their collider even behind the camera.
+            bool needsHitReceiver = !virtualBody ||
+                (cameraRelevant &&
+                 playerDistanceSqr < FarVisualDistance * FarVisualDistance);
+            if (capsule.enabled != needsHitReceiver)
+                capsule.enabled = needsHitReceiver;
             if (virtualBody)
             {
                 TickVirtualCombat(now, dt);
