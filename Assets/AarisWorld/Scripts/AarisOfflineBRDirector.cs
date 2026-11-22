@@ -50,6 +50,7 @@ namespace Aaris.MapReview
         private readonly Collider[] crowdedSpawnHits = new Collider[96];
         private readonly System.Random random = new System.Random();
         private Transform player;
+        private AarisThirdPersonPlayer playerMotor;
         private Camera playerCamera;
         private float nextCameraProbe;
         private AarisOfflineHealth playerHealth;
@@ -274,6 +275,7 @@ namespace Aaris.MapReview
         private void Start()
         {
             if (player == null) { enabled = false; return; }
+            playerMotor = player.GetComponent<AarisThirdPersonPlayer>();
             playerHealth = player.GetComponent<AarisOfflineHealth>();
             if (playerHealth == null)
                 playerHealth = player.gameObject.AddComponent<AarisOfflineHealth>();
@@ -717,7 +719,10 @@ namespace Aaris.MapReview
             if (playerCamera == null && Time.unscaledTime >= nextCameraProbe)
             {
                 nextCameraProbe = Time.unscaledTime + 0.75f;
-                playerCamera = Camera.main;
+                // Prefer the real game/ADS camera, which is not guaranteed
+                // to have the MainCamera tag during third-person transitions.
+                playerCamera = playerMotor != null && playerMotor.AimCamera != null
+                    ? playerMotor.AimCamera : Camera.main;
             }
             if (playerCamera == null || !playerCamera.isActiveAndEnabled)
                 return false;
