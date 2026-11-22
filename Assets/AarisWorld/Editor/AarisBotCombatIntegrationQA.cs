@@ -524,6 +524,53 @@ namespace Aaris.MapReview.Editor
                 Check(maximumConcurrent <= 2 && finalConcurrent == 2 &&
                     !(bool)Call(director, "MayAttackPlayer", eliminatedAttacker),
                     "Death replacement remains capped at two through every scan slice", report);
+                // Six nearby candidates: nearest hidden by a solid house, four
+                // other blocked rivals, and one actually clear side opponent.
+                // This was invisible to the old three-alternative fallback.
+                Vector3 crowd = Origin + new Vector3(160f, 0f, 160f);
+                var crowdHunter = bots[40];
+                crowdHunter.transform.SetPositionAndRotation(crowd, Quaternion.identity);
+                for (int i = 0; i < 5; i++)
+                    bots[41 + i].transform.position = crowd +
+                        new Vector3((i - 2) * .5f, 0f, 9f + i);
+                bots[46].transform.position = crowd + new Vector3(8f, 0f, 20f);
+                var crowdWall = new GameObject("QA dense rival cover");
+                crowdWall.transform.SetParent(root.transform, false);
+                crowdWall.transform.position = crowd + new Vector3(0f, 1.2f, 4.5f);
+                crowdWall.AddComponent<BoxCollider>().size = new Vector3(3f, 2.3f, .25f);
+                Physics.SyncTransforms();
+                Check((bool)Call(crowdHunter, "HasSightToRival", bots[46].transform),
+                    "Distant flank rival has physically clear LOS", report);
+                object[] crowdedAlternative = { crowdHunter, bots[41].transform, null, null };
+                Check((bool)Call(director, "TryFindVisibleRivalAlternative", crowdedAlternative) &&
+                    (Transform)crowdedAlternative[2] == bots[46].transform,
+                    "Six-slot fallback finds open rival past four blocked targets", report);
+                Object.DestroyImmediate(crowdWall);
+                Physics.SyncTransforms();
+                // Three centered scope targets behind thin solid cover may
+                // eclipse a less-centered but physically hittable fourth.
+                Quaternion oldCameraRotation = camera.transform.rotation;
+                for (int i = 0; i < 3; i++)
+                    bots[60 + i].transform.position =
+                        Origin + new Vector3((i - 1) * .05f, 0f, 15f + i);
+                bots[63].transform.position = Origin + new Vector3(1.3f, 0f, 25f);
+                camera.transform.position = Origin + Vector3.up * 1.35f;
+                camera.transform.LookAt(Origin + Vector3.up * 1.12f +
+                    Vector3.forward * 20f);
+                var thinWall = new GameObject("QA narrow center-cover wall");
+                thinWall.transform.SetParent(root.transform, false);
+                thinWall.transform.position = Origin + new Vector3(0f, 1.25f, 6f);
+                thinWall.AddComponent<BoxCollider>().size = new Vector3(.35f, 2.2f, .1f);
+                Physics.SyncTransforms();
+                object[] crowdedAim = { camera, player.transform, 40f, 3.7f, Vector3.zero };
+                bool focused = (bool)acquire.Invoke(null, crowdedAim);
+                Vector3 expectedAim = (bots[63].transform.position + Vector3.up * 1.12f -
+                    camera.transform.position).normalized;
+                Check(focused && Vector3.Dot((Vector3)crowdedAim[4], expectedAim) > .9999f,
+                    "Red-Lock finds fourth open body after three centered hidden rivals", report);
+                Object.DestroyImmediate(thinWall);
+                camera.transform.rotation = oldCameraRotation;
+                Physics.SyncTransforms();
             }
             finally { Object.DestroyImmediate(root); }
         }
