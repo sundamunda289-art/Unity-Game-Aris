@@ -309,8 +309,14 @@ internal static class BoundedProbeTests
             Vector3 actual,expected;
             bool fast=fixture.TryInactiveCoverHit(from,to,out actual);
             bool full=fixture.ExhaustiveInactiveRay(from,to,out expected);
-            Check(fast==full && (!fast || (actual-expected).magnitude<.02f),
-                "indexed disabled-cover ray differs from exhaustive bounds scan");
+            if(fast!=full || (fast && (actual-expected).magnitude>=.02f))
+                throw new Exception("indexed disabled-cover ray differs from exhaustive"
+                    +" case="+i+" from="+from.x+","+from.y+","+from.z
+                    +" to="+to.x+","+to.y+","+to.z
+                    +" fast="+fast+" full="+full
+                    +" actual="+actual.x+","+actual.y+","+actual.z
+                    +" expected="+expected.x+","+expected.y+","+expected.z);
+            Check(true,"indexed and exhaustive ray agree");
         }
         Console.WriteLine("STREAMED_COVER_RAY_PRODUCTION_CSHARP_PASS");
         Console.WriteLine("BOUNDED_COLLIDER_PROBE_PASS checks="+checks);
