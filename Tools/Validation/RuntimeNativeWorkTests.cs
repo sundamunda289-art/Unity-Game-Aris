@@ -21,6 +21,7 @@ namespace UnityEngine
         public float x, y, z;
         public Vector3(float a, float b, float c) { x=a; y=b; z=c; }
     }
+    public struct Quaternion { public static Quaternion identity => new Quaternion(); }
     public struct Bounds
     {
         public Vector3 center, extents;
@@ -34,9 +35,9 @@ namespace UnityEngine
             Math.Abs(center.y-b.center.y) <= extents.y+b.extents.y &&
             Math.Abs(center.z-b.center.z) <= extents.z+b.extents.z;
     }
-    public sealed class Collider
+    public class Collider
     {
-        public bool state, destroyed;
+        public bool state, destroyed, isTrigger;
         public int gets, sets;
         public bool enabled { get { gets++; if(destroyed) throw new Exception("Destroyed collider read"); return state; }
                               set { sets++; state=value; } }
@@ -51,6 +52,10 @@ namespace UnityEngine
         public override bool Equals(object other) => ReferenceEquals(this,other);
         public override int GetHashCode() => base.GetHashCode();
     }
+    // This fixture exercises the non-BoxCollider native state/access path.
+    // The production oriented-Box SAT is independently extracted and
+    // compiled with 1,200 geometric checks by BoundedColliderProbeTests.
+    public sealed class BoxCollider : Collider { }
     public static class Mathf
     {
         public const float PI=(float)Math.PI;
@@ -87,9 +92,13 @@ internal sealed class ColliderFixture
         foreach(int i in new[]{0}) { /* OVERSIZED_BODY */ }
         return nextActive.Count==1 && wanted[0]==query;
     }
+    private static bool IntersectsInactiveBox(BoxCollider box,
+        Vector3 center, Vector3 halfExtents, Quaternion rotation) => true;
     internal bool Probe(Collider c, Bounds probe)
     {
         int i=0;
+        Vector3 center=probe.center,halfExtents=probe.extents;
+        Quaternion rotation=Quaternion.identity;
         return /* PROBE_EXPRESSION */ false;
     }
 }

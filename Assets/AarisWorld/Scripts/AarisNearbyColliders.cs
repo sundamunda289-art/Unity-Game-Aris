@@ -143,6 +143,9 @@ namespace Aaris.MapReview
 #endif
             Collider c = obstacles[i];
             if (c == null || !c.enabled) return;
+            if (c.isTrigger) return;
+            // Trigger volumes are gameplay sensors, not physical cover: keep
+            // them live rather than streaming them out with static walls.
             // Intentionally disabled authored colliders must stay off.
             // Collider.bounds is empty if its collider is disabled.
             Bounds local;
@@ -515,6 +518,167 @@ namespace Aaris.MapReview
             deferredColliderRelease = null;
         }
 
+        // Cached bounds of unloaded distant static cover remain authoritative
+        // for player Red-Lock, gunshots and rival LOS without MeshCollider reactivation.
+        // Only genuine segment intersections count; float sentinels are NOT hits.
+        private bool TestInactiveRayIndex(int i, Ray ray, ref float nearest)
+        {
+            if (!streamed[i]) return false;
+            Collider c = obstacles[i];
+            if (c == null || c.enabled || c.isTrigger) return false;
+            // Sensors must never become invisible bullet-blocking cover.
+            // The world AABB is only broadphase. A rotated BoxCollider may
+            // occupy a tiny fraction of its AABB; using that as actual cover
+            // falsely denies legitimate red-lock and shots around diagonals.
+            if (!worldBounds[i].IntersectRay(ray, out float t) ||
+                t < 0f || t >= nearest) return false;
+            if (c is BoxCollider box)
+            {
+                Matrix4x4 inverse = box.transform.worldToLocalMatrix;
+                Vector3 localOrigin = inverse.MultiplyPoint3x4(ray.origin);
+                Vector3 localDirection = inverse.MultiplyVector(ray.direction);
+                float localRate = localDirection.magnitude;
+                if (localRate < 0.000001f || float.IsNaN(localRate) ||
+                    float.IsInfinity(localRate)) return false;
+                // The ray is normalized in local space; translate the contact
+                // back to WORLD metres before comparing the segment endpoint.
+                Ray localRay = new Ray(localOrigin, localDirection / localRate);
+                if (!new Bounds(box.center, box.size).IntersectRay(localRay,
+                    out float localT)) return false;
+                t = localT / localRate;
+            }
+            if (t < 0f || t >= nearest) return false;
+            nearest = t;
+            return true;
+        }
+
+        internal bool TryInactiveCoverHit(Vector3 from, Vector3 to,
+            out Vector3 contact)
+        {
+            contact = Vector3.zero;
+            if (!isActiveAndEnabled || !indexReady || obstacles == null ||
+                streamed == null || worldBounds == null || probeVisited == null ||
+                !Finite(from) || !Finite(to)) return false;
+            Vector3 delta = to - from;
+            float length = delta.magnitude;
+            if (length <= .025f || float.IsNaN(length) ||
+                float.IsInfinity(length)) return false;
+            Ray ray = new Ray(from, delta / length);
+            float nearest = length - .025f;
+            bool found = false;
+            Vector3 low = Vector3.Min(from, to), high = Vector3.Max(from, to);
+            int x0 = Cell(low.x), x1 = Cell(high.x);
+            int z0 = Cell(low.z), z1 = Cell(high.z);
+            long w = (long)x1 - x0 + 1, h = (long)z1 - z0 + 1;
+            if (probeQuery == int.MaxValue)
+            {
+                Array.Clear(probeVisited, 0, probeVisited.Length);
+                probeQuery = 0;
+            }
+            int stamp = ++probeQuery;
+            if (w <= 0 || h <= 0 || w > MaxCellsPerProbe ||
+                h > MaxCellsPerProbe || w * h > MaxCellsPerProbe)
+            {
+                // Malformed/huge segments scan a bounded authored array,
+                // never an unbounded number of spatial grid cells.
+                for (int i = 0; i < obstacles.Length; i++)
+                    if (TestInactiveRayIndex(i, ray, ref nearest)) found = true;
+            }
+            else
+            {
+                for (int x = x0; x <= x1; x++)
+                    for (int z = z0; z <= z1; z++)
+                    {
+                        if (!cells.TryGetValue(Key(x, z), out List<int> ids))
+                            continue;
+                        foreach (int i in ids)
+                        {
+                            if (probeVisited[i] == stamp) continue;
+                            probeVisited[i] = stamp;
+                            if (TestInactiveRayIndex(i, ray, ref nearest)) found = true;
+                        }
+                    }
+                foreach (int i in oversizedIndices)
+                {
+                    if (probeVisited[i] == stamp) continue;
+                    probeVisited[i] = stamp;
+                    if (TestInactiveRayIndex(i, ray, ref nearest)) found = true;
+                }
+            }
+            if (!found) return false;
+            contact = ray.GetPoint(nearest);
+            return true;
+        }
+
+        // Both vehicles and diagonal static buildings can be rotated. Their
+        // world AABBs overlap even when the *actual* two shapes have a safe
+        // gap. Use 15 SAT axes for oriented probe and transformed authored box.
+        // This stays allocation-free; only candidates that pass the cached
+        // spatial-grid and broadphase AABB incur the narrowphase cost.
+        private static bool SeparatedBoxAxis(Vector3 axis, Vector3 between,
+            Vector3 probeX, Vector3 probeY, Vector3 probeZ,
+            Vector3 edgeX, Vector3 edgeY, Vector3 edgeZ)
+        {
+            float axisLengthSqr = axis.sqrMagnitude;
+            if (axisLengthSqr < 0.0000000001f) return false;
+            float probeRadius = Mathf.Abs(Vector3.Dot(axis, probeX)) +
+                Mathf.Abs(Vector3.Dot(axis, probeY)) +
+                Mathf.Abs(Vector3.Dot(axis, probeZ));
+            float boxRadius = Mathf.Abs(Vector3.Dot(axis, edgeX)) +
+                Mathf.Abs(Vector3.Dot(axis, edgeY)) +
+                Mathf.Abs(Vector3.Dot(axis, edgeZ));
+            // Small tolerance for imported transforms / float coordinates.
+            return Mathf.Abs(Vector3.Dot(axis, between)) >
+                probeRadius + boxRadius + 0.001f * Mathf.Sqrt(axisLengthSqr);
+        }
+
+        private static bool IntersectsInactiveBox(BoxCollider box,
+            Vector3 probeCenter, Vector3 probeHalfExtents, Quaternion probeRotation)
+        {
+            Matrix4x4 matrix = box.transform.localToWorldMatrix;
+            Vector3 center = matrix.MultiplyPoint3x4(box.center);
+            Vector3 edgeX = matrix.MultiplyVector(Vector3.right * (box.size.x * 0.5f));
+            Vector3 edgeY = matrix.MultiplyVector(Vector3.up * (box.size.y * 0.5f));
+            Vector3 edgeZ = matrix.MultiplyVector(Vector3.forward * (box.size.z * 0.5f));
+            Vector3 probeX = probeRotation * (Vector3.right * probeHalfExtents.x);
+            Vector3 probeY = probeRotation * (Vector3.up * probeHalfExtents.y);
+            Vector3 probeZ = probeRotation * (Vector3.forward * probeHalfExtents.z);
+            Vector3 offset = center - probeCenter;
+            // 3 face normals from each oriented box and the 9 possible
+            // cross products. In a sheared import the edge cross-products
+            // still represent the real parallelepiped's face normals.
+            return !SeparatedBoxAxis(Vector3.Cross(edgeY, edgeZ), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(edgeZ, edgeX), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(edgeX, edgeY), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeY, probeZ), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeZ, probeX), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeX, probeY), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeX, edgeX), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeX, edgeY), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeX, edgeZ), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeY, edgeX), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeY, edgeY), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeY, edgeZ), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeZ, edgeX), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeZ, edgeY), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeZ, edgeZ), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ);
+        }
+
         // Parked cars can stream as far as 105 m away, while authored house/wall
         // colliders only activate near the player. A remote Physics overlap query
         // cannot see the disabled geometry. Reject such candidate locations using
@@ -554,7 +718,10 @@ namespace Aaris.MapReview
                     if (!streamed[i] || !worldBounds[i].Intersects(probe))
                         continue;
                     Collider candidate = obstacles[i];
-                    if (candidate != null && !candidate.enabled)
+                    if (candidate != null && !candidate.enabled &&
+                        !candidate.isTrigger &&
+                        (!(candidate is BoxCollider box) ||
+                         IntersectsInactiveBox(box, center, halfExtents, rotation)))
                         return true;
                 }
                 return false;
@@ -577,7 +744,9 @@ namespace Aaris.MapReview
                         probeVisited[i] = probeStamp;
                         Collider c = obstacles[i];
                         if (worldBounds[i].Intersects(probe) &&
-                            streamed[i] && c != null && !c.enabled)
+                            streamed[i] && c != null && !c.enabled &&
+                            !c.isTrigger && (!(c is BoxCollider box) ||
+                                IntersectsInactiveBox(box, center, halfExtents, rotation)))
                             return true;
                     }
                 }
@@ -589,7 +758,9 @@ namespace Aaris.MapReview
                 probeVisited[i] = probeStamp;
                 Collider c = obstacles[i];
                 if (worldBounds[i].Intersects(probe) &&
-                    streamed[i] && c != null && !c.enabled)
+                    streamed[i] && c != null && !c.enabled &&
+                    !c.isTrigger && (!(c is BoxCollider box) ||
+                        IntersectsInactiveBox(box, center, halfExtents, rotation)))
                     return true;
             }
             return false;

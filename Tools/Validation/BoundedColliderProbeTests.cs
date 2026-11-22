@@ -10,11 +10,24 @@ namespace UnityEngine
     {
         public float x, y, z;
         public Vector3(float x, float y, float z) { this.x=x; this.y=y; this.z=z; }
+        public static Vector3 zero => new Vector3(0, 0, 0);
         public static Vector3 right => new Vector3(1, 0, 0);
         public static Vector3 up => new Vector3(0, 1, 0);
         public static Vector3 forward => new Vector3(0, 0, 1);
+        public float sqrMagnitude => x*x + y*y + z*z;
+        public float magnitude => (float)Math.Sqrt(sqrMagnitude);
+        public static float Dot(Vector3 a, Vector3 b) => a.x*b.x + a.y*b.y + a.z*b.z;
+        public static Vector3 Cross(Vector3 a, Vector3 b) => new Vector3(
+            a.y*b.z-a.z*b.y, a.z*b.x-a.x*b.z, a.x*b.y-a.y*b.x);
+        public static Vector3 operator +(Vector3 a, Vector3 b) => new Vector3(a.x+b.x, a.y+b.y, a.z+b.z);
+        public static Vector3 operator -(Vector3 a, Vector3 b) => new Vector3(a.x-b.x, a.y-b.y, a.z-b.z);
+        public static Vector3 operator /(Vector3 a, float k) => new Vector3(a.x/k, a.y/k, a.z/k);
         public static Vector3 operator *(Vector3 v, float k) => new Vector3(v.x*k, v.y*k, v.z*k);
         public static Vector3 operator *(float k, Vector3 v) => v*k;
+        public static Vector3 Min(Vector3 a, Vector3 b) => new Vector3(
+            Math.Min(a.x,b.x), Math.Min(a.y,b.y), Math.Min(a.z,b.z));
+        public static Vector3 Max(Vector3 a, Vector3 b) => new Vector3(
+            Math.Max(a.x,b.x), Math.Max(a.y,b.y), Math.Max(a.z,b.z));
     }
     public struct Quaternion
     {
@@ -35,13 +48,71 @@ namespace UnityEngine
             Math.Abs(center.x-b.center.x) <= extents.x+b.extents.x &&
             Math.Abs(center.y-b.center.y) <= extents.y+b.extents.y &&
             Math.Abs(center.z-b.center.z) <= extents.z+b.extents.z;
+        public bool IntersectRay(Ray ray, out float distance)
+        {
+            distance=0f;
+            float start=0f, end=float.PositiveInfinity;
+            float[] from={ray.origin.x,ray.origin.y,ray.origin.z};
+            float[] dir={ray.direction.x,ray.direction.y,ray.direction.z};
+            Vector3 minB=min,maxB=max;
+            float[] low={minB.x,minB.y,minB.z};
+            float[] high={maxB.x,maxB.y,maxB.z};
+            for(int k=0;k<3;k++)
+            {
+                if(Math.Abs(dir[k]) < 0.0000001f)
+                { if(from[k]<low[k] || from[k]>high[k]) return false; continue; }
+                float a=(low[k]-from[k])/dir[k], b=(high[k]-from[k])/dir[k];
+                start=Math.Max(start,Math.Min(a,b));
+                end=Math.Min(end,Math.Max(a,b));
+                if(start>end) return false;
+            }
+            distance=start;
+            return true;
+        }
+    }
+    public struct Ray
+    {
+        public Vector3 origin, direction;
+        public Ray(Vector3 origin, Vector3 direction)
+        { this.origin=origin; this.direction=direction; }
+        public Vector3 GetPoint(float t) => origin + direction*t;
+    }
+    public struct Matrix4x4
+    {
+        public Vector3 position, scale;
+        public float cos, sin;
+        public bool inverse;
+        public Vector3 MultiplyPoint3x4(Vector3 p) =>
+            inverse ? MultiplyVector(p-position) : MultiplyVector(p)+position;
+        public Vector3 MultiplyVector(Vector3 d) => inverse ?
+            new Vector3((cos*d.x-sin*d.z)/scale.x,
+                d.y/scale.y,(sin*d.x+cos*d.z)/scale.z) :
+            new Vector3(cos*d.x*scale.x+sin*d.z*scale.z,
+                d.y*scale.y,-sin*d.x*scale.x+cos*d.z*scale.z);
+    }
+    public sealed class Transform
+    {
+        public Vector3 position, lossyScale = new Vector3(1f,1f,1f);
+        public float yaw;
+        public Matrix4x4 worldToLocalMatrix => new Matrix4x4 {
+            position=position, scale=lossyScale, inverse=true,
+            cos=(float)Math.Cos(yaw), sin=(float)Math.Sin(yaw) };
+        public Matrix4x4 localToWorldMatrix => new Matrix4x4 {
+            position=position, scale=lossyScale, inverse=false,
+            cos=(float)Math.Cos(yaw), sin=(float)Math.Sin(yaw) };
     }
     public static class Mathf
     {
         public static float Abs(float f) => Math.Abs(f);
+        public static float Sqrt(float f) => (float)Math.Sqrt(f);
         public static int FloorToInt(float f) => (int)Math.Floor(f);
     }
-    public sealed class Collider { public bool enabled; }
+    public class Collider { public bool enabled, isTrigger; }
+    public sealed class BoxCollider : Collider
+    {
+        public Transform transform;
+        public Vector3 center, size;
+    }
 }
 
 internal sealed class ProbeFixture
@@ -66,6 +137,59 @@ internal sealed class ProbeFixture
     private int Cell(float value) => Mathf.FloorToInt(value / cellSize);
     private static long Key(int x, int z) => ((long)x << 32) ^ (uint)z;
     private static bool Finite(Vector3 value) { /* FINITE_BODY */ }
+    private static bool SeparatedBoxAxis(Vector3 axis, Vector3 between,
+        Vector3 probeX, Vector3 probeY, Vector3 probeZ,
+        Vector3 edgeX, Vector3 edgeY, Vector3 edgeZ)
+    { /* BOX_AXIS_BODY */ }
+    private static bool IntersectsInactiveBox(BoxCollider box,
+        Vector3 probeCenter, Vector3 probeHalfExtents, Quaternion probeRotation)
+    { /* BOX_OVERLAP_BODY */ }
+    private bool TestInactiveRayIndex(int i, Ray ray, ref float nearest)
+    { /* INACTIVE_RAY_INDEX_BODY */ }
+    internal bool TryInactiveCoverHit(Vector3 from, Vector3 to, out Vector3 contact)
+    { /* INACTIVE_RAY_BODY */ }
+    internal int ExhaustiveInactiveRayIndex(Vector3 from, Vector3 to)
+    {
+        Vector3 delta=to-from;
+        float distance=delta.magnitude-.025f;
+        if(distance<=0f) return -1;
+        Ray ray=new Ray(from,delta/delta.magnitude);
+        int winner=-1;
+        for(int i=0;i<obstacles.Length;i++)
+            if(TestInactiveRayIndex(i,ray,ref distance)) winner=i;
+        return winner;
+    }
+    internal string GridDebug(int i, Vector3 from, Vector3 to)
+    {
+        Bounds b=worldBounds[i];
+        int x=Cell((from.x+to.x)*.5f), z=Cell((from.z+to.z)*.5f);
+        var name=Key(x,z);
+        bool inCell=cells.TryGetValue(name,out List<int> hits) && hits.Contains(i);
+        int hx=Cell(b.center.x), hz=Cell(b.center.z);
+        bool inBoxCell=cells.TryGetValue(Key(hx,hz),out List<int> bh) && bh.Contains(i);
+        return "hitIndex="+i+" boundsMin="+b.min.x+","+b.min.y+","+b.min.z+
+            " boundsMax="+b.max.x+","+b.max.y+","+b.max.z+
+            " streamed="+streamed[i]+" enabled="+obstacles[i].enabled+
+            " oversized="+oversizedIndices.Contains(i)+
+            " stamp="+probeQuery+" visited="+probeVisited[i]+
+            " midpointCell="+x+","+z+" inMidpointCell="+inCell+
+            " boundsCenterCell="+hx+","+hz+" inBoundsCell="+inBoxCell;
+    }
+    internal bool ExhaustiveInactiveRay(Vector3 from, Vector3 to,
+        out Vector3 contact)
+    {
+        contact=Vector3.zero;
+        Vector3 delta=to-from;
+        float length=delta.magnitude;
+        if(length<=.025f) return false;
+        Ray ray=new Ray(from,delta/length);
+        float nearest=length-.025f;
+        bool found=false;
+        for(int i=0;i<obstacles.Length;i++)
+            if(TestInactiveRayIndex(i,ray,ref nearest)) found=true;
+        if(found) contact=ray.GetPoint(nearest);
+        return found;
+    }
 
     internal void Add(int i, Bounds b, bool on, bool spatial)
     {
@@ -101,7 +225,10 @@ internal sealed class ProbeFixture
         Bounds probe=new Bounds(center,2f*e);
         for (int i=0;i<obstacles.Length;i++)
            if (streamed[i] && worldBounds[i].Intersects(probe) &&
-               obstacles[i]!=null && !obstacles[i].enabled)
+               obstacles[i]!=null && !obstacles[i].enabled &&
+               !obstacles[i].isTrigger &&
+               (!(obstacles[i] is BoxCollider b) ||
+                IntersectsInactiveBox(b,center,halfExtents,rotation)))
                return true;
         return false;
     }
@@ -113,6 +240,25 @@ internal static class BoundedProbeTests
     { checks++; if(!ok) throw new Exception(why); }
     static float Range(Random r,float lo,float hi) =>
         lo+(float)r.NextDouble()*(hi-lo);
+    // Independent 2D reference: four corner-separating axes for two yaw
+    // rectangles. The production code uses 15 vector cross-products in 3D.
+    static bool ReferenceYawRectangles(float x,float z,float a,float b,
+        float probeYaw,float halfX,float halfZ,float boxYaw)
+    {
+        float c=(float)Math.Cos(boxYaw),sn=(float)Math.Sin(boxYaw);
+        float pc=(float)Math.Cos(probeYaw),ps=(float)Math.Sin(probeYaw);
+        float[] ax={c,sn,pc,ps}, az={-sn,c,-ps,pc};
+        for(int k=0;k<4;k++)
+        {
+            float wallRadius=halfX*Math.Abs(ax[k]*c-az[k]*sn)+
+                halfZ*Math.Abs(ax[k]*sn+az[k]*c);
+            float probeRadius=a*Math.Abs(ax[k]*pc-az[k]*ps)+
+                b*Math.Abs(ax[k]*ps+az[k]*pc);
+            if(Math.Abs(x*ax[k]+z*az[k])>wallRadius+probeRadius+.001f)
+                return false;
+        }
+        return true;
+    }
     public static void Main()
     {
         var rng=new Random(20261121);
@@ -156,6 +302,160 @@ internal static class BoundedProbeTests
         Check(!fixture.Probe(new Vector3(0,0,0),
             new Vector3(1,1,1),Quaternion.identity),
             "pre-index probe must retain previous fail-solid behavior");
+        // The pre-index lifecycle assertion above intentionally disabled this
+        // fixture. Restore readiness before testing its 1,400 live ray queries.
+        fixture.indexReady=true;
+        // Execute the exact production streamed-cover C# methods. This
+        // fixture tests broadphase/OBB decisions, not Unity PhysX or FPS.
+        var walls=new ProbeFixture(5);
+        walls.Add(0,new Bounds(new Vector3(0f,1f,80f),new Vector3(5f,2f,.4f)),
+            false,true);
+        walls.obstacles[0]=new BoxCollider { enabled=false,
+            transform=new Transform { position=new Vector3(0f,0f,80f) },
+            center=new Vector3(0f,1f,0f),size=new Vector3(5f,2f,.4f) };
+        float d=(float)(Math.Sqrt(2)*15.2);
+        walls.Add(1,new Bounds(new Vector3(40f,1f,80f),new Vector3(d,2f,d)),
+            false,true);
+        walls.obstacles[1]=new BoxCollider { enabled=false,
+            transform=new Transform { position=new Vector3(40f,0f,80f),
+                yaw=(float)(Math.PI/4) },
+            center=new Vector3(0f,1f,0f), size=new Vector3(.4f,2f,30f) };
+        walls.Add(2,new Bounds(new Vector3(80f,1f,80f),new Vector3(5f,2f,.4f)),
+            false,true);
+        walls.obstacles[2]=new BoxCollider { enabled=false,isTrigger=true,
+            transform=new Transform { position=new Vector3(80f,0f,80f) },
+            center=new Vector3(0f,1f,0f),size=new Vector3(5f,2f,.4f) };
+        walls.Add(3,new Bounds(new Vector3(120f,1f,80f),new Vector3(5f,2f,.4f)),
+            true,true);
+        walls.obstacles[3]=new BoxCollider { enabled=true,
+            transform=new Transform { position=new Vector3(120f,0f,80f) },
+            center=new Vector3(0f,1f,0f),size=new Vector3(5f,2f,.4f) };
+        walls.Add(4,new Bounds(new Vector3(200f,1f,1000f),
+            new Vector3(40000f,2f,.5f)),false,true);
+        Vector3 hit;
+        Check(walls.TryInactiveCoverHit(new Vector3(0f,1f,0f),
+            new Vector3(0f,1f,160f),out hit) && Math.Abs(hit.z-79.8f)<.05f,
+            "disabled box wall should block at its actual near face");
+        Check(!walls.TryInactiveCoverHit(new Vector3(0f,1f,0f),
+            new Vector3(0f,1f,60f),out hit),
+            "wall behind target is not a hit");
+        Check(!walls.TryInactiveCoverHit(new Vector3(0f,1f,0f),
+            new Vector3(-20f,1f,160f),out hit),
+            "off-axis ray must not hit the wall");
+        Check(!walls.TryInactiveCoverHit(new Vector3(49f,1f,0f),
+            new Vector3(49f,1f,78f),out hit),
+            "rotated wall AABB alone must not block flank ray");
+        Check(walls.TryInactiveCoverHit(new Vector3(49f,1f,0f),
+            new Vector3(49f,1f,160f),out hit) &&
+            Math.Abs(hit.z-89f)<1f,
+            "rotated wall must block actual oriented-box contact");
+        Check(!walls.TryInactiveCoverHit(new Vector3(80f,1f,0f),
+            new Vector3(80f,1f,160f),out hit),
+            "disabled trigger sensors are not solid walls");
+        Check(!walls.TryInactiveCoverHit(new Vector3(120f,1f,0f),
+            new Vector3(120f,1f,160f),out hit),
+            "enabled walls defer to PhysX");
+        Check(walls.TryInactiveCoverHit(new Vector3(200f,1f,0f),
+            new Vector3(200f,1f,2000f),out hit) &&
+            Math.Abs(hit.z-999.75f)<.1f,
+            "long rays check oversized authored static members");
+        var scaled=new ProbeFixture(1);
+        scaled.Add(0,new Bounds(new Vector3(0f,1f,80f),
+            new Vector3(4f,2f,.2f)),false,true);
+        scaled.obstacles[0]=new BoxCollider { enabled=false,
+            transform=new Transform { position=new Vector3(0f,0f,80f),
+                lossyScale=new Vector3(2f,1f,.5f) },
+            center=new Vector3(0f,1f,0f),size=new Vector3(2f,2f,.4f) };
+        Check(scaled.TryInactiveCoverHit(new Vector3(0f,1f,0f),
+            new Vector3(0f,1f,160f),out hit) && Math.Abs(hit.z-79.9f)<.04f,
+            "nonuniform scaled BoxCollider returns world-metre contact");
+
+        for(int i=0;i<1400;i++)
+        {
+            Vector3 from=new Vector3(Range(rng,-4500,4500),
+                Range(rng,-3f,5f),Range(rng,-4500,4500));
+            Vector3 to=from+new Vector3(Range(rng,-900,900),
+                Range(rng,-15,15),Range(rng,-900,900));
+            Vector3 actual,expected;
+            bool fast=fixture.TryInactiveCoverHit(from,to,out actual);
+            bool full=fixture.ExhaustiveInactiveRay(from,to,out expected);
+            if(fast!=full || (fast && (actual-expected).magnitude>=.02f))
+                throw new Exception("indexed disabled-cover ray differs from exhaustive"
+                    +" case="+i+" from="+from.x+","+from.y+","+from.z
+                    +" to="+to.x+","+to.y+","+to.z
+                    +" fast="+fast+" full="+full
+                    +" actual="+actual.x+","+actual.y+","+actual.z
+                    +" expected="+expected.x+","+expected.y+","+expected.z+
+                    " details="+fixture.GridDebug(fixture.ExhaustiveInactiveRayIndex(from,to),
+                        from,to));
+            Check(true,"indexed and exhaustive ray agree");
+        }
+        // Regression for the phantom wall: the 45-degree building's world
+        // AABB covers both points, but only one is inside the actual box.
+        var obb=new ProbeFixture(1);
+        var diagonal=new Transform { position=new Vector3(40f,0f,80f),
+            yaw=(float)(Math.PI/4) };
+        var diagonalCollider=new BoxCollider { enabled=false,
+            transform=diagonal, center=new Vector3(0f,1f,0f),
+            size=new Vector3(.4f,2f,30f) };
+        obb.Add(0,new Bounds(new Vector3(40f,1f,80f),
+            new Vector3(d,2f,d)),false,true);
+        obb.obstacles[0]=diagonalCollider;
+        Vector3 smallFootprint=new Vector3(.36f,.9f,.36f);
+        Check(!obb.Probe(new Vector3(49f,1f,78f),smallFootprint,Quaternion.identity),
+            "rotated box must not invent an invisible flank wall for bot steering");
+        Check(obb.Probe(new Vector3(49f,1f,89f),smallFootprint,Quaternion.identity),
+            "actual angled wall must still stop bot movement");
+        Check(obb.Probe(new Vector3(49f,1f,89f),smallFootprint,
+            Quaternion.Yaw(Math.PI/3)),
+            "rotated vehicle footprint must still respect actual wall");
+        float off=(float)(2.5/Math.Sqrt(2));
+        Vector3 parallelCar=new Vector3(40f+off,1f,80f-off);
+        Vector3 carHalf=new Vector3(1f,.9f,2.1f);
+        Check(!obb.Probe(parallelCar,carHalf,Quaternion.Yaw(Math.PI/4)),
+            "parallel parked vehicle should fit beside a diagonal wall");
+        float near=(float)(.7/Math.Sqrt(2));
+        Check(obb.Probe(new Vector3(40f+near,1f,80f-near),
+            carHalf,Quaternion.Yaw(Math.PI/4)),
+            "parked vehicle must still reject genuinely overlapping wall");
+
+        // Compare the exact injected 15-axis 3D SAT against an independent
+        // four-axis yaw-only rectangle overlap reference with BOTH rotated.
+        var shape=new ProbeFixture(1);
+        var shapeTransform=new Transform { position=new Vector3(0f,0f,0f) };
+        var shapeBox=new BoxCollider { enabled=false, transform=shapeTransform,
+            center=new Vector3(0f,1f,0f), size=new Vector3(1f,2f,1f) };
+        for(int i=0;i<1200;i++)
+        {
+            shape.cells.Clear();
+            shape.oversizedIndices.Clear();
+            shapeTransform.yaw=Range(rng,-3.14159f,3.14159f);
+            shapeTransform.lossyScale=new Vector3(Range(rng,.5f,2.8f),1f,
+                Range(rng,.5f,2.8f));
+            shapeBox.size=new Vector3(Range(rng,.2f,22f),2f,
+                Range(rng,.2f,22f));
+            float halfX=shapeBox.size.x*shapeTransform.lossyScale.x*.5f;
+            float halfZ=shapeBox.size.z*shapeTransform.lossyScale.z*.5f;
+            float c=(float)Math.Cos(shapeTransform.yaw),
+                sn=(float)Math.Sin(shapeTransform.yaw);
+            float bbX=Math.Abs(c)*halfX+Math.Abs(sn)*halfZ;
+            float bbZ=Math.Abs(sn)*halfX+Math.Abs(c)*halfZ;
+            shape.Add(0,new Bounds(new Vector3(0f,1f,0f),
+                new Vector3(bbX*2f,2f,bbZ*2f)),false,true);
+            shape.obstacles[0]=shapeBox;
+            float px=Range(rng,-34f,34f), pz=Range(rng,-34f,34f);
+            float rx=Range(rng,.1f,3f), rz=Range(rng,.1f,3f);
+            Vector3 pos=new Vector3(px,1f,pz);
+            Vector3 half=new Vector3(rx,.8f,rz);
+            float probeYaw=Range(rng,-3.14159f,3.14159f);
+            bool reference=ReferenceYawRectangles(px,pz,rx,rz,
+                probeYaw,halfX,halfZ,shapeTransform.yaw);
+            bool actual=shape.Probe(pos,half,Quaternion.Yaw(probeYaw));
+            Check(actual==reference,
+                "two rotated boxes differ from independent 2D reference");
+        }
+        Console.WriteLine("STREAMED_BOX_SAT_PRODUCTION_CSHARP_PASS checks=1205");
+        Console.WriteLine("STREAMED_COVER_RAY_PRODUCTION_CSHARP_PASS");
         Console.WriteLine("BOUNDED_COLLIDER_PROBE_PASS checks="+checks);
         Console.WriteLine("PRODUCTION_CSHARP_METHOD_TEST; no Unity Editor/Android FPS claim");
     }

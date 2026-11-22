@@ -99,6 +99,7 @@ namespace Aaris.MapReview.Editor
                 VerifyDestructibleHitConfirmation(report);
                 VerifyBots(report, active);
                 VerifyBotLootCover(report);
+                VerifyStreamedCover(report, active);
             }
             catch (Exception ex)
             {
@@ -122,6 +123,126 @@ namespace Aaris.MapReview.Editor
             File.WriteAllText(Path.Combine(directory, "report.txt"), report.ToString());
             Debug.Log(report.ToString());
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);
+        }
+
+        // EditMode PhysX QA: a cached disabled wall must block the exact
+        // 160m segment, but not an off-axis or shorter unobstructed ray.
+        private static void VerifyStreamedCover(StringBuilder report, FieldInfo active)
+        {
+            var root = new GameObject("Temporary streamed-cover LOS QA");
+            object previous = active.GetValue(null);
+            try
+            {
+                var actor = new GameObject("Streamed-cover shooter");
+                actor.transform.SetParent(root.transform, false);
+                actor.transform.position = Origin + new Vector3(400f, 0f, 400f);
+                var wallObject = new GameObject("Distant streamed static wall");
+                wallObject.transform.SetParent(root.transform, false);
+                wallObject.transform.position = actor.transform.position +
+                    new Vector3(0f, 1f, 80f);
+                BoxCollider wall = wallObject.AddComponent<BoxCollider>();
+                wall.size = new Vector3(5f, 2f, .4f);
+                Physics.SyncTransforms();
+                var grid = root.AddComponent<AarisNearbyColliders>();
+                Set(grid, "target", actor.transform);
+                Set(grid, "obstacles", new Collider[] { wall });
+                Set(grid, "worldBounds", new Bounds[1]);
+                Set(grid, "streamed", new bool[1]);
+                Set(grid, "probeVisited", new int[1]);
+                // Index real enabled authored bounds without EditMode coroutines.
+                Call(grid, "IndexCollider", 0);
+                Set(grid, "indexReady", true);
+                wall.enabled = false;
+                var director = root.AddComponent<AarisOfflineBRDirector>();
+                Set(director, "nearbyColliders", grid);
+                active.SetValue(null, director);
+                MethodInfo query = typeof(AarisOfflineBRDirector).GetMethod(
+                    "HasInactiveShotCover", Static);
+                if (query == null) throw new InvalidOperationException("Hidden-cover contract absent");
+                Vector3 start = actor.transform.position + Vector3.up * 1.15f;
+                object[] inputs = { start, start + Vector3.forward * 160f, Vector3.zero };
+                bool blocked = (bool)query.Invoke(null, inputs);
+                Vector3 hit = (Vector3)inputs[2];
+                Check(blocked && Mathf.Abs(hit.z -
+                    (wallObject.transform.position.z - .2f)) < .3f,
+                    "Streamed-out wall blocks scoped shot at actual segment", report);
+                inputs[1] = start + Vector3.right * 160f;
+                Check(!(bool)query.Invoke(null, inputs),
+                    "Off-axis streamed wall does not block clear aim", report);
+                inputs[1] = start + Vector3.forward * 60f;
+                bool shortBlocked = (bool)query.Invoke(null, inputs);
+                Check(!shortBlocked,
+                    "Wall behind target cannot steal hit", report);
+                // A bot crossing four metres in one far-LOD update would
+                // skip a 40cm disabled wall with a destination-only overlap.
+                Vector3 beforeWall = actor.transform.position +
+                    Vector3.forward * 78f;
+                Check((bool)Call(director, "WouldCrossInactiveCover",
+                    beforeWall, Vector3.forward * 4f),
+                    "Long bot stride cannot tunnel across a streamed thin wall", report);
+                Check(!(bool)Call(director, "WouldCrossInactiveCover",
+                    actor.transform.position + Vector3.forward * 65f,
+                    Vector3.forward * 4f),
+                    "Clear far-bot stride remains unblocked", report);
+                wall.enabled = true;
+                inputs[1] = start + Vector3.forward * 160f;
+                Check(!(bool)query.Invoke(null, inputs),
+                    "Enabled static wall defers to real PhysX", report);
+                // A 45-degree thin wall has a very large WORLD AABB. A shot
+                // that only enters that AABB must not be blocked by the actual
+                // rotated BoxCollider, even when its PhysX shape is disabled.
+                wallObject.transform.rotation = Quaternion.Euler(0f, 45f, 0f);
+                wall.size = new Vector3(.4f, 2f, 30f);
+                ((System.Collections.IDictionary)Get(grid, "cells")).Clear();
+                Set(grid, "worldBounds", new Bounds[1]);
+                Set(grid, "streamed", new bool[1]);
+                Call(grid, "IndexCollider", 0);
+                wall.enabled = false;
+                Vector3 flank = start + Vector3.right * 9f;
+                inputs[0] = flank;
+                inputs[1] = flank + Vector3.forward * 78f;
+                Check(!(bool)query.Invoke(null, inputs),
+                    "Rotated disabled box does not block AABB-only flank ray", report);
+                inputs[1] = flank + Vector3.forward * 160f;
+                Check((bool)query.Invoke(null, inputs),
+                    "Rotated disabled box still blocks a real through-wall ray", report);
+                Vector3 footprint = new Vector3(.36f, .9f, .36f);
+                Check(!grid.HasPotentialInactiveObstacle(wallObject.transform.position +
+                    new Vector3(9f, 0f, -2f), footprint, Quaternion.identity),
+                    "Distant bot may move through diagonal wall AABB's empty flank", report);
+                Check(grid.HasPotentialInactiveObstacle(wallObject.transform.position +
+                    new Vector3(9f, 0f, 9f), footprint, Quaternion.identity),
+                    "Distant bot stops at actual diagonal wall", report);
+                // The vehicle and wall can have overlapping world AABBs
+                // yet a true gap between two similarly rotated hulls.
+                Quaternion parallel = Quaternion.Euler(0f, 45f, 0f);
+                Vector3 carHalf = new Vector3(1f, .9f, 2.1f);
+                float carOffset = 2.5f / Mathf.Sqrt(2f);
+                Check(!grid.HasPotentialInactiveObstacle(wallObject.transform.position +
+                    new Vector3(carOffset, 0f, -carOffset), carHalf, parallel),
+                    "Diagonal roadside car fits beside wall without phantom collision", report);
+                float touchingOffset = .7f / Mathf.Sqrt(2f);
+                Check(grid.HasPotentialInactiveObstacle(wallObject.transform.position +
+                    new Vector3(touchingOffset, 0f, -touchingOffset), carHalf, parallel),
+                    "Diagonal roadside car still rejects actual wall overlap", report);
+                // A disabled imported trigger is not world cover and must
+                // not block the scope merely because its old bounds remain.
+                wall.isTrigger = true;
+                Check(!(bool)query.Invoke(null, inputs),
+                    "Streamed-out trigger volume cannot block Red-Lock", report);
+                wall.enabled = true;
+                ((System.Collections.IDictionary)Get(grid, "cells")).Clear();
+                Set(grid, "worldBounds", new Bounds[1]);
+                Set(grid, "streamed", new bool[1]);
+                Call(grid, "IndexCollider", 0);
+                Check(wall.enabled && !((bool[])Get(grid, "streamed"))[0],
+                    "Authored trigger sensors stay live during collider indexing", report);
+            }
+            finally
+            {
+                active.SetValue(null, previous);
+                Object.DestroyImmediate(root);
+            }
         }
 
         // Actual PhysX cover validation of the shared bot/player pickup ray.

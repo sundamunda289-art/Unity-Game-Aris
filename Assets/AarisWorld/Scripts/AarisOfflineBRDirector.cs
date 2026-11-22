@@ -514,9 +514,17 @@ namespace Aaris.MapReview
                 return false;
             Vector3 lookAhead = displacement.normalized *
                 Mathf.Max(displacement.magnitude, 0.72f);
-            Vector3 predicted = from + lookAhead + Vector3.up * 0.9f;
-            return nearbyColliders.HasPotentialInactiveObstacle(predicted,
-                new Vector3(0.36f, 0.90f, 0.36f), Quaternion.identity);
+            Vector3 footToChest = Vector3.up * 0.9f;
+            Vector3 predicted = from + lookAhead + footToChest;
+            if (nearbyColliders.HasPotentialInactiveObstacle(predicted,
+                new Vector3(0.36f, 0.90f, 0.36f), Quaternion.identity))
+                return true;
+            // Large far-bot time slices may jump across a thin disabled wall
+            // while both endpoints are clear. Normal <=0.72m strides use
+            // only the original cheap footprint query (no extra ray).
+            return displacement.sqrMagnitude > 0.72f * 0.72f &&
+                nearbyColliders.TryInactiveCoverHit(from + footToChest,
+                    predicted, out Vector3 sweepContact);
         }
 
         private void EvaluateZone(float elapsed)
@@ -732,6 +740,16 @@ namespace Aaris.MapReview
             return false;
         }
 
+        // Do not let cached distant static cover disappear merely because
+        // its collision mesh was intentionally streamed out of PhysX.
+        internal static bool HasInactiveShotCover(Vector3 from, Vector3 to,
+            out Vector3 contact)
+        {
+            contact = Vector3.zero;
+            return activeDirector != null && activeDirector.nearbyColliders != null &&
+                activeDirector.nearbyColliders.TryInactiveCoverHit(from, to, out contact);
+        }
+
         // A camera-visible enemy is not red-locked through a barrel-side wall.
         // Match TryFire's stance eye-height and near-muzzle obstruction probe.
         private static bool MuzzlePathOpenTo(Transform shooter, Transform victim,
@@ -741,6 +759,9 @@ namespace Aaris.MapReview
             float height = actions != null
                 ? Mathf.Max(0.28f, actions.CameraEyeHeight - 0.15f) : 1.3f;
             Vector3 anchor = shooter.position + Vector3.up * height;
+            if (HasInactiveShotCover(anchor,
+                anchor + shooter.forward * .24f, out Vector3 ignoredShortCover))
+                return false;
             if (FirstMuzzleExternalHit(new Ray(anchor, shooter.forward), 0.24f,
                 shooter, out Collider shortBlocker))
             {
@@ -753,7 +774,9 @@ namespace Aaris.MapReview
             Vector3 muzzle = anchor + shooter.forward * 0.24f;
             Vector3 to = cameraImpact - muzzle;
             float distance = to.magnitude;
-            if (distance <= 0.025f) return false;
+            if (distance <= 0.025f ||
+                HasInactiveShotCover(muzzle, cameraImpact, out Vector3 ignoredFarCover))
+                return false;
             return FirstMuzzleExternalHit(new Ray(muzzle, to / distance),
                 distance + 0.05f, shooter, out Collider first) &&
                 first.transform.IsChildOf(victim);
@@ -848,7 +871,12 @@ namespace Aaris.MapReview
                     if (hits[i].distance < nearest)
                     { nearest = hits[i].distance; closest = collider; closestPoint = hits[i].point; }
                 }
+                // Physics sees the rival when distant static cover is
+                // streamed out, so check BOTH scope-camera and muzzle LOS.
+                // Muzzle alone can peek around a wall while the player
+                // camera is still behind it: that must not promise RED lock.
                 if (closest != null && closest.transform.IsChildOf(candidate.transform) &&
+                    !HasInactiveShotCover(origin, closestPoint, out Vector3 cameraCover) &&
                     MuzzlePathOpenTo(shooter, candidate.transform, closestPoint))
                 {
                     aimedDirection = direction;
@@ -942,7 +970,11 @@ namespace Aaris.MapReview
                     closest = hit;
                     point = hits[i].point;
                 }
+                // Same streamed-cover camera gate in the fallback shortlist:
+                // a fifth or sixth candidate cannot bypass what the first
+                // three correctly treat as an occluded sightline.
                 if (closest != null && closest.transform.IsChildOf(bot.transform) &&
+                    !HasInactiveShotCover(origin, point, out Vector3 cameraCover) &&
                     MuzzlePathOpenTo(shooter, bot.transform, point))
                 {
                     aimedDirection = direction;
@@ -1809,7 +1841,9 @@ namespace Aaris.MapReview
                 ? victim.TransformPoint(body.center) : victim.position + Vector3.up * 1.07f;
             Vector3 to = aimPoint - eye;
             float distance = to.magnitude;
-            if (distance < .1f) return false;
+            if (distance < .1f ||
+                AarisOfflineBRDirector.HasInactiveShotCover(eye, aimPoint,
+                    out Vector3 hiddenSightCover)) return false;
             Ray ray = new Ray(eye, to / distance);
             int count = Physics.RaycastNonAlloc(ray, sightHits, distance,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
@@ -1861,6 +1895,9 @@ namespace Aaris.MapReview
         private bool MuzzlePathClear(Transform intendedVictim)
         {
             Vector3 bodyEye = transform.position + Vector3.up * 1.28f;
+            if (AarisOfflineBRDirector.HasInactiveShotCover(bodyEye,
+                bodyEye + transform.forward * .48f, out Vector3 hiddenMuzzleCover))
+                return false;
             Ray ray = new Ray(bodyEye, transform.forward);
             int count = Physics.RaycastNonAlloc(ray, sightHits, .48f,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
