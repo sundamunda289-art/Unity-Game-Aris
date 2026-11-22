@@ -515,7 +515,11 @@ namespace Aaris.MapReview
         // can see them. Callers probe in staggered intervals, without GC.
         internal bool IsDistantRivalOnScreen(Vector3 position)
         {
-            if (cachedRivalCamera == null && Time.unscaledTime >= nextRivalCameraLookup)
+            // Retry a disabled cached camera as well as a missing one. Camera
+            // swaps during parachute/landing must not leave remote fighters
+            // permanently invisible after the active gameplay camera changes.
+            if ((cachedRivalCamera == null || !cachedRivalCamera.isActiveAndEnabled) &&
+                Time.unscaledTime >= nextRivalCameraLookup)
             {
                 nextRivalCameraLookup = Time.unscaledTime + 2f;
                 cachedRivalCamera = Camera.main;
