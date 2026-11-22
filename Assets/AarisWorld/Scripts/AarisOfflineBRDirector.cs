@@ -732,6 +732,16 @@ namespace Aaris.MapReview
             return false;
         }
 
+        // Do not let cached distant static cover disappear merely because
+        // its collision mesh was intentionally streamed out of PhysX.
+        internal static bool HasInactiveShotCover(Vector3 from, Vector3 to,
+            out Vector3 contact)
+        {
+            contact = Vector3.zero;
+            return activeDirector != null && activeDirector.nearbyColliders != null &&
+                activeDirector.nearbyColliders.TryInactiveCoverHit(from, to, out contact);
+        }
+
         // A camera-visible enemy is not red-locked through a barrel-side wall.
         // Match TryFire's stance eye-height and near-muzzle obstruction probe.
         private static bool MuzzlePathOpenTo(Transform shooter, Transform victim,
@@ -741,6 +751,9 @@ namespace Aaris.MapReview
             float height = actions != null
                 ? Mathf.Max(0.28f, actions.CameraEyeHeight - 0.15f) : 1.3f;
             Vector3 anchor = shooter.position + Vector3.up * height;
+            if (HasInactiveShotCover(anchor,
+                anchor + shooter.forward * .24f, out Vector3 ignoredShortCover))
+                return false;
             if (FirstMuzzleExternalHit(new Ray(anchor, shooter.forward), 0.24f,
                 shooter, out Collider shortBlocker))
             {
@@ -753,7 +766,9 @@ namespace Aaris.MapReview
             Vector3 muzzle = anchor + shooter.forward * 0.24f;
             Vector3 to = cameraImpact - muzzle;
             float distance = to.magnitude;
-            if (distance <= 0.025f) return false;
+            if (distance <= 0.025f ||
+                HasInactiveShotCover(muzzle, cameraImpact, out Vector3 ignoredFarCover))
+                return false;
             return FirstMuzzleExternalHit(new Ray(muzzle, to / distance),
                 distance + 0.05f, shooter, out Collider first) &&
                 first.transform.IsChildOf(victim);
@@ -1809,7 +1824,9 @@ namespace Aaris.MapReview
                 ? victim.TransformPoint(body.center) : victim.position + Vector3.up * 1.07f;
             Vector3 to = aimPoint - eye;
             float distance = to.magnitude;
-            if (distance < .1f) return false;
+            if (distance < .1f ||
+                AarisOfflineBRDirector.HasInactiveShotCover(eye, aimPoint,
+                    out Vector3 hiddenSightCover)) return false;
             Ray ray = new Ray(eye, to / distance);
             int count = Physics.RaycastNonAlloc(ray, sightHits, distance,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
@@ -1861,6 +1878,9 @@ namespace Aaris.MapReview
         private bool MuzzlePathClear(Transform intendedVictim)
         {
             Vector3 bodyEye = transform.position + Vector3.up * 1.28f;
+            if (AarisOfflineBRDirector.HasInactiveShotCover(bodyEye,
+                bodyEye + transform.forward * .48f, out Vector3 hiddenMuzzleCover))
+                return false;
             Ray ray = new Ray(bodyEye, transform.forward);
             int count = Physics.RaycastNonAlloc(ray, sightHits, .48f,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
