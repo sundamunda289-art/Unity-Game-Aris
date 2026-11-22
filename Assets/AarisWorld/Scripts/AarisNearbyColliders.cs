@@ -142,7 +142,9 @@ namespace Aaris.MapReview
             using var profilerScope = k_ColliderGridIndex.Auto();
 #endif
             Collider c = obstacles[i];
-            if (c == null || !c.enabled) return;
+            if (c == null || !c.enabled || c.isTrigger) return;
+            // Trigger volumes are gameplay sensors, not physical cover: keep
+            // them live rather than streaming them out with static walls.
             // Intentionally disabled authored colliders must stay off.
             // Collider.bounds is empty if its collider is disabled.
             Bounds local;
@@ -522,7 +524,8 @@ namespace Aaris.MapReview
         {
             if (!streamed[i]) return false;
             Collider c = obstacles[i];
-            if (c == null || c.enabled) return false;
+            if (c == null || c.enabled || c.isTrigger) return false;
+            // Sensors must never become invisible bullet-blocking cover.
             // The world AABB is only broadphase. A rotated BoxCollider may
             // occupy a tiny fraction of its AABB; using that as actual cover
             // falsely denies legitimate red-lock and shots around diagonals.
