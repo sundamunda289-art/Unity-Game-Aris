@@ -182,6 +182,17 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("RectTransformUtility.ScreenPointToLocalPointInRectangle(", HUD)
         self.assertIn("numberOrigin[index] = origin;", HUD)
 
+    def test_bot_capsule_lookup_is_cached(self):
+        self.assertIn("if (target != cachedTargetCapsuleOwner)", BOTS)
+        self.assertIn("cachedTargetCapsuleOwner = target;", BOTS)
+
+    def test_scope_reticle_geometries_are_distinct(self):
+        self.assertIn("private void RefreshReticleGeometry(int tier)", HUD)
+        self.assertIn("if (lastReticleTier == tier) return;", HUD)
+        self.assertIn("float gap = tier == 0 ? 21f", HUD)
+        self.assertIn("float stroke = tier == 0 ? 12f", HUD)
+        self.assertIn("RefreshReticleGeometry(scope);", HUD)
+
     def test_100_bots_locally_restrict_player_aggression(self):
         self.assertIn("private const int RivalCount = 100;", BOTS)
         self.assertIn("if (distance < first)", BOTS)

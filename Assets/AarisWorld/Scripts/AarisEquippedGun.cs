@@ -769,6 +769,8 @@ namespace Aaris.MapReview
                         float before = victim.CurrentHealth;
                         victim.ApplyHitDamage(damage, attacker, headshot);
                         float actualLoss = Mathf.Max(0f, before - victim.CurrentHealth);
+                        // Mark damage only when HP really decreases.
+                        canRegister = actualLoss > 0f;
                         if (actualLoss > 0f && attacker != null &&
                             !node.IsChildOf(attacker.transform))
                             AarisCombatFeedbackHUD.NotifyOutgoingDamage(attacker, actualLoss, headshot,

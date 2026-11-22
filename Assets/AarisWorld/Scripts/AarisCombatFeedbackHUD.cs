@@ -33,6 +33,7 @@ namespace Aaris.MapReview
         private float nextAimCheck, hitFadeUntil;
         private int numberIndex;
         private int lastHealth = -1, lastMax = -1;
+        private int lastReticleTier = -1;
         private string lastScope;
         private bool lastLock;
 
@@ -59,6 +60,24 @@ namespace Aaris.MapReview
                 case 2: return aiming ? "2X ADS" : "2X";
                 case 1: return aiming ? "NORMAL ADS" : "NORMAL";
                 default: return aiming ? "NO SCOPE ADS" : "NO SCOPE";
+            }
+        }
+
+        // Only change the existing four UI strokes when the weapon tier changes.
+        private void RefreshReticleGeometry(int tier)
+        {
+            if (lastReticleTier == tier) return;
+            lastReticleTier = tier;
+            float gap = tier == 0 ? 21f : tier == 1 ? 16f : tier == 2 ? 13f : 10f;
+            float stroke = tier == 0 ? 12f : tier == 1 ? 9f : tier == 2 ? 7f : 6f;
+            for (int i = 0; i < crosshair.Length; i++)
+            {
+                RectTransform segment = crosshair[i].rectTransform;
+                segment.anchoredPosition = i == 0 ? new Vector2(-gap, 0f) :
+                    i == 1 ? new Vector2(gap, 0f) :
+                    i == 2 ? new Vector2(0f, -gap) : new Vector2(0f, gap);
+                segment.sizeDelta = i < 2 ? new Vector2(stroke, 3f) :
+                    new Vector2(3f, stroke);
             }
         }
 
@@ -366,6 +385,7 @@ namespace Aaris.MapReview
             RefreshAimCamera();
             int scope = armed && inventory.Current != null && inventory.Current.Spec != null
                 ? inventory.Current.Spec.scopePower : 0;
+            RefreshReticleGeometry(scope);
             bool lockOn = armed && aimCamera != null &&
                 AarisOfflineBRDirector.TryAcquireAimTarget(aimCamera, transform,
                     inventory.Current.Spec.rangeMetres,

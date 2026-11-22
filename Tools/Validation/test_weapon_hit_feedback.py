@@ -20,6 +20,12 @@ class WeaponFeedbackContract(unittest.TestCase):
                         fn.index("AarisWeaponHUD.NotifyHit(attacker);"))
         self.assertIn("!node.IsChildOf(attacker.transform)", fn)
 
+    def test_confirmed_marker_matches_hp_loss(self):
+        route = GUN.split("internal static void ApplyDamage(Collider collider, float amount, GameObject attacker,", 1)[1]
+        self.assertIn("canRegister = actualLoss > 0f;", route)
+        self.assertLess(route.index("canRegister = actualLoss > 0f;"),
+                        route.index("AarisWeaponHUD.NotifyHit(attacker);"))
+
     def test_hit_marker_prebuilt_and_nonblocking(self):
         build = HUD.split("private void CreateHitMarker(", 1)[1].split(
             "public static void NotifyHit", 1)[0]

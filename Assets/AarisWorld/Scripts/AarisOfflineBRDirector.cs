@@ -1031,6 +1031,7 @@ namespace Aaris.MapReview
         private AarisOfflineHealth playerTargetHealth;
         // Cache stance-aware collision bodies; do not GetComponent in LOS ray hot paths.
         private CharacterController playerTargetCapsule, targetCapsule;
+        private Transform cachedTargetCapsuleOwner;
         private GameObject visualRoot;
         // A separate low-triangle visual keeps 4x targets visible beyond 155 m
         // without loading distant Humanoid rigs or changing close-up quality.
@@ -1474,8 +1475,12 @@ namespace Aaris.MapReview
                 }
                 // Only target changes refresh this reference; stance center/height
                 // remain live so prone and crouch affect sight immediately.
-                targetCapsule = target == playerTarget ? playerTargetCapsule :
-                    target != null ? target.GetComponent<CharacterController>() : null;
+                if (target != cachedTargetCapsuleOwner)
+                {
+                    cachedTargetCapsuleOwner = target;
+                    targetCapsule = target == playerTarget ? playerTargetCapsule :
+                        target != null ? target.GetComponent<CharacterController>() : null;
+                }
                 canSee = target != null && targetHealth != null && !targetHealth.IsDead &&
                     (target.position - transform.position).sqrMagnitude < 42f * 42f && HasSight();
                 // If the nearest rival is behind a wall, a second visible
@@ -1490,6 +1495,7 @@ namespace Aaris.MapReview
                 {
                     target = clearRival;
                     targetHealth = clearHealth;
+                    cachedTargetCapsuleOwner = target;
                     targetCapsule = target.GetComponent<CharacterController>();
                     // Revalidate after adopting the real target capsule.
                     canSee = HasSight();
