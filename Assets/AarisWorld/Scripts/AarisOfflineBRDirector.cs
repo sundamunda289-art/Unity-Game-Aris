@@ -53,6 +53,8 @@ namespace Aaris.MapReview
         private AarisThirdPersonPlayer playerMotor;
         private Camera playerCamera;
         private float nextCameraProbe;
+        private int cameraConeFrame = -1;
+        private float cameraConeCosSqr = 0.6f;
         private AarisOfflineHealth playerHealth;
         private AarisOfflineDrop drop;
         // Flight component may be attached after this director starts. Limit
@@ -712,8 +714,9 @@ namespace Aaris.MapReview
         }
 
         // No expensive Camera.main tag lookup inside each of 100 rival Updates.
-        // Only a narrow camera-facing slice receives the previously-authored
-        // 4x LOD and physical hit capsule; everything else stays math-only.
+        // Use the real horizontal AND vertical camera FOV, with a small edge
+        // margin: a fixed 14-degree cone would wrongly cull on-screen rivals
+        // at ordinary landscape FOV, producing visual and collision pop-in.
         internal bool IsRivalInCameraView(Vector3 position)
         {
             if (playerCamera == null && Time.unscaledTime >= nextCameraProbe)
@@ -726,14 +729,24 @@ namespace Aaris.MapReview
             }
             if (playerCamera == null || !playerCamera.isActiveAndEnabled)
                 return false;
+            if (cameraConeFrame != Time.frameCount)
+            {
+                cameraConeFrame = Time.frameCount;
+                float verticalHalf = Mathf.Clamp(
+                    playerCamera.fieldOfView * 0.5f, 1f, 85f) * Mathf.Deg2Rad;
+                float horizontalHalf = Mathf.Atan(
+                    Mathf.Tan(verticalHalf) * Mathf.Max(1f, playerCamera.aspect));
+                float conservativeHalf = Mathf.Min(87f * Mathf.Deg2Rad,
+                    Mathf.Max(verticalHalf, horizontalHalf) + 10f * Mathf.Deg2Rad);
+                float cos = Mathf.Cos(conservativeHalf);
+                cameraConeCosSqr = cos * cos;
+            }
             Vector3 toward = position + Vector3.up * 1.0f -
                 playerCamera.transform.position;
             float squared = toward.sqrMagnitude;
             float projected = Vector3.Dot(playerCamera.transform.forward, toward);
-            // 14 degrees; wider than any red-lock scope reticle. If the
-            // player turns toward a rival, it is immediately rehydrated.
             return squared > 0.01f && projected > 0f &&
-                projected * projected > squared * 0.94f;
+                projected * projected > squared * cameraConeCosSqr;
         }
 
         // Remote-only opponent search: one bounded 100-slot sweep every
@@ -1244,8 +1257,8 @@ namespace Aaris.MapReview
         private float nextFarSimulation, lastSimulationTime;
         // Two thresholds avoid switching the native collider repeatedly as
         // the player hovers near the 155m full-presentation boundary.
-        private const float VirtualSleepDistance = 175f;
-        private const float VirtualWakeDistance = 155f;
+        private const float VirtualSleepDistance = 150f;
+        private const float VirtualWakeDistance = 135f;
         private bool simulatedOnly;
         private AarisOfflineRival virtualOpponent;
         private float nextVirtualOpponentSearch, nextVirtualWanderTurn;
@@ -1557,6 +1570,9 @@ namespace Aaris.MapReview
             if (capsule != null) capsule.enabled = !value;
             if (value)
             {
+                // A paused PlayableGraph cannot evaluate animation jobs even
+                // if its last renderer was disabled after this frame's cull.
+                if (graph.IsValid() && graph.IsPlaying()) graph.Stop();
                 if (visualRoot != null && visualRoot.activeSelf)
                     visualRoot.SetActive(false);
                 if (farVisualRoot != null && farVisualRoot.activeSelf)
@@ -1682,12 +1698,23 @@ namespace Aaris.MapReview
                 ? playerDistanceSqr >= VirtualWakeDistance * VirtualWakeDistance
                 : playerDistanceSqr >= VirtualSleepDistance * VirtualSleepDistance);
             SetVirtualized(shouldVirtualize);
-            // React to a sudden scope turn without a 0.35-second cold visual
-            // penalty when the LOD mesh was already built.
-            if (cameraDetail && !simulatedOnly && farVisualRoot != null &&
-                (visualRoot == null || !visualRoot.activeSelf) &&
-                !farVisualRoot.activeSelf)
-                farVisualRoot.SetActive(true);
+            // Camera turn/ADS must wake both existing and first-time 4x LOD
+            // renderers before the 350ms far-AI tick. Android's shared gate
+            // limits the first native mesh build to one optional model/frame.
+            if (cameraDetail && !simulatedOnly &&
+                (visualRoot == null || !visualRoot.activeSelf))
+            {
+                if (farVisualRoot == null)
+                {
+                    bool canBuild = true;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                    canBuild = AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild();
+#endif
+                    if (canBuild) BuildDistantVisual();
+                }
+                if (farVisualRoot != null && !farVisualRoot.activeSelf)
+                    farVisualRoot.SetActive(true);
+            }
             bool farSimulation = playerDistanceSqr >=
                 FarSimulationDistance * FarSimulationDistance;
             if (farSimulation && now < nextFarSimulation) return;
@@ -1760,6 +1787,14 @@ namespace Aaris.MapReview
                     bool visible = playerDistanceSqr < 155f * 155f;
                     if (visualRoot.activeSelf != visible)
                         visualRoot.SetActive(visible);
+                    // Avoid even a hidden PlayableGraph evaluation on the
+                    // 155m-150m hysteresis fringe. Resume the SAME authored
+                    // graph when the original full-quality mesh reappears.
+                    if (graph.IsValid())
+                    {
+                        if (visible && !graph.IsPlaying()) graph.Play();
+                        else if (!visible && graph.IsPlaying()) graph.Stop();
+                    }
                 }
                 // The real rig is never replaced inside its current 155 m
                 // quality band. Beyond it, a single shared unskinned mesh
