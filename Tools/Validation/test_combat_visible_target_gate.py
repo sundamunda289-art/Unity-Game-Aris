@@ -15,8 +15,15 @@ class StreamedRivalTargetGates(unittest.TestCase):
         self.assertIn("public bool IsAlive => health != null && !health.IsDead;", SOURCE)
         self.assertNotIn("public bool IsAlive => health != null && !health.IsDead &&", SOURCE)
 
-    def test_4x_targets_use_pooled_distant_3d_lod_not_more_skeletons(self):
+    def test_4x_targets_use_camera_gated_distant_lod_not_more_skeletons(self):
         self.assertIn("private const float FarVisualDistance = 485f;", SOURCE)
+        self.assertIn("owner.IsRivalInCameraView(transform.position)", SOURCE)
+        self.assertIn("(playerDistanceSqr < 155f * 155f || cameraDetail)", SOURCE)
+        self.assertIn("SetVirtualized(shouldVirtualize);", SOURCE)
+        self.assertIn("if (simulatedOnly)", SOURCE)
+        self.assertIn("SimulateVirtual(now, dt);", SOURCE)
+        self.assertIn("skin.updateWhenOffscreen = false;", SOURCE)
+        self.assertIn("AnimatorCullingMode.CullCompletely", SOURCE)
         self.assertIn("if (!visualBuilt && playerDistanceSqr < 105f * 105f)", SOURCE)
         self.assertIn("bool visible = playerDistanceSqr < 155f * 155f;", SOURCE)
         self.assertIn("playerDistanceSqr < FarVisualDistance * FarVisualDistance", SOURCE)
@@ -35,18 +42,21 @@ class StreamedRivalTargetGates(unittest.TestCase):
         self.assertNotIn("AddComponent<Collider>", far)
         self.assertNotIn("CreatePrimitive", far)
         self.assertNotIn("Instantiate(", far)
-        # Explicit model guarantees: the original near rig wins in the
-        # 155 m band; shared lightweight art renders at 156-480 m.
-        def lod(distance, rig_built):
+        # 4x scoped targets remain physical and render a shared LOD, but
+        # off-camera distant rivals must not produce ANY draw calls.
+        def lod(distance, rig_built, in_camera_cone):
             near = rig_built and distance < 155
-            far_enabled = distance < 485 and not near
+            far_enabled = distance < 485 and not near and (
+                distance < 155 or in_camera_cone)
             return near, far_enabled
         for distance in (0, 105, 154.9):
-            self.assertEqual(lod(distance, True), (True, False))
-        self.assertEqual(lod(155, True), (False, True))
-        self.assertEqual(lod(480, True), (False, True))
-        self.assertEqual(lod(485, True), (False, False))
-        self.assertEqual(lod(300, False), (False, True))
+            self.assertEqual(lod(distance, True, False), (True, False))
+        self.assertEqual(lod(155, True, True), (False, True))
+        self.assertEqual(lod(480, True, True), (False, True))
+        self.assertEqual(lod(480, True, False), (False, False))
+        self.assertEqual(lod(485, True, True), (False, False))
+        self.assertEqual(lod(300, False, False), (False, False))
+        self.assertEqual(lod(300, False, True), (False, True))
 
     def test_red_lock_skips_unrendered_opponents(self):
         target_search = SOURCE.split("internal static bool TryAcquireAimTarget", 1)[1].split("private void RefreshStatus", 1)[0]
