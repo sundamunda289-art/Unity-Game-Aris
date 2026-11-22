@@ -177,6 +177,24 @@ namespace Aaris.MapReview.Editor
                 inputs[1] = start + Vector3.forward * 160f;
                 Check(!(bool)query.Invoke(null, inputs),
                     "Enabled static wall defers to real PhysX", report);
+                // A 45-degree thin wall has a very large WORLD AABB. A shot
+                // that only enters that AABB must not be blocked by the actual
+                // rotated BoxCollider, even when its PhysX shape is disabled.
+                wallObject.transform.rotation = Quaternion.Euler(0f, 45f, 0f);
+                wall.size = new Vector3(.4f, 2f, 30f);
+                ((IDictionary)Get(grid, "cells")).Clear();
+                Set(grid, "worldBounds", new Bounds[1]);
+                Set(grid, "streamed", new bool[1]);
+                Call(grid, "IndexCollider", 0);
+                wall.enabled = false;
+                Vector3 flank = start + Vector3.right * 9f;
+                inputs[0] = flank;
+                inputs[1] = flank + Vector3.forward * 78f;
+                Check(!(bool)query.Invoke(null, inputs),
+                    "Rotated disabled box does not block AABB-only flank ray", report);
+                inputs[1] = flank + Vector3.forward * 160f;
+                Check((bool)query.Invoke(null, inputs),
+                    "Rotated disabled box still blocks a real through-wall ray", report);
             }
             finally
             {
