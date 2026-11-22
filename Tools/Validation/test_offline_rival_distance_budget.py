@@ -188,7 +188,7 @@ class FarRivalBudget(unittest.TestCase):
         self.assertIn("if (virtualBody && capsule != null && capsule.enabled)", exit_block)
         self.assertIn("capsule.enabled = false;", exit_block)
         self.assertNotIn("new ", exit_block)
-        self.assertLess(update.index("if (!cameraRelevant)"),
+        self.assertLess(update.index("if (!cameraRelevant && lastCameraRelevant)"),
                         update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera) return;"))
         self.assertIn("nextCameraProbe = now + 0.12f;", update)
 
