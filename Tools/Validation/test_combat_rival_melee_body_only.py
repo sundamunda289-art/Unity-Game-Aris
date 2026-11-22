@@ -31,8 +31,10 @@ class RivalMeleeDamageRoute(unittest.TestCase):
             r"else\s+AarisEquippedGun\.ApplyDamage"
             r"\(shotHit\.collider, damage,\s+gameObject\);",
         )
-        self.assertIn("TryGetSightHit(target, out RaycastHit shotHit)", attack)
-        self.assertIn("MuzzlePathClear(target)", attack)
+        # The LOS/muzzle guards are in the conditional immediately ABOVE
+        # the damage branch; keep their production authority unchanged.
+        self.assertIn("TryGetSightHit(target, out RaycastHit shotHit)", RIVAL)
+        self.assertIn("MuzzlePathClear(target)", RIVAL)
 
     def test_unpositioned_damage_cannot_create_headshot(self):
         self.assertIn("if (hitPosition.HasValue)", GUN)
