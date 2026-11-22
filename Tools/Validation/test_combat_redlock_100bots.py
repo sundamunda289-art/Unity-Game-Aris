@@ -119,6 +119,45 @@ class CombatEndToEndContract(unittest.TestCase):
         # The old 28cm minimum rejected a genuine 20cm HeadCollider.
         self.assertLess(0.20, 0.28)
 
+    def test_child_limbs_never_inherit_full_body_headshot_height(self):
+        self.assertIn("headshot = IsAuthoredHeadHit(collider, node) ||", GUN)
+        self.assertIn("collider.transform == node &&", GUN)
+        self.assertIn("bounds.size.y > .28f && hitPosition.Value.y >=", GUN)
+        # An authored HeadCollider is a positive head hit regardless of size.
+        # A child forearm's upper rim is not a head, even at 90% of its bounds.
+        def is_head(authored_head, is_receiver_root, height_fraction):
+            return authored_head or (is_receiver_root and height_fraction >= .79)
+        self.assertTrue(is_head(True, False, .5))
+        self.assertFalse(is_head(False, False, .95))
+        self.assertTrue(is_head(False, True, .90))
+        self.assertFalse(is_head(False, True, .60))
+
+    def test_rival_sight_cone_and_local_radar_gate(self):
+        selection = BOTS.split("internal bool HasPlayerSightForSelection()", 1)[1].split(
+            "private bool HasSight()", 1)[0]
+        self.assertIn("float playerRangeSqr = towardPlayer.sqrMagnitude;", selection)
+        self.assertIn("towardPlayer.y = 0f;", selection)
+        self.assertIn("Vector3.Dot(transform.forward, towardPlayer)", selection)
+        self.assertIn("facing <= 0f || facing * facing < planarSqr * 0.25f", selection)
+        self.assertLess(selection.index("facing * facing"), selection.index(
+            "return HasSightTo(playerTarget);"))
+        # 120 degree total cone outside a 12m omnidirectional radar radius.
+        def perceived(distance, angle):
+            if distance <= 12.:
+                return True
+            dot = math.cos(math.radians(angle))
+            return dot > 0 and dot * dot >= .25
+        for angle in (0, 30, 60, 120, 180):
+            self.assertTrue(perceived(8., angle))
+        self.assertTrue(perceived(30., 0))
+        self.assertTrue(perceived(30., 59))
+        self.assertFalse(perceived(30., 61))
+        self.assertFalse(perceived(30., 180))
+        # This prefilter is not combat authority: physical LOS and the
+        # director's two-attacker cap still control the actual attack.
+        self.assertIn("return HasSightTo(playerTarget);", selection)
+        self.assertIn("return bot == attackerOne || bot == attackerTwo;", BOTS)
+
     def test_camera_only_impact_must_not_damage_without_muzzle_contact(self):
         firing = GUN.split("public bool TryFire(Camera camera, GameObject owner)", 1)[1].split(
             "internal static void ApplyDamage", 1)[0]
