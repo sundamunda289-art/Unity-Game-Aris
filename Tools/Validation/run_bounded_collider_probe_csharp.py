@@ -28,11 +28,15 @@ def fixture_source():
     finite = braced(code, "private static bool Finite(Vector3 value)")
     index_ray = braced(code, "private bool TestInactiveRayIndex(")
     inactive_ray = braced(code, "internal bool TryInactiveCoverHit(")
+    box_axis = braced(code, "private static bool SeparatedBoxAxis(")
+    box_overlap = braced(code, "private static bool IntersectsInactiveBox(")
     bodies = {
         "/* PROBE_BODY */": body,
         "/* FINITE_BODY */": finite,
         "/* INACTIVE_RAY_INDEX_BODY */": index_ray,
         "/* INACTIVE_RAY_BODY */": inactive_ray,
+        "/* BOX_AXIS_BODY */": box_axis,
+        "/* BOX_OVERLAP_BODY */": box_overlap,
         "/* PROBE_CAP */": match.group(1),
     }
     for marker, replacement in bodies.items():
