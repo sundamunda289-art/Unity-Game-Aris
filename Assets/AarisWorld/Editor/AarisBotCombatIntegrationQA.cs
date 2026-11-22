@@ -330,8 +330,10 @@ namespace Aaris.MapReview.Editor
                 var remoteHunter = bots[80];
                 var remoteVictim = bots[81];
                 var remoteBody = remoteHunter.GetComponent<CharacterController>();
+                var remoteVictimBody = remoteVictim.GetComponent<CharacterController>();
                 var remoteVisual = (GameObject)Get(remoteHunter, "visualRoot");
                 Set(remoteHunter, "capsule", remoteBody);
+                Set(remoteVictim, "capsule", remoteVictimBody);
                 Set(remoteHunter, "owner", director);
                 Set(remoteVictim, "owner", director);
                 Set(director, "center", new Vector2(Origin.x, Origin.z));
@@ -341,7 +343,8 @@ namespace Aaris.MapReview.Editor
                     Vector3.forward * 1.7f;
                 Call(remoteHunter, "SetVirtualized", true);
                 Call(remoteVictim, "SetVirtualized", true);
-                Check(!remoteBody.enabled && !remoteVisual.activeSelf &&
+                Check(!remoteBody.enabled && !remoteVictimBody.enabled &&
+                    !remoteVisual.activeSelf &&
                     (bool)Get(remoteHunter, "simulatedOnly"),
                     "Distant virtual bot has no active visual or native capsule", report);
                 Check(health[80].CurrentHealth == 200f && health[81].CurrentHealth == 200f,
@@ -357,6 +360,8 @@ namespace Aaris.MapReview.Editor
                     "Return to player restores same live native capsule", report);
                 // Leave QA's other 98 physical LOS fixtures unchanged.
                 Call(remoteVictim, "SetVirtualized", false);
+                Check(remoteVictimBody.enabled,
+                    "Opponent also restores the same physical collider", report);
                 var firstVisible = (GameObject)Get(first, "visualRoot");
                 firstVisible.SetActive(false);
                 Check(!(bool)Call(director, "MayAttackPlayer", first),
