@@ -514,9 +514,17 @@ namespace Aaris.MapReview
                 return false;
             Vector3 lookAhead = displacement.normalized *
                 Mathf.Max(displacement.magnitude, 0.72f);
-            Vector3 predicted = from + lookAhead + Vector3.up * 0.9f;
-            return nearbyColliders.HasPotentialInactiveObstacle(predicted,
-                new Vector3(0.36f, 0.90f, 0.36f), Quaternion.identity);
+            Vector3 footToChest = Vector3.up * 0.9f;
+            Vector3 predicted = from + lookAhead + footToChest;
+            if (nearbyColliders.HasPotentialInactiveObstacle(predicted,
+                new Vector3(0.36f, 0.90f, 0.36f), Quaternion.identity))
+                return true;
+            // Large far-bot time slices may jump across a thin disabled wall
+            // while both endpoints are clear. Normal <=0.72m strides use
+            // only the original cheap footprint query (no extra ray).
+            return displacement.sqrMagnitude > 0.72f * 0.72f &&
+                nearbyColliders.TryInactiveCoverHit(from + footToChest,
+                    predicted, out Vector3 sweepContact);
         }
 
         private void EvaluateZone(float elapsed)
