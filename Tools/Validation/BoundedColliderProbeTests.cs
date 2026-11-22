@@ -153,6 +153,7 @@ internal sealed class ProbeFixture
             " boundsMax="+b.max.x+","+b.max.y+","+b.max.z+
             " streamed="+streamed[i]+" enabled="+obstacles[i].enabled+
             " oversized="+oversizedIndices.Contains(i)+
+            " stamp="+probeQuery+" visited="+probeVisited[i]+
             " midpointCell="+x+","+z+" inMidpointCell="+inCell+
             " boundsCenterCell="+hx+","+hz+" inBoundsCell="+inBoxCell;
     }
