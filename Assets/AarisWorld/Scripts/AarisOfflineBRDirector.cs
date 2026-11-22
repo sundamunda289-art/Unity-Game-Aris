@@ -526,6 +526,11 @@ namespace Aaris.MapReview
             return TryGetGround(x, z, out height);
         }
 
+        // An intentionally terrain-free isolated 100-bot CPU test must remain
+        // a meaningful movement benchmark. In the real map a failed terrain
+        // sample still blocks travel across cliffs, oceans and map edges.
+        internal bool VirtualWorldHasNoTerrain => terrains == null || terrains.Length == 0;
+
         internal bool WouldCrossInactiveCover(Vector3 from, Vector3 displacement)
         {
             if (nearbyColliders == null || displacement.sqrMagnitude < 0.000001f)
@@ -1642,9 +1647,13 @@ namespace Aaris.MapReview
                     ? Vector3.zero : tangent;
             }
             Vector3 destination = origin + step;
-            if (step.sqrMagnitude > 0f &&
-                owner.TryVirtualGround(destination.x, destination.z, out float ground))
-                transform.position = new Vector3(destination.x, ground + 0.08f, destination.z);
+            if (step.sqrMagnitude > 0f)
+            {
+                if (owner.TryVirtualGround(destination.x, destination.z, out float ground))
+                    transform.position = new Vector3(destination.x, ground + 0.08f, destination.z);
+                else if (owner.VirtualWorldHasNoTerrain)
+                    transform.position = new Vector3(destination.x, origin.y, destination.z);
+            }
             if (heading.sqrMagnitude > 0.001f)
                 transform.rotation = Quaternion.Slerp(transform.rotation,
                     Quaternion.LookRotation(heading), Mathf.Clamp01(dt * 5f));
