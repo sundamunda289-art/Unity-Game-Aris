@@ -142,7 +142,8 @@ namespace Aaris.MapReview
             using var profilerScope = k_ColliderGridIndex.Auto();
 #endif
             Collider c = obstacles[i];
-            if (c == null || !c.enabled || c.isTrigger) return;
+            if (c == null || !c.enabled) return;
+            if (c.isTrigger) return;
             // Trigger volumes are gameplay sensors, not physical cover: keep
             // them live rather than streaming them out with static walls.
             // Intentionally disabled authored colliders must stay off.
