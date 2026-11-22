@@ -754,8 +754,14 @@ namespace Aaris.MapReview
                         Bounds bounds = collider.bounds;
                         // Respect the current collision stance (standing, crouching,
                         // prone), rather than assuming a standing 1.8m capsule.
+                        // Only the receiver's own full-body collider can
+                        // use height-based head detection. A raised hand,
+                        // forearm or shoulder child collider is not a head,
+                        // even when struck in its upper 21 percent. Authored
+                        // Head/HeadCollider child hitboxes remain authoritative.
                         headshot = IsAuthoredHeadHit(collider, node) ||
-                            (bounds.size.y > .28f && hitPosition.Value.y >=
+                            (collider.transform == node &&
+                             bounds.size.y > .28f && hitPosition.Value.y >=
                                 bounds.min.y + bounds.size.y * .79f);
                         if (headshot) damage *= 1.75f;
                         float before = victim.CurrentHealth;
