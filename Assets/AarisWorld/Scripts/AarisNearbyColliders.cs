@@ -610,19 +610,20 @@ namespace Aaris.MapReview
             return true;
         }
 
-        // Narrow rotated houses occupy much less space than their cached
-        // world AABB. AABB-only overlap makes distant AI/vehicles treat an
-        // empty flank as an impassable building. SAT tests the true transformed
-        // BoxCollider against the probe's world AABB without allocations.
-        // MeshCollider bounds remain conservative (no expensive mesh reads).
+        // Both vehicles and diagonal static buildings can be rotated. Their
+        // world AABBs overlap even when the *actual* two shapes have a safe
+        // gap. Use 15 SAT axes for oriented probe and transformed authored box.
+        // This stays allocation-free; only candidates that pass the cached
+        // spatial-grid and broadphase AABB incur the narrowphase cost.
         private static bool SeparatedBoxAxis(Vector3 axis, Vector3 between,
-            Vector3 probeExtents, Vector3 edgeX, Vector3 edgeY, Vector3 edgeZ)
+            Vector3 probeX, Vector3 probeY, Vector3 probeZ,
+            Vector3 edgeX, Vector3 edgeY, Vector3 edgeZ)
         {
             float axisLengthSqr = axis.sqrMagnitude;
             if (axisLengthSqr < 0.0000000001f) return false;
-            float probeRadius = Mathf.Abs(axis.x) * probeExtents.x +
-                Mathf.Abs(axis.y) * probeExtents.y +
-                Mathf.Abs(axis.z) * probeExtents.z;
+            float probeRadius = Mathf.Abs(Vector3.Dot(axis, probeX)) +
+                Mathf.Abs(Vector3.Dot(axis, probeY)) +
+                Mathf.Abs(Vector3.Dot(axis, probeZ));
             float boxRadius = Mathf.Abs(Vector3.Dot(axis, edgeX)) +
                 Mathf.Abs(Vector3.Dot(axis, edgeY)) +
                 Mathf.Abs(Vector3.Dot(axis, edgeZ));
@@ -631,42 +632,51 @@ namespace Aaris.MapReview
                 probeRadius + boxRadius + 0.001f * Mathf.Sqrt(axisLengthSqr);
         }
 
-        private static bool IntersectsInactiveBox(BoxCollider box, Bounds probe)
+        private static bool IntersectsInactiveBox(BoxCollider box,
+            Vector3 probeCenter, Vector3 probeHalfExtents, Quaternion probeRotation)
         {
             Matrix4x4 matrix = box.transform.localToWorldMatrix;
             Vector3 center = matrix.MultiplyPoint3x4(box.center);
             Vector3 edgeX = matrix.MultiplyVector(Vector3.right * (box.size.x * 0.5f));
             Vector3 edgeY = matrix.MultiplyVector(Vector3.up * (box.size.y * 0.5f));
             Vector3 edgeZ = matrix.MultiplyVector(Vector3.forward * (box.size.z * 0.5f));
-            Vector3 offset = center - probe.center;
-            Vector3 radius = probe.extents;
-            // The cached world AABB already tests the three world axes.
-            // Remaining SAT axes: three box-face normals and nine cross
-            // products of a world basis axis with each box edge.
+            Vector3 probeX = probeRotation * (Vector3.right * probeHalfExtents.x);
+            Vector3 probeY = probeRotation * (Vector3.up * probeHalfExtents.y);
+            Vector3 probeZ = probeRotation * (Vector3.forward * probeHalfExtents.z);
+            Vector3 offset = center - probeCenter;
+            // 3 face normals from each oriented box and the 9 possible
+            // cross products. In a sheared import the edge cross-products
+            // still represent the real parallelepiped's face normals.
             return !SeparatedBoxAxis(Vector3.Cross(edgeY, edgeZ), offset,
-                       radius, edgeX, edgeY, edgeZ) &&
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
                 !SeparatedBoxAxis(Vector3.Cross(edgeZ, edgeX), offset,
-                       radius, edgeX, edgeY, edgeZ) &&
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
                 !SeparatedBoxAxis(Vector3.Cross(edgeX, edgeY), offset,
-                       radius, edgeX, edgeY, edgeZ) &&
-                !SeparatedBoxAxis(Vector3.Cross(Vector3.right, edgeX), offset,
-                       radius, edgeX, edgeY, edgeZ) &&
-                !SeparatedBoxAxis(Vector3.Cross(Vector3.right, edgeY), offset,
-                       radius, edgeX, edgeY, edgeZ) &&
-                !SeparatedBoxAxis(Vector3.Cross(Vector3.right, edgeZ), offset,
-                       radius, edgeX, edgeY, edgeZ) &&
-                !SeparatedBoxAxis(Vector3.Cross(Vector3.up, edgeX), offset,
-                       radius, edgeX, edgeY, edgeZ) &&
-                !SeparatedBoxAxis(Vector3.Cross(Vector3.up, edgeY), offset,
-                       radius, edgeX, edgeY, edgeZ) &&
-                !SeparatedBoxAxis(Vector3.Cross(Vector3.up, edgeZ), offset,
-                       radius, edgeX, edgeY, edgeZ) &&
-                !SeparatedBoxAxis(Vector3.Cross(Vector3.forward, edgeX), offset,
-                       radius, edgeX, edgeY, edgeZ) &&
-                !SeparatedBoxAxis(Vector3.Cross(Vector3.forward, edgeY), offset,
-                       radius, edgeX, edgeY, edgeZ) &&
-                !SeparatedBoxAxis(Vector3.Cross(Vector3.forward, edgeZ), offset,
-                       radius, edgeX, edgeY, edgeZ);
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeY, probeZ), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeZ, probeX), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeX, probeY), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeX, edgeX), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeX, edgeY), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeX, edgeZ), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeY, edgeX), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeY, edgeY), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeY, edgeZ), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeZ, edgeX), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeZ, edgeY), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ) &&
+                !SeparatedBoxAxis(Vector3.Cross(probeZ, edgeZ), offset,
+                       probeX, probeY, probeZ, edgeX, edgeY, edgeZ);
         }
 
         // Parked cars can stream as far as 105 m away, while authored house/wall
@@ -711,7 +721,7 @@ namespace Aaris.MapReview
                     if (candidate != null && !candidate.enabled &&
                         !candidate.isTrigger &&
                         (!(candidate is BoxCollider box) ||
-                         IntersectsInactiveBox(box, probe)))
+                         IntersectsInactiveBox(box, center, halfExtents, rotation)))
                         return true;
                 }
                 return false;
@@ -736,7 +746,7 @@ namespace Aaris.MapReview
                         if (worldBounds[i].Intersects(probe) &&
                             streamed[i] && c != null && !c.enabled &&
                             !c.isTrigger && (!(c is BoxCollider box) ||
-                                IntersectsInactiveBox(box, probe)))
+                                IntersectsInactiveBox(box, center, halfExtents, rotation)))
                             return true;
                     }
                 }
@@ -750,7 +760,7 @@ namespace Aaris.MapReview
                 if (worldBounds[i].Intersects(probe) &&
                     streamed[i] && c != null && !c.enabled &&
                     !c.isTrigger && (!(c is BoxCollider box) ||
-                        IntersectsInactiveBox(box, probe)))
+                        IntersectsInactiveBox(box, center, halfExtents, rotation)))
                     return true;
             }
             return false;
