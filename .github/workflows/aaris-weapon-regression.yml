@@ -16,6 +16,7 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisOfflineHealth.cs'
       - 'Tools/Validation/test_weapon_pause_input_authority.py'
       - 'Tools/Validation/test_combat_redlock_100bots.py'
+      - 'Tools/Validation/test_combat_cover_zone_steering.py'
       - 'Tools/Validation/test_combat_camera_hud_ai.py'
       - 'Tools/Validation/test_offline_rival_attacker_threat_budget.py'
       - 'Tools/Validation/check_weapon_loot.py'
@@ -39,6 +40,7 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisOfflineHealth.cs'
       - 'Tools/Validation/test_weapon_pause_input_authority.py'
       - 'Tools/Validation/test_combat_redlock_100bots.py'
+      - 'Tools/Validation/test_combat_cover_zone_steering.py'
       - 'Tools/Validation/test_combat_camera_hud_ai.py'
       - 'Tools/Validation/test_offline_rival_attacker_threat_budget.py'
       - 'Tools/Validation/check_weapon_loot.py'
@@ -77,6 +79,7 @@ jobs:
       - name: Verify scopes, physical damage, readable HP and 100-bot attack budget
         run: |
           python3 Tools/Validation/test_combat_redlock_100bots.py
+          python3 Tools/Validation/test_combat_cover_zone_steering.py
           python3 Tools/Validation/test_combat_camera_hud_ai.py
           python3 Tools/Validation/test_offline_rival_attacker_threat_budget.py
           python3 Tools/Validation/test_combat_visible_target_gate.py
