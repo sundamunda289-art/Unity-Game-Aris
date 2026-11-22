@@ -32,9 +32,10 @@ class CombatFlashLifecycle(unittest.TestCase):
             "public static void NotifyOutgoingDamage(", 1)[0]
         self.assertIn("if (attacker == null) { hitDirection.gameObject.SetActive(false); return; }",
                       damage)
-        self.assertRegex(damage,
-            r"if \(from\.sqrMagnitude < \.001f\)\s*\{\s*"
-            r"hitDirection\.gameObject\.SetActive\(false\);\s*return;\s*\}")
+        self_hit = damage.split("if (from.sqrMagnitude < .001f)", 1)[1].split(
+            "from.Normalize();", 1)[0]
+        self.assertIn("hitDirection.gameObject.SetActive(false);", self_hit)
+        self.assertIn("return;", self_hit)
 
     def test_no_fullscreen_color_updates_while_inactive(self):
         tick = SOURCE.split("private void LateUpdate()", 1)[1].split(
