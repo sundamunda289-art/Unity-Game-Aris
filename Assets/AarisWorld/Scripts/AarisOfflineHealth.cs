@@ -58,7 +58,10 @@ namespace Aaris.MapReview
             if (previous > current) Damaged?.Invoke(this, previous - current, attacker);
             if (!dead) return;
             Died?.Invoke(this);
-            Debug.Log("Aaris offline combat: combatant defeated.");
+            // Elimination logs should not capture stack traces for up to 100 bots
+            // in a production Android match. Keep development diagnostics.
+            if (Debug.isDebugBuild)
+                Debug.Log("Aaris offline combat: combatant defeated.");
         }
 
         public void RestoreHealth(float amount)
