@@ -240,6 +240,25 @@ internal static class BoundedProbeTests
     { checks++; if(!ok) throw new Exception(why); }
     static float Range(Random r,float lo,float hi) =>
         lo+(float)r.NextDouble()*(hi-lo);
+    // Independent 2D reference: four corner-separating axes for two yaw
+    // rectangles. The production code uses 15 vector cross-products in 3D.
+    static bool ReferenceYawRectangles(float x,float z,float a,float b,
+        float probeYaw,float halfX,float halfZ,float boxYaw)
+    {
+        float c=(float)Math.Cos(boxYaw),sn=(float)Math.Sin(boxYaw);
+        float pc=(float)Math.Cos(probeYaw),ps=(float)Math.Sin(probeYaw);
+        float[] ax={c,sn,pc,ps}, az={-sn,c,-ps,pc};
+        for(int k=0;k<4;k++)
+        {
+            float wallRadius=halfX*Math.Abs(ax[k]*c-az[k]*sn)+
+                halfZ*Math.Abs(ax[k]*sn+az[k]*c);
+            float probeRadius=a*Math.Abs(ax[k]*pc-az[k]*ps)+
+                b*Math.Abs(ax[k]*ps+az[k]*pc);
+            if(Math.Abs(x*ax[k]+z*az[k])>wallRadius+probeRadius+.001f)
+                return false;
+        }
+        return true;
+    }
     public static void Main()
     {
         var rng=new Random(20261121);
@@ -390,9 +409,18 @@ internal static class BoundedProbeTests
         Check(obb.Probe(new Vector3(49f,1f,89f),smallFootprint,
             Quaternion.Yaw(Math.PI/3)),
             "rotated vehicle footprint must still respect actual wall");
+        float off=(float)(2.5/Math.Sqrt(2));
+        Vector3 parallelCar=new Vector3(40f+off,1f,80f-off);
+        Vector3 carHalf=new Vector3(1f,.9f,2.1f);
+        Check(!obb.Probe(parallelCar,carHalf,Quaternion.Yaw(Math.PI/4)),
+            "parallel parked vehicle should fit beside a diagonal wall");
+        float near=(float)(.7/Math.Sqrt(2));
+        Check(obb.Probe(new Vector3(40f+near,1f,80f-near),
+            carHalf,Quaternion.Yaw(Math.PI/4)),
+            "parked vehicle must still reject genuinely overlapping wall");
 
-        // Compare the exact injected production SAT against an independent
-        // two-dimensional yaw-only rectangle-vs-AABB reference (four axes).
+        // Compare the exact injected 15-axis 3D SAT against an independent
+        // four-axis yaw-only rectangle overlap reference with BOTH rotated.
         var shape=new ProbeFixture(1);
         var shapeTransform=new Transform { position=new Vector3(0f,0f,0f) };
         var shapeBox=new BoxCollider { enabled=false, transform=shapeTransform,
@@ -419,15 +447,14 @@ internal static class BoundedProbeTests
             float rx=Range(rng,.1f,3f), rz=Range(rng,.1f,3f);
             Vector3 pos=new Vector3(px,1f,pz);
             Vector3 half=new Vector3(rx,.8f,rz);
-            bool worldX=Math.Abs(px)<=bbX+rx+.0001f;
-            bool worldZ=Math.Abs(pz)<=bbZ+rz+.0001f;
-            bool localX=Math.Abs(px*c-pz*sn)<=halfX+Math.Abs(c)*rx+Math.Abs(sn)*rz+.001f;
-            bool localZ=Math.Abs(px*sn+pz*c)<=halfZ+Math.Abs(sn)*rx+Math.Abs(c)*rz+.001f;
-            bool reference=worldX && worldZ && localX && localZ;
-            bool actual=shape.Probe(pos,half,Quaternion.identity);
-            Check(actual==reference,"rotated-box SAT differs from independent 2D overlap");
+            float probeYaw=Range(rng,-3.14159f,3.14159f);
+            bool reference=ReferenceYawRectangles(px,pz,rx,rz,
+                probeYaw,halfX,halfZ,shapeTransform.yaw);
+            bool actual=shape.Probe(pos,half,Quaternion.Yaw(probeYaw));
+            Check(actual==reference,
+                "two rotated boxes differ from independent 2D reference");
         }
-        Console.WriteLine("STREAMED_BOX_SAT_PRODUCTION_CSHARP_PASS checks=1203");
+        Console.WriteLine("STREAMED_BOX_SAT_PRODUCTION_CSHARP_PASS checks=1205");
         Console.WriteLine("STREAMED_COVER_RAY_PRODUCTION_CSHARP_PASS");
         Console.WriteLine("BOUNDED_COLLIDER_PROBE_PASS checks="+checks);
         Console.WriteLine("PRODUCTION_CSHARP_METHOD_TEST; no Unity Editor/Android FPS claim");
