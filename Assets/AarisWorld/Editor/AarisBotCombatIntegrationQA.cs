@@ -206,6 +206,18 @@ namespace Aaris.MapReview.Editor
                 inputs[1] = flank + Vector3.forward * 160f;
                 Check((bool)query.Invoke(null, inputs),
                     "Rotated disabled box still blocks a real through-wall ray", report);
+                // A disabled imported trigger is not world cover and must
+                // not block the scope merely because its old bounds remain.
+                wall.isTrigger = true;
+                Check(!(bool)query.Invoke(null, inputs),
+                    "Streamed-out trigger volume cannot block Red-Lock", report);
+                wall.enabled = true;
+                ((System.Collections.IDictionary)Get(grid, "cells")).Clear();
+                Set(grid, "worldBounds", new Bounds[1]);
+                Set(grid, "streamed", new bool[1]);
+                Call(grid, "IndexCollider", 0);
+                Check(wall.enabled && !((bool[])Get(grid, "streamed"))[0],
+                    "Authored trigger sensors stay live during collider indexing", report);
             }
             finally
             {
