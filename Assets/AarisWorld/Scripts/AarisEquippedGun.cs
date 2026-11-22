@@ -611,6 +611,10 @@ namespace Aaris.MapReview
             bool muzzleBlocked = FirstExternalHit(
                 new Ray(muzzleAnchor, owner.transform.forward), 0.24f,
                 owner.transform, out RaycastHit closeCover);
+            Vector3 hiddenMuzzlePoint = Vector3.zero;
+            bool hiddenMuzzleCover = !muzzleBlocked &&
+                AarisOfflineBRDirector.HasInactiveShotCover(muzzleAnchor,
+                    muzzle, out hiddenMuzzlePoint);
             AarisAudioDirector.GunShot(spec.category, spec.id, muzzle);
 
             // Bounded sight-assist is shared with the red HUD reticle; never
@@ -679,6 +683,20 @@ namespace Aaris.MapReview
                 {
                     // Degenerate convergence cannot authorize camera-only damage.
                     targetFound = false;
+                }
+                // Refuse damage through a streamed-out authored wall and end
+                // the tracer at its cached contact, without activating colliders.
+                if (hiddenMuzzleCover)
+                {
+                    targetFound = false;
+                    impactPoint = hiddenMuzzlePoint;
+                }
+                else if (!muzzleBlocked &&
+                    AarisOfflineBRDirector.HasInactiveShotCover(muzzle,
+                        impactPoint, out Vector3 hiddenImpact))
+                {
+                    targetFound = false;
+                    impactPoint = hiddenImpact;
                 }
                 // One tracer on a bolt/semi shot, every third automatic shot.
                 // Repeated pellets share the visual, rather than spawning 8 trails.
