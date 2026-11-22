@@ -1571,6 +1571,28 @@ namespace Aaris.MapReview
                 float wanted = Mathf.Clamp01(groundSpeed / 2.9f);
                 UpdateAnimationBlend(wanted, dt);
             }
+            // Reload outside the line-of-sight gate: a rival taking cover
+            // should refill while sheltered, not wait until an opponent steps
+            // into a clear firing lane. nextAttack is the existing reload
+            // cooldown, so this cannot refill repeatedly on consecutive frames.
+            if (carriedGun != null && carriedMagazine == 0 && now >= nextAttack)
+            {
+                if (carriedReserve <= 0)
+                {
+                    // Finite reserve ammo: fall back to real melee/scavenging.
+                    carriedGun = null;
+                    nextLootAt = now + 1f;
+                    nextAttack = now + 0.7f;
+                }
+                else
+                {
+                    int refill = Mathf.Min(carriedGun.magazineSize, carriedReserve);
+                    carriedMagazine = refill;
+                    carriedReserve -= refill;
+                    nextAttack = now + carriedGun.reloadSeconds;
+                }
+            }
+
             // Punch only within contact range if no firearm is equipped.
             if (hasTarget && canSee &&
                 distance <= (carriedGun == null ? 2.25f : 38f) &&
@@ -1581,23 +1603,6 @@ namespace Aaris.MapReview
             {
                 // Physical loot changes the bot's magazine, fire interval,
                 // damage and gunshot sound; no runtime gun model clone required.
-                if (carriedGun != null && carriedMagazine == 0)
-                {
-                    // Reserve ammunition is finite, as for the player.
-                    // Empty rivals revert to real melee or seek another pickup.
-                    if (carriedReserve <= 0)
-                    {
-                        carriedGun = null;
-                        nextLootAt = now + 1f;
-                        nextAttack = now + 0.7f;
-                        return;
-                    }
-                    int refill = Mathf.Min(carriedGun.magazineSize, carriedReserve);
-                    carriedMagazine = refill;
-                    carriedReserve -= refill;
-                    nextAttack = now + carriedGun.reloadSeconds;
-                    return;
-                }
                 float fireInterval = carriedGun != null
                     ? Mathf.Clamp(carriedGun.ShotInterval * 3f, .35f, 2.4f)
                     : 1.15f;
