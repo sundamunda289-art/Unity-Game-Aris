@@ -17,6 +17,22 @@ CAT = json.loads((ROOT / "Assets/Resources/AarisWeapons/weapon_catalog.json").re
 
 
 class CombatEndToEndContract(unittest.TestCase):
+    def test_streamed_out_static_cover_still_blocks_damage(self):
+        grid = read("AarisNearbyColliders.cs")
+        self.assertIn("internal bool TryInactiveCoverHit(", grid)
+        self.assertIn("worldBounds[i].IntersectRay(ray, out float t)", grid)
+        self.assertIn("c == null || c.enabled", grid)
+        self.assertIn("probeVisited[i] == stamp", grid)
+        self.assertIn("foreach (int i in oversizedIndices)", grid)
+        self.assertIn("TryInactiveCoverHit(from, to, out contact)", BOTS)
+        self.assertIn("HasInactiveShotCover(muzzle, cameraImpact", BOTS)
+        self.assertIn("HasInactiveShotCover(eye, aimPoint", BOTS)
+        self.assertIn("HasInactiveShotCover(bodyEye", BOTS)
+        self.assertIn("HasInactiveShotCover(muzzleAnchor", GUN)
+        self.assertIn("HasInactiveShotCover(muzzle,", GUN)
+        self.assertIn("targetFound = false;", GUN)
+        self.assertIn("impactPoint = hiddenImpact;", GUN)
+
     def test_red_lock_uses_physical_muzzle_path(self):
         self.assertIn("MuzzlePathOpenTo(shooter, candidate.transform, closestPoint)", BOTS)
         self.assertIn("new Ray(anchor, shooter.forward), 0.24f", BOTS)
