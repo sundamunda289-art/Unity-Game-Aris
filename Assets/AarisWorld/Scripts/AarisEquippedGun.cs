@@ -93,6 +93,17 @@ namespace Aaris.MapReview
         private readonly float[] casingDeadlines =
             new float[MaximumPendingCasingEjections];
         private int casingDeadlineHead, pendingCasingEjections;
+        // Renderer-only brass must never consume UnityEngine.Random state:
+        // visual speed/spin variation is independent of gameplay and audio.
+        private uint casingVisualSeed = 0xA15C0DEu;
+        private float NextCasingVisualRange(float minimum, float maximum)
+        {
+            casingVisualSeed = unchecked(
+                casingVisualSeed * 1664525u + 1013904223u);
+            float unit = (casingVisualSeed & 0x00FFFFFFu) *
+                (1f / 16777216f);
+            return minimum + (maximum - minimum) * unit;
+        }
         private float casingGroundY;
         private bool casingRested;
         private static Material sharedBrassMaterial, sharedShotgunShellMaterial;
@@ -144,6 +155,7 @@ namespace Aaris.MapReview
             magazine = Mathf.Clamp(state.Magazine, 0, spec.magazineSize);
             reserve = Mathf.Max(0, state.Reserve);
             spreadSeed = state.SpreadSeed;
+            casingVisualSeed = state.SpreadSeed ^ 0xA15C0DEu;
             nextFire = state.NextShotAt;
             reloadUntil = state.ReloadUntil;
             reloading = state.Reloading;
@@ -555,16 +567,16 @@ namespace Aaris.MapReview
             pose.SetParent(null, true);
             pose.position = port;
             pose.rotation = transform.rotation *
-                Quaternion.Euler(90f, UnityEngine.Random.Range(0f, 360f), 0f);
-            float sideSpeed = UnityEngine.Random.Range(2.2f, 3.2f);
-            float upSpeed = UnityEngine.Random.Range(1.15f, 1.75f);
-            float backSpeed = UnityEngine.Random.Range(0.12f, 0.48f);
+                Quaternion.Euler(90f, NextCasingVisualRange(0f, 360f), 0f);
+            float sideSpeed = NextCasingVisualRange(2.2f, 3.2f);
+            float upSpeed = NextCasingVisualRange(1.15f, 1.75f);
+            float backSpeed = NextCasingVisualRange(0.12f, 0.48f);
             Vector3 velocity = transform.right * sideSpeed +
                 transform.up * upSpeed - transform.forward * backSpeed;
             Vector3 angular = new Vector3(
-                UnityEngine.Random.Range(520f, 980f),
-                UnityEngine.Random.Range(760f, 1320f),
-                UnityEngine.Random.Range(420f, 860f));
+                NextCasingVisualRange(520f, 980f),
+                NextCasingVisualRange(760f, 1320f),
+                NextCasingVisualRange(420f, 860f));
             float groundY;
             // One physics query per ejected shell; never a per-frame raycast.
             if (TryFindCasingGround(port,
