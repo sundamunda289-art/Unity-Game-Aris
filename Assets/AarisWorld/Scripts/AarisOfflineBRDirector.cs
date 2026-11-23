@@ -787,7 +787,7 @@ namespace Aaris.MapReview
             AarisWeaponSpec gun)
         {
             if (rivalGunfire != null && gun != null)
-                rivalGunfire.Emit(shooter, impact, gun.category == "Shotgun");
+                rivalGunfire.EmitForGun(shooter, impact, gun);
         }
 
         internal void DropRivalLoot(Vector3 position, AarisWeaponSpec gun,
