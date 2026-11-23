@@ -577,7 +577,7 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
             updated[index] = incoming
             return updated
 
-        early = [("shell_drop", 0.2 + i * 0.01) for i in range(16)]
+        early = [("shell_drop", round(0.2 + i * 0.01, 2)) for i in range(16)]
         self.assertEqual(add(early, ("shell_drop", 1.4)), early)
         closer = add(early, ("shell_drop", 0.19))
         self.assertIn(("shell_drop", 0.19), closer)
@@ -592,6 +592,28 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
                              ("shell_drop", 0.1)),
                          [("grenade_throw", 1 + i) for i in range(16)])
 
+    def test_rival_gunfire_and_delayed_cues_are_directional_3d(self):
+        bot_fire = RIVAL.split("float fireInterval = carriedGun != null", 1)[1].split(
+            "private float NextVirtualRandom()", 1)[0]
+        self.assertIn("isPlayerShot: false", bot_fire)
+        self.assertIn("bool isPlayerShot = true", AUDIO)
+        self.assertIn("if (forceWorld) local = false;", AUDIO)
+        self.assertIn("bool local = IsLocalCue(name);", AUDIO)
+        self.assertIn("bool forceWorld = false", AUDIO)
+        self.assertIn("forceWorld: !isPlayerShot", AUDIO)
+        self.assertIn("public bool Local;", AUDIO)
+        self.assertIn("Local = local", AUDIO)
+        self.assertIn("forceWorld: !cue.Local", AUDIO)
+        gunshot = AUDIO.split("public static void GunShot(", 1)[1].split(
+            "public static void BulletImpact(", 1)[0]
+        self.assertIn("local: isPlayerShot", gunshot)
+        self.assertIn("private const int LocalVoiceCount = 4;", AUDIO)
+        self.assertIn("private const int VoiceCount = 12;", AUDIO)
+        # No per-bot sound source or duplicate global voice manager.
+        self.assertNotIn("new AudioSource", gunshot)
+        self.assertNotIn("AddComponent<AudioSource>", gunshot)
+        self.assertNotIn("Instantiate(", gunshot)
+
     def test_brass_drop_audio_never_precedes_real_ejection(self):
         gunshot = AUDIO.split("public static void GunShot(", 1)[1].split(
             "public static void BulletImpact(", 1)[0]
@@ -600,7 +622,8 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
         self.assertIn("private float NextGunshotPitch()", AUDIO)
         self.assertIn('category == "Shotgun" ? .31f', gunshot)
         self.assertIn('category == "Sniper" ? .29f : .025f', gunshot)
-        self.assertIn('instance.Schedule("shell_drop", position, casingDelay + .63f, .16f);', gunshot)
+        self.assertIn('instance.Schedule("shell_drop", position, casingDelay + .63f,', gunshot)
+        self.assertIn('.16f, local: isPlayerShot);', gunshot)
         player_ejection = GUN.split("private void ScheduleCasingEjection()", 1)[1].split(
             "private void TickCasingEjections()", 1)[0]
         for category, expected in (("Shotgun", 0.31), ("Sniper", 0.29), ("SMG", 0.025)):
