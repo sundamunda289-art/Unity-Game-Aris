@@ -47,6 +47,27 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
         self.assertNotIn("new LineRenderer()",firing)
         self.assertNotIn("GameObject.CreatePrimitive",firing)
 
+    def test_shell_ground_ignores_other_living_bots_and_physics_vehicles(self):
+        casing = GUN.split("internal static bool TryFindCasingGround(", 1)[1].split(
+            "private static Mesh MuzzleFlameMesh()", 1)[0]
+        for required in (
+            "support.attachedRigidbody != null",
+            "support.GetComponentInParent<CharacterController>() != null",
+            "support.transform.IsChildOf(shooter)",
+            "hit.normal.y <= .45f",
+            "hit.distance >= nearest",
+        ):
+            self.assertIn(required, casing)
+        self.assertEqual(casing.count("AarisPhysicsHitBuffer.Raycast("), 1)
+        self.assertNotIn("new GameObject(", casing)
+        self.assertNotIn("Physics.Raycast(", casing)
+        self.assertIn("AarisEquippedGun.TryFindCasingGround(port, shooter,", FX)
+        native = (ROOT / "Assets/AarisWorld/Editor/AarisProGunplayQA.cs").read_text("utf-8")
+        self.assertIn("Shell falls past nearby live rival capsule to stationary floor", native)
+        self.assertIn("Shell falls past kinematic vehicle to stationary floor", native)
+        self.assertIn("rivalCapsule.enabled = false;", native)
+        self.assertIn("vehicleCollider.enabled = false;", native)
+
     def test_every_automatic_round_has_a_separate_reusable_streak(self):
         self.assertIn("private const int ExtraTracerSlots = 2;", GUN)
         self.assertIn("new TracerState[ExtraTracerSlots]", GUN)
