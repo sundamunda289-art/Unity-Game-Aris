@@ -1986,11 +1986,13 @@ namespace Aaris.MapReview
                 }
 
             }
-            // A failed Avatar import must not hide a valid 3D model.
-            if (animator.avatar == null || !animator.avatar.isValid ||
-                !animator.avatar.isHuman || idle == null || run == null) return;
+            // A failed Avatar/clip import must not disable native culling:
+            // the prefab may still have its authored Animator controller.
+            // Apply culling before the graph-only early exit as well.
             animator.applyRootMotion = false;
             animator.cullingMode = AnimatorCullingMode.CullCompletely;
+            if (animator.avatar == null || !animator.avatar.isValid ||
+                !animator.avatar.isHuman || idle == null || run == null) return;
             graph = PlayableGraph.Create("Aaris Offline Rival");
             graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
             animations = AnimationMixerPlayable.Create(graph, 2);
@@ -3056,6 +3058,11 @@ namespace Aaris.MapReview
                     carriedMagazine, carriedReserve, medkits, remoteLootSeed);
                 owner.RivalDefeated(this);
             }
+            // Keep the existing 1.2s corpse lifetime, but remove dead agents
+            // from the native Update dispatcher and stop their PlayableGraph.
+            // HP, death crate, kill-feed and spatial cleanup already happened.
+            if (graph.IsValid()) graph.Stop();
+            enabled = false;
             Destroy(gameObject, 1.2f);
         }
 
