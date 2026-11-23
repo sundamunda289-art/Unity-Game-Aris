@@ -154,7 +154,7 @@ namespace Aaris.MapReview.Editor
                     "near off-camera rival submits zero detailed renderers", report);
                 var body = BotType.GetProperty("HasVisibleBody",
                     BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-                Check(body != null && (bool)body.GetValue(bot) && bot.enabled,
+                Check(body != null && (bool)body.GetValue(bot) && ((Behaviour)bot).enabled,
                     "near hidden rival remains a live targetable actor", report);
                 Call(bot, "SetDetailedRenderVisibility", false);
                 Check(normalRenderer.forceRenderingOff,
