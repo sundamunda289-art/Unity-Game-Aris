@@ -22,6 +22,7 @@ namespace Aaris.MapReview
             public string Key;
             public Vector3 Position;
             public float At, Volume;
+            public bool Local;
         }
         private readonly TimedCue[] scheduled = new TimedCue[16];
         // Most frames have no due audio cue. Track the next deadline so a
@@ -275,7 +276,8 @@ namespace Aaris.MapReview
             key == "grenade_pin" || key == "grenade_throw" ||
             key == "car_start" || key == "gloo_deploy";
 
-        private void OneShot(string name, Vector3 point, float volume = 1f, float pitch = 1f)
+        private void OneShot(string name, Vector3 point, float volume = 1f,
+            float pitch = 1f, bool forceWorld = false)
         {
             AudioClip clip = GetClip(name);
             if (!isActiveAndEnabled || clip == null) return;
@@ -283,6 +285,9 @@ namespace Aaris.MapReview
             // A shotgun/impact cue must not be stolen by round-robin wrapping
             // while another of the 12 existing channels has already finished.
             bool local = IsLocalCue(name);
+            // Player shots use the dedicated close-mix; nearby rivals remain
+            // directional 3D voices, even when sharing the exact same clip.
+            if (forceWorld) local = false;
             int start = local ? 0 : LocalVoiceCount;
             int count = local ? LocalVoiceCount : VoiceCount - LocalVoiceCount;
             int cursor = local ? nextLocalVoice : nextWorldVoice;
@@ -331,7 +336,8 @@ namespace Aaris.MapReview
                 key == "bolt_reload" ? 1 : 0;
         }
 
-        private void Schedule(string key, Vector3 point, float seconds, float volume)
+        private void Schedule(string key, Vector3 point, float seconds,
+            float volume, bool local = true)
         {
             int empty = -1;
             for (int i = 0; i < scheduled.Length; i++)
@@ -364,7 +370,8 @@ namespace Aaris.MapReview
             }
             scheduled[empty] = new TimedCue
             {
-                Key = key, Position = point, At = at, Volume = volume
+                Key = key, Position = point, At = at, Volume = volume,
+                Local = local
             };
             if (replacedOldest)
             {
@@ -392,13 +399,15 @@ namespace Aaris.MapReview
                 }
                 TimedCue cue = scheduled[i];
                 scheduled[i].Key = null;
-                OneShot(cue.Key, cue.Position, cue.Volume);
+                OneShot(cue.Key, cue.Position, cue.Volume,
+                    forceWorld: !cue.Local);
             }
             nextScheduledAt = next;
         }
 
         /// <summary>Only successful weapon shots call this, never a held Fire button.</summary>
-        public static void GunShot(string category, string id, Vector3 position)
+        public static void GunShot(string category, string id, Vector3 position,
+            bool isPlayerShot = true)
         {
             if (instance == null || !instance.isActiveAndEnabled) return;
             string sound = category == "SMG" ? "smg_shot" :
@@ -407,15 +416,17 @@ namespace Aaris.MapReview
                 id == "BattleRifle" ? "battle_rifle_shot" : "ar_shot";
             float pitch = category == "Pistol" ? 1.24f : 1f;
             instance.OneShot(sound, position, category == "Pistol" ? 0.68f : 0.85f,
-                pitch * instance.NextGunshotPitch());
+                pitch * instance.NextGunshotPitch(), forceWorld: !isPlayerShot);
             // The shell cannot hit the floor before the bolt/pump releases it.
             // From a ~1.3m receiver with upward ejection, a ~0.63s flight
             // is a restrained ground-contact approximation (no extra PhysX).
             float casingDelay = category == "Shotgun" ? .31f :
                 category == "Sniper" ? .29f : .025f;
-            instance.Schedule("shell_drop", position, casingDelay + .63f, .16f);
+            instance.Schedule("shell_drop", position, casingDelay + .63f,
+                .16f, local: isPlayerShot);
             if (category == "Sniper" || category == "Shotgun")
-                instance.Schedule("bolt_reload", position, 0.36f, 0.44f);
+                instance.Schedule("bolt_reload", position, 0.36f, 0.44f,
+                    local: isPlayerShot);
         }
 
         public static void BulletImpact(Vector3 position)
