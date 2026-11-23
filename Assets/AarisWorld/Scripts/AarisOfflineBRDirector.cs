@@ -1635,6 +1635,12 @@ namespace Aaris.MapReview
         private AarisOfflineHealth cachedVirtualDamageHealth;
         private AarisOfflineRival cachedVirtualDamageRival;
         private GameObject visualRoot;
+        // Near attackers must remain physical/targetable behind the camera.
+        // Renderer-only culling removes their skinning/shadow submissions
+        // without disabling their gameplay transform or physical capsule.
+        private Renderer[] detailedRenderers;
+        private bool[] authoredRendererForcedOff;
+        private bool detailedRenderingSuppressed;
         private bool virtualBody;
         private bool lastCameraRelevant;
         private float nextCameraProbe;
@@ -1807,6 +1813,10 @@ namespace Aaris.MapReview
                 (spawnDistanceSqr < 100f * 100f &&
                  owner.IsDistantRivalOnScreen(transform.position)))
                 BuildVisual();
+            // A close rival can physically fight behind the player, but its
+            // newly instantiated renderer must not emit hidden shadow draws.
+            if (visualRoot != null)
+                SetDetailedRenderVisibility(owner.IsDistantRivalOnScreen(transform.position));
         }
 
         // Retain a native collision body only once an actor is physically
@@ -1859,6 +1869,42 @@ namespace Aaris.MapReview
             crowdedCoverCandidates = new Collider[128];
         }
 
+        // Cache once at rig creation: never traverse the Humanoid hierarchy
+        // on a camera tick. Preserve authored forceRenderingOff flags.
+        private void CacheDetailedRenderers()
+        {
+            if (visualRoot == null) return;
+            detailedRenderers = visualRoot.GetComponentsInChildren<Renderer>(true);
+            authoredRendererForcedOff = new bool[detailedRenderers.Length];
+            for (int i = 0; i < detailedRenderers.Length; i++)
+                authoredRendererForcedOff[i] = detailedRenderers[i] != null &&
+                    detailedRenderers[i].forceRenderingOff;
+            detailedRenderingSuppressed = false;
+        }
+
+        // Called at most on the existing camera/visual transition ticks.
+        // No new allocations, shader changes, material swaps or colliders.
+        private void SetDetailedRenderVisibility(bool cameraRelevant)
+        {
+            if (visualRoot == null || !visualRoot.activeSelf ||
+                detailedRenderers == null) return;
+            bool suppress = !cameraRelevant;
+            if (detailedRenderingSuppressed == suppress) return;
+            detailedRenderingSuppressed = suppress;
+            for (int i = 0; i < detailedRenderers.Length; i++)
+            {
+                Renderer renderer = detailedRenderers[i];
+                if (renderer != null)
+                    renderer.forceRenderingOff = suppress ||
+                        authoredRendererForcedOff[i];
+            }
+            if (hasAnimations && graph.IsValid())
+            {
+                if (suppress) graph.Stop();
+                else graph.Play();
+            }
+        }
+
         private void BuildVisual()
         {
             // The bundled CC0 humanoid is shared by all rivals. Avoid six
@@ -1900,6 +1946,7 @@ namespace Aaris.MapReview
                 }
                 if (changed) renderer.sharedMaterials = materials;
             }
+            CacheDetailedRenderers();
             var animator = visual.GetComponentInChildren<Animator>(true);
             if (animator == null) animator = visual.AddComponent<Animator>();
             if (animator.avatar == null || !animator.avatar.isValid || !animator.avatar.isHuman)
@@ -1977,6 +2024,9 @@ namespace Aaris.MapReview
             GameObject retired = visualRoot;
             visualRoot = null;
             visualBuilt = false;
+            detailedRenderers = null;
+            authoredRendererForcedOff = null;
+            detailedRenderingSuppressed = false;
             rigFarSince = -1f;
 #if UNITY_ANDROID && !UNITY_EDITOR
             AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();
@@ -2087,6 +2137,7 @@ namespace Aaris.MapReview
             fallback.transform.localScale = new Vector3(.62f, .9f, .62f);
             Collider collider = fallback.GetComponent<Collider>();
             if (collider != null) { collider.enabled = false; Destroy(collider); }
+            CacheDetailedRenderers();
         }
 
         // Rigs may contain enormous import/bind-pose renderer bounds.
@@ -2152,6 +2203,11 @@ namespace Aaris.MapReview
                     // Entering OR leaving the viewport changes expensive visual/receiver
                     // admission immediately rather than waiting for a second 0.55s tick.
                     if (cameraRelevant != lastCameraRelevant) nextVisualCheck = now;
+                    // Under 55m the attacker stays alive, targetable and
+                    // physically simulated even behind the camera; only
+                    // renderer/shadow and animation submissions go to zero.
+                    if (playerDistanceSqr < 55f * 55f)
+                        SetDetailedRenderVisibility(cameraRelevant);
                     if (!cameraRelevant && playerDistanceSqr >= 55f * 55f)
                     {
                         // Evict offscreen visuals and remote hit receivers on
@@ -2309,6 +2365,7 @@ namespace Aaris.MapReview
                             else graph.Stop();
                         }
                     }
+                    if (visible) SetDetailedRenderVisibility(cameraRelevant);
                 }
                 // The real rig is never replaced inside its current 155 m
                 // quality band. Beyond it, a single shared unskinned mesh
@@ -2520,7 +2577,8 @@ namespace Aaris.MapReview
             if ((hit & CollisionFlags.Sides) != 0 && !canSee)
                 turnOffset = -turnOffset + UnityEngine.Random.Range(-28f, 28f);
 
-            if (hasAnimations && visualRoot != null && visualRoot.activeSelf)
+            if (hasAnimations && visualRoot != null && visualRoot.activeSelf &&
+                !detailedRenderingSuppressed)
             {
                 // Animate based on *actual* capsule travel. Against a house
                 // or blocked corner the rival must not sprint in place.
