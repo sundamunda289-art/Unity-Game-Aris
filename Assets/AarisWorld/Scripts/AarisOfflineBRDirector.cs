@@ -2835,11 +2835,18 @@ namespace Aaris.MapReview
             if (virtualBody || Time.time < nextCoverQuery) return;
             EnsurePhysicalCombatBuffers();
             nextCoverQuery = Time.time + 1.5f;
-            Vector3 away = transform.position - attacker.transform.position;
+            // Cover candidates are evaluated in one synchronous physics
+            // callback. Snapshot both live poses before the overlap; retain
+            // the same collider filtering, costs and native cover raycasts.
+            Transform selfTransform = transform;
+            Vector3 selfPosition = selfTransform.position;
+            Vector3 attackerPosition = attacker.transform.position;
+            Vector3 away = selfPosition - attackerPosition;
             away.y = 0f;
             if (away.sqrMagnitude < .01f) return;
-            away.Normalize();
-            Vector3 coverSearchCenter = transform.position + Vector3.up;
+            // Only the squared near-zero guard needs 'away'. Its normalized
+            // vector was never consumed by cover ranking or raycast.
+            Vector3 coverSearchCenter = selfPosition + Vector3.up;
             int count = Physics.OverlapSphereNonAlloc(coverSearchCenter,
                 11f, coverCandidates, Physics.DefaultRaycastLayers,
                 QueryTriggerInteraction.Ignore);
@@ -2859,21 +2866,21 @@ namespace Aaris.MapReview
                 Collider obstacle = candidates[i];
                 if (obstacle == null || obstacle is TerrainCollider ||
                     obstacle is CharacterController ||
-                    obstacle.transform.IsChildOf(transform)) continue;
+                    obstacle.transform.IsChildOf(selfTransform)) continue;
                 Bounds bounds = obstacle.bounds;
                 if (bounds.size.y < .9f || bounds.size.y > 18f) continue;
                 // Only the far side relative to the shooter is valid cover.
-                Vector3 coverAxis = bounds.center - attacker.transform.position;
+                Vector3 coverAxis = bounds.center - attackerPosition;
                 coverAxis.y = 0f;
                 if (coverAxis.sqrMagnitude < .01f) continue;
                 Vector3 candidate = bounds.center + coverAxis.normalized *
                     (Mathf.Max(bounds.extents.x, bounds.extents.z) + 1.1f);
-                candidate.y = transform.position.y;
-                float cost = (candidate - transform.position).sqrMagnitude;
+                candidate.y = selfPosition.y;
+                float cost = (candidate - selfPosition).sqrMagnitude;
                 if (cost < 2f || cost > 160f || cost >= best) continue;
                 // A low obstacle must really stop a standing-height shot.
                 // Only queried on the existing 1.5s damage/cover cooldown.
-                Vector3 coverFrom = attacker.transform.position + Vector3.up * 1.25f;
+                Vector3 coverFrom = attackerPosition + Vector3.up * 1.25f;
                 Vector3 coverRay = candidate + Vector3.up - coverFrom;
                 float coverDistance = coverRay.magnitude;
                 if (coverDistance < .2f ||
