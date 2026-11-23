@@ -684,16 +684,17 @@ namespace Aaris.MapReview
         // can see them. Callers probe in staggered intervals, without GC.
         internal bool IsDistantRivalOnScreen(Vector3 position)
         {
-            // Retry a disabled cached camera as well as a missing one. Camera
-            // swaps during parachute/landing must not leave remote fighters
-            // permanently invisible after the active gameplay camera changes.
-            if ((cachedRivalCamera == null || !cachedRivalCamera.isActiveAndEnabled) &&
-                Time.unscaledTime >= nextRivalCameraLookup)
+            // Refresh even when an old camera stays enabled during scene
+            // handover. One director-wide lookup, never 100 per-bot lookups.
+            if (Time.unscaledTime >= nextRivalCameraLookup)
             {
-                nextRivalCameraLookup = Time.unscaledTime + 2f;
-                cachedRivalCamera = Camera.main;
-                if (cachedRivalCamera == null && player != null)
-                    cachedRivalCamera = player.GetComponentInChildren<Camera>(true);
+                nextRivalCameraLookup = Time.unscaledTime + 0.5f;
+                Camera liveMain = Camera.main;
+                if (liveMain != null && liveMain.isActiveAndEnabled)
+                    cachedRivalCamera = liveMain;
+                else if (cachedRivalCamera == null || !cachedRivalCamera.isActiveAndEnabled)
+                    cachedRivalCamera = player != null
+                        ? player.GetComponentInChildren<Camera>(true) : null;
             }
             // A missing or disabled gameplay camera is NOT evidence that a remote
             // fighter is visible. Avoid admitting distant meshes, animation and
