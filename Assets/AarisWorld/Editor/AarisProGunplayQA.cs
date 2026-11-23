@@ -321,6 +321,11 @@ namespace Aaris.MapReview.Editor
                 Check(matchedBotCasings == 6 &&
                     botEffectColliders == 0,
                     "Six nearby bot ejections create no transient native Colliders");
+                var earlyCasings = (Array)Read(bots, "casings");
+                Vector3 firstVelocity = (Vector3)Read(earlyCasings.GetValue(0), "velocity");
+                Vector3 secondVelocity = (Vector3)Read(earlyCasings.GetValue(1), "velocity");
+                Check((firstVelocity - secondVelocity).sqrMagnitude > .001f,
+                    "Nearby bot cartridge ejections have distinct ballistic velocities");
                 var slots = (Array)Read(bots, "slots"); var firstSlot = slots.GetValue(0);
                 var botFlash = (Renderer)firstSlot.GetType().GetField("flash", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(firstSlot);
                 Check(botFlash.sharedMaterial == flash.sharedMaterial, "Bots share transparent flame material with player");
@@ -341,11 +346,27 @@ namespace Aaris.MapReview.Editor
                 Check(sniperFlash.localScale.x > .18f &&
                     sniperRenderer.GetComponentsInChildren<Collider>(true).Length == 0,
                     "Sniper visual differs from AR without a new collider");
+                // A real sniper can move/rotate during bolt cycling. Its brass
+                // must leave the NEW receiver port, not the stale shot point.
+                Vector3 originalShooterPoint = actor.transform.position;
+                actor.transform.position += new Vector3(.92f, 0f, .18f);
+                Physics.SyncTransforms();
                 Set(delayedSniperShell, "ejectAt", Time.time - .01f);
                 Call(bots, "Update");
                 Check(sniperRenderer.enabled &&
                     !(bool)Read(delayedSniperShell, "queued"),
                     "Delayed sniper brass ejects from prebuilt pool");
+                var delayedPose = (Transform)Read(delayedSniperShell, "pose");
+                float sniperPort = Mathf.Clamp(
+                    AarisWeaponCatalog.Get("Sniper").presentationLengthMetres *
+                    .25f, .075f, .34f);
+                Vector3 currentPort = actor.transform.position + Vector3.up * 1.32f +
+                    actor.transform.forward * sniperPort + actor.transform.right * .18f;
+                Check(Vector3.Distance(delayedPose.position, currentPort) < .27f &&
+                    Mathf.Abs((float)Read(delayedSniperShell, "groundY") - .012f) < .03f,
+                    "Delayed bolt brass originates at moving shooter with actual floor");
+                actor.transform.position = originalShooterPoint;
+                Physics.SyncTransforms();
 
                 // Actual nearby crate transfer; preserve rounds and consumed meds.
                 var crate = root.AddComponent<AarisDeathCrateWorld>();
