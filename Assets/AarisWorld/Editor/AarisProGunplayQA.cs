@@ -236,9 +236,20 @@ namespace Aaris.MapReview.Editor
                     "Accepted shot enables transparent muzzle flame");
                 var light = (Light)Read(gun, "muzzleLight");
                 Check(light.enabled && light.shadows == LightShadows.None, "Player barrel burst casts no shadow map");
+                string globalRandomBeforeBrass =
+                    JsonUtility.ToJson(UnityEngine.Random.state);
                 Call(gun, "EjectCasingNow");
                 Check(Mathf.Abs((float)Read(gun, "casingGroundY") - .012f) < .02f,
                     "Player casing bounce plane is actual floor");
+                Vector3 primaryCasingVelocity = (Vector3)Read(gun, "casingVelocity");
+                Call(gun, "EjectCasingNow");
+                var secondCasing = ((Array)Read(gun, "shellTrail")).GetValue(0);
+                Vector3 secondCasingVelocity = (Vector3)Read(secondCasing, "velocity");
+                Check(primaryCasingVelocity != secondCasingVelocity,
+                    "Independent player shells keep natural ballistic variation");
+                Check(globalRandomBeforeBrass ==
+                    JsonUtility.ToJson(UnityEngine.Random.state),
+                    "Player brass visuals do not mutate global combat RNG");
 
                 // Physical renderer validation: three rapid automatic rounds
                 // must coexist, rather than replacing the first 64m tracer.
