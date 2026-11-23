@@ -448,7 +448,8 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
         self.assertIn("gun.presentationLengthMetres * .60f, .27f, .78f", FX)
         self.assertIn("gun.presentationLengthMetres * .25f, .075f, .34f", FX)
         self.assertIn("shooter.forward * barrelReach;", FX)
-        self.assertIn("shooter.forward * portReach + shooter.right * .18f;", FX)
+        self.assertIn("shooter.forward * reach + shooter.right * .18f;", FX)
+        self.assertIn("casing.pose.position = EjectionPort(shooter, portReach);", FX)
         self.assertIn("EmitWithBarrel(shooter, target, gun.category == \"Shotgun\"", FX)
         lengths = {w["id"]: w["presentationLengthMetres"]
                    for w in CAT["weapons"]}
