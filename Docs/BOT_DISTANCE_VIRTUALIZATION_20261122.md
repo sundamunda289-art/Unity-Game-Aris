@@ -47,3 +47,35 @@ unaltered.
 The source-contract regression checks both paths. This is not an on-device
 GPU/thermal measurement; native Unity compile and real Android profiling are
 still required before claiming a complete fix.
+
+
+## Central dormant-actor callback scheduling — 2026-11-23
+
+The remote math/graphics split remains unchanged, but Unity previously
+dispatched `AarisOfflineRival.Update()` once **per rendered frame** for every
+485m+ rival, even when its own 350ms simulation tick and 100ms proximity probe
+were not due. The match director now checks both deadlines in one bounded
+100-slot scan each frame. It directly invokes a dormant rival only when one
+deadline is due. Remote actors begin with `MonoBehaviour.enabled=false`,
+and switch back to normal per-frame Unity updates on reentering the <485m
+presentation band. No additional native object, coroutine, game model or mesh
+is instantiated, and no new git worktree is needed.
+
+This is a **CPU lifecycle dispatch optimization**, not a change to 100-bot
+count, math damage probabilities, existing HP/death callbacks, alive count,
+camera culling, player attack cap or the scoped visual receiver. A far
+rival's scheduler still runs on the render thread and does **not** cost zero
+CPU: its fixed-budget abstract combat, zone movement and timed proximity
+checks still require some computation. On-camera 155–485m targets retain
+their lightweight physical scope-hit representation by design; therefore
+those visible bots do not have zero GPU cost.
+
+Validation contracts: `test_offline_rival_distance_budget.py` models
+100 phased rivals at 15/30/60/120 FPS and checks that the shared director
+does not bunch 350ms combat ticks into a single 100ms sweep.
+`.github/workflows/aaris-bot-dormant-scheduler-qa.yml` runs existing
+spatial, spawn, proximity and combat checks plus a C# grammar parser.
+These tests are **not** a substitute for native Unity 6000.3.26f1
+compilation, full-scene PlayMode verification or Snapdragon 680 Android GPU
+profiling. Do not merge until a native compile gate passes on the proposed
+changes; preserve any other agents' uncommitted Codespace files when syncing.
