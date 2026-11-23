@@ -85,6 +85,16 @@ namespace Aaris.MapReview
             if (Time.unscaledTime < nextReportAt) return;
             nextReportAt = Time.unscaledTime + RefreshIntervalSeconds;
             if (frameCount == 0) return;
+            // One 100-slot census per second ONLY while overlay/CSV is on.
+            // No native renderer/receiver reads in disabled gameplay.
+            AarisOfflineBRDirector.RivalPerfSample ai;
+            bool aiReady = AarisOfflineBRDirector.TrySampleRivalPerf(out ai);
+            string aiLabel = aiReady
+                ? string.Format(CultureInfo.InvariantCulture,
+                    "spawn {0} alive {1} dormant {2} virtual {3} rig {4} far {5} phys {6} attackers {7}",
+                    ai.spawned, ai.alive, ai.dormant, ai.virtualBodies,
+                    ai.detailedRigs, ai.farMeshes, ai.physicalReceivers, ai.attackers)
+                : "battle not started";
 
             Array.Copy(recentFramesMs, sortedFramesMs, frameCount);
             Array.Sort(sortedFramesMs, 0, frameCount);
@@ -106,12 +116,14 @@ namespace Aaris.MapReview
                 "Worst {5:F1} ms  |  >=50ms {6}  >=100ms {7}\n" +
                 "CPU main last {8} ms  |  GC last {9} B\n" +
                 "Unity mono {10:F0} MiB  reserved {11:F0} MiB\n" +
+                "AI {13}\n" +
                 "CSV {12}  |  F9 / 4 fingers: toggle",
                 fps, Application.targetFrameRate, p50, p95, p99,
                 maxFrameMs, stallsOver50, stallsOver100,
                 cpuMs < 0 ? "n/a" : cpuMs.ToString("F1", CultureInfo.InvariantCulture),
                 gcBytes < 0 ? "n/a" : gcBytes.ToString(CultureInfo.InvariantCulture),
-                monoMiB, unityReservedMiB, writerFailed ? "ERROR" : recording ? "ON" : "OFF");
+                monoMiB, unityReservedMiB, writerFailed ? "ERROR" : recording ? "ON" : "OFF",
+                aiLabel);
 
             if (recording && !writerFailed)
             {
@@ -128,7 +140,15 @@ namespace Aaris.MapReview
                         .Append(cpuMs.ToString("F2", CultureInfo.InvariantCulture)).Append(',')
                         .Append(gcBytes).Append(',')
                         .Append(monoMiB.ToString("F1", CultureInfo.InvariantCulture)).Append(',')
-                        .Append(unityReservedMiB.ToString("F1", CultureInfo.InvariantCulture)).AppendLine();
+                        .Append(unityReservedMiB.ToString("F1", CultureInfo.InvariantCulture)).Append(',')
+                        .Append(aiReady ? ai.spawned : -1).Append(',')
+                        .Append(aiReady ? ai.alive : -1).Append(',')
+                        .Append(aiReady ? ai.dormant : -1).Append(',')
+                        .Append(aiReady ? ai.virtualBodies : -1).Append(',')
+                        .Append(aiReady ? ai.detailedRigs : -1).Append(',')
+                        .Append(aiReady ? ai.farMeshes : -1).Append(',')
+                        .Append(aiReady ? ai.physicalReceivers : -1).Append(',')
+                        .Append(aiReady ? ai.attackers : -1).AppendLine();
                 }
                 else { recording = false; writerFailed = true; }
             }
@@ -187,7 +207,7 @@ namespace Aaris.MapReview
             {
                 csvPath = Path.Combine(Application.persistentDataPath, "AarisDiagnostics",
                     "perf_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture) + ".csv");
-                pendingCsv.AppendLine("utc,scene_build_index,avg_fps,p50_ms,p95_ms,p99_ms,worst_ms,stalls_50ms,stalls_100ms,cpu_main_last_ms,gc_last_bytes,unity_mono_mib,unity_reserved_mib");
+                pendingCsv.AppendLine("utc,scene_build_index,avg_fps,p50_ms,p95_ms,p99_ms,worst_ms,stalls_50ms,stalls_100ms,cpu_main_last_ms,gc_last_bytes,unity_mono_mib,unity_reserved_mib,ai_spawned,ai_alive,ai_dormant,ai_virtual,ai_detailed_rigs,ai_far_meshes,ai_physical_receivers,ai_attackers");
             }
             recording = value;
             UpdateRecorders();
@@ -250,12 +270,12 @@ namespace Aaris.MapReview
                 overlayStyle.wordWrap = true;
             }
             float width = Mathf.Min(356f, Screen.width - 16f);
-            var outer = new Rect(8f, 8f, width, 166f);
+            var outer = new Rect(8f, 8f, width, 198f);
             Color prior = GUI.color;
             GUI.color = new Color(0f, 0f, 0f, 0.82f);
             GUI.DrawTexture(outer, Texture2D.whiteTexture);
             GUI.color = prior;
-            GUI.Label(new Rect(14f, 13f, width - 12f, 160f), display, overlayStyle);
+            GUI.Label(new Rect(14f, 13f, width - 12f, 192f), display, overlayStyle);
         }
 
         private void OnDestroy()
