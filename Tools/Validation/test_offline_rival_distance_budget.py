@@ -73,11 +73,11 @@ class FarRivalBudget(unittest.TestCase):
         self.assertIn("else graph.Stop();", update)
         # A 4x-visible, 300m bot needs a stationary physical hit receiver,
         # but MUST remain a math-only combat agent (no capsule.Move).
-        self.assertIn("if (!virtualBody && playerDistanceSqr >= 185f * 185f)", update)
+        self.assertIn("bool shouldVirtualize = playerDistanceSqr >= 185f * 185f ||", update)
         self.assertNotIn(
             "playerDistanceSqr >= 185f * 185f && !cameraRelevant", update)
-        self.assertIn(
-            "else if (virtualBody && playerDistanceSqr <= 165f * 165f)", update)
+        self.assertIn("bool shouldRestorePhysics = playerDistanceSqr <= 165f * 165f &&", update)
+        self.assertIn("else if (virtualBody && shouldRestorePhysics)", update)
         self.assertIn("bool needsPhysicalReceiver = !virtualBody ||", update)
         self.assertIn("cameraRelevant && HasVisibleBody &&", update)
         self.assertIn("capsule.enabled = needsPhysicalReceiver;", update)
@@ -91,7 +91,7 @@ class FarRivalBudget(unittest.TestCase):
         # Control-plane model for the two independent LODs. The 485m
         # visual band is deliberately not claimed to cost zero GPU.
         def lod(distance, on_camera):
-            virtual = distance >= 185
+            virtual = distance >= 185 or (distance >= 90 and not on_camera)
             full = distance < 155 and (distance < 55 or on_camera)
             far_mesh = distance < 485 and on_camera and not full
             collider = not virtual or (on_camera and distance < 485)
@@ -100,7 +100,7 @@ class FarRivalBudget(unittest.TestCase):
         self.assertEqual(lod(1000, False), (True, False, False, False))
         self.assertEqual(lod(300, False), (True, False, False, False))
         self.assertEqual(lod(300, True), (True, False, True, True))
-        self.assertEqual(lod(100, False), (False, False, False, True))
+        self.assertEqual(lod(100, False), (True, False, False, False))
         self.assertEqual(lod(100, True), (False, True, False, True))
         self.assertEqual(lod(30, False), (False, True, False, True))
 
@@ -191,6 +191,8 @@ class FarRivalBudget(unittest.TestCase):
         self.assertLess(update.index("if (!cameraRelevant && playerDistanceSqr >= 55f * 55f)"),
                         update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera) return;"))
         self.assertIn("nextCameraProbe = now + 0.12f;", update)
+        self.assertIn("virtualBody = true;", exit_block)
+        self.assertIn("FarSimulationDistance * FarSimulationDistance", exit_block)
 
     def test_leaving_485m_eviction_precedes_far_tick_gate(self):
         bot = SOURCE.split("internal sealed class AarisOfflineRival", 1)[1]
