@@ -349,7 +349,10 @@ namespace Aaris.MapReview.Editor
                 // A real sniper can move/rotate during bolt cycling. Its brass
                 // must leave the NEW receiver port, not the stale shot point.
                 Vector3 originalShooterPoint = actor.transform.position;
+                Quaternion originalShooterRotation = actor.transform.rotation;
                 actor.transform.position += new Vector3(.92f, 0f, .18f);
+                actor.transform.rotation = Quaternion.Euler(0f, 37f, 0f) *
+                    originalShooterRotation;
                 Physics.SyncTransforms();
                 Set(delayedSniperShell, "ejectAt", Time.time - .01f);
                 Call(bots, "Update");
@@ -362,9 +365,16 @@ namespace Aaris.MapReview.Editor
                     .25f, .075f, .34f);
                 Vector3 currentPort = actor.transform.position + Vector3.up * 1.32f +
                     actor.transform.forward * sniperPort + actor.transform.right * .18f;
-                Check(Vector3.Distance(delayedPose.position, currentPort) < .27f &&
+                // The pooled slot advances its visual ballistics in the
+                // same Update after ejection. Include that exact movement so
+                // slower software-rendered Editor frames cannot give false QA.
+                float ejectionDt = Mathf.Min(Time.deltaTime, .12f);
+                Vector3 ejectionVelocity = (Vector3)Read(delayedSniperShell, "velocity");
+                Vector3 simulatedPose = currentPort + ejectionVelocity * ejectionDt;
+                Check(Vector3.Distance(delayedPose.position, simulatedPose) < .035f &&
                     Mathf.Abs((float)Read(delayedSniperShell, "groundY") - .012f) < .03f,
                     "Delayed bolt brass originates at moving shooter with actual floor");
+                actor.transform.rotation = originalShooterRotation;
                 actor.transform.position = originalShooterPoint;
                 Physics.SyncTransforms();
 
