@@ -146,14 +146,26 @@ namespace Aaris.MapReview
             {
                 if (!dormantRivalSlots[i]) continue;
                 AarisOfflineRival bot = rivals[i];
-                if (bot == null || !bot.IsAlive)
+                // A sleeping slot's deadline is managed state. Avoid Unity's
+                // native object-liveness checks (including Health) until due.
+                // OnDied/OnDestroy unregister normally; a missed teardown is
+                // still cleaned at the existing wake deadline.
+                if (ReferenceEquals(bot, null))
                 {
                     dormantRivalSlots[i] = false;
                     dormantRivalCount--;
                     continue;
                 }
                 if (now >= bot.NextDormantWakeTime)
+                {
+                    if (bot == null || !bot.IsAlive)
+                    {
+                        dormantRivalSlots[i] = false;
+                        dormantRivalCount--;
+                        continue;
+                    }
                     bot.TickDormantFromDirector();
+                }
                 if (dormantRivalSlots[i])
                     nextDormantSweepAt = Mathf.Min(nextDormantSweepAt,
                         bot.NextDormantWakeTime);
