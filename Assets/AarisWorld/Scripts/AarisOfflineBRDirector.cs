@@ -40,6 +40,35 @@ namespace Aaris.MapReview
         private readonly Vector2[] centers = new Vector2[5];
         private readonly AarisOfflineRival[] rivals = new AarisOfflineRival[RivalCount];
         private static AarisOfflineBRDirector activeDirector;
+        // Opt-in 1Hz phone diagnostics only. No extra work in normal play.
+        internal struct RivalPerfSample
+        {
+            internal int spawned, alive, dormant, virtualBodies;
+            internal int detailedRigs, farMeshes, physicalReceivers, attackers;
+        }
+
+        internal static bool TrySampleRivalPerf(out RivalPerfSample sample)
+        {
+            sample = default;
+            AarisOfflineBRDirector director = activeDirector;
+            if (director == null || !director.started) return false;
+            sample.spawned = director.spawnedRivals;
+            for (int i = 0; i < RivalCount; i++)
+            {
+                AarisOfflineRival rival = director.rivals[i];
+                if (rival == null || !rival.IsAlive) continue;
+                sample.alive++;
+                rival.AccumulatePerfSample(ref sample);
+            }
+            if (director.attackerOne != null && director.attackerOne.IsAlive)
+                sample.attackers++;
+            if (director.attackerTwo != null &&
+                director.attackerTwo != director.attackerOne &&
+                director.attackerTwo.IsAlive)
+                sample.attackers++;
+            return true;
+        }
+
         private static RaycastHit[] assistHits = new RaycastHit[32];
         private static RaycastHit[] muzzleAssistHits = new RaycastHit[48];
         // Preallocated main-thread Red-Lock shortlist: never scan PhysX for all 100 actors.
@@ -1588,6 +1617,19 @@ namespace Aaris.MapReview
         // coordinates for early aim rejection. Live/visible actors may be
         // teleported by gameplay or QA and must use their actual Transform.
         internal bool IsDormantAimInvisible => centrallyDormant && !lastCameraRelevant;
+
+        // Called only by the opt-in performance overlay, never per AI frame.
+        internal void AccumulatePerfSample(ref AarisOfflineBRDirector.RivalPerfSample sample)
+        {
+            if (centrallyDormant) sample.dormant++;
+            if (virtualBody) sample.virtualBodies++;
+            if (visualRoot != null && visualRoot.activeInHierarchy)
+                sample.detailedRigs++;
+            if (farVisualRoot != null && farVisualRoot.activeInHierarchy)
+                sample.farMeshes++;
+            if (capsule != null && capsule.enabled)
+                sample.physicalReceivers++;
+        }
 
         internal void Initialize(AarisOfflineBRDirector director, AarisOfflineHealth self,
             Transform victim, AarisOfflineHealth victimHealth, int encounterSlot)
