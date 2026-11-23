@@ -122,6 +122,41 @@ namespace Aaris.MapReview.Editor
                 Check((bool)findGround.Invoke(null, dense) &&
                     ((RaycastHit)dense[2]).collider == floor.GetComponent<Collider>(),
                     "Dense self hit buffer still resolves real floor");
+                // A second living enemy may stand directly above the real
+                // static floor. Its CharacterController top is not a shell
+                // landing support; neither is a physics vehicle bonnet.
+                var otherRival = new GameObject("Live rival casing obstruction");
+                otherRival.transform.SetParent(root.transform);
+                otherRival.transform.position = new Vector3(.08f, 0f, .1f);
+                var rivalCapsule = otherRival.AddComponent<CharacterController>();
+                rivalCapsule.radius = .23f;
+                rivalCapsule.height = .9f;
+                rivalCapsule.center = Vector3.up * .45f;
+                Physics.SyncTransforms();
+                object[] behindRival = {new Vector3(.08f, 1.5f, .1f),
+                    actor.transform, default(RaycastHit)};
+                Check((bool)findGround.Invoke(null, behindRival) &&
+                    ((RaycastHit)behindRival[2]).collider == floor.GetComponent<Collider>(),
+                    "Shell falls past nearby live rival capsule to stationary floor");
+                rivalCapsule.enabled = false;
+
+                var movingVehicle = new GameObject("Kinematic vehicle casing obstruction");
+                movingVehicle.transform.SetParent(root.transform);
+                movingVehicle.transform.position = new Vector3(.08f, .4f, .1f);
+                var vehicleCollider = movingVehicle.AddComponent<BoxCollider>();
+                vehicleCollider.size = new Vector3(.46f, .8f, .46f);
+                var vehiclePhysics = movingVehicle.AddComponent<Rigidbody>();
+                vehiclePhysics.isKinematic = true;
+                Physics.SyncTransforms();
+                object[] behindVehicle = {new Vector3(.08f, 1.5f, .1f),
+                    actor.transform, default(RaycastHit)};
+                Check((bool)findGround.Invoke(null, behindVehicle) &&
+                    ((RaycastHit)behindVehicle[2]).collider == floor.GetComponent<Collider>(),
+                    "Shell falls past kinematic vehicle to stationary floor");
+                vehicleCollider.enabled = false;
+                Object.Destroy(otherRival);
+                Object.Destroy(movingVehicle);
+
                 own.size = new Vector3(.62f, 1.8f, .62f); own.center = Vector3.up * .9f;
                 string[] ids = {"SMG", "AssaultRifle", "BattleRifle", "Sniper", "Shotgun", "DMR", "Pistol"};
                 var damage = typeof(AarisEquippedGun).GetMethod("ApplyDamage", Static, null,
