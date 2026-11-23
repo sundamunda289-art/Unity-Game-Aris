@@ -21,6 +21,8 @@ namespace Aaris.MapReview
             internal AarisWeaponState gun;
             internal int looseAmmo, medkits;
             internal GameObject visual;
+            // Depleted bots leave an honest, briefly visible empty marker.
+            internal float markerUntil;
             // One PICK interaction can bypass an uncollectable closer crate
             // without allocating temporary candidate collections.
             internal int lastPickupProbe;
@@ -63,8 +65,9 @@ namespace Aaris.MapReview
             // Reserve ammo stays separately tracked so it can be transferred to
             // a matching carried gun without duplicating the death weapon.
             // A rival that spent its last medkit must not conjure a fresh one.
-            // Skip the ground query altogether when no crate will be spawned.
-            if (state == null && medkits <= 0) return;
+            // Do not mint resources when a bot spent everything. An empty
+            // death marker is visible but never actionable or permanent.
+            bool emptyMarker = state == null && medkits <= 0;
             // OnDied disables the victim's capsule, but another nearby living
             // rival may still cover the downward ray. Inspect complete hits
             // and choose the highest stationary support below the dead feet.
@@ -96,7 +99,8 @@ namespace Aaris.MapReview
                 position = position,
                 gun = state,
                 looseAmmo = state != null ? Mathf.Max(0, reserve) : 0,
-                medkits = Mathf.Max(0, medkits)
+                medkits = Mathf.Max(0, medkits),
+                markerUntil = emptyMarker ? Time.time + 18f : 0f
             });
             // Do not allocate meshes, lights or native materials on the death hit.
             nextPoll = 0f;
@@ -301,10 +305,17 @@ namespace Aaris.MapReview
             for (int i = 0; i < drops.Count; i++)
             {
                 Drop drop = drops[i];
+                bool showMarker = drop.HasContent || Time.time < drop.markerUntil;
+                if (!showMarker)
+                {
+                    Release(drop);
+                    drops.RemoveAt(i--);
+                    continue;
+                }
                 float distance = (drop.position - here).sqrMagnitude;
                 if (drop.visual != null)
                 {
-                    if (distance > VisualRadius * VisualRadius || !drop.HasContent)
+                    if (distance > VisualRadius * VisualRadius || !showMarker)
                     {
                         Release(drop);
                         continue;
@@ -316,7 +327,7 @@ namespace Aaris.MapReview
                     }
                     continue;
                 }
-                if (distance < bestDistance && drop.HasContent)
+                if (distance < bestDistance && showMarker)
                 {
                     bestIndex = i;
                     bestDistance = distance;
