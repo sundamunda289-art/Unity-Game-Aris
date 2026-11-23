@@ -34,6 +34,9 @@ namespace Aaris.MapReview
             // This deadline belongs to the casing slot, not a new coroutine.
             internal float ejectAt;
             internal bool grounded, queued;
+            // Preserve the real shooter until the bolt/pump actually cycles.
+            internal Transform shooter;
+            internal float portReach, sideSpeed, upSpeed, backSpeed;
         }
 
         private readonly Slot[] slots = new Slot[MaximumSlots];
@@ -41,6 +44,45 @@ namespace Aaris.MapReview
         private static Material brassMaterial, shotgunMaterial;
         private Transform observer;
         private int nextSlot, nextCasingSlot;
+        // Separate visual PRNG: casing variety must not perturb AI decisions.
+        private uint casingVariation = 0x9E3779B9u;
+
+        private float NextCasingVariation()
+        {
+            casingVariation = unchecked(casingVariation * 1664525u + 1013904223u);
+            return (casingVariation & 0x00FFFFFFu) * (1f / 16777216f);
+        }
+
+        private static Vector3 EjectionPort(Transform shooter, float reach)
+        {
+            return shooter.position + Vector3.up * 1.32f +
+                shooter.forward * reach + shooter.right * .18f;
+        }
+
+        // Called once per actual shell, never every frame. Pump/bolt firearms
+        // sample the owner's live port at ejection, not at the earlier shot.
+        private void BeginCasingFlight(CasingSlot casing)
+        {
+            Transform shooter = casing.shooter;
+            Vector3 port = casing.pose.position; // Last known point if bot died.
+            if (shooter != null)
+            {
+                port = EjectionPort(shooter, casing.portReach);
+                casing.pose.position = port;
+                casing.pose.rotation = shooter.rotation *
+                    Quaternion.Euler(90f, 0f, 0f);
+                casing.velocity = shooter.right * casing.sideSpeed +
+                    Vector3.up * casing.upSpeed -
+                    shooter.forward * casing.backSpeed;
+            }
+            if (AarisEquippedGun.TryFindCasingGround(port, shooter,
+                out RaycastHit ground))
+                casing.groundY = ground.point.y + .012f;
+            else casing.groundY = shooter != null
+                ? shooter.position.y + .012f : port.y - 1.25f;
+            casing.groundY = Mathf.Min(casing.groundY, port.y - .07f);
+            casing.grounded = false;
+        }
 
         internal void Bind(Transform player) { observer = player; }
 
@@ -142,7 +184,8 @@ namespace Aaris.MapReview
         }
 
         private void EmitWithBarrel(Transform shooter, Vector3 target,
-            bool shotgun, float barrelReach, float portReach)
+            bool shotgun, float barrelReach, float portReach,
+            bool delayedCasing = false)
         {
             if (observer == null || shooter == null || Time.timeScale <= 0f ||
                 (shooter.position - observer.position).sqrMagnitude > 70f * 70f)
@@ -186,23 +229,26 @@ namespace Aaris.MapReview
             if (casing == null)
                 casings[casingIndex] = casing = CreateCasingSlot();
             casing.renderer.sharedMaterial = MaterialFor(true, shotgun);
-            Vector3 port = shooter.position + Vector3.up * 1.32f +
-                shooter.forward * portReach + shooter.right * .18f;
-            casing.pose.position = port;
+            casing.shooter = shooter;
+            casing.portReach = portReach;
+            casing.pose.position = EjectionPort(shooter, portReach);
             casing.pose.rotation = shooter.rotation * Quaternion.Euler(90f, 0f, 0f);
             casing.pose.localScale = shotgun
                 ? new Vector3(.008f, .023f, .008f)
                 : new Vector3(.006f, .015f, .006f);
-            casing.velocity = shooter.right * 2.25f + Vector3.up * 1.65f -
-                shooter.forward * .2f;
-            casing.spin = new Vector3(520f, 940f, 650f);
+            casing.sideSpeed = 2.05f + NextCasingVariation() * .65f;
+            casing.upSpeed = 1.35f + NextCasingVariation() * .55f;
+            casing.backSpeed = .12f + NextCasingVariation() * .30f;
+            casing.velocity = shooter.right * casing.sideSpeed +
+                Vector3.up * casing.upSpeed - shooter.forward * casing.backSpeed;
+            casing.spin = new Vector3(
+                480f + NextCasingVariation() * 190f,
+                830f + NextCasingVariation() * 310f,
+                540f + NextCasingVariation() * 230f);
             casing.grounded = false;
-            // One ground probe on an accepted nearby shot, none in Update.
-            if (AarisEquippedGun.TryFindCasingGround(port, shooter,
-                out RaycastHit ground))
-                casing.groundY = ground.point.y + .012f;
-            else casing.groundY = shooter.position.y + .012f;
-            casing.groundY = Mathf.Min(casing.groundY, port.y - .07f);
+            // Exactly one ground probe per shell. For delayed bolt/pump guns
+            // defer that probe to the real ejection frame after the bot moves.
+            if (!delayedCasing) BeginCasingFlight(casing);
             casing.until = now + .85f;
             casing.queued = false;
             casing.renderer.enabled = true;
@@ -224,8 +270,10 @@ namespace Aaris.MapReview
                 gun.presentationLengthMetres * .60f, .27f, .78f);
             float portReach = Mathf.Clamp(
                 gun.presentationLengthMetres * .25f, .075f, .34f);
+            float delay = gun.category == "Shotgun" ? .31f :
+                gun.category == "Sniper" ? .29f : 0f;
             EmitWithBarrel(shooter, target, gun.category == "Shotgun",
-                barrelReach, portReach);
+                barrelReach, portReach, delay > 0f);
             if (nextSlot == before) return; // Out of range, paused or invalid.
 
             Slot flash = slots[(nextSlot - 1) % MaximumSlots];
@@ -244,8 +292,6 @@ namespace Aaris.MapReview
             else if (gun.category == "SMG") casing.pose.localScale *= .88f;
             else if (gun.category == "Sniper") casing.pose.localScale *= 1.18f;
 
-            float delay = gun.category == "Shotgun" ? .31f :
-                gun.category == "Sniper" ? .29f : 0f;
             if (delay <= 0f) return;
             casing.ejectAt = Time.time + delay;
             casing.until += delay;
@@ -290,6 +336,7 @@ namespace Aaris.MapReview
                 if (casing != null && casing.queued && now >= casing.ejectAt)
                 {
                     casing.queued = false;
+                    BeginCasingFlight(casing);
                     casing.renderer.enabled = true;
                 }
                 if (casing == null || !casing.renderer.enabled) continue;
