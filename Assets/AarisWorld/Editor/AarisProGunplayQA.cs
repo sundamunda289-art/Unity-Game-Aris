@@ -257,6 +257,7 @@ namespace Aaris.MapReview.Editor
                 Check(activeLights == 2, "Six bot shots keep at most two active barrel lights");
                 var botShellRenderers = bots.GetComponentsInChildren<MeshFilter>(true);
                 int matchedBotCasings = 0;
+                int botEffectColliders = 0;
                 foreach (MeshFilter filter in botShellRenderers)
                     if (filter.gameObject.name ==
                         "Aaris Bot Reused Independent Ejected Casing")
@@ -264,9 +265,12 @@ namespace Aaris.MapReview.Editor
                         Check(filter.sharedMesh == casingMesh,
                             "Nearby bot shell shares the player's capped mesh");
                         matchedBotCasings++;
+                        // The pooled FX share the fixture root with the player,
+                        // floor and target. Count only FX-owned colliders.
+                        botEffectColliders += filter.GetComponentsInChildren<Collider>(true).Length;
                     }
                 Check(matchedBotCasings == 6 &&
-                    bots.GetComponentsInChildren<Collider>(true).Length == 0,
+                    botEffectColliders == 0,
                     "Six nearby bot ejections create no transient native Colliders");
                 var slots = (Array)Read(bots, "slots"); var firstSlot = slots.GetValue(0);
                 var botFlash = (Renderer)firstSlot.GetType().GetField("flash", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(firstSlot);
@@ -286,7 +290,7 @@ namespace Aaris.MapReview.Editor
                     "Sniper muzzle fires before delayed bolt-action shell");
                 var sniperFlash = (Transform)Read(slots.GetValue(0), "flashPose");
                 Check(sniperFlash.localScale.x > .18f &&
-                    bots.GetComponentsInChildren<Collider>(true).Length == 0,
+                    sniperRenderer.GetComponentsInChildren<Collider>(true).Length == 0,
                     "Sniper visual differs from AR without a new collider");
                 Set(delayedSniperShell, "ejectAt", Time.time - .01f);
                 Call(bots, "Update");
