@@ -601,6 +601,12 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
         self.assertIn("bool local = IsLocalCue(name);", AUDIO)
         self.assertIn("bool forceWorld = false", AUDIO)
         self.assertIn("forceWorld: !isPlayerShot", AUDIO)
+        gunshot = AUDIO.split("public static void GunShot(", 1)[1].split(
+            "public static void BulletImpact(", 1)[0]
+        self.assertIn("if (!isPlayerShot &&", gunshot)
+        self.assertIn("(position - instance.transform.position).sqrMagnitude > 70f * 70f", gunshot)
+        self.assertLess(gunshot.index("if (!isPlayerShot &&"),
+                        gunshot.index("instance.OneShot(sound, position"))
         self.assertIn("public bool Local;", AUDIO)
         self.assertIn("Local = local", AUDIO)
         self.assertIn("forceWorld: !cue.Local", AUDIO)
