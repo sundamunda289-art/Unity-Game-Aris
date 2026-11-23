@@ -73,14 +73,15 @@ class RemoteBotBudget(unittest.TestCase):
         ):
             self.assertIn(token, on_died)
         self.assertLess(on_died.index("owner.RivalDefeated(this);"),
-                        on_died.index("enabled = false;"))
-        self.assertLess(on_died.index("enabled = false;"),
+                        on_died.index("\n            enabled = false;"))
+        self.assertLess(on_died.index("\n            enabled = false;"),
                         on_died.index("Destroy(gameObject, 1.2f);"))
 
     def test_invalid_clips_still_cull_prefab_animator_without_losing_visual(self):
         visual = DIR.split("private void BuildVisual()", 1)[1]
         visual = visual.split("private void RetireHiddenRig(", 1)[0]
-        guard = visual.index("if (animator.avatar == null || !animator.avatar.isValid ||")
+        guard = visual.index("if (animator.avatar == null || !animator.avatar.isValid ||",
+                             visual.index("animator.cullingMode = AnimatorCullingMode.CullCompletely;"))
         self.assertLess(visual.index("animator.cullingMode = AnimatorCullingMode.CullCompletely;"),
                         guard)
         self.assertLess(visual.index("animator.applyRootMotion = false;"), guard)
