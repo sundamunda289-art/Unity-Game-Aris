@@ -47,3 +47,14 @@ unaltered.
 The source-contract regression checks both paths. This is not an on-device
 GPU/thermal measurement; native Unity compile and real Android profiling are
 still required before claiming a complete fix.
+
+## Hidden midrange frame budget — 2026-11-23
+
+A 90-485m off-camera rival with a virtual body and no active renderers or
+hit receiver skips unused render-frame distance/transform work until the
+earliest 100ms proximity, 120ms camera, or 350ms simulation deadline.
+Close physical encounters and all 100 logical fighters keep their combat
+frequency, health, zone movement, kill feed and two-attacker limit.
+Camera-only presentation no longer triggers an off-schedule loot attempt.
+Tests cover the source contract and simulated tick parity; Android FPS and
+thermal performance still require on-device profiling.

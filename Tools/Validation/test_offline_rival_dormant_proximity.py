@@ -51,6 +51,42 @@ class DormantFarProximityTests(unittest.TestCase):
                 self.assertLess(expensive_distance_checks, fps * 5 * .5)
                 self.assertGreaterEqual(count, 12)
 
+    def test_midrange_hidden_guard_preserves_camera_and_combat(self):
+        self.assertIn("private bool dormantOffscreenVirtual;", BOT)
+        guard = "if (dormantOffscreenVirtual && now < nextFarSimulation"
+        self.assertIn(guard, UPDATE)
+        self.assertLess(UPDATE.index(guard), UPDATE.index("float playerDistanceSqr"))
+        self.assertIn("now < nextDormantProximityProbe && now < nextCameraProbe) return;", UPDATE)
+        for part in ("!dormantOutOfVisualRange", "!lastCameraRelevant && virtualBody",
+                     "(capsule == null || !capsule.enabled)",
+                     "(visualRoot == null || !visualRoot.activeSelf)",
+                     "(farVisualRoot == null || !farVisualRoot.activeSelf)"):
+            self.assertIn(part, UPDATE)
+        self.assertIn("if (simulationDue && carriedGun == null && now >= nextLootAt)", UPDATE)
+
+    def test_midrange_100ms_wakeup_matches_350ms_combat_ticks(self):
+        for fps in (30, 60, 120):
+            next_ai = next_cam = next_probe = baseline_due = 0.
+            ai = baseline = expensive = 0
+            for frame in range(1, fps * 8 + 1):
+                now = frame / fps
+                if now >= baseline_due:
+                    baseline += 1
+                    baseline_due = now + .35
+                if now < next_ai and now < next_probe and now < next_cam:
+                    continue
+                expensive += 1
+                next_probe = now + .1
+                if now >= next_cam:
+                    next_cam = now + .12
+                if now >= next_ai:
+                    ai += 1
+                    next_ai = now + .35
+            self.assertEqual(ai, baseline)
+            self.assertLess(expensive, fps * 8 * .5)
+            # A teleport into a physical range wakes within 100ms + one frame.
+            self.assertLessEqual(.1 + 1/fps, .135)
+
     def test_teleport_into_visual_band_wakes_within_100ms(self):
         for fps in (30, 60, 120):
             now = 0.0

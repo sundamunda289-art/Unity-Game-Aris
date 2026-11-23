@@ -287,7 +287,8 @@ class CombatEndToEndContract(unittest.TestCase):
                          "pickup.CommitConsumed();", "active.RemoveAt(i);",
                          "Destroy(pickup.gameObject);"):
             self.assertIn(fragment, body)
-        self.assertIn("if (carriedGun == null && now >= nextLootAt)", BOTS)
+        # A camera-only presentation wake must not consume a far loot tick.
+        self.assertIn("if (simulationDue && carriedGun == null && now >= nextLootAt)", BOTS)
         self.assertIn("if (playerDistanceSqr < 76f * 76f)", BOTS)
         self.assertIn("owner.TryLootForRival(transform, out found)", BOTS)
         # Bots pass their actual Transform so pickup LOS can exclude ONLY

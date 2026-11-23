@@ -1322,6 +1322,8 @@ namespace Aaris.MapReview
         // 10Hz rather than fetching two Transforms on every rendered frame.
         // Simulation ticks still take priority; no AI/kill-feed tick is lost.
         private bool dormantOutOfVisualRange;
+        // Off-camera virtual rivals need no per-render-frame transform reads.
+        private bool dormantOffscreenVirtual;
         private float nextDormantProximityProbe;
         private const float DormantProximityProbeInterval = 0.10f;
         // A separate low-triangle visual keeps 4x targets visible beyond 155 m
@@ -1750,6 +1752,9 @@ namespace Aaris.MapReview
             // Close and potentially visible bots never enter this fast path.
             if (dormantOutOfVisualRange && now < nextFarSimulation &&
                 now < nextDormantProximityProbe) return;
+            // Proximity, camera and combat deadlines wake independently.
+            if (dormantOffscreenVirtual && now < nextFarSimulation &&
+                now < nextDormantProximityProbe && now < nextCameraProbe) return;
             if (owner == null || !owner.CanEngage || !IsAlive ||
                 playerTarget == null || playerTargetHealth == null || playerTargetHealth.IsDead)
                 return;
@@ -1817,6 +1822,15 @@ namespace Aaris.MapReview
                     capsule.enabled = false;
                 lastCameraRelevant = false;
             }
+            // Throttle 90-485m hidden, virtual, receiver-free rivals only.
+            dormantOffscreenVirtual = !dormantOutOfVisualRange &&
+                playerDistanceSqr >= FarSimulationDistance * FarSimulationDistance &&
+                !lastCameraRelevant && virtualBody &&
+                (visualRoot == null || !visualRoot.activeSelf) &&
+                (farVisualRoot == null || !farVisualRoot.activeSelf) &&
+                (capsule == null || !capsule.enabled);
+            if (dormantOffscreenVirtual)
+                nextDormantProximityProbe = now + DormantProximityProbeInterval;
             // Camera visibility controls rendering/physical hit receivers,
             // not AI tick frequency: 4x scoped enemies must not turn 100
             // distant AI brains into full-rate Update/PhysX processing.
@@ -1830,7 +1844,8 @@ namespace Aaris.MapReview
             // Near the player use the actual shared floor pickup record.
             // Off-screen guns are not streamed: simulate ONE bounded scavenge
             // from the ready catalog without creating any distant gun meshes.
-            if (carriedGun == null && now >= nextLootAt)
+            // Camera-only presentation must not advance scavenging state.
+            if (simulationDue && carriedGun == null && now >= nextLootAt)
             {
                 nextLootAt = now + 3.5f;
                 AarisWeaponSpec found = null;
