@@ -239,9 +239,17 @@ namespace Aaris.MapReview
             for (int i = 0; i < count; i++)
             {
                 RaycastHit hit = hits[i];
-                if (hit.collider == null || hit.normal.y <= .45f ||
-                    (shooter != null && hit.collider.transform.IsChildOf(shooter)) ||
-                    hit.distance >= nearest) continue;
+                Collider support = hit.collider;
+                // A nearby live rival's head/shoulder or a moving car can
+                // be the first downward hit. Neither is a stable landing
+                // floor for ballistic shells. The same no-attachment rule
+                // applies to the player and shared rival casing pools.
+                if (support == null || hit.normal.y <= .45f ||
+                    hit.distance >= nearest ||
+                    (shooter != null && support.transform.IsChildOf(shooter)) ||
+                    support.attachedRigidbody != null ||
+                    support.GetComponentInParent<CharacterController>() != null)
+                    continue;
                 nearest = hit.distance;
                 landing = hit;
             }
