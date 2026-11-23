@@ -44,6 +44,9 @@ namespace Aaris.MapReview
         private static Material brassMaterial, shotgunMaterial;
         private Transform observer;
         private int nextSlot, nextCasingSlot;
+        // Physical bot gunfire is rare: no empty pooled-VFX Update or native
+        // component dispatch is needed between nearby encounters.
+        private void Awake() { enabled = false; }
         // Separate visual PRNG: casing variety must not perturb AI decisions.
         private uint casingVariation = 0x9E3779B9u;
 
@@ -256,6 +259,9 @@ namespace Aaris.MapReview
             casing.until = now + .85f;
             casing.queued = false;
             casing.renderer.enabled = true;
+            // Wake the single pooled VFX driver only after an accepted
+            // physical shot. Deferred bolt/pump ejection keeps it awake.
+            enabled = true;
         }
 
         // Weapon-specific bot presentation, while retaining the legacy Emit
@@ -317,6 +323,7 @@ namespace Aaris.MapReview
             // Match player casings: 10-15 FPS Android frames still advance
             // the metal shell through real elapsed time, with a hitch cap.
             float dt = Mathf.Min(Time.deltaTime, .12f);
+            bool anyLiveEffect = false;
             for (int i = 0; i < slots.Length; i++)
             {
                 Slot slot = slots[i];
@@ -341,6 +348,8 @@ namespace Aaris.MapReview
                         slot.tracer.SetPosition(1, slot.origin + segment * head);
                     }
                 }
+                if (slot.flash.enabled || slot.tracer.enabled || slot.burst.enabled)
+                    anyLiveEffect = true;
             }
             for (int i = 0; i < casings.Length; i++)
             {
@@ -351,12 +360,16 @@ namespace Aaris.MapReview
                     BeginCasingFlight(casing);
                     casing.renderer.enabled = true;
                 }
+                // A shotgun or sniper shell waits for its authored pump/bolt
+                // delay while hidden; sleeping here would lose its ejection.
+                if (casing != null && casing.queued) anyLiveEffect = true;
                 if (casing == null || !casing.renderer.enabled) continue;
                 if (now >= casing.until)
                 {
                     casing.renderer.enabled = false;
                     continue;
                 }
+                anyLiveEffect = true; // Keep grounded casings until their expiry.
                 if (casing.grounded) continue;
                 casing.velocity += Physics.gravity * dt;
                 Vector3 next = casing.pose.position + casing.velocity * dt;
@@ -373,6 +386,9 @@ namespace Aaris.MapReview
                 casing.pose.position = next;
                 casing.pose.Rotate(casing.spin * dt, Space.World);
             }
+            // Zero bot presentation work between firefights. The next Emit
+            // reenables this component without recreating the pooled renderers.
+            if (!anyLiveEffect) enabled = false;
         }
     }
 }
