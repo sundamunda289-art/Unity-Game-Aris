@@ -1104,8 +1104,21 @@ namespace Aaris.MapReview
                         // Hash collisions must never import remote cells.
                         if (rivalSpatialKeys[i] != key) continue;
                         AarisOfflineRival bot = rivals[i];
-                        if (bot == null || bot == hunter || !bot.IsAlive ||
-                            bot.transform == blocked) continue;
+                        if (bot == null || bot == hunter || !bot.IsAlive)
+                            continue;
+                        // Remote dormant fighters cannot have a physical LOS
+                        // target until their live rig/receiver is admitted.
+                        // Reject obviously distant hidden entries using the
+                        // 48m spatial snapshot (42m actual LOS plus 6m slack),
+                        // but never trust stale snapshots for visible/active
+                        // or unregistered actors, including teleported rivals.
+                        if (rivalSpatialRegistered[i] && bot.IsDormantAimInvisible &&
+                            (rivalSpatialPositions[i] - origin).sqrMagnitude >=
+                                48f * 48f)
+                            continue;
+                        // Only surviving candidates need a native Transform
+                        // reference to check the obstructed primary target.
+                        if (bot.transform == blocked) continue;
                         float sqr = (bot.transform.position - origin).sqrMagnitude;
                         if (sqr >= maxSqr) continue;
                         // Hash chains are not slot-ordered. Preserve the
