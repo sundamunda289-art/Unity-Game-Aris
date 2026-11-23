@@ -678,8 +678,13 @@ namespace Aaris.MapReview
         {
             if (nearbyColliders == null || displacement.sqrMagnitude < 0.000001f)
                 return false;
-            Vector3 lookAhead = displacement.normalized *
-                Mathf.Max(displacement.magnitude, 0.72f);
+            // Vector3.normalized and Vector3.magnitude each compute a
+            // square root. Reuse one magnitude while retaining the exact
+            // Normalize epsilon and 0.72m look-ahead policy.
+            float distance = displacement.magnitude;
+            Vector3 heading = distance > 0.00001f
+                ? displacement / distance : Vector3.zero;
+            Vector3 lookAhead = heading * Mathf.Max(distance, 0.72f);
             Vector3 predicted = from + lookAhead + Vector3.up * 0.9f;
             return nearbyColliders.HasPotentialInactiveObstacle(predicted,
                 new Vector3(0.36f, 0.90f, 0.36f), Quaternion.identity);
