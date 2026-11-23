@@ -440,5 +440,34 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
         self.assertIn("AarisDeathCrateWorld.HasPickupNear(transform)",INVENTORY)
         self.assertIn("AarisDeathCrateWorld.TryGetNearbyHint",HUD)
 
+
+    def test_nearby_bot_barrel_and_ejection_follow_real_weapon_length(self):
+        # A fixed .52m emitter made the 23.5cm pistol look like a rifle
+        # and the 1.23m sniper's flash appear inside its long barrel.
+        self.assertIn("EmitWithBarrel(shooter, target, shotgun, .52f, .22f);", FX)
+        self.assertIn("gun.presentationLengthMetres * .60f, .27f, .78f", FX)
+        self.assertIn("gun.presentationLengthMetres * .25f, .075f, .34f", FX)
+        self.assertIn("shooter.forward * barrelReach;", FX)
+        self.assertIn("shooter.forward * portReach + shooter.right * .18f;", FX)
+        self.assertIn("EmitWithBarrel(shooter, target, gun.category == \"Shotgun\"", FX)
+        lengths = {w["id"]: w["presentationLengthMetres"]
+                   for w in CAT["weapons"]}
+        muzzle = {k: min(.78, max(.27, v * .60))
+                  for k, v in lengths.items()}
+        port = {k: min(.34, max(.075, v * .25))
+                for k, v in lengths.items()}
+        self.assertLess(muzzle["Pistol"], muzzle["SMG"])
+        self.assertLess(muzzle["SMG"], muzzle["AssaultRifle"])
+        self.assertLess(muzzle["AssaultRifle"], muzzle["Sniper"])
+        self.assertLess(port["Pistol"], port["Sniper"])
+        # Same six pooled bot flashes/twelve shells; no new per-shot objects.
+        self.assertIn("private const int MaximumSlots = 6;", FX)
+        self.assertIn("private const int MaximumCasingSlots = 12;", FX)
+        shot = FX.split("private void EmitWithBarrel(", 1)[1].split(
+            "private void Update()", 1)[0]
+        self.assertNotIn("new GameObject(", shot)
+        self.assertNotIn("AddComponent", shot)
+
+
 if __name__ == "__main__":
     unittest.main()
