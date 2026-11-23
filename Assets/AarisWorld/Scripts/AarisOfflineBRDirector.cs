@@ -860,6 +860,12 @@ namespace Aaris.MapReview
         // selection reads these structs instead of crossing into native
         // Transform.position for every spatial-index collision/neighbor.
         private readonly Vector3[] rivalSpatialPositions = new Vector3[RivalCount];
+        // Cell bounds are stable through thousands of physical/virtual moves.
+        // Cache them so intra-cell movements avoid two FloorToInt conversions,
+        // a packed key and a hash lookup. Four floats per rival, no tick GC.
+        private readonly Vector2[] rivalCellMin = new Vector2[RivalCount];
+        private readonly Vector2[] rivalCellMax = new Vector2[RivalCount];
+        private const float RivalCellBoundaryGuard = 0.01f;
         private readonly bool[] rivalSpatialRegistered = new bool[RivalCount];
         private bool rivalBucketsInitialized;
         private int indexedRivals;
@@ -906,6 +912,18 @@ namespace Aaris.MapReview
         {
             if (slot < 0 || slot >= RivalCount || rivals[slot] != bot) return;
             rivalSpatialPositions[slot] = position;
+            // Preserve exact FloorToInt semantics at cell seams (including
+            // negative coordinates): the 1cm seam guard takes the original
+            // slow path. Teleports to another cell always reindex normally.
+            if (rivalSpatialRegistered[slot])
+            {
+                Vector2 low = rivalCellMin[slot], high = rivalCellMax[slot];
+                if (position.x >= low.x + RivalCellBoundaryGuard &&
+                    position.x < high.x - RivalCellBoundaryGuard &&
+                    position.z >= low.y + RivalCellBoundaryGuard &&
+                    position.z < high.y - RivalCellBoundaryGuard)
+                    return;
+            }
             PrepareRivalBuckets();
             int x = RivalCell(position.x), z = RivalCell(position.z);
             long key = RivalCellKey(x, z);
@@ -920,6 +938,10 @@ namespace Aaris.MapReview
             rivalBucketHeads[bucket] = slot;
             rivalSpatialKeys[slot] = key;
             rivalSpatialBuckets[slot] = bucket;
+            rivalCellMin[slot] = new Vector2(x * RivalHuntRadius,
+                z * RivalHuntRadius);
+            rivalCellMax[slot] = new Vector2((x + 1f) * RivalHuntRadius,
+                (z + 1f) * RivalHuntRadius);
             rivalSpatialRegistered[slot] = true;
             indexedRivals++;
         }
