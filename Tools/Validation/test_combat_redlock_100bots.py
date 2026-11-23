@@ -307,7 +307,12 @@ class CombatEndToEndContract(unittest.TestCase):
     def test_wounded_bot_does_not_confuse_nearby_box_with_cover(self):
         reaction = BOTS.split("private void OnDamaged(", 1)[1].split(
             "internal void TakeZoneDamage", 1)[0]
-        for part in ("Vector3 coverAxis = bounds.center - attacker.transform.position;",
+        # The shooter pose is captured once before inspecting many cover
+        # candidates; the candidate direction still points away from that
+        # exact shooter position and the PhysX cover-ray remains required.
+        self.assertIn("Vector3 attackerPosition = attacker.transform.position;", reaction)
+        self.assertEqual(reaction.count("attacker.transform.position"), 1)
+        for part in ("Vector3 coverAxis = bounds.center - attackerPosition;",
                      "Vector3 candidate = bounds.center + coverAxis.normalized *",
                      "!obstacle.Raycast(new Ray(coverFrom, coverRay / coverDistance),",
                      "out RaycastHit blocker, coverDistance)"):
