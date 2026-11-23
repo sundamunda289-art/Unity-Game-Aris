@@ -30,6 +30,8 @@ namespace Aaris.MapReview
             new ProfilerMarker("Aaris.AI.SpatialOpponentLookup");
         private static readonly ProfilerMarker k_PlayerThreat =
             new ProfilerMarker("Aaris.AI.PlayerAttackerSelection");
+        private static readonly ProfilerMarker k_AimSelection =
+            new ProfilerMarker("Aaris.AI.AimTargetCandidates");
 #endif
         private const float OceanCutoff = -37.35f;
         private static readonly float[] ZoneRadii = { 1080f, 660f, 360f, 175f, 65f };
@@ -42,6 +44,9 @@ namespace Aaris.MapReview
         private static RaycastHit[] muzzleAssistHits = new RaycastHit[48];
         // Preallocated main-thread Red-Lock shortlist: never scan PhysX for all 100 actors.
         private const int AimBudget = 3;
+        // Cache follows all authored physical and virtual rival moves.
+        // 10m slack covers camera/aim-height offset and far-tick movement.
+        private const float AimSpatialSlack = 10f;
         private static readonly AarisOfflineRival[] aimBots = new AarisOfflineRival[AimBudget];
         private static readonly Vector3[] aimDirs = new Vector3[AimBudget];
         private static readonly float[] aimRanges = new float[AimBudget];
@@ -1094,11 +1099,16 @@ namespace Aaris.MapReview
         internal static bool TryAcquireAimTarget(Camera camera, Transform shooter,
             float range, float coneDegrees, out Vector3 aimedDirection)
         {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            using var aiProfilerScope = k_AimSelection.Auto();
+#endif
             aimedDirection = Vector3.zero;
             if (camera == null || shooter == null || activeDirector == null) return false;
             Vector3 origin = camera.transform.position;
             Vector3 cameraForward = camera.transform.forward;
             float maximumRangeSqr = range * range;
+            float cachedCullRange = range + AimSpatialSlack;
+            float cachedCullRangeSqr = cachedCullRange * cachedCullRange;
             float minimumDot = Mathf.Cos(coneDegrees * Mathf.Deg2Rad);
             // Find the three most centered visible bodies in ONE scan, not
             // three full 100-rival scans on every 90ms HUD update/shot.
@@ -1110,6 +1120,12 @@ namespace Aaris.MapReview
             {
                 AarisOfflineRival bot = activeDirector.rivals[i];
                 if (bot == null || !bot.IsAlive) continue;
+                // Reject only centrally-dormant remote entries before native pose.
+                // Active visible actors use live geometry even after teleports.
+                if (activeDirector.rivalSpatialRegistered[i] &&
+                    bot.IsDormantAimInvisible &&
+                    (activeDirector.rivalSpatialPositions[i] - origin).sqrMagnitude >
+                    cachedCullRangeSqr) continue;
                 Vector3 delta = bot.transform.position + Vector3.up * 1.12f - origin;
                 float sqrDistance = delta.sqrMagnitude;
                 if (sqrDistance < .0625f || sqrDistance > maximumRangeSqr) continue;
@@ -1119,7 +1135,7 @@ namespace Aaris.MapReview
                 if (projected <= 0f ||
                     projected * projected <= threshold * threshold * sqrDistance)
                     continue;
-                // Check native renderers only after range and cone rejection.
+                // Query renderer visibility only after cheap range and cone rejection.
                 if (!bot.HasVisibleBody) continue;
                 float distance = Mathf.Sqrt(sqrDistance);
                 float alignment = projected / distance;
@@ -1203,12 +1219,18 @@ namespace Aaris.MapReview
             AarisOfflineRival third, out Vector3 aimedDirection)
         {
             aimedDirection = Vector3.zero;
+            float cachedCullRange = Mathf.Sqrt(maxRangeSqr) + AimSpatialSlack;
+            float cachedCullRangeSqr = cachedCullRange * cachedCullRange;
             int used = 0;
             for (int i = 0; i < activeDirector.rivals.Length; i++)
             {
                 AarisOfflineRival bot = activeDirector.rivals[i];
                 if (bot == null || bot == first || bot == second || bot == third ||
                     !bot.IsAlive) continue;
+                if (activeDirector.rivalSpatialRegistered[i] &&
+                    bot.IsDormantAimInvisible &&
+                    (activeDirector.rivalSpatialPositions[i] - origin).sqrMagnitude >
+                    cachedCullRangeSqr) continue;
                 Vector3 delta = bot.transform.position + Vector3.up * 1.12f - origin;
                 float sqr = delta.sqrMagnitude;
                 if (sqr < .0625f || sqr > maxRangeSqr) continue;
@@ -1532,6 +1554,10 @@ namespace Aaris.MapReview
         internal bool HasVisibleBody =>
             (visualRoot != null && visualRoot.activeInHierarchy) ||
             (farVisualRoot != null && farVisualRoot.activeInHierarchy);
+        // Only centrally dormant, off-camera bots can trust their cached
+        // coordinates for early aim rejection. Live/visible actors may be
+        // teleported by gameplay or QA and must use their actual Transform.
+        internal bool IsDormantAimInvisible => centrallyDormant && !lastCameraRelevant;
 
         internal void Initialize(AarisOfflineBRDirector director, AarisOfflineHealth self,
             Transform victim, AarisOfflineHealth victimHealth, int encounterSlot)
