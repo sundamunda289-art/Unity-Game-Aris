@@ -2278,6 +2278,10 @@ namespace Aaris.MapReview
             if (capsule == null) return;
             // Prewarm physical arrays when approaching 165m, before LOS.
             EnsurePhysicalCombatBuffers();
+            // Snapshot physical pose before movement. Targets, stance-aware LOS
+            // and post-Move travel remain authoritative native observations.
+            Vector3 selfPosition = transform.position;
+            Vector3 selfForward = transform.forward;
             if (now >= nextThink)
             {
                 nextThink = now + .35f + UnityEngine.Random.Range(0f, .14f);
@@ -2288,7 +2292,7 @@ namespace Aaris.MapReview
                 }
                 else if (recentRivalAttacker != null && recentRivalAttacker.IsAlive &&
                     now < recentRivalAttackerUntil &&
-                    (recentRivalAttacker.transform.position - transform.position).sqrMagnitude <
+                    (recentRivalAttacker.transform.position - selfPosition).sqrMagnitude <
                         110f * 110f)
                 {
                     // A hit from another bot briefly overrides nearest-bot hunting.
@@ -2317,7 +2321,7 @@ namespace Aaris.MapReview
                 // run this bounded search on an actual occluded rival;
                 // never steal one of the two reserved player-attack slots.
                 if (!canSee && target != null && target != playerTarget &&
-                    (target.position - transform.position).sqrMagnitude < 42f * 42f &&
+                    (target.position - selfPosition).sqrMagnitude < 42f * 42f &&
                     owner.TryFindVisibleRivalAlternative(this, target,
                         out Transform clearRival, out AarisOfflineHealth clearHealth))
                 {
@@ -2345,19 +2349,19 @@ namespace Aaris.MapReview
                 }
             }
             bool hasTarget = target != null && targetHealth != null && !targetHealth.IsDead;
-            Vector3 diff = hasTarget ? target.position - transform.position :
-                Quaternion.Euler(0f, turnOffset, 0f) * transform.forward * 25f;
+            Vector3 diff = hasTarget ? target.position - selfPosition :
+                Quaternion.Euler(0f, turnOffset, 0f) * selfForward * 25f;
             diff.y = 0f;
             float distance = diff.magnitude;
-            Vector3 toward = distance > .01f ? diff / distance : transform.forward;
+            Vector3 toward = distance > .01f ? diff / distance : selfForward;
             bool outsideSafeArea = owner.TryZoneRetreatDirection(transform.position,
                 out Vector3 retreatDirection);
             // Nearby player contact retains combat priority; distant bots
             // should not ignore a closing circle just to chase the player.
             bool retreat = outsideSafeArea && (distance > 23f || !canSee);
             bool seekingCover = !retreat && now < coverUntil &&
-                (coverDestination - transform.position).sqrMagnitude > 1f;
-            Vector3 coverHeading = coverDestination - transform.position;
+                (coverDestination - selfPosition).sqrMagnitude > 1f;
+            Vector3 coverHeading = coverDestination - selfPosition;
             coverHeading.y = 0f;
             Vector3 travelDirection = seekingCover ? coverHeading.normalized :
                 retreat ? retreatDirection : toward;
@@ -2383,9 +2387,9 @@ namespace Aaris.MapReview
                     * displacement;
                 Vector3 second = Quaternion.Euler(0f, -avoidanceHandedness * 80f, 0f)
                     * displacement;
-                if (!owner.WouldCrossInactiveCover(transform.position, first))
+                if (!owner.WouldCrossInactiveCover(selfPosition, first))
                     displacement = first;
-                else if (!owner.WouldCrossInactiveCover(transform.position, second))
+                else if (!owner.WouldCrossInactiveCover(selfPosition, second))
                     displacement = second;
                 else
                     displacement = Vector3.zero;
@@ -2395,7 +2399,7 @@ namespace Aaris.MapReview
             // moonwalk sideways/backwards while running across open terrain.
             // Keep eyes/body on the player during clear, active combat.
             // Rotation only: capsule collision and shot/zone gates are unchanged.
-            Vector3 facing = distance > .05f ? toward : transform.forward;
+            Vector3 facing = distance > .05f ? toward : selfForward;
             if ((!canSee || retreat) && displacement.sqrMagnitude > 0.000001f)
                 facing = displacement.normalized;
             if (facing.sqrMagnitude > .01f)
@@ -2406,6 +2410,7 @@ namespace Aaris.MapReview
             Vector3 beforeMove = transform.position;
             CollisionFlags hit = capsule.Move(displacement +
                 Vector3.up * (verticalSpeed * dt));
+            // Preserve exact post-collision native registration and motion.
             owner.TrackRivalPosition(spatialSlot, this, transform.position);
             if ((hit & CollisionFlags.Sides) != 0 && !canSee)
                 turnOffset = -turnOffset + UnityEngine.Random.Range(-28f, 28f);
