@@ -55,6 +55,31 @@ echo AARIS_ULTRA_QA_PROJECT_MODE=disposable_full_asset_copy
 echo AARIS_ULTRA_QA_UNITY_VERSION=6000.3.26f1
 echo AARIS_ULTRA_QA_DEVICE_FPS=not_measured
 
+# On an Editor exit code or failed report, retain a bounded, sanitized
+# diagnostic in the GitHub Actions summary BEFORE /tmp is removed. Otherwise
+# a PlayMode assertion failure looks identical to an Editor crash, and the
+# disposable full-asset copy's logs vanish without a diagnosis.
+gate_diagnostics() {
+  local name="$1" report="$2" counter=0 line safe
+  if [[ -f "$report" ]]; then
+    while IFS= read -r line; do
+      safe="$(printf '%s' "$line" | tr -cs 'A-Za-z0-9_./:-' '_' | cut -c1-160)"
+      [[ -n "$safe" ]] || continue
+      printf 'AARIS_ULTRA_QA_DIAG_%s_%02d=%s\n' "$name" "$counter" "$safe"
+      counter=$((counter + 1))
+    done < <(grep -E '^(FAIL|RESULT=|ERROR=|EXCEPTION=|[[:space:]]*at )' "$report" | tail -n 8 || true)
+  fi
+  if [[ -f "$STAGE/$name.unity.log" ]]; then
+    while IFS= read -r line; do
+      safe="$(printf '%s' "$line" | tr -cs 'A-Za-z0-9_./:-' '_' | cut -c1-160)"
+      [[ -n "$safe" ]] || continue
+      printf 'AARIS_ULTRA_QA_DIAG_%s_%02d=%s\n' "$name" "$counter" "$safe"
+      counter=$((counter + 1))
+    done < <(grep -Ei 'error CS[0-9]+|Exception:|Assertion|AarisProGunplayQA|RESULT=FAIL|FAIL |Compilation failed|ExecuteMethod' "$STAGE/$name.unity.log" | tail -n 10 || true)
+  fi
+  [[ "$counter" -gt 0 ]] || printf 'AARIS_ULTRA_QA_DIAG_%s_00=no_diagnostic_in_editor_log\n' "$name"
+}
+
 run_gate() {
   local name="$1" entry="$2" report="$3" limit="$4"
   local started
@@ -66,12 +91,14 @@ run_gate() {
       -logFile "$STAGE/$name.unity.log" \
       > "$STAGE/$name.stdout" 2>&1; then
     printf 'AARIS_ULTRA_QA_STAGE_%s=editor_failed\n' "$name"
+    gate_diagnostics "$name" "$report"
     exit 20
   fi
   if [[ ! -s "$report" ]] ||
      [[ "$(stat -c %Y "$report")" -lt "$started" ]] ||
      ! grep -qx 'RESULT=PASS' "$report"; then
     printf 'AARIS_ULTRA_QA_STAGE_%s=report_failed_or_stale\n' "$name"
+    gate_diagnostics "$name" "$report"
     exit 21
   fi
   printf 'AARIS_ULTRA_QA_STAGE_%s=PASS\n' "$name"
