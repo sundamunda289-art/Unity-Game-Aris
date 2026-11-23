@@ -1,0 +1,44 @@
+# One-time safe post-merge sync. The canonical script refuses conflict and dirty-path overlap.
+name: Aaris PR1064 postmerge in-place Codespace safe sync
+on:
+  push:
+    branches:
+      - perf/ai-death-and-humanoid-culling-20261124-gpt6
+permissions:
+  contents: read
+jobs:
+  canonical-main-safe-sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          lfs: false
+      - name: Select existing Codespace and safely fast-forward canonical main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$GH_TOKEN" || { echo AARIS_PR1064_SYNC=no_token; exit 30; }
+          gh codespace list --json name,state,repository --limit 100 > "$RUNNER_TEMP/ai-codespaces.json"
+          machine="$(jq -r '[.[] | select(.state == "Available" and ((.repository // "") | endswith("/Unity-Game-Aris"))) | .name] | sort | .[0] // empty' "$RUNNER_TEMP/ai-codespaces.json")"
+          [[ "$machine" =~ ^aaris-ai-[a-zA-Z0-9-]{3,110}$ ]] || { echo AARIS_PR1064_SYNC=no_available_codespace; exit 31; }
+          echo "AARIS_PR1064_SELECTED_CODESPACE=$machine"
+          rc=0
+          timeout --kill-after=10s 420s gh codespace ssh -c "$machine" -- "bash -s -- sync" \
+            < Tools/Codespaces/canonical_safe_sync.sh \
+            > "$RUNNER_TEMP/ai-safe-sync-result.txt" \
+            2> "$RUNNER_TEMP/ai-safe-sync-errors.private" || rc=$?
+          grep -E '^AARIS_SYNC_[A-Z0-9_]+=[a-zA-Z0-9_-]+$' "$RUNNER_TEMP/ai-safe-sync-result.txt" || true
+          [[ "$rc" -eq 0 ]] &&
+            grep -qx 'AARIS_SYNC_TARGET_SHA=756c49c09cfc73a05613be41bdb31298ac58bac2' "$RUNNER_TEMP/ai-safe-sync-result.txt" &&
+            grep -qx 'AARIS_SYNC_AFTER_SHA=756c49c09cfc73a05613be41bdb31298ac58bac2' "$RUNNER_TEMP/ai-safe-sync-result.txt" &&
+            grep -qx 'AARIS_SYNC_LOCAL_TRACKED_BYTES_PRESERVED=yes' "$RUNNER_TEMP/ai-safe-sync-result.txt" &&
+            grep -qx 'AARIS_SYNC_SUCCESS=yes' "$RUNNER_TEMP/ai-safe-sync-result.txt" &&
+            grep -qx 'AARIS_SYNC_NO_RESET_NO_CLEAN_NO_STASH_NO_WORKTREE=yes' "$RUNNER_TEMP/ai-safe-sync-result.txt" || {
+              echo AARIS_PR1064_SYNC=blocked_without_overwriting_local_changes
+              exit 32
+            }
+          echo AARIS_PR1064_SYNC=canonical_main_verified_preserving_local_changes
