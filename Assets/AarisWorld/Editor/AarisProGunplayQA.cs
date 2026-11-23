@@ -154,6 +154,20 @@ namespace Aaris.MapReview.Editor
                     ((RaycastHit)behindVehicle[2]).collider == floor.GetComponent<Collider>(),
                     "Shell falls past kinematic vehicle to stationary floor");
                 vehicleCollider.enabled = false;
+                // A fixed bridge/porch IS safe support and must remain valid.
+                var bridge = new GameObject("Static raised casing support");
+                bridge.transform.SetParent(root.transform);
+                bridge.transform.position = new Vector3(.08f, .36f, .1f);
+                var bridgeFloor = bridge.AddComponent<BoxCollider>();
+                bridgeFloor.size = new Vector3(.5f, .72f, .5f);
+                Physics.SyncTransforms();
+                object[] elevated = {new Vector3(.08f, 1.5f, .1f),
+                    actor.transform, default(RaycastHit)};
+                Check((bool)findGround.Invoke(null, elevated) &&
+                    ((RaycastHit)elevated[2]).collider == bridgeFloor,
+                    "Shell correctly rests on static raised bridge support");
+                bridgeFloor.enabled = false;
+                Object.Destroy(bridge);
                 Object.Destroy(otherRival);
                 Object.Destroy(movingVehicle);
 
