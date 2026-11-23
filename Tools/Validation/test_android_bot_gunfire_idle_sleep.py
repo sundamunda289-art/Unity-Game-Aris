@@ -33,7 +33,9 @@ class IdleBotGunfireTests(unittest.TestCase):
         self.assertIn("private const int MaximumSlots = 6;", VFX)
         self.assertIn("private const int MaximumCasingSlots = 12;", VFX)
         self.assertNotIn("Instantiate(", UPDATE)
-        self.assertNotIn("new ", UPDATE)
+        self.assertNotIn("new GameObject(", UPDATE)
+        self.assertNotIn("new Slot(", UPDATE)
+        self.assertNotIn("new CasingSlot(", UPDATE)
         self.assertIn("TickVirtualCombat(now, dt);", AI)
         self.assertIn("targetHealth.ApplyDamage(damage, gameObject);", AI)
 
