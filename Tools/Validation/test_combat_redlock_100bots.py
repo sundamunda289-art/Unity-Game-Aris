@@ -187,6 +187,57 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("RectTransformUtility.ScreenPointToLocalPointInRectangle(", HUD)
         self.assertIn("numberOrigin[index] = origin;", HUD)
 
+    def test_offscreen_damage_numbers_do_not_steal_visible_hit_slots(self):
+        # An off-camera damage receiver is still a true hit, but cannot
+        # convincingly place a floating number at the crosshair.
+        number = HUD.split("private void AddNumber(", 1)[1].split(
+            "private void LateUpdate()", 1)[0]
+        for clause in (
+            "if (aimCamera == null || canvasRect == null) return;",
+            "screen.z <= 0f",
+            "screen.x < safe.xMin",
+            "screen.x > safe.xMax",
+            "screen.y < safe.yMin",
+            "screen.y > safe.yMax",
+            "Screen.safeArea",
+            "RectTransformUtility.ScreenPointToLocalPointInRectangle(",
+        ):
+            self.assertIn(clause, number)
+        # Validate fast-path order, not just the existence of a branch.
+        self.assertLess(number.index("WorldToScreenPoint(worldHitPosition)"),
+                        number.index("int index = numberIndex++ % numbers.Length;"))
+        self.assertLess(number.index("if (screen.z <= 0f"),
+                        number.index("int index = numberIndex++ % numbers.Length;"))
+        self.assertLess(number.index("return;\n\n            int index"),
+                        number.index("label.gameObject.SetActive(true);"))
+        self.assertIn("Vector2 origin = local +", number)
+        self.assertNotIn("if (screen.z > 0f &&", number)
+        # Existing hit-marker originates from real HP reduction, not from
+        # whether a floating label had screen coordinates.
+        self.assertIn("AarisWeaponHUD.NotifyHit(attacker, headshot);", GUN)
+        self.assertLess(GUN.index("canRegister = actualLoss > 0f;"),
+                        GUN.index("AarisWeaponHUD.NotifyHit(attacker, headshot);"))
+
+    def test_damage_number_visibility_bounds_model(self):
+        # Front/behind, on-/offscreen, and phone safe-area edge cases.
+        safe = (35, 0, 765, 340)
+        def visible(x, y, z):
+            return z > 0 and safe[0] <= x <= safe[2] and safe[1] <= y <= safe[3]
+        cases = [
+            ((400, 180, 12), True),
+            ((400, 180, -1), False),
+            ((-10, 180, 10), False),
+            ((810, 180, 10), False),
+            ((400, -4, 10), False),
+            ((400, 370, 10), False),
+            ((15, 180, 10), False),
+            ((770, 180, 10), False),
+            ((35, 340, 10), True),
+        ]
+        for (x, y, z), expected in cases:
+            with self.subTest(x=x, y=y, z=z):
+                self.assertEqual(visible(x, y, z), expected)
+
     def test_bot_capsule_lookup_is_cached(self):
         self.assertIn("if (target != cachedTargetCapsuleOwner)", BOTS)
         self.assertIn("cachedTargetCapsuleOwner = target;", BOTS)
