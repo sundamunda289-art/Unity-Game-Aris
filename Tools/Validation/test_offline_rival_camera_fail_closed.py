@@ -41,7 +41,8 @@ class RemoteCameraFailClosed(unittest.TestCase):
             "private CharacterController EnsurePhysicalReceiver(", 1)[0]
         update = RIVAL.split("private void Update()", 1)[1].split(
             "private void TickVirtualCombat(", 1)[0]
-        self.assertIn("if (spawnDistanceSqr >= 185f * 185f)", init)
+        self.assertIn("if (spawnDistanceSqr >= 185f * 185f ||", init)
+        self.assertIn("!spawnCameraRelevant))", init)
         self.assertIn("virtualBody = true;", init)
         self.assertIn("if (capsule != null) capsule.enabled = false;", init)
         self.assertIn("owner.IsDistantRivalOnScreen(transform.position)", init)
