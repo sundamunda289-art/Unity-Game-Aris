@@ -53,7 +53,7 @@ jobs:
           native = Path('Tools/Codespaces/native_source_compile_sandbox.sh').read_text()
           for required in ('mktemp -d', 'AARIS_NATIVE_COMPILE_RESULT=',
                            'AarisNativeSourceCompileGate.Run', 'xvfb-run -a',
-                           '-batchmode -force-glcore -quit', 'LIBGL_ALWAYS_SOFTWARE=1'):
+                           '-batchmode -force-glcore', '-quit', 'LIBGL_ALWAYS_SOFTWARE=1'):
               assert required in native, required
           assert 'case "$MODE" in status|sync|fetch)' in s
           assert 'if [[ "$MODE" == sync && "$BRANCH" != main ]]' in s
