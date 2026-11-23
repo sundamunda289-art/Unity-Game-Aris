@@ -1578,6 +1578,12 @@ namespace Aaris.MapReview
         // Cache stance-aware collision bodies; do not GetComponent in LOS ray hot paths.
         private CharacterController playerTargetCapsule, targetCapsule;
         private Transform cachedTargetCapsuleOwner;
+        // The same hidden rival may receive multiple abstract shots. Cache
+        // its managed component after the first native TryGetComponent, but
+        // invalidate on target, health or destroyed-component changes.
+        private Transform cachedVirtualDamageTarget;
+        private AarisOfflineHealth cachedVirtualDamageHealth;
+        private AarisOfflineRival cachedVirtualDamageRival;
         private GameObject visualRoot;
         private bool virtualBody;
         private bool lastCameraRelevant;
@@ -1693,6 +1699,9 @@ namespace Aaris.MapReview
             health = self;
             target = null;
             targetHealth = null;
+            cachedVirtualDamageTarget = null;
+            cachedVirtualDamageHealth = null;
+            cachedVirtualDamageRival = null;
             playerTarget = victim;
             playerTargetHealth = victimHealth;
             playerTargetCapsule = victim != null ? victim.GetComponent<CharacterController>() : null;
@@ -2605,9 +2614,21 @@ namespace Aaris.MapReview
                 return;
             // Abstract damage is valid only between two invisible fighters:
             // never hit the player or an on-camera physically rendered bot.
-            if (!target.TryGetComponent<AarisOfflineRival>(
-                    out AarisOfflineRival hiddenTarget) ||
-                !hiddenTarget.virtualBody || hiddenTarget.lastCameraRelevant ||
+            // Reuse the component only for this exact target + health. The
+            // native lookup repeats on an opponent switch or if the old
+            // component was destroyed; visibility/physics remain live checks.
+            if (cachedVirtualDamageTarget != target ||
+                cachedVirtualDamageHealth != targetHealth ||
+                cachedVirtualDamageRival == null)
+            {
+                cachedVirtualDamageTarget = target;
+                cachedVirtualDamageHealth = targetHealth;
+                if (!target.TryGetComponent<AarisOfflineRival>(
+                        out cachedVirtualDamageRival))
+                    return;
+            }
+            AarisOfflineRival hiddenTarget = cachedVirtualDamageRival;
+            if (!hiddenTarget.virtualBody || hiddenTarget.lastCameraRelevant ||
                 hiddenTarget.HasVisibleBody)
                 return;
             float interval = carriedGun != null
