@@ -202,8 +202,12 @@ namespace Aaris.MapReview
             // Complete the streak at the intended hit, not a 50m cutoff.
             slot.end = target;
             slot.shotAt = now;
+            // One slow mobile frame must not swallow a nearby bot streak.
+            // The physical shot and damage still resolve immediately.
+            float frameFloor = Mathf.Clamp(Time.smoothDeltaTime * 1.3f,
+                .055f, .12f);
             slot.tracerUntil = now +
-                Mathf.Clamp(length / 1250f, .025f, .18f);
+                Mathf.Clamp(Mathf.Max(length / 1250f, frameFloor), .055f, .21f);
             slot.flashUntil = now + .045f;
             slot.tracer.SetPosition(0, from);
             slot.tracer.SetPosition(1, Vector3.MoveTowards(from, slot.end, 1.65f));
