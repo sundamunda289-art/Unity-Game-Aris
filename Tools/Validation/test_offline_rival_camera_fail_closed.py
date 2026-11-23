@@ -31,10 +31,21 @@ class RemoteCameraFailClosed(unittest.TestCase):
                     "!cachedRivalCamera.isActiveAndEnabled) return false;")
         self.assertIn(expected, method)
         self.assertNotIn("!cachedRivalCamera.isActiveAndEnabled) return true;", method)
-        self.assertIn("Time.unscaledTime + 2f", method)
-        self.assertIn("(cachedRivalCamera == null || !cachedRivalCamera.isActiveAndEnabled) &&", method)
-        self.assertIn("cachedRivalCamera = Camera.main;", method)
+        self.assertIn("Time.unscaledTime + 0.5f", method)
+        self.assertIn("if (Time.unscaledTime >= nextRivalCameraLookup)", method)
+        self.assertIn("Camera liveMain = Camera.main;", method)
+        self.assertIn("cachedRivalCamera = liveMain;", method)
         self.assertIn("cachedRivalCamera.WorldToViewportPoint(", method)
+
+    def test_camera_swap_with_old_camera_still_enabled(self):
+        method = DIRECTOR.split("internal bool IsDistantRivalOnScreen(", 1)[1].split(
+            "internal bool TryVirtualGround(", 1)[0]
+        self.assertIn("if (liveMain != null && liveMain.isActiveAndEnabled)", method)
+        self.assertIn("cachedRivalCamera = liveMain;", method)
+        self.assertEqual(method.count("Camera.main"), 1)
+        self.assertLess(method.index("if (Time.unscaledTime >= nextRivalCameraLookup)"),
+                        method.index("Camera liveMain = Camera.main;"))
+        self.assertIn("!cachedRivalCamera.isActiveAndEnabled) return false;", method)
 
     def test_far_clipped_rivals_do_not_materialize_hidden_render_or_physics(self):
         method = DIRECTOR.split("internal bool IsDistantRivalOnScreen(", 1)[1].split(
