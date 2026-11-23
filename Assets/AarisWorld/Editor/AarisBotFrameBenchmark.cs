@@ -196,6 +196,15 @@ namespace Aaris.MapReview.Editor
             TerrainCollider qaCollider = terrainObject.GetComponent<TerrainCollider>();
             if (qaCollider != null) qaCollider.enabled = false;
             Set(director, "terrains", new Terrain[] { qaTerrain });
+            // The production director snapshots static Terrain metadata in
+            // Start/Begin; this synthetic reflection setup bypasses both.
+            // Populate that SAME native cache or all 97 virtual bots freeze
+            // at TryVirtualGround even though the terrain is genuinely valid.
+            MethodInfo metadataSetup = typeof(AarisOfflineBRDirector).GetMethod(
+                "CacheTerrainProbeMetadata", Private);
+            if (metadataSetup == null)
+                throw new InvalidOperationException("QA_TERRAIN_CACHE_INITIALIZER_MISSING");
+            metadataSetup.Invoke(director, null);
             botTransforms = new Transform[100];
             initialPositions = new Vector3[100];
             mainRecorder = ProfilerRecorder.StartNew(
