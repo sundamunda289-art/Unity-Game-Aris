@@ -157,6 +157,14 @@ namespace Aaris.MapReview
         private AarisWeaponLootWorld rivalLootWorld;
         private float nextLootWorldLookup;
         private Terrain[] terrains;
+        // Map tiles are static within a match. Cache their native metadata.
+        private struct TerrainProbeMeta
+        {
+            internal Terrain tile;
+            internal TerrainData data;
+            internal Vector3 origin, size;
+        }
+        private TerrainProbeMeta[] terrainProbeMeta;
         private int attemptedSlots, activeRivals, spawnedRivals;
         private float startedAt, nextSpawn, nextZoneTick, nextDamageTick, nextRingDraw;
         private float radius;
@@ -377,6 +385,7 @@ namespace Aaris.MapReview
                 matchEnd = player.gameObject.AddComponent<AarisOfflineMatchEnd>();
             drop = player.GetComponent<AarisOfflineDrop>();
             terrains = Terrain.activeTerrains;
+            CacheTerrainProbeMetadata();
             nearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
             StartCoroutine(PrewarmRivalVisuals());
         }
@@ -488,6 +497,7 @@ namespace Aaris.MapReview
             startedAt = Time.time;
             nextSpawn = Time.time + 0.6f;
             terrains = Terrain.activeTerrains;
+            CacheTerrainProbeMetadata();
             Vector2 landing = new Vector2(player.position.x, player.position.z);
             centers[0] = landing;
             for (int i = 1; i < centers.Length; i++)
@@ -551,20 +561,46 @@ namespace Aaris.MapReview
             }
         }
 
-        private bool TryGetGround(float x, float z, out float height)
+        private void CacheTerrainProbeMetadata()
         {
-            height = 0f;
-            if (terrains == null || terrains.Length == 0) return false;
+            if (terrains == null)
+            {
+                terrainProbeMeta = null;
+                return;
+            }
+            terrainProbeMeta = new TerrainProbeMeta[terrains.Length];
             for (int i = 0; i < terrains.Length; i++)
             {
                 Terrain tile = terrains[i];
-                if (tile == null || tile.terrainData == null) continue;
-                Vector3 origin = tile.transform.position, size = tile.terrainData.size;
+                if (tile == null) continue;
+                TerrainData data = tile.terrainData;
+                if (data == null) continue;
+                terrainProbeMeta[i] = new TerrainProbeMeta
+                {
+                    tile = tile, data = data,
+                    origin = tile.transform.position, size = data.size
+                };
+            }
+        }
+
+        private bool TryGetGround(float x, float z, out float height)
+        {
+            height = 0f;
+            if (terrainProbeMeta == null || terrainProbeMeta.Length == 0)
+                return false;
+            for (int i = 0; i < terrainProbeMeta.Length; i++)
+            {
+                TerrainProbeMeta meta = terrainProbeMeta[i];
+                Terrain tile = meta.tile;
+                TerrainData data = meta.data;
+                if (tile == null || data == null) continue;
+                Vector3 origin = meta.origin, size = meta.size;
                 if (x < origin.x + 2f || x > origin.x + size.x - 2f ||
                     z < origin.z + 2f || z > origin.z + size.z - 2f) continue;
                 float u = (x - origin.x) / size.x;
                 float v = (z - origin.z) / size.z;
-                if (tile.terrainData.GetInterpolatedNormal(u, v).y < 0.78f) continue;
+                // Slope, ocean and native height sampling stay authoritative.
+                if (data.GetInterpolatedNormal(u, v).y < 0.78f) continue;
                 height = origin.y + tile.SampleHeight(new Vector3(x, 0f, z));
                 if (height > OceanCutoff) return true;
             }
