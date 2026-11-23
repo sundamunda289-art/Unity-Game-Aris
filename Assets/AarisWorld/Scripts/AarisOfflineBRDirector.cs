@@ -2528,8 +2528,10 @@ namespace Aaris.MapReview
                 if (carriedGun != null)
                 {
                     carriedMagazine--;
+                    // Enemy fire must be directional world audio, not an
+                    // unattenuated local player gunshot in the 4-voice mix.
                     AarisAudioDirector.GunShot(carriedGun.category, carriedGun.id,
-                        transform.position + Vector3.up);
+                        transform.position + Vector3.up, isPlayerShot: false);
                     // Visual-only. The existing physical shotHit decides damage.
                     if (owner != null)
                         owner.ShowRivalGunfire(transform, shotHit.point, carriedGun);
