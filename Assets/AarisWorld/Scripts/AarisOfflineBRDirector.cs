@@ -310,6 +310,7 @@ namespace Aaris.MapReview
             // Drive staged player-attacker selection once per rendered frame.
             // Do not rely on individual bots' staggered 0.35s think ticks.
             RefreshPlayerAttackers();
+            TickDormantRivals();
             if (!spawnComplete && Time.time >= nextSpawn &&
                 CanAttemptRivalSpawn())
             {
@@ -370,6 +371,20 @@ namespace Aaris.MapReview
         // them in the same frame as vehicle/loot/settlement native integration.
         // Budget rejection must NOT consume a spawn slot or retry pass: all
         // original rivals and their authored spawn checks remain eligible.
+        // Only the director has a frame callback for distant dormant bots.
+        // Test due times BEFORE calling the actor; the 350ms combat phases
+        // and 100ms proximity checks remain independently scheduled.
+        private void TickDormantRivals()
+        {
+            float now = Time.time;
+            for (int i = 0; i < rivals.Length; i++)
+            {
+                AarisOfflineRival bot = rivals[i];
+                if (bot != null && bot.DormantTickDue(now))
+                    bot.TickDormant();
+            }
+        }
+
         private bool CanAttemptRivalSpawn()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -1412,6 +1427,14 @@ namespace Aaris.MapReview
             // Do not register 100 expensive PhysX character capsules briefly
             // only to turn them off on the next scheduled simulation tick.
             float spawnDistanceSqr = (transform.position - victim.position).sqrMagnitude;
+            // All very distant spawns start outside Unity's per-frame script
+            // dispatch list, while the director retains scheduled simulation.
+            if (spawnDistanceSqr >= FarVisualDistance * FarVisualDistance)
+            {
+                dormantOutOfVisualRange = true;
+                nextDormantProximityProbe = Time.time;
+                enabled = false;
+            }
             if (spawnDistanceSqr >= 185f * 185f)
             {
                 virtualBody = true;
@@ -1732,6 +1755,19 @@ namespace Aaris.MapReview
             return true;
         }
 
+        // Invoked by the director only when a dormant actor's independent
+        // simulation or proximity deadline is due. No per-frame Mono Update.
+        internal bool DormantTickDue(float now)
+        {
+            return !enabled &&
+                (now >= nextFarSimulation || now >= nextDormantProximityProbe);
+        }
+
+        internal void TickDormant()
+        {
+            if (!enabled) Update();
+        }
+
         private void Update()
         {
             float now = Time.time;
@@ -1803,6 +1839,16 @@ namespace Aaris.MapReview
                 if (capsule != null && capsule.enabled)
                     capsule.enabled = false;
                 lastCameraRelevant = false;
+            }
+            // Disabled MonoBehaviours remain reachable through the director.
+            // Switching representation never advances the combat clock.
+            if (dormantOutOfVisualRange)
+            {
+                if (enabled) enabled = false;
+            }
+            else if (!enabled)
+            {
+                enabled = true;
             }
             // Camera visibility controls rendering/physical hit receivers,
             // not AI tick frequency: 4x scoped enemies must not turn 100

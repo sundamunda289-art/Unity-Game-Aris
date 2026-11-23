@@ -218,6 +218,63 @@ class FarRivalBudget(unittest.TestCase):
         self.assertIn("if (!simulationDue) return;", update)
         self.assertIn("TickVirtualCombat(now, dt);", update)
 
+
+    def test_dormant_updates_are_director_scheduled_not_unity_dispatched(self):
+        director, bot = SOURCE.split("internal sealed class AarisOfflineRival", 1)
+        update = bot.split("private void Update()", 1)[1].split(
+            "private void TickVirtualCombat(", 1)[0]
+        self.assertIn("TickDormantRivals();", director)
+        self.assertIn("private void TickDormantRivals()", director)
+        self.assertIn("if (bot != null && bot.DormantTickDue(now))", director)
+        self.assertIn("bot.TickDormant();", director)
+        self.assertIn("internal bool DormantTickDue(float now)", bot)
+        self.assertIn("now >= nextFarSimulation || now >= nextDormantProximityProbe", bot)
+        self.assertIn("internal void TickDormant()", bot)
+        self.assertIn("if (!enabled) Update();", bot)
+        self.assertIn("if (spawnDistanceSqr >= FarVisualDistance * FarVisualDistance)", bot)
+        self.assertIn("nextDormantProximityProbe = Time.time;", bot)
+        self.assertIn("enabled = false;", bot)
+        self.assertIn("if (dormantOutOfVisualRange)\n            {\n                if (enabled) enabled = false;", update)
+        self.assertIn("else if (!enabled)\n            {\n                enabled = true;", update)
+        self.assertLess(
+            update.index("// Disabled MonoBehaviours remain reachable through the director."),
+            update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera) return;"))
+        self.assertLess(update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera) return;"),
+                        update.index("TickVirtualCombat(now, dt);"))
+
+    def test_dormant_100_bot_tick_phases_have_no_central_poll_delay(self):
+        # A shared every-100ms sweep would bunch scheduled 350ms combat ticks.
+        # Per-frame due checks preserve the source's slot phases and react to
+        # player teleports on the next rendered frame while skipping most bot calls.
+        for fps in (15, 30, 60, 120):
+            phases = [i * .35 / 100. for i in range(100)]
+            ai_due = [0.] * 100
+            probe_due = [0.] * 100
+            math_ticks = [0] * 100
+            callbacks = 0
+            max_math_per_frame = 0
+            for frame in range(1, fps * 8 + 1):
+                now = frame / fps
+                frame_math = 0
+                for i in range(100):
+                    if now < ai_due[i] and now < probe_due[i]:
+                        continue
+                    callbacks += 1
+                    probe_due[i] = now + .1
+                    if now >= ai_due[i]:
+                        math_ticks[i] += 1
+                        frame_math += 1
+                        next_tick = (math.floor((now - phases[i]) / .35) + 1) * .35 + phases[i]
+                        if next_tick <= now + .0001:
+                            next_tick += .35
+                        ai_due[i] = next_tick
+                # All 100 start due together in the synthetic first frame.
+                if frame > 1:
+                    max_math_per_frame = max(max_math_per_frame, frame_math)
+            self.assertLess(callbacks, 100 * fps * 8 * .65)
+            self.assertTrue(all(21 <= count <= 25 for count in math_ticks))
+            self.assertLessEqual(max_math_per_frame, 21 if fps == 15 else 11)
+
     def test_near_bot_is_full_frame_rate(self):
         for fps in (15, 30, 60, 120):
             with self.subTest(fps=fps):

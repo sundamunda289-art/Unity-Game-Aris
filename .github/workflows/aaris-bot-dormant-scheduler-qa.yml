@@ -1,0 +1,50 @@
+name: Offline 100-Bot Dormant Scheduler QA
+
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisOfflineBRDirector.cs'
+      - 'Tools/Validation/test_offline_rival_distance_budget.py'
+      - 'Tools/Validation/test_offline_rival_dormant_proximity.py'
+      - 'Tools/Validation/test_offline_rival_spawn_virtual_start.py'
+      - '.github/workflows/aaris-bot-dormant-scheduler-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisOfflineBRDirector.cs'
+      - 'Tools/Validation/test_offline_rival_distance_budget.py'
+      - '.github/workflows/aaris-bot-dormant-scheduler-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  source-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Validate distant simulation, wakeup and combat source contracts
+        run: |
+          python3 Tools/Validation/test_offline_rival_distance_budget.py
+          python3 Tools/Validation/test_offline_rival_dormant_proximity.py
+          python3 Tools/Validation/test_offline_rival_spawn_virtual_start.py
+          python3 Tools/Validation/test_offline_rival_spatial_index.py
+          python3 Tools/Validation/check_remote_bot_combat_contract.py
+      - name: Parse production C-sharp with a real C-sharp grammar
+        run: |
+          python3 -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp
+          python3 - <<'PY'
+          from pathlib import Path
+          from tree_sitter import Language, Parser
+          import tree_sitter_c_sharp
+          path = Path('Assets/AarisWorld/Scripts/AarisOfflineBRDirector.cs')
+          raw = path.read_bytes()
+          parser = Parser(Language(tree_sitter_c_sharp.language()))
+          assert not parser.parse(raw).root_node.has_error, 'C# syntax error'
+          assert all(line == line.rstrip() for line in raw.decode().splitlines())
+          print('C# syntax and formatting PASS; native Unity type compilation must be verified separately')
+          PY
