@@ -79,6 +79,11 @@ if test -n "$ISSUE"; then
     'CS LFS REPORT') OP=lfs_report ;;
     'CS CHANGES') OP=changes ;;
     # Owner-only, exact known gameplay Codespace; no arbitrary host input.
+    # Explicit original gunplay QA Codespace. Start/status only;
+    # never select another account's machine or mutate its workspace.
+    'CS GUNPLAY INFO') OP=info; MACHINE='aaris-ai-ubuntu-minimal-gxpgxwqvv9rq29x46' ;;
+    'CS GUNPLAY START') OP=start; MACHINE='aaris-ai-ubuntu-minimal-gxpgxwqvv9rq29x46' ;;
+    'CS GUNPLAY STATUS') OP=status; MACHINE='aaris-ai-ubuntu-minimal-gxpgxwqvv9rq29x46' ;;
     'CS WEAPON INFO') OP=info; MACHINE='aaris-ai-ubuntu-minimal-p764pwx4q79536p95' ;;
     'CS WEAPON START') OP=start; MACHINE='aaris-ai-ubuntu-minimal-p764pwx4q79536p95' ;;
     'CS WEAPON STATUS') OP=status; MACHINE='aaris-ai-ubuntu-minimal-p764pwx4q79536p95' ;;
