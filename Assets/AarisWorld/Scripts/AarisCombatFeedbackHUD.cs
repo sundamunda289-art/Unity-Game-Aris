@@ -327,23 +327,30 @@ namespace Aaris.MapReview
 
         private void AddNumber(float amount, bool headshot, Vector3 worldHitPosition)
         {
+            // A confirmed hit behind the camera used to borrow a default
+            // crosshair location and look like damage to a visible target.
+            // Project BEFORE claiming a pooled label so offscreen shotgun
+            // pellets cannot evict an actually visible damage number.
+            // The separate real-HP hit marker still fires through WeaponHUD.
+            RefreshAimCamera();
+            if (aimCamera == null || canvasRect == null) return;
+            Vector3 screen = aimCamera.WorldToScreenPoint(worldHitPosition);
+            Rect safe = Screen.safeArea;
+            if (screen.z <= 0f || screen.x < safe.xMin || screen.x > safe.xMax ||
+                screen.y < safe.yMin || screen.y > safe.yMax) return;
+            // One projection per confirmed visible hit, no per-frame work.
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                canvasRect, new Vector2(screen.x, screen.y), null, out Vector2 local))
+                return;
+
             int index = numberIndex++ % numbers.Length;
             int rounded = Mathf.Clamp(Mathf.CeilToInt(amount), 0, DamageLabels.Length - 1);
             var label = numbers[index];
             label.text = DamageLabels[rounded];
             label.color = headshot ? new Color(1f, .36f, .12f, 1f) :
                 new Color(1f, .88f, .35f, 1f);
-            Vector2 origin = new Vector2(((index % 5) - 2) * 22f, 21f + (index % 3) * 12f);
-            // One projection per confirmed hit, not every frame per label.
-            // Reuse the existing pooled UI and avoid managed allocations.
-            RefreshAimCamera();
-            if (aimCamera != null && canvasRect != null)
-            {
-                Vector3 screen = aimCamera.WorldToScreenPoint(worldHitPosition);
-                if (screen.z > 0f && RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                    canvasRect, new Vector2(screen.x, screen.y), null, out Vector2 local))
-                    origin += local;
-            }
+            Vector2 origin = local +
+                new Vector2(((index % 5) - 2) * 22f, 21f + (index % 3) * 12f);
             numberOrigin[index] = origin;
             label.rectTransform.anchoredPosition = origin;
             numberUntil[index] = Time.unscaledTime + .75f;
