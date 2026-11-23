@@ -137,11 +137,18 @@ namespace Aaris.MapReview
 
         internal void Emit(Transform shooter, Vector3 target, bool shotgun)
         {
+            // Preserve the old entry point for PlayMode fixtures and legacy callers.
+            EmitWithBarrel(shooter, target, shotgun, .52f, .22f);
+        }
+
+        private void EmitWithBarrel(Transform shooter, Vector3 target,
+            bool shotgun, float barrelReach, float portReach)
+        {
             if (observer == null || shooter == null || Time.timeScale <= 0f ||
                 (shooter.position - observer.position).sqrMagnitude > 70f * 70f)
                 return;
             Vector3 from = shooter.position + Vector3.up * 1.29f +
-                shooter.forward * .52f;
+                shooter.forward * barrelReach;
             float length = (target - from).magnitude;
             if (length < .18f) return;
             int index = nextSlot++ % MaximumSlots;
@@ -180,7 +187,7 @@ namespace Aaris.MapReview
                 casings[casingIndex] = casing = CreateCasingSlot();
             casing.renderer.sharedMaterial = MaterialFor(true, shotgun);
             Vector3 port = shooter.position + Vector3.up * 1.32f +
-                shooter.forward * .22f + shooter.right * .18f;
+                shooter.forward * portReach + shooter.right * .18f;
             casing.pose.position = port;
             casing.pose.rotation = shooter.rotation * Quaternion.Euler(90f, 0f, 0f);
             casing.pose.localScale = shotgun
@@ -210,7 +217,15 @@ namespace Aaris.MapReview
         {
             if (gun == null) return;
             int before = nextSlot;
-            Emit(shooter, target, gun.category == "Shotgun");
+            // A compact pistol and a long sniper cannot share a muzzle origin.
+            // Clamp the authored metre length for imperfect imported FBX pivots.
+            // Director PhysX damage and targeting remain authoritative.
+            float barrelReach = Mathf.Clamp(
+                gun.presentationLengthMetres * .60f, .27f, .78f);
+            float portReach = Mathf.Clamp(
+                gun.presentationLengthMetres * .25f, .075f, .34f);
+            EmitWithBarrel(shooter, target, gun.category == "Shotgun",
+                barrelReach, portReach);
             if (nextSlot == before) return; // Out of range, paused or invalid.
 
             Slot flash = slots[(nextSlot - 1) % MaximumSlots];
