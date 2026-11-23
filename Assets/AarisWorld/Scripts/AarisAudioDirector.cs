@@ -410,6 +410,12 @@ namespace Aaris.MapReview
             bool isPlayerShot = true)
         {
             if (instance == null || !instance.isActiveAndEnabled) return;
+            // Real bot shots farther than the spatial voice range cannot be
+            // heard. Do not spend an 8-channel world voice, pitch RNG or two
+            // timed-cue slots on inaudible combat across the 2km map.
+            if (!isPlayerShot &&
+                (position - instance.transform.position).sqrMagnitude > 70f * 70f)
+                return;
             string sound = category == "SMG" ? "smg_shot" :
                 category == "Sniper" ? "sniper_shot" :
                 category == "Shotgun" ? "shotgun_shot" :
