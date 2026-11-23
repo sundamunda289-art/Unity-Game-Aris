@@ -200,6 +200,8 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
         self.assertIn("casing.queued = false;", FX)
         native = (ROOT / "Assets/AarisWorld/Editor/AarisProGunplayQA.cs").read_text()
         self.assertIn('"Delayed sniper brass ejects from prebuilt pool"', native)
+        self.assertIn("botEffectColliders += filter.GetComponentsInChildren<Collider>(true).Length;", native)
+        self.assertNotIn("bots.GetComponentsInChildren<Collider>(true).Length == 0", native)
 
     def test_bot_death_spawns_crate_before_destruction(self):
         death=RIVAL.split("private void OnDied(AarisOfflineHealth defeated)",1)[1].split(
