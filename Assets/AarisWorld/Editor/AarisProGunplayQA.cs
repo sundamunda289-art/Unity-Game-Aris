@@ -229,6 +229,8 @@ namespace Aaris.MapReview.Editor
                 Call(gun, "TickTracer");
                 Check(tracer.enabled && Vector3.Distance(tracer.GetPosition(0), tracer.GetPosition(1)) > .001f,
                     "Close tracer remains nonzero through first Update");
+                Check((float)Read(gun, "tracerDuration") >= .055f,
+                    "Player thin tracer survives low-FPS presentation");
                 var flash = (Renderer)Read(gun, "muzzleFlashRenderer");
                 Check(Vector3.Distance(tracer.GetPosition(0), flash.transform.position) < .001f,
                     "Tracer starts on rendered barrel path");
@@ -354,6 +356,9 @@ namespace Aaris.MapReview.Editor
                 Check((firstVelocity - secondVelocity).sqrMagnitude > .001f,
                     "Nearby bot cartridge ejections have distinct ballistic velocities");
                 var slots = (Array)Read(bots, "slots"); var firstSlot = slots.GetValue(0);
+                Check((float)Read(firstSlot, "tracerUntil") -
+                    (float)Read(firstSlot, "shotAt") >= .055f,
+                    "Bot thin tracer survives low-FPS presentation");
                 var botFlash = (Renderer)firstSlot.GetType().GetField("flash", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(firstSlot);
                 Check(botFlash.sharedMaterial == flash.sharedMaterial, "Bots share transparent flame material with player");
 
@@ -594,8 +599,15 @@ namespace Aaris.MapReview.Editor
                     "Crate ignores living rival cap and anchors on real floor");
                 Call(crate, "Spawn", standingRival.transform.position,
                     null, 0, 0, 0, 886u);
+                Check(records.Count == beforeDeaths + 3 &&
+                    Read(records[records.Count - 1], "gun") == null &&
+                    (int)Read(records[records.Count - 1], "medkits") == 0 &&
+                    (float)Read(records[records.Count - 1], "markerUntil") > Time.time,
+                    "Depleted rival leaves a temporary empty death marker");
+                Set(records[records.Count - 1], "markerUntil", Time.time - .1f);
+                Call(crate, "Update");
                 Check(records.Count == beforeDeaths + 2,
-                    "Empty death crate skips physics and creates no record");
+                    "Expired empty marker is cleaned without phantom loot");
                 Check(!runtimeError, "No runtime errors during native gunplay regressions");
                 exit = 0;
             }
