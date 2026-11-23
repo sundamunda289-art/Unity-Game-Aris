@@ -220,6 +220,32 @@ class FarRivalBudget(unittest.TestCase):
         self.assertIn("if (!simulationDue) return;", update)
         self.assertIn("TickVirtualCombat(now, dt);", update)
 
+    def test_near_offcamera_renderer_gate_preserves_combat_body(self):
+        bot = SOURCE.split("internal sealed class AarisOfflineRival", 1)[1]
+        cache = bot.split("private void CacheDetailedRenderers()", 1)[1].split(
+            "private void BuildVisual()", 1)[0]
+        update = bot.split("private void Update()", 1)[1].split(
+            "private void TickVirtualCombat(", 1)[0]
+        # Renderer-only suppression: the actor and capsule still exist for
+        # physical punches, LOS and back-of-camera 20m attackers.
+        self.assertIn("GetComponentsInChildren<Renderer>(true)", cache)
+        self.assertIn("renderer.forceRenderingOff = suppress ||", cache)
+        self.assertIn("authoredRendererForcedOff[i]", cache)
+        self.assertIn("if (suppress) graph.Stop();", cache)
+        self.assertIn("else graph.Play();", cache)
+        self.assertNotIn("capsule.enabled = false", cache)
+        self.assertNotIn("visualRoot.SetActive(false)", cache)
+        self.assertIn("if (playerDistanceSqr < 55f * 55f)", update)
+        self.assertIn("SetDetailedRenderVisibility(cameraRelevant);", update)
+        self.assertLess(
+            update.index("SetDetailedRenderVisibility(cameraRelevant);"),
+            update.index("bool farSimulation = playerDistanceSqr >="))
+        self.assertIn("if (visible) SetDetailedRenderVisibility(cameraRelevant);", update)
+        self.assertIn("!detailedRenderingSuppressed", update)
+        self.assertIn("bool needsPhysicalReceiver = !virtualBody ||", update)
+        self.assertIn("capsule.Move(", update)
+        self.assertIn("TickVirtualCombat(now, dt);", update)
+
     def test_near_bot_is_full_frame_rate(self):
         for fps in (15, 30, 60, 120):
             with self.subTest(fps=fps):
