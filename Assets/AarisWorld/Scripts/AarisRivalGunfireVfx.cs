@@ -30,7 +30,10 @@ namespace Aaris.MapReview
             internal Transform pose;
             internal Vector3 velocity, spin;
             internal float until, groundY;
-            internal bool grounded;
+            // Pump and bolt actions eject after cycling, not on the muzzle flash.
+            // This deadline belongs to the casing slot, not a new coroutine.
+            internal float ejectAt;
+            internal bool grounded, queued;
         }
 
         private readonly Slot[] slots = new Slot[MaximumSlots];
@@ -194,7 +197,45 @@ namespace Aaris.MapReview
             else casing.groundY = shooter.position.y + .012f;
             casing.groundY = Mathf.Min(casing.groundY, port.y - .07f);
             casing.until = now + .85f;
+            casing.queued = false;
             casing.renderer.enabled = true;
+        }
+
+        // Weapon-specific bot presentation, while retaining the legacy Emit
+        // entry point used by existing PlayMode fixtures. All six combat
+        // classes share the same six tracer and twelve casing slots; the
+        // source of damage still remains the director's authoritative ray.
+        internal void EmitForGun(Transform shooter, Vector3 target,
+            AarisWeaponSpec gun)
+        {
+            if (gun == null) return;
+            int before = nextSlot;
+            Emit(shooter, target, gun.category == "Shotgun");
+            if (nextSlot == before) return; // Out of range, paused or invalid.
+
+            Slot flash = slots[(nextSlot - 1) % MaximumSlots];
+            CasingSlot casing = casings[(nextCasingSlot - 1) % MaximumCasingSlots];
+            if (flash == null || casing == null) return;
+            float scale = gun.category == "Pistol" ? .63f :
+                gun.category == "SMG" ? .79f :
+                gun.category == "Sniper" ? 1.25f :
+                gun.category == "DMR" ? 1.08f :
+                gun.id == "BattleRifle" ? 1.14f : 1f;
+            // Scale the shared tapered flame without creating a material or
+            // extra Light. Distinct low-profile pistol and bright sniper shots.
+            flash.flashPose.localScale *= scale;
+            flash.burst.intensity = 1.2f * scale;
+            if (gun.category == "Pistol") casing.pose.localScale *= .76f;
+            else if (gun.category == "SMG") casing.pose.localScale *= .88f;
+            else if (gun.category == "Sniper") casing.pose.localScale *= 1.18f;
+
+            float delay = gun.category == "Shotgun" ? .31f :
+                gun.category == "Sniper" ? .29f : 0f;
+            if (delay <= 0f) return;
+            casing.ejectAt = Time.time + delay;
+            casing.until += delay;
+            casing.queued = true;
+            casing.renderer.enabled = false;
         }
 
         private void Update()
@@ -231,6 +272,11 @@ namespace Aaris.MapReview
             for (int i = 0; i < casings.Length; i++)
             {
                 CasingSlot casing = casings[i];
+                if (casing != null && casing.queued && now >= casing.ejectAt)
+                {
+                    casing.queued = false;
+                    casing.renderer.enabled = true;
+                }
                 if (casing == null || !casing.renderer.enabled) continue;
                 if (now >= casing.until)
                 {
