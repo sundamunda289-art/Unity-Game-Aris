@@ -230,3 +230,58 @@ jobs:
           print(f"C# source syntax passed: {len(sources)} scripts")
           print("Static regression only; native Unity compilation, Play Mode and device FPS require separate verification.")
           PY
+
+  ai-virtualization-native-compile:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feature/ai-near-offscreen-render-cull-20261124'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Archive complete PR CSharp source without LFS
+        shell: bash
+        run: |
+          set -euo pipefail
+          find Assets -type f \( -name '*.cs' -o -name '*.asmdef' -o -name '*.asmref' -o -name '*.rsp' \) -print0 > "$RUNNER_TEMP/ai-native-source-list"
+          tar --null -czf "$RUNNER_TEMP/ai-native-sources.tar.gz" -T "$RUNNER_TEMP/ai-native-source-list" \
+            Packages/manifest.json ProjectSettings/ProjectVersion.txt
+          test -s "$RUNNER_TEMP/ai-native-sources.tar.gz"
+      - name: Native Unity compile on isolated Codespace temporary project
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+        run: |
+          set -euo pipefail
+          [[ -n "$GH_TOKEN" ]] || { echo AARIS_AI_NATIVE_GATE=missing_codespace_token; exit 31; }
+          stage="/tmp/aaris-ai-native-source-$GITHUB_RUN_ID"
+          [[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]
+          gh codespace list --json name,state,repository --limit 100 > "$RUNNER_TEMP/ai-codespaces.json"
+          machine="$(jq -r '[.[] | select(.state == "Available" and ((.repository // "") | endswith("/Unity-Game-Aris"))) | .name] | sort | .[0] // empty' "$RUNNER_TEMP/ai-codespaces.json")"
+          [[ "$machine" =~ ^aaris-ai-[a-zA-Z0-9-]{3,110}$ ]] || {
+            echo AARIS_AI_NATIVE_GATE=no_available_matching_codespace
+            exit 32
+          }
+          cleanup() {
+            gh codespace ssh -c "$machine" -- "rm -rf -- '$stage'" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          gh codespace ssh -c "$machine" -- "mkdir -p '$stage/.git'"
+          gh codespace ssh -c "$machine" -- "tar -xz -C '$stage'" < "$RUNNER_TEMP/ai-native-sources.tar.gz"
+          sed "s|^SOURCE=/workspaces/Unity-Game-Aris$|SOURCE=$stage|" \
+            Tools/Codespaces/native_source_compile_sandbox.sh > "$RUNNER_TEMP/ai-native-command.sh"
+          rc=0
+          gh codespace ssh -c "$machine" -- "bash -s" \
+            < "$RUNNER_TEMP/ai-native-command.sh" \
+            > "$RUNNER_TEMP/ai-native-result.txt" \
+            2> "$RUNNER_TEMP/ai-native-stderr.private" || rc=$?
+          grep -E '^AARIS_NATIVE_COMPILE_[A-Z0-9_]+=[a-zA-Z0-9_-]+$' \
+            "$RUNNER_TEMP/ai-native-result.txt" | head -60 || true
+          [[ "$rc" -eq 0 ]] &&
+          grep -qx 'AARIS_NATIVE_COMPILE_CSHARP_ERRORS=0' "$RUNNER_TEMP/ai-native-result.txt" &&
+          grep -qx 'AARIS_NATIVE_COMPILE_RESULT=source_only_pass' "$RUNNER_TEMP/ai-native-result.txt" || {
+            echo AARIS_AI_NATIVE_GATE=source_compile_unverified
+            exit 33
+          }
+          echo AARIS_AI_NATIVE_GATE=source_only_pass
