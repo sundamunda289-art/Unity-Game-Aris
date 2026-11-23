@@ -1114,19 +1114,25 @@ namespace Aaris.MapReview
                          i = rivalSpatialNext[i])
                     {
                         if (rivalSpatialKeys[i] != key) continue;
-                        AarisOfflineRival bot = rivals[i];
-                        if (bot == null || bot == self || !bot.IsAlive) continue;
                         float d = (rivalSpatialPositions[i] - origin).sqrMagnitude;
-                        // Preserve strict 110m range and old slot-order ties.
+                        // Reject noncompetitive slots using managed positions before
+                        // native Unity object liveness/Transform access. Exact
+                        // 110m cutoff and roster-order tie handling are unchanged.
                         if (d >= RivalHuntRadius * RivalHuntRadius ||
                             d > nearest || (d == nearest && i >= nearestIndex))
                             continue;
+                        AarisOfflineRival bot = rivals[i];
+                        if (bot == null || bot == self || !bot.IsAlive) continue;
                         nearest = d;
                         nearestIndex = i;
-                        victim = bot.transform;
-                        victimHealth = bot.Health;
                     }
                 }
+            // Resolve the native Transform only for the final winner, not
+            // every progressively nearer candidate in the spatial buckets.
+            if (nearestIndex == RivalCount) return false;
+            AarisOfflineRival winner = rivals[nearestIndex];
+            victim = winner.transform;
+            victimHealth = winner.Health;
             return victim != null;
         }
 

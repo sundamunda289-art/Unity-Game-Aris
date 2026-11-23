@@ -112,6 +112,16 @@ class SpatialRivalIndexContract(unittest.TestCase):
         self.assertNotIn("for (int i = 0; i < rivals.Length; i++)", hunt)
         self.assertNotIn("new List", hunt)
 
+    def test_hunt_resolves_native_transform_only_for_final_winner(self):
+        hunt = DIRECTOR.split("internal bool FindRivalOpponent(", 1)[1].split(
+            "internal bool TryFindVisibleRivalAlternative", 1)[0]
+        self.assertLess(hunt.index("if (d >= RivalHuntRadius"),
+                        hunt.index("AarisOfflineRival bot = rivals[i]"))
+        self.assertNotIn("victim = bot.transform", hunt)
+        self.assertEqual(hunt.count("victim = winner.transform;"), 1)
+        self.assertLess(hunt.index("if (nearestIndex == RivalCount) return false;"),
+                        hunt.index("victim = winner.transform;"))
+
     def test_spawn_movement_death_and_benchmark_hooked_up(self):
         self.assertIn("TrackRivalPosition(index, rival, point);", DIRECTOR)
         self.assertIn("UntrackRivalPosition(rival.SpatialSlot, rival);", DIRECTOR)
