@@ -526,13 +526,26 @@ namespace Aaris.MapReview
             if (!indexReady) return false;
             if (!isActiveAndEnabled || obstacles == null || streamed == null ||
                 worldBounds == null) return false;
-            Vector3 right = rotation * (Vector3.right * halfExtents.x);
-            Vector3 up = rotation * (Vector3.up * halfExtents.y);
-            Vector3 forward = rotation * (Vector3.forward * halfExtents.z);
-            Vector3 extents = new Vector3(
-                Mathf.Abs(right.x) + Mathf.Abs(up.x) + Mathf.Abs(forward.x),
-                Mathf.Abs(right.y) + Mathf.Abs(up.y) + Mathf.Abs(forward.y),
-                Mathf.Abs(right.z) + Mathf.Abs(up.z) + Mathf.Abs(forward.z));
+            Vector3 extents;
+            // AI cover, player pickups and many spawn probes use EXACT
+            // identity rotation. Avoid three quaternion-vector transforms per
+            // probe without changing the bounds or streamed-collider rules.
+            if (rotation.x == 0f && rotation.y == 0f &&
+                rotation.z == 0f && rotation.w == 1f)
+            {
+                extents = new Vector3(Mathf.Abs(halfExtents.x),
+                    Mathf.Abs(halfExtents.y), Mathf.Abs(halfExtents.z));
+            }
+            else
+            {
+                Vector3 right = rotation * (Vector3.right * halfExtents.x);
+                Vector3 up = rotation * (Vector3.up * halfExtents.y);
+                Vector3 forward = rotation * (Vector3.forward * halfExtents.z);
+                extents = new Vector3(
+                    Mathf.Abs(right.x) + Mathf.Abs(up.x) + Mathf.Abs(forward.x),
+                    Mathf.Abs(right.y) + Mathf.Abs(up.y) + Mathf.Abs(forward.y),
+                    Mathf.Abs(right.z) + Mathf.Abs(up.z) + Mathf.Abs(forward.z));
+            }
             Bounds probe = new Bounds(center, 2f * extents);
             Vector3 probeMin = probe.min, probeMax = probe.max;
             // A broken/overflowing transform is not evidence of a clear
