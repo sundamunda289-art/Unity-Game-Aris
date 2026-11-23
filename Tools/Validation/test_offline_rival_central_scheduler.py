@@ -90,6 +90,19 @@ class CentralDormantSchedulerTests(unittest.TestCase):
                 if count == 1:
                     self.assertLess(scans, fps * 10 // 2)
 
+    def test_sleeping_slots_defer_native_liveness_to_existing_deadline(self):
+        sweep = DIRECTOR.split("public void TickDormantRivals(float now)", 1)[1].split(
+            "private const int MaximumSpawnPasses", 1)[0]
+        self.assertIn("ReferenceEquals(bot, null)", sweep)
+        due = sweep.index("if (now >= bot.NextDormantWakeTime)")
+        alive = sweep.index("if (bot == null || !bot.IsAlive)")
+        tick = sweep.index("bot.TickDormantFromDirector();")
+        self.assertLess(due, alive)
+        self.assertLess(alive, tick)
+        self.assertIn("SetCentralDormancy(false)", BOT.split("private void OnDied", 1)[1])
+        self.assertIn("RegisterDormantRival(spatialSlot, this, false)",
+                      BOT.split("private void OnDestroy", 1)[1])
+
     def test_benchmark_drives_queue_when_director_disabled(self):
         bench = (Path(__file__).resolve().parents[2] /
                  "Assets/AarisWorld/Editor/AarisBotFrameBenchmark.cs").read_text()
