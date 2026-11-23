@@ -2270,9 +2270,19 @@ namespace Aaris.MapReview
                 (capsule == null || !capsule.enabled);
             if (dormantOffscreenVirtual)
                 nextDormantProximityProbe = now + DormantProximityProbeInterval;
-            // Only invisible virtual bodies or >485m actors become dormant;
-            // near/on-screen fighting keeps native per-frame callbacks.
-            SetCentralDormancy(dormantOutOfVisualRange || dormantOffscreenVirtual);
+            // On-camera actors beyond 185m are still abstract fighters.
+            // Their shared unskinned LOD and stationary bullet receiver do
+            // not require a MonoBehaviour.Update every rendered frame.
+            // Reuse the existing 120ms camera/proximity and 350ms AI clocks.
+            // Nearby physical combat remains fully frame-driven.
+            bool dormantVisibleFarVirtual = !dormantOutOfVisualRange &&
+                lastCameraRelevant && virtualBody &&
+                playerDistanceSqr >= 185f * 185f &&
+                (visualRoot == null || !visualRoot.activeSelf);
+            if (dormantVisibleFarVirtual)
+                nextDormantProximityProbe = now + 0.12f;
+            SetCentralDormancy(dormantOutOfVisualRange || dormantOffscreenVirtual ||
+                dormantVisibleFarVirtual);
             // Camera visibility controls rendering/physical hit receivers,
             // not AI tick frequency: 4x scoped enemies must not turn 100
             // distant AI brains into full-rate Update/PhysX processing.

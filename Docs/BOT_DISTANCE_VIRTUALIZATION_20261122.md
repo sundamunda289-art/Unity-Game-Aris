@@ -58,3 +58,17 @@ frequency, health, zone movement, kill feed and two-attacker limit.
 Camera-only presentation no longer triggers an off-schedule loot attempt.
 Tests cover the source contract and simulated tick parity; Android FPS and
 thermal performance still require on-device profiling.
+
+## Camera-visible far-bot native Update sleep — 2026-11-24
+
+A visible 185–485m rival already uses 350ms abstract combat, shared unskinned
+LOD and (when needed) a stationary physical bullet receiver. Previously its
+MonoBehaviour still dispatched every rendered frame just to check deadlines.
+The central scheduler now also owns these visible **virtual** actors, wakes
+at the pre-existing ~120ms camera/proximity check or 350ms combat deadline,
+and leaves the mesh and bullet collider active. The 90–185m physical band,
+nearby <55m attacks, two player-attacker slots, 100 rival health slots,
+zone, loot, kill-feed and authored 3D models are unchanged. An on-screen
+far bot is *not* claimed to have zero GPU cost; an offscreen virtual bot
+still consumes its time-sliced simulation CPU. Native compilation and Android
+FPS/thermal measurements must be verified separately.

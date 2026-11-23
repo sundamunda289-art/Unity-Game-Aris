@@ -158,6 +158,7 @@ jobs:
           python Tools/Validation/test_android_async_upload_governor.py
           python Tools/Validation/test_offline_rival_distance_budget.py
           python Tools/Validation/test_offline_rival_central_scheduler.py
+          python Tools/Validation/test_offline_rival_visible_far_sleep.py
           python Tools/Validation/test_offline_rival_spatial_index.py
           python Tools/Validation/test_offline_rival_attacker_coarse_prefilter.py
           python Tools/Validation/test_offline_rival_camera_fail_closed.py

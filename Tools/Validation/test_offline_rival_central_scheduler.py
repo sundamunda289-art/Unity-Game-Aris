@@ -10,7 +10,7 @@ DIRECTOR, BOT = SOURCE.split("internal sealed class AarisOfflineRival", 1)
 class CentralDormantSchedulerTests(unittest.TestCase):
     def test_native_dispatch_stops_only_for_dormant_far_or_hidden_bodies(self):
         self.assertIn("enabled = !dormant;", BOT)
-        self.assertIn("SetCentralDormancy(dormantOutOfVisualRange || dormantOffscreenVirtual);", BOT)
+        self.assertRegex(BOT, r"SetCentralDormancy\(dormantOutOfVisualRange \|\| dormantOffscreenVirtual \|\|\s*dormantVisibleFarVirtual\);")
         self.assertIn("playerDistanceSqr >= FarSimulationDistance * FarSimulationDistance", BOT)
         self.assertIn("!lastCameraRelevant && virtualBody", BOT)
         self.assertIn("owner.RegisterDormantRival(spatialSlot, this, dormant)", BOT)
