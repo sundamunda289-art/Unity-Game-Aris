@@ -175,6 +175,23 @@ namespace Aaris.MapReview.Editor
             Set(director, "matchEnd", ending);
             Set(director, "started", true);
             Set(director, "spawnComplete", true);
+            // Mathematical far movement deliberately refuses ground without
+            // real TerrainData; a BoxCollider-only test silently froze 97 bots.
+            // Use transient flat TerrainData without importing the game map.
+            var terrainData = new TerrainData();
+            terrainData.heightmapResolution = 33;
+            terrainData.size = new Vector3(2600f, 10f, 2600f);
+            terrainData.hideFlags = HideFlags.DontSave;
+            GameObject terrainObject = Terrain.CreateTerrainGameObject(terrainData);
+            terrainObject.name = "QA terrain for virtual ground sampling";
+            terrainObject.transform.position = new Vector3(-1300f, 0f, -1300f);
+            terrainObject.transform.SetParent(temporaryRoot.transform, true);
+            var qaTerrain = terrainObject.GetComponent<Terrain>();
+            qaTerrain.drawHeightmap = false; // CPU logic-only; no GPU terrain.
+            qaTerrain.drawTreesAndFoliage = false;
+            TerrainCollider qaCollider = terrainObject.GetComponent<TerrainCollider>();
+            if (qaCollider != null) qaCollider.enabled = false;
+            Set(director, "terrains", new Terrain[] { qaTerrain });
             botTransforms = new Transform[100];
             initialPositions = new Vector3[100];
             mainRecorder = ProfilerRecorder.StartNew(
@@ -300,6 +317,12 @@ namespace Aaris.MapReview.Editor
                     if (brain != null && (bool)virtualField.GetValue(brain))
                         virtualized++;
                 }
+            }
+            if (moved != botTransforms.Length || virtualized < 90)
+            {
+                Fail("REMOTE_BOTS_NOT_MOVING moved=" + moved +
+                    " virtualized=" + virtualized);
+                return;
             }
             string report = "RESULT=PASS\n" +
                 "ENV=Unity Editor Linux Xvfb, 4 logical CPUs; NOT on-device\n" +
