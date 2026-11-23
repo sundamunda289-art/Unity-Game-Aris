@@ -15,6 +15,10 @@ namespace Aaris.MapReview
         private const float PickupRadius = 2.55f;
         private const float VisualRadius = 95f;
         private const int MaxVisuals = 16;
+        // A deliberate PICK may try a few nearby crates if the nearest one
+        // cannot transfer any supplies. This cap prevents worst-case model or
+        // terrain work from scaling with 100 overlapping dead rivals.
+        private const int MaximumPickupAttempts = 4;
         private sealed class Drop
         {
             internal Vector3 position;
@@ -28,6 +32,7 @@ namespace Aaris.MapReview
         private static Material metal, trim, beamMaterial;
         private static Mesh beamMesh;
         private readonly List<Drop> drops = new List<Drop>(100);
+        private readonly Drop[] attemptedPickups = new Drop[MaximumPickupAttempts];
         private readonly Stack<GameObject> unusedVisuals = new Stack<GameObject>(MaxVisuals);
         private Transform player;
         private float nextPoll;
@@ -94,10 +99,47 @@ namespace Aaris.MapReview
         {
             if (instance == null || instance.player != seeker || inventory == null ||
                 Time.timeScale <= 0f) return false;
-            Drop drop = instance.Nearest(seeker.position, PickupRadius, true);
-            if (drop == null) return false;
 
+            // One unreachable/full crate must not permanently block another
+            // reachable crate in the same 2.55m interaction radius. Reuse the
+            // fixed scratch array; there are no per-tap collections.
+            int attempted = 0;
             bool taken = false;
+            while (attempted < MaximumPickupAttempts)
+            {
+                Drop drop = instance.Nearest(seeker.position, PickupRadius, true,
+                    instance.attemptedPickups, attempted);
+                if (drop == null) break;
+                instance.attemptedPickups[attempted++] = drop;
+                if (TryLootDrop(seeker, inventory, drop))
+                {
+                    taken = true;
+                    break;
+                }
+            }
+            // Do not keep removed crate records alive in the scratch array.
+            for (int i = 0; i < attempted; i++)
+                instance.attemptedPickups[i] = null;
+            return taken;
+        }
+
+        private static bool TryLootDrop(Transform seeker,
+            AarisWeaponInventory inventory, Drop drop)
+        {
+            bool taken = false;
+            // If this exact gun is already carried, collect usable ammo and
+            // medkits BEFORE considering a costly redundant model exchange.
+            // A second deliberate PICK can still exchange the gun afterwards.
+            if (drop.gun != null && inventory.CarriesDeathCrateWeapon(drop.gun.Spec))
+            {
+                taken |= TransferAmmoAndMedkits(seeker, inventory, drop);
+                if (taken)
+                {
+                    instance.cachedPickupNear = false;
+                    instance.nextPoll = 0f;
+                    return true;
+                }
+            }
             // A full two-slot inventory needs a reserved, reachable floor
             // record for the outgoing hand gun BEFORE changing ownership.
             // The inventory routes that case through its normal loot world.
@@ -113,22 +155,10 @@ namespace Aaris.MapReview
                     taken = true;
                 }
             }
-            // If both gun slots are full, loose ammo can still be collected.
-            // Unused rounds remain in the crate until there is reserve space.
-            if (drop.gun != null && drop.looseAmmo > 0)
-            {
-                int added = inventory.AddDeathCrateAmmo(drop.gun.Spec,
-                    drop.looseAmmo);
-                drop.looseAmmo -= added;
-                taken |= added > 0;
-            }
-            if (drop.medkits > 0 &&
-                seeker.TryGetComponent(out AarisOfflineTacticalHUD medical))
-            {
-                int added = medical.AddDeathCrateMedkits(drop.medkits);
-                drop.medkits -= added;
-                taken |= added > 0;
-            }
+            // When exchange is blocked, still collect only the real rounds
+            // and medkits that fit. Partial reserve transfers remain in crate.
+            if (!taken)
+                taken = TransferAmmoAndMedkits(seeker, inventory, drop);
             if (!drop.HasContent)
             {
                 instance.Release(drop);
@@ -144,6 +174,33 @@ namespace Aaris.MapReview
             return taken;
         }
 
+        private static bool TransferAmmoAndMedkits(Transform seeker,
+            AarisWeaponInventory inventory, Drop drop)
+        {
+            bool taken = false;
+            if (drop.gun != null && drop.looseAmmo > 0)
+            {
+                int added = inventory.AddDeathCrateAmmo(drop.gun.Spec,
+                    drop.looseAmmo);
+                drop.looseAmmo -= added;
+                taken |= added > 0;
+            }
+            if (drop.medkits > 0 &&
+                seeker.TryGetComponent(out AarisOfflineTacticalHUD medical))
+            {
+                int added = medical.AddDeathCrateMedkits(drop.medkits);
+                drop.medkits -= added;
+                taken |= added > 0;
+            }
+            // Empty crates must not linger after a supplies-only pickup.
+            if (!drop.HasContent)
+            {
+                instance.Release(drop);
+                instance.drops.Remove(drop);
+            }
+            return taken;
+        }
+
         // Check line of sight only for crates within pickup reach. A nearby
         // box across a solid building wall must not be looted through it.
         private static bool Reachable(Vector3 from, Vector3 to)
@@ -153,7 +210,8 @@ namespace Aaris.MapReview
                 QueryTriggerInteraction.Ignore);
         }
 
-        private Drop Nearest(Vector3 point, float radius, bool mustReach)
+        private Drop Nearest(Vector3 point, float radius, bool mustReach,
+            Drop[] excluded = null, int excludedCount = 0)
         {
             float best = radius * radius;
             Drop selected = null;
@@ -164,6 +222,19 @@ namespace Aaris.MapReview
                     continue;
                 float d2 = (drop.position - point).sqrMagnitude;
                 if (d2 >= best) continue;
+                if (excludedCount > 0)
+                {
+                    bool alreadyTried = false;
+                    for (int j = 0; j < excludedCount; j++)
+                    {
+                        if (excluded[j] == drop)
+                        {
+                            alreadyTried = true;
+                            break;
+                        }
+                    }
+                    if (alreadyTried) continue;
+                }
                 if (mustReach && !Reachable(point, drop.position)) continue;
                 best = d2;
                 selected = drop;

@@ -114,6 +114,36 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
                         world.index("CreateVisual();"))
         self.assertIn("nextPoll = Time.time + 0.25f;", world)
 
+    def test_nearby_usable_crate_is_not_blocked_by_full_nearest_crate(self):
+        pickup=CRATE.split("internal static bool TryLootNearest(",1)[1].split(
+            "private static bool TryLootDrop(",1)[0]
+        self.assertIn("private const int MaximumPickupAttempts = 4;",CRATE)
+        self.assertIn("new Drop[MaximumPickupAttempts]",CRATE)
+        self.assertIn("instance.attemptedPickups, attempted",pickup)
+        self.assertIn("if (TryLootDrop(seeker, inventory, drop))",pickup)
+        self.assertIn("instance.attemptedPickups[i] = null;",pickup)
+        nearest=CRATE.split("private Drop Nearest(",1)[1].split(
+            "private void Update()",1)[0]
+        self.assertIn("Drop[] excluded = null, int excludedCount = 0",nearest)
+        self.assertIn("if (excluded[j] == drop)",nearest)
+
+    def test_matching_gun_collects_real_supplies_before_exchange(self):
+        take=CRATE.split("private static bool TryLootDrop(",1)[1].split(
+            "private static bool TransferAmmoAndMedkits(",1)[0]
+        self.assertIn("inventory.CarriesDeathCrateWeapon(drop.gun.Spec)",take)
+        self.assertIn("taken |= TransferAmmoAndMedkits(seeker, inventory, drop);",take)
+        self.assertLess(take.index("taken |= TransferAmmoAndMedkits("),
+                        take.index("inventory.TryPickupDeathCrateGun(transfer)"))
+        self.assertIn("if (taken)",take)
+        self.assertIn("instance.cachedPickupNear = false;",take)
+        supplies=CRATE.split("private static bool TransferAmmoAndMedkits(",1)[1].split(
+            "// Check line of sight only",1)[0]
+        self.assertIn("inventory.AddDeathCrateAmmo",supplies)
+        self.assertIn("medical.AddDeathCrateMedkits",supplies)
+        self.assertIn("drop.looseAmmo -= added;",supplies)
+        self.assertIn("drop.medkits -= added;",supplies)
+        self.assertIn("instance.drops.Remove(drop);",supplies)
+
     def test_full_slot_exchange_reserves_drop_and_rolls_back_on_failure(self):
         exchange = INVENTORY.split("internal bool TryPickupDeathCrateGun(",1)[1].split(
             "internal int AddDeathCrateAmmo",1)[0]
@@ -156,10 +186,11 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
         self.assertIn("drop.gun = null;",take)
         self.assertLess(take.index("inventory.TryPickupDeathCrateGun(transfer)"),
                         take.index("drop.gun = null;"))
-        self.assertIn("inventory.AddDeathCrateAmmo",take)
-        self.assertIn("medical.AddDeathCrateMedkits",take)
-        self.assertIn("drop.looseAmmo -= added;",take)
-        self.assertIn("drop.medkits -= added;",take)
+        self.assertIn("TransferAmmoAndMedkits(seeker, inventory, drop)",take)
+        self.assertIn("inventory.AddDeathCrateAmmo",CRATE)
+        self.assertIn("medical.AddDeathCrateMedkits",CRATE)
+        self.assertIn("drop.looseAmmo -= added;",CRATE)
+        self.assertIn("drop.medkits -= added;",CRATE)
         self.assertIn("mustReach && !Reachable(point, drop.position)",CRATE)
         self.assertIn("if (AarisDeathCrateWorld.TryLootNearest(transform, this)) return;",INVENTORY)
         self.assertIn("if (AcceptsPlayerWeaponInput && lootWorld != null)",INVENTORY)

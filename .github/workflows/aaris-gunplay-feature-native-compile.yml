@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   native-source-only:
-    if: github.event.pull_request.head.repo.full_name == github.repository && (github.head_ref == 'feature/pro-gunplay-death-crate-20261123' || github.head_ref == 'feature/pro-gunplay-automatic-shell-pool-20261123' || github.head_ref == 'feature/pro-gunplay-crate-pickup-visibility-20261123' || github.head_ref == 'feature/pro-gunplay-safe-crate-exchange-20261123')
+    if: github.event.pull_request.head.repo.full_name == github.repository && (startsWith(github.head_ref, 'feature/pro-gunplay-'))
     runs-on: ubuntu-24.04
     timeout-minutes: 14
     steps:

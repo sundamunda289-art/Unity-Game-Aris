@@ -432,6 +432,15 @@ namespace Aaris.MapReview
                 lootWorld.RequestPickup();
         }
 
+        internal bool CarriesDeathCrateWeapon(AarisWeaponSpec spec)
+        {
+            if (spec == null) return false;
+            return (equipped != null && equipped.Spec != null &&
+                    equipped.Spec.id == spec.id) ||
+                   (stowed != null && stowed.Spec != null &&
+                    stowed.Spec.id == spec.id);
+        }
+
         internal bool TryPickupDeathCrateGun(AarisWeaponState incoming)
         {
             if (!AcceptsPlayerWeaponInput || incoming == null) return false;
