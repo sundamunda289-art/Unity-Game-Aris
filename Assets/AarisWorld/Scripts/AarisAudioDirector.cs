@@ -63,6 +63,17 @@ namespace Aaris.MapReview
         private float stepDistance, lastSkidAt = -10f, lastCrashAt = -10f;
         private AarisBattleActions.PlayerStance lastFootstepStance = AarisBattleActions.PlayerStance.Standing;
         private int nextLocalVoice, nextWorldVoice = LocalVoiceCount;
+        // Gunshot pitch variation must not advance Unity's global gameplay RNG.
+        // This stream only affects audio presentation, not loot or AI choices.
+        private uint gunshotPitchSeed = 0xC2B2AE35u;
+
+        private float NextGunshotPitch()
+        {
+            gunshotPitchSeed = unchecked(
+                gunshotPitchSeed * 1664525u + 1013904223u);
+            return .97f + (gunshotPitchSeed & 0x00FFFFFFu) *
+                (1f / 16777216f) * .065f;
+        }
         private int vehicleGear = 1;
         private Vector3 previousPosition;
         private float nextOptionalComponentRefresh;
@@ -310,22 +321,47 @@ namespace Aaris.MapReview
             voice.Play();
         }
 
+        // Reserve a saturated cue queue for mechanically meaningful sounds:
+        // grenade release > bolt/pump cycle > incidental cartridge landing.
+        // Do not drop a cue that is about to play just to accept a later,
+        // equal-priority shell. A tiny integer comparison, no allocations.
+        private static int ScheduledCuePriority(string key)
+        {
+            return key == "grenade_throw" ? 2 :
+                key == "bolt_reload" ? 1 : 0;
+        }
+
         private void Schedule(string key, Vector3 point, float seconds, float volume)
         {
             int empty = -1;
             for (int i = 0; i < scheduled.Length; i++)
                 if (scheduled[i].Key == null) { empty = i; break; }
-            // At high rates, drop only the oldest noncritical tail cue.
-            // Recompute the deadline when replacing it: the old minimum
-            // might no longer be in the queue.
             bool replacedOldest = empty < 0;
+            float at = Time.time + seconds;
             if (replacedOldest)
             {
-                empty = 0;
-                for (int i = 1; i < scheduled.Length; i++)
-                    if (scheduled[i].At < scheduled[empty].At) empty = i;
+                // Full queue: select the least-important cue, breaking ties
+                // by FARTHEST future deadline. Earlier sounds keep playing.
+                int lowestPriority = int.MaxValue;
+                float latestAt = float.NegativeInfinity;
+                for (int i = 0; i < scheduled.Length; i++)
+                {
+                    int priority = ScheduledCuePriority(scheduled[i].Key);
+                    if (priority < lowestPriority ||
+                        (priority == lowestPriority && scheduled[i].At > latestAt))
+                    {
+                        lowestPriority = priority;
+                        latestAt = scheduled[i].At;
+                        empty = i;
+                    }
+                }
+                int incomingPriority = ScheduledCuePriority(key);
+                // Never evict a more important cue. For equal priority,
+                // retain the cue scheduled sooner instead of starving it.
+                if (incomingPriority < lowestPriority ||
+                    (incomingPriority == lowestPriority && at >= latestAt))
+                    return;
             }
-            float at = Time.time + seconds;
             scheduled[empty] = new TimedCue
             {
                 Key = key, Position = point, At = at, Volume = volume
@@ -371,8 +407,13 @@ namespace Aaris.MapReview
                 id == "BattleRifle" ? "battle_rifle_shot" : "ar_shot";
             float pitch = category == "Pistol" ? 1.24f : 1f;
             instance.OneShot(sound, position, category == "Pistol" ? 0.68f : 0.85f,
-                pitch * UnityEngine.Random.Range(0.97f, 1.035f));
-            instance.Schedule("shell_drop", position, 0.14f, 0.16f);
+                pitch * instance.NextGunshotPitch());
+            // The shell cannot hit the floor before the bolt/pump releases it.
+            // From a ~1.3m receiver with upward ejection, a ~0.63s flight
+            // is a restrained ground-contact approximation (no extra PhysX).
+            float casingDelay = category == "Shotgun" ? .31f :
+                category == "Sniper" ? .29f : .025f;
+            instance.Schedule("shell_drop", position, casingDelay + .63f, .16f);
             if (category == "Sniper" || category == "Shotgun")
                 instance.Schedule("bolt_reload", position, 0.36f, 0.44f);
         }
