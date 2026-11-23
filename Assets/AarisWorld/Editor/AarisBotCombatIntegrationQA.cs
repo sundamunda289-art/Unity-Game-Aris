@@ -99,6 +99,7 @@ namespace Aaris.MapReview.Editor
                 VerifyDestructibleHitConfirmation(report);
                 VerifyBots(report, active);
                 VerifyVirtualCombat(report);
+                VerifyNearRivalRendererCulling(report);
                 VerifyBotLootCover(report);
             }
             catch (Exception ex)
@@ -123,6 +124,51 @@ namespace Aaris.MapReview.Editor
             File.WriteAllText(Path.Combine(directory, "report.txt"), report.ToString());
             Debug.Log(report.ToString());
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);
+        }
+
+        // A 20m enemy behind the camera must still be targetable and keep
+        // its physical AI alive, but submit no mesh or shadow draw. Verify
+        // the actual Renderer.forceRenderingOff state and authored overrides.
+        private static void VerifyNearRivalRendererCulling(StringBuilder report)
+        {
+            var root = new GameObject("Temporary rival render-only culling QA");
+            try
+            {
+                var botNode = new GameObject("Behind-camera combatant");
+                botNode.transform.SetParent(root.transform, false);
+                var bot = botNode.AddComponent(BotType);
+                var rig = new GameObject("Detailed humanoid visual");
+                rig.transform.SetParent(botNode.transform, false);
+                var ordinary = new GameObject("Normal skinned part");
+                ordinary.transform.SetParent(rig.transform, false);
+                var normalRenderer = ordinary.AddComponent<MeshRenderer>();
+                var authoredHidden = new GameObject("Intentionally hidden part");
+                authoredHidden.transform.SetParent(rig.transform, false);
+                var hiddenRenderer = authoredHidden.AddComponent<MeshRenderer>();
+                hiddenRenderer.forceRenderingOff = true;
+
+                Set(bot, "visualRoot", rig);
+                Call(bot, "CacheDetailedRenderers");
+                Call(bot, "SetDetailedRenderVisibility", false);
+                Check(normalRenderer.forceRenderingOff && hiddenRenderer.forceRenderingOff,
+                    "near off-camera rival submits zero detailed renderers", report);
+                var body = BotType.GetProperty("HasVisibleBody",
+                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                Check(body != null && (bool)body.GetValue(bot) && bot.enabled,
+                    "near hidden rival remains a live targetable actor", report);
+                Call(bot, "SetDetailedRenderVisibility", false);
+                Check(normalRenderer.forceRenderingOff,
+                    "repeat camera probe does not reactivate hidden rendering", report);
+
+                Call(bot, "SetDetailedRenderVisibility", true);
+                Check(!normalRenderer.forceRenderingOff &&
+                    hiddenRenderer.forceRenderingOff,
+                    "camera reentry restores original renderer flags", report);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
         }
 
         // Offscreen opponents use the real health receiver and own ammo
