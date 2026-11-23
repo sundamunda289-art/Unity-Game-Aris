@@ -22,7 +22,7 @@ class DormantFarProximityTests(unittest.TestCase):
         self.assertIn("private const float DormantProximityProbeInterval = 0.10f;", BOT)
         self.assertIn("playerDistanceSqr >= FarVisualDistance * FarVisualDistance;", UPDATE)
         self.assertIn("nextDormantProximityProbe = now + DormantProximityProbeInterval;", UPDATE)
-        self.assertIn("if (farSimulation && now < nextFarSimulation && !justEnteredCamera) return;", UPDATE)
+        self.assertIn("if (farSimulation && now < nextFarSimulation && !justEnteredCamera &&", UPDATE)
         self.assertIn("TickVirtualCombat(now, dt);", UPDATE)
         # The throttle cannot return if the next scheduled AI tick is due.
         for due in (0.0, 0.35, 0.7, 1.05):

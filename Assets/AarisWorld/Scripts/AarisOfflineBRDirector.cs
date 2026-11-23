@@ -2292,7 +2292,14 @@ namespace Aaris.MapReview
             // A camera-entry event may admit a render mesh and hit receiver,
             // but must never advance the independent abstract combat clock.
             bool simulationDue = !farSimulation || now >= nextFarSimulation;
-            if (farSimulation && now < nextFarSimulation && !justEnteredCamera) return;
+            // A denied native model/receiver admission must retry on the
+            // presentation clock, not wait for another 350ms combat tick.
+            // The independent simulationDue gate below still owns all AI.
+            bool presentationRetryDue = cameraRelevant &&
+                now >= nextVisualCheck && now >= staggeredVisualDelay &&
+                (!HasVisibleBody || capsule == null || !capsule.enabled);
+            if (farSimulation && now < nextFarSimulation && !justEnteredCamera &&
+                !presentationRetryDue) return;
             // Near the player use the actual shared floor pickup record.
             // Off-screen guns are not streamed: simulate ONE bounded scavenge
             // from the ready catalog without creating any distant gun meshes.
@@ -2404,6 +2411,10 @@ namespace Aaris.MapReview
                 }
                 if (farVisualRoot != null && farVisualRoot.activeSelf != farBand)
                     farVisualRoot.SetActive(farBand);
+                // Retry a denied optional model on the next camera probe;
+                // no additional AI, physics sight or loot tick is admitted.
+                if (cameraRelevant && !HasVisibleBody)
+                    nextVisualCheck = now + 0.12f;
                 RetireHiddenRig(now, playerDistanceSqr);
             }
             // Simulation LOD must be independent of camera visibility.
@@ -2445,6 +2456,11 @@ namespace Aaris.MapReview
             }
             if (capsule != null && capsule.enabled != needsPhysicalReceiver)
                 capsule.enabled = needsPhysicalReceiver;
+            // The one-per-frame native receiver budget may also be denied
+            // on camera entry. Do not leave a visible model unhittable
+            // until the normal 550ms presentation deadline.
+            if (cameraRelevant && needsPhysicalReceiver && capsule == null)
+                nextVisualCheck = Mathf.Min(nextVisualCheck, now + 0.12f);
             RetireUnusedPhysicalReceiver(now, playerDistanceSqr, needsPhysicalReceiver);
             // Camera-entry presentation cannot spend an extra movement, attack,
             // loot or virtual-combat tick before its scheduled simulation turn.

@@ -53,7 +53,7 @@ class FarRivalBudget(unittest.TestCase):
         update = bot.split("private void Update()", 1)[1].split("private bool HasSight()", 1)[0]
         self.assertIn("private const float FarSimulationDistance = 90f;", bot)
         self.assertIn("private const float FarSimulationInterval = 0.35f;", bot)
-        guard = update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera) return;")
+        guard = update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera &&")
         self.assertLess(guard, update.index("owner.TryZoneRetreatDirection"))
         self.assertLess(guard, update.index("capsule.Move("))
         self.assertIn("now - lastSimulationTime", update)
@@ -139,7 +139,7 @@ class FarRivalBudget(unittest.TestCase):
         update = bot.split("private void Update()", 1)[1].split(
             "private void TickVirtualCombat(", 1)[0]
         due = update.index("bool simulationDue = !farSimulation || now >= nextFarSimulation;")
-        self.assertLess(due, update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera) return;"))
+        self.assertLess(due, update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera &&"))
         self.assertIn("if (simulationDue)\n            {", update)
         self.assertIn("if (!simulationDue) return;", update)
         self.assertLess(update.index("if (!simulationDue) return;"),
@@ -189,7 +189,7 @@ class FarRivalBudget(unittest.TestCase):
         self.assertIn("capsule.enabled = false;", exit_block)
         self.assertNotIn("new ", exit_block)
         self.assertLess(update.index("if (!cameraRelevant && playerDistanceSqr >= 55f * 55f)"),
-                        update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera) return;"))
+                        update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera &&"))
         self.assertIn("nextCameraProbe = now + 0.12f;", update)
         self.assertIn("virtualBody = true;", exit_block)
         self.assertIn("FarSimulationDistance * FarSimulationDistance", exit_block)
@@ -214,7 +214,7 @@ class FarRivalBudget(unittest.TestCase):
             self.assertIn(required, outside)
         self.assertLess(
             update.index("// Exiting the 485m representation band"),
-            update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera) return;"))
+            update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera &&"))
         # Only renderer/collider admission is changed. The far simulation
         # scheduler and remote HP/damage path still use their original tick.
         self.assertIn("if (!simulationDue) return;", update)
@@ -245,6 +245,53 @@ class FarRivalBudget(unittest.TestCase):
         self.assertIn("bool needsPhysicalReceiver = !virtualBody ||", update)
         self.assertIn("capsule.Move(", update)
         self.assertIn("TickVirtualCombat(now, dt);", update)
+
+    def test_denied_camera_admission_retries_without_extra_combat(self):
+        update = SOURCE.split("internal sealed class AarisOfflineRival", 1)[1]
+        update = update.split("private void Update()", 1)[1]
+        update = update.split("private void TickVirtualCombat", 1)[0]
+        retry = update.index("bool presentationRetryDue = cameraRelevant")
+        self.assertIn("!HasVisibleBody || capsule == null || !capsule.enabled", update)
+        self.assertIn("!presentationRetryDue) return;", update)
+        self.assertIn("if (cameraRelevant && !HasVisibleBody)", update)
+        self.assertIn("nextVisualCheck = now + 0.12f;", update)
+        self.assertIn("nextVisualCheck = Mathf.Min(nextVisualCheck, now + 0.12f);", update)
+        self.assertLess(retry, update.index("if (simulationDue)"))
+        self.assertLess(update.index("if (!simulationDue) return;"),
+                        update.index("TickVirtualCombat(now, dt);"))
+        # Model the first camera admission denied by the native budget,
+        # followed by a successful retry at the next 120ms probe.
+        for fps in (15, 30, 60, 120):
+            next_ai = .35
+            next_visual = 0.
+            visible = False
+            attempts = 0
+            ticks = []
+            baseline = []
+            next_baseline = .35
+            shown = None
+            for frame in range(fps):
+                now = frame / fps
+                if now >= next_baseline:
+                    baseline.append(frame)
+                    next_baseline = now + .35
+                simulation_due = now >= next_ai
+                retry_due = not visible and now >= next_visual
+                if not simulation_due and not retry_due:
+                    continue
+                if retry_due:
+                    attempts += 1
+                    if attempts == 1:
+                        next_visual = now + .12
+                    else:
+                        visible = True
+                        shown = now
+                if simulation_due:
+                    ticks.append(frame)
+                    next_ai = now + .35
+            self.assertEqual(ticks, baseline)
+            self.assertEqual(attempts, 2)
+            self.assertLess(shown, .20)
 
     def test_near_bot_is_full_frame_rate(self):
         for fps in (15, 30, 60, 120):
