@@ -1412,7 +1412,16 @@ namespace Aaris.MapReview
             // Do not register 100 expensive PhysX character capsules briefly
             // only to turn them off on the next scheduled simulation tick.
             float spawnDistanceSqr = (transform.position - victim.position).sqrMagnitude;
-            if (spawnDistanceSqr >= 185f * 185f)
+            // Offscreen 90-185m rivals spawn math-only; nearby visible
+            // rivals keep a real collision receiver for hitscan and cover.
+            bool spawnCameraRelevant = spawnDistanceSqr >=
+                FarSimulationDistance * FarSimulationDistance &&
+                spawnDistanceSqr < 185f * 185f &&
+                owner.IsDistantRivalOnScreen(transform.position);
+            lastCameraRelevant = spawnCameraRelevant;
+            if (spawnDistanceSqr >= 185f * 185f ||
+                (spawnDistanceSqr >= FarSimulationDistance * FarSimulationDistance &&
+                 !spawnCameraRelevant))
             {
                 virtualBody = true;
                 if (capsule != null) capsule.enabled = false;
@@ -1776,6 +1785,10 @@ namespace Aaris.MapReview
                         }
                         if (farVisualRoot != null && farVisualRoot.activeSelf)
                             farVisualRoot.SetActive(false);
+                        // Offscreen midrange AI no longer needs a PhysX body.
+                        if (playerDistanceSqr >=
+                            FarSimulationDistance * FarSimulationDistance)
+                            virtualBody = true;
                         if (virtualBody && capsule != null && capsule.enabled)
                             capsule.enabled = false;
                     }
@@ -1917,9 +1930,17 @@ namespace Aaris.MapReview
             // Retain a stationary capsule ONLY for a camera-visible long-range
             // physical bullet receiver; outside the view it is unregistered.
             // 165/185m hysteresis prevents toggling physical simulation.
-            if (!virtualBody && playerDistanceSqr >= 185f * 185f)
+            // Camera visibility and proximity independently control physics.
+            // Preserve the existing 165/185m return hysteresis for scope hits.
+            bool shouldVirtualize = playerDistanceSqr >= 185f * 185f ||
+                (playerDistanceSqr >= FarSimulationDistance * FarSimulationDistance &&
+                 !cameraRelevant);
+            bool shouldRestorePhysics = playerDistanceSqr <= 165f * 165f &&
+                (playerDistanceSqr < FarSimulationDistance * FarSimulationDistance ||
+                 cameraRelevant);
+            if (!virtualBody && shouldVirtualize)
                 virtualBody = true;
-            else if (virtualBody && playerDistanceSqr <= 165f * 165f)
+            else if (virtualBody && shouldRestorePhysics)
             {
                 virtualBody = false;
                 verticalSpeed = -1.5f;
@@ -2247,7 +2268,14 @@ namespace Aaris.MapReview
             if (!hasTarget || now < nextAttack ||
                 distance > (carriedGun == null ? 2.25f : 38f) ||
                 (target.position - playerTarget.position).sqrMagnitude <
-                    165f * 165f)
+                    FarSimulationDistance * FarSimulationDistance)
+                return;
+            // Abstract damage is valid only between two invisible fighters:
+            // never hit the player or an on-camera physically rendered bot.
+            if (!target.TryGetComponent<AarisOfflineRival>(
+                    out AarisOfflineRival hiddenTarget) ||
+                !hiddenTarget.virtualBody || hiddenTarget.lastCameraRelevant ||
+                hiddenTarget.HasVisibleBody)
                 return;
             float interval = carriedGun != null
                 ? Mathf.Clamp(carriedGun.ShotInterval * 3f, 0.35f, 2.4f)
