@@ -177,6 +177,30 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
         self.assertNotIn("GameObject.CreatePrimitive", FX)
         self.assertNotIn("AddComponent<Rigidbody>", FX.split("private CasingSlot CreateCasingSlot()",1)[1])
 
+    def test_bot_gun_class_changes_flash_and_ejection_without_more_objects(self):
+        self.assertIn("rivalGunfire.EmitForGun(shooter, impact, gun);", RIVAL)
+        part = FX.split("internal void EmitForGun(", 1)[1].split(
+            "private void Update()", 1)[0]
+        for required in (
+            'gun.category == "Pistol" ? .63f',
+            'gun.category == "SMG" ? .79f',
+            'gun.category == "Sniper" ? 1.25f',
+            'gun.category == "DMR" ? 1.08f',
+            'gun.category == "Shotgun" ? .31f',
+            'gun.category == "Sniper" ? .29f',
+            'casing.queued = true;',
+            'casing.renderer.enabled = false;',
+            'flash.flashPose.localScale *= scale;',
+        ):
+            self.assertIn(required, part)
+        self.assertNotIn("new GameObject(", part)
+        self.assertNotIn("AddComponent", part)
+        self.assertNotIn("Physics.Raycast", part)
+        self.assertIn("casing.queued && now >= casing.ejectAt", FX)
+        self.assertIn("casing.queued = false;", FX)
+        native = (ROOT / "Assets/AarisWorld/Editor/AarisProGunplayQA.cs").read_text()
+        self.assertIn('"Delayed sniper brass ejects from prebuilt pool"', native)
+
     def test_bot_death_spawns_crate_before_destruction(self):
         death=RIVAL.split("private void OnDied(AarisOfflineHealth defeated)",1)[1].split(
             "private void OnDestroy()",1)[0]
