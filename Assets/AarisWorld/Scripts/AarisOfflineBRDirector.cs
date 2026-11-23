@@ -1126,6 +1126,10 @@ namespace Aaris.MapReview
                     bot.IsDormantAimInvisible &&
                     (activeDirector.rivalSpatialPositions[i] - origin).sqrMagnitude >
                     cachedCullRangeSqr) continue;
+                // A dormant hidden fighter has no physical aim receiver;
+                // skip its native position access even inside a 4x range.
+                // Active or camera-visible targets keep exact LOS/geometry.
+                if (bot.IsDormantAimInvisible) continue;
                 Vector3 delta = bot.transform.position + Vector3.up * 1.12f - origin;
                 float sqrDistance = delta.sqrMagnitude;
                 if (sqrDistance < .0625f || sqrDistance > maximumRangeSqr) continue;
@@ -1231,6 +1235,10 @@ namespace Aaris.MapReview
                     bot.IsDormantAimInvisible &&
                     (activeDirector.rivalSpatialPositions[i] - origin).sqrMagnitude >
                     cachedCullRangeSqr) continue;
+                // A dormant hidden fighter has no physical aim receiver;
+                // skip its native position access even inside a 4x range.
+                // Active or camera-visible targets keep exact LOS/geometry.
+                if (bot.IsDormantAimInvisible) continue;
                 Vector3 delta = bot.transform.position + Vector3.up * 1.12f - origin;
                 float sqr = delta.sqrMagnitude;
                 if (sqr < .0625f || sqr > maxRangeSqr) continue;
@@ -2382,12 +2390,16 @@ namespace Aaris.MapReview
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             using var aiProfilerScope = k_RemoteCombat.Auto();
 #endif
+            // Snapshot the native pose once per time-sliced math combat turn,
+            // instead of repeatedly crossing into Unity's Transform getter.
+            Vector3 selfPosition = transform.position;
+            Vector3 selfForward = transform.forward;
             if (now >= nextThink)
             {
                 nextThink = now + 0.55f + NextVirtualRandom() * 0.15f;
                 if (recentRivalAttacker != null && recentRivalAttacker.IsAlive &&
                     now < recentRivalAttackerUntil &&
-                    (recentRivalAttacker.transform.position - transform.position)
+                    (recentRivalAttacker.transform.position - selfPosition)
                         .sqrMagnitude < 110f * 110f)
                 {
                     target = recentRivalAttacker.transform;
@@ -2410,28 +2422,29 @@ namespace Aaris.MapReview
             }
             bool hasTarget = target != null && targetHealth != null &&
                 !targetHealth.IsDead && target != playerTarget;
+            Vector3 targetPosition = hasTarget ? target.position : Vector3.zero;
             Vector3 diff = hasTarget
-                ? target.position - transform.position : transform.forward * 18f;
+                ? targetPosition - selfPosition : selfForward * 18f;
             diff.y = 0f;
             float distance = diff.magnitude;
-            Vector3 toward = distance > 0.001f ? diff / distance : transform.forward;
-            bool retreat = owner.TryZoneRetreatDirection(transform.position,
+            Vector3 toward = distance > 0.001f ? diff / distance : selfForward;
+            bool retreat = owner.TryZoneRetreatDirection(selfPosition,
                 out Vector3 zoneDirection);
             Vector3 direction = retreat ? zoneDirection : toward;
             float speed = retreat ? 3.2f :
                 hasTarget && distance < (carriedGun != null ? 13f : 2f) ? 0f : 2.85f;
             Vector3 movement = direction * (speed * dt);
             if (movement.sqrMagnitude > 0.000001f &&
-                owner.WouldCrossInactiveCover(transform.position, movement))
+                owner.WouldCrossInactiveCover(selfPosition, movement))
             {
                 Vector3 tangent = Quaternion.Euler(0f, avoidanceHandedness * 80f, 0f)
                     * movement;
-                movement = owner.WouldCrossInactiveCover(transform.position, tangent)
+                movement = owner.WouldCrossInactiveCover(selfPosition, tangent)
                     ? Vector3.zero : tangent;
             }
             if (movement.sqrMagnitude > 0.000001f)
             {
-                Vector3 next = transform.position + movement;
+                Vector3 next = selfPosition + movement;
                 // Reject unplayable water/steep/ocean or missing terrain.
                 // A failed sample must never allow a bot to drift across
                 // the map at its previous Y while remaining a combatant.
@@ -2464,7 +2477,7 @@ namespace Aaris.MapReview
             // those interactions require actual colliders and clear muzzle LOS.
             if (!hasTarget || now < nextAttack ||
                 distance > (carriedGun == null ? 2.25f : 38f) ||
-                (target.position - playerTarget.position).sqrMagnitude <
+                (targetPosition - playerTarget.position).sqrMagnitude <
                     FarSimulationDistance * FarSimulationDistance)
                 return;
             // Abstract damage is valid only between two invisible fighters:
