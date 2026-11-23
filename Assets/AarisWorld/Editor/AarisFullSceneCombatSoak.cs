@@ -432,6 +432,24 @@ namespace Aaris.MapReview.Editor
             if (retained == null)
                 throw new InvalidOperationException("RECEIVER_RETIRE_FIXTURE_MISSING");
             retained.enabled = false;
+            // The 100-bot combat assertion has already completed. Isolate
+            // this Editor-only resource-lifecycle fixture from randomized
+            // remote PvP kills during its mandatory 7.5s retirement dwell.
+            // The rival still moves, takes damage and runs its real AI.
+            AarisOfflineHealth fixtureHealth =
+                rigRebuildTarget.GetComponent<AarisOfflineHealth>();
+            if (fixtureHealth == null || fixtureHealth.IsDead)
+                throw new InvalidOperationException("RIG_RETIRE_FIXTURE_HEALTH_MISSING");
+            FieldInfo fixtureMaximum = typeof(AarisOfflineHealth)
+                .GetField("maximumHealth", Private);
+            FieldInfo fixtureCurrent = typeof(AarisOfflineHealth)
+                .GetField("current", Private);
+            if (fixtureMaximum == null || fixtureCurrent == null)
+                throw new InvalidOperationException("RIG_RETIRE_FIXTURE_HP_FIELDS_MISSING");
+            const float fixtureHealthReserve = 100000f;
+            fixtureMaximum.SetValue(fixtureHealth, fixtureHealthReserve);
+            fixtureCurrent.SetValue(fixtureHealth, fixtureHealthReserve);
+            Note("RIG_LIFECYCLE_FIXTURE_PVP_DAMAGE_ISOLATED=1");
             director.enabled = false;
             health.RestoreHealth(200f);
             sampleStarted = Time.time;
