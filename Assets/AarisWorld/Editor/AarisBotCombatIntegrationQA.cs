@@ -567,6 +567,13 @@ namespace Aaris.MapReview.Editor
                 Set(hunter, "staggeredVisualDelay", float.MaxValue);
                 Set(hunter, "nextLootAt", float.MaxValue);
                 Set(hunter, "nextThink", -1f);
+                // At 140m an offscreen fighter is intentionally math-only.
+                // Face the real gameplay camera at this hunter to exercise
+                // its physical LOS and cover-selection path explicitly.
+                camera.transform.LookAt(hunter.transform.position + Vector3.up * .95f);
+                camera.enabled = true;
+                Set(director, "cachedRivalCamera", camera);
+                Set(hunter, "nextCameraProbe", -1f);
                 Set(director, "center", new Vector2(arena.x, arena.z));
                 Set(director, "radius", 1080f);
                 Call(hunter, "Update");
