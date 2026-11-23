@@ -277,21 +277,21 @@ namespace Aaris.MapReview.Editor
                 bHp.Damaged += (receiver, loss, source) => { if (loss > 0f && source == player) botHits++; };
                 var route = typeof(AarisEquippedGun).GetMethod("ApplyDamage", Static, null,
                     new[] { typeof(Collider), typeof(float), typeof(GameObject),
-                        typeof(Vector3?) }, null);
+                        typeof(Vector3?), typeof(float) }, null);
                 Check(route != null, "Shared authoritative collider damage route", report);
                 Check(pHp.CurrentHealth == 200f && bHp.CurrentHealth == 200f,
                     "Both actors start with 200 HP", report);
                 Physics.SyncTransforms();
                 route.Invoke(null, new object[] { bBody, 20f, player,
-                    (Vector3?)(Origin + Vector3.up * .6f) });
+                    (Vector3?)(Origin + Vector3.up * .6f), 1.75f });
                 route.Invoke(null, new object[] { pBody, 20f, bot,
-                    (Vector3?)(player.transform.position + Vector3.up * .6f) });
+                    (Vector3?)(player.transform.position + Vector3.up * .6f), 1.75f });
                 Check(Mathf.Abs(pHp.CurrentHealth - 180f) < .01f &&
                     Mathf.Abs(bHp.CurrentHealth - 180f) < .01f &&
                     playerHits == 1 && botHits == 1,
                     "Player-to-bot and bot-to-player real hit events", report);
                 route.Invoke(null, new object[] { bBody, 20f, player,
-                    (Vector3?)(Origin + Vector3.up * 1.65f) });
+                    (Vector3?)(Origin + Vector3.up * 1.65f), 1.75f });
                 Check(Mathf.Abs(bHp.CurrentHealth - 145f) < .01f && botHits == 2,
                     "Headshot applies 1.75x and notifies victim", report);
             }
