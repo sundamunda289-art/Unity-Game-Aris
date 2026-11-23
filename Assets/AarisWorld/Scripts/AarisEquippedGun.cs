@@ -793,7 +793,12 @@ namespace Aaris.MapReview
             // Only a tiny moving 2.1m segment is drawn by pooled renderers.
             float distance = length;
             Vector3 end = impact;
-            float duration = Mathf.Clamp(distance / 1250f, 0.025f, 0.21f);
+            // A low-FPS mobile frame must still display the thin streak once.
+            // Hitscan and HP are unaffected by this visual lifetime.
+            float frameFloor = Mathf.Clamp(Time.smoothDeltaTime * 1.3f,
+                0.055f, 0.12f);
+            float duration = Mathf.Clamp(Mathf.Max(distance / 1250f,
+                frameFloor), 0.055f, 0.21f);
             int index = tracerCursor++ % (ExtraTracerSlots + 1);
             if (index == 0)
             {
