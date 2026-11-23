@@ -55,6 +55,11 @@ jobs:
                            'AarisNativeSourceCompileGate.Run', 'xvfb-run -a',
                            '-batchmode -force-glcore -quit', 'LIBGL_ALWAYS_SOFTWARE=1'):
               assert required in native, required
+          assert 'case "$MODE" in status|sync|fetch)' in s
+          assert 'if [[ "$MODE" == sync && "$BRANCH" != main ]]' in s
+          assert 'if [[ "$MODE" == fetch ]]; then' in s
+          assert 'git update-ref refs/remotes/aaris-canonical/main "$TARGET"' in s
+          assert 'AARIS_SYNC_SUCCESS=reference_only' in s
           assert 'git reset' not in native and 'git worktree' not in native
           assert 'AARIS_NATIVE_COMPILE_TEMP_PACKAGE_LOCK=omitted' in native
           # Native Linux Unity A/B: subdirectory TMPDIR fails with exit 255,
@@ -88,6 +93,7 @@ jobs:
       github.event.issue.number == 77 &&
       github.event.comment.user.login == 'sundamunda289-art' &&
       (startsWith(github.event.comment.body, 'AARIS CANONICAL STATUS ') ||
+       startsWith(github.event.comment.body, 'AARIS CANONICAL FETCH ') ||
        startsWith(github.event.comment.body, 'AARIS CANONICAL SYNC ') ||
        startsWith(github.event.comment.body, 'AARIS CANONICAL COMPILE ') ||
        startsWith(github.event.comment.body, 'AARIS CANONICAL EDITOR_STATUS ') ||
@@ -115,7 +121,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ -n "$GH_TOKEN" ]] || { echo 'AARIS_SAFE_SYNC_TOKEN_NOT_CONFIGURED'; exit 11; }
-          [[ "$REQUEST" =~ ^AARIS[[:space:]]CANONICAL[[:space:]](STATUS|SYNC|COMPILE|EDITOR_STATUS|NATIVE_COMPILE|UNITY_BASELINE|PKG_MATRIX|SOURCE_SPLIT)[[:space:]](aaris-ai-[a-zA-Z0-9-]{3,110})$ ]] || {
+          [[ "$REQUEST" =~ ^AARIS[[:space:]]CANONICAL[[:space:]](STATUS|SYNC|FETCH|COMPILE|EDITOR_STATUS|NATIVE_COMPILE|UNITY_BASELINE|PKG_MATRIX|SOURCE_SPLIT)[[:space:]](aaris-ai-[a-zA-Z0-9-]{3,110})$ ]] || {
             echo 'AARIS_SAFE_SYNC_INVALID_REQUEST'; exit 12;
           }
           MODE="${BASH_REMATCH[1],,}"
