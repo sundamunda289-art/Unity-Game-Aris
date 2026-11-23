@@ -3,7 +3,7 @@
 # workflow; does not create a worktree, reset, clean, stash, or alter origin.
 set -euo pipefail
 MODE="${1:-status}"
-case "$MODE" in status|sync) ;; *) echo AARIS_SYNC_ERROR=invalid_mode; exit 2 ;; esac
+case "$MODE" in status|sync|fetch) ;; *) echo AARIS_SYNC_ERROR=invalid_mode; exit 2 ;; esac
 PROJECT=/workspaces/Unity-Game-Aris
 if [[ ! -d "$PROJECT/.git" ]]; then
   echo AARIS_SYNC_ERROR=project_checkout_missing
@@ -73,7 +73,7 @@ PY
   echo AARIS_SYNC_STATUS_COMPLETE=yes
   exit 0
 fi
-if [[ "$BRANCH" != main ]]; then
+if [[ "$MODE" == sync && "$BRANCH" != main ]]; then
   echo AARIS_SYNC_ERROR=main_branch_required
   exit 5
 fi
@@ -89,6 +89,24 @@ if ! git -c filter.lfs.process= -c filter.lfs.required=false \
 fi
 TARGET="$(git rev-parse FETCH_HEAD)"
 echo "AARIS_SYNC_TARGET_SHA=$TARGET"
+if [[ "$MODE" == fetch ]]; then
+  # Reference-only sync for a busy feature branch. Never checkout, merge,
+  # modify the index, or write a single authored/agent working file.
+  git update-ref refs/remotes/aaris-canonical/main "$TARGET"
+  [[ "$(git rev-parse HEAD)" == "$BEFORE" ]] || {
+    echo AARIS_SYNC_ERROR=fetch_changed_head_unexpectedly
+    exit 12
+  }
+  [[ "$(git rev-parse refs/remotes/aaris-canonical/main)" == "$TARGET" ]] || {
+    echo AARIS_SYNC_ERROR=canonical_ref_mismatch
+    exit 13
+  }
+  echo AARIS_SYNC_FETCHED_REF=refs_remotes_aaris-canonical_main
+  echo AARIS_SYNC_CURRENT_BRANCH_UNCHANGED=yes
+  echo AARIS_SYNC_TRACKED_WORKTREE_UNTOUCHED=yes
+  echo AARIS_SYNC_SUCCESS=reference_only
+  exit 0
+fi
 if ! git merge-base --is-ancestor HEAD FETCH_HEAD; then
   echo AARIS_SYNC_ERROR=non_fast_forward_preserving_local_history
   exit 8
