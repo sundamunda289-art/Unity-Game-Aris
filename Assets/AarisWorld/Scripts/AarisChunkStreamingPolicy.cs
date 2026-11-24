@@ -15,6 +15,26 @@ namespace Aaris.MapReview
             return dx * dx + dz * dz;
         }
 
+        // Ground-plane broad phase. Test the chunk's footprint against the
+        // forward and side planes rather than the centre of an irregular cell.
+        internal static bool IntersectsViewCone(float x, float z, float forwardX, float forwardZ,
+            float slope, float centerX, float centerZ, float halfX, float halfZ)
+        {
+            float offsetX = centerX - x, offsetZ = centerZ - z;
+            if (!ReachesViewPlane(offsetX, offsetZ, halfX, halfZ, forwardX, forwardZ))
+                return false;
+            float baseX = slope * forwardX, baseZ = slope * forwardZ;
+            return ReachesViewPlane(offsetX, offsetZ, halfX, halfZ, baseX + forwardZ, baseZ - forwardX) &&
+                   ReachesViewPlane(offsetX, offsetZ, halfX, halfZ, baseX - forwardZ, baseZ + forwardX);
+        }
+
+        private static bool ReachesViewPlane(float x, float z, float halfX, float halfZ,
+            float normalX, float normalZ)
+        {
+            return x * normalX + z * normalZ +
+                halfX * Math.Abs(normalX) + halfZ * Math.Abs(normalZ) >= 0f;
+        }
+
         // Reject teleports/resumes rather than extrapolating hundreds of metres.
         // This predicts *loading* only; unloading always uses actual position.
         internal static void Predict(float x, float z, float oldX, float oldZ,

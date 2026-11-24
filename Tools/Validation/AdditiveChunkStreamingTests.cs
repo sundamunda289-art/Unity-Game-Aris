@@ -15,18 +15,37 @@ namespace UnityEngine
     { public MinAttribute(float value) { } }
     public class MonoBehaviour { public GameObject gameObject = new GameObject(); }
     public sealed class GameObject { public Scene scene = new Scene { path = "Assets/Boot.unity", isLoaded = true }; }
-    public sealed class Transform { public Vector3 position; }
+    public sealed class Transform
+    {
+        public Vector3 position, forward;
+        public object component;
+        public T GetComponent<T>() where T : class { return component as T; }
+    }
+    public sealed class Camera
+    {
+        public Transform transform = new Transform();
+        public bool isActiveAndEnabled = true, orthographic;
+        public float fieldOfView = 60f, aspect = 16f / 9f;
+    }
     public struct Vector2
     {
         public float x, y;
         public Vector2(float x, float y) { this.x = x; this.y = y; }
     }
-    public struct Vector3 { public float x, y, z; }
+    public struct Vector3
+    {
+        public float x, y, z;
+        public static float Dot(Vector3 a, Vector3 b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
+    }
     public class AsyncOperation { public bool isDone; public int priority; }
     public static class Time { public static float unscaledTime; public static int frameCount; }
     public static class Mathf
     {
         public static float Max(float a, float b) { return Math.Max(a, b); }
+        public static float Min(float a, float b) { return Math.Min(a, b); }
+        public const float Deg2Rad = (float)(Math.PI / 180);
+        public static float Sqrt(float value) { return (float)Math.Sqrt(value); }
+        public static float Tan(float value) { return (float)Math.Tan(value); }
     }
     public static class Debug
     {
@@ -91,6 +110,12 @@ namespace UnityEngine.SceneManagement
 }
 namespace Aaris.MapReview
 {
+    public sealed class AarisThirdPersonPlayer
+    {
+        public Camera AimCamera;
+        public bool IsInAir { get; set; }
+    }
+
     // The real Android governor uses JNI. The chunk streaming host-engine
     // fixture intentionally models only its cached policy (no Java runtime).
     internal static class AarisAndroidThermalGovernor
@@ -165,6 +190,9 @@ internal static class AdditiveChunkStreamingTests
     {
         SceneManager.Reset();
         Time.frameCount = 0;
+        AarisMobileStreamingFrameGate.physicsClaims = 0;
+        AarisMobileStreamingFrameGate.teardownClaims = 0;
+        AarisMobileStreamingFrameGate.trackedSceneLoads = 0;
         AarisAndroidThermalGovernor.SuspendSpeculativePrefetch = false;
         AarisAndroidThermalGovernor.ModerateThermalPressure = false;
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -185,8 +213,85 @@ internal static class AdditiveChunkStreamingTests
         player.position = new Vector3 { x = x, z = 0 };
         Invoke(manager, "Update");
     }
+
+    private static void CheckCameraPrefetch()
+    {
+        const string eastPath = "Assets/CellEast.unity", westPath = "Assets/CellWest.unity";
+        var east = new AarisAdditiveChunkStreamer.Chunk {
+            scenePath = eastPath, center = new Vector2(150f, 0f), halfExtents = new Vector2(20f, 25f)
+        };
+        var west = new AarisAdditiveChunkStreamer.Chunk {
+            scenePath = westPath, center = new Vector2(-140f, 0f), halfExtents = new Vector2(20f, 25f)
+        };
+        var camera = new Camera();
+        var motor = new AarisThirdPersonPlayer { AimCamera = camera };
+        var target = new Transform { component = motor };
+
+        ResetScene();
+        var manager = MakeMultiple(target, west, east);
+        camera.transform.forward = new Vector3 { x = -1f };
+        Frame(manager, target, 1f, 0f);
+        Check(SceneManager.loadCount == 0, "first heading sample cannot trigger view IO");
+        camera.transform.forward = new Vector3 { x = 1f };
+        Frame(manager, target, 1.3f, 0f);
+        Check(SceneManager.loadCount == 0, "fast camera turn must not trigger view IO");
+        Frame(manager, target, 1.6f, 0f);
+        Check(SceneManager.loadCount == 1 && SceneManager.pendingPath == eastPath,
+            "held view warms the visible chunk even when a hidden one is nearer");
+        SceneManager.Finish();
+        Frame(manager, target, 1.7f, 0f);
+        camera.transform.forward = new Vector3 { x = -1f };
+        Frame(manager, target, 2f, 0f);
+        Frame(manager, target, 2.3f, 0f);
+        Check(SceneManager.loadCount == 1 && SceneManager.unloadCount == 0,
+            "a turn keeps the warm cell resident and does not fill the movement slot");
+        Frame(manager, target, 2.6f, -40f);
+        Check(SceneManager.loadCount == 2 && SceneManager.pendingPath == westPath,
+            "a cell in the actual load margin must bypass camera residency");
+
+        ResetScene();
+        manager = MakeMultiple(target, west, east);
+        camera.transform.forward = new Vector3 { x = 1f };
+        Frame(manager, target, 1f, 0f);
+        Frame(manager, target, 1.3f, -9f);
+        Check(SceneManager.loadCount == 1 && SceneManager.pendingPath == westPath,
+            "predicted traversal takes precedence over the held camera direction");
+
+        ResetScene();
+        manager = MakeMultiple(target, east);
+        Set(manager, "maxSpeculativeResidentCells", 1);
+        Frame(manager, target, 1f, 0f);
+        Frame(manager, target, 1.3f, 0f);
+        Check(SceneManager.loadCount == 0, "a single speculative slot belongs to traversal");
+        Frame(manager, target, 1.6f, 50f);
+        Check(SceneManager.loadCount == 1, "low speculative cap cannot prevent urgent loads");
+
+        ResetScene();
+        manager = MakeMultiple(target, east);
+        motor.IsInAir = true;
+        Frame(manager, target, 1f, 0f);
+        Frame(manager, target, 1.3f, 0f);
+        Check(SceneManager.loadCount == 0, "airborne camera cannot speculate on distant ground");
+        motor.IsInAir = false;
+        Frame(manager, target, 1.6f, 0f);
+        Frame(manager, target, 4f, 0f);
+        Check(SceneManager.loadCount == 0, "resuming requires a fresh held view sample");
+#if UNITY_ANDROID && !UNITY_EDITOR
+        AarisAndroidThermalGovernor.ModerateThermalPressure = true;
+        Frame(manager, target, 4.3f, 0f);
+        Check(SceneManager.loadCount == 0, "moderate heat keeps the spare slot for movement");
+        Frame(manager, target, 4.6f, 9f);
+        Check(SceneManager.loadCount == 1, "moderate heat still admits projected movement");
+#endif
+        Check(AarisChunkStreamingPolicy.IntersectsViewCone(0f, 0f, 1f, 0f, .6f, 120f, 90f, 20f, 25f),
+            "a chunk edge can meet the view even when its centre is outside");
+        Check(!AarisChunkStreamingPolicy.IntersectsViewCone(0f, 0f, 1f, 0f, .2f, 120f, 90f, 20f, 25f),
+            "a scoped lens must exclude the same side chunk");
+    }
+
     public static int Main()
     {
+        CheckCameraPrefetch();
         // Exact AABB bounds, strict entry/exit hysteresis, no GC in policy.
         Check(AarisChunkStreamingPolicy.OutsideDistanceSquared(100, 5, 0, 0, 100, 100) == 0f,
             "cell edge must stay inside");
