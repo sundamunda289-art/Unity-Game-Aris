@@ -184,6 +184,9 @@ namespace Aaris.MapReview
         private byte[] alternateProbeSweep;
         private AarisWeaponInventory inventory;
         private Transform player;
+        // Both player and nearby rivals loot through the same static world.
+        // Cache the player's shared collider index once, not per pickup/bot.
+        private AarisThirdPersonPlayer playerMotor;
         private AarisOfflineDrop drop;
         private float nextRefresh, requestPickupUntil, nextStarterRetryAt;
         private float starterUnarmedSince = -1f;
@@ -238,6 +241,7 @@ namespace Aaris.MapReview
             var root = new GameObject("Aaris Match Weapon Loot (offline, streamed)");
             var world = root.AddComponent<AarisWeaponLootWorld>();
             world.player = motor.transform;
+            world.playerMotor = motor;
             world.inventory = inventory;
 #if UNITY_ANDROID && !UNITY_EDITOR
             world.StartCoroutine(world.InitializeAndroid());
@@ -883,7 +887,16 @@ namespace Aaris.MapReview
                 if (collider == null || collider.transform.IsChildOf(looter)) continue;
                 return false;
             }
-            return true;
+            // Streaming can disable solid house colliders while keeping their
+            // cached bounds in the player's authored cover index. PhysX alone
+            // then reports a false clear path. Use the SAME stance-aware ray
+            // for player and rival floor-loot attempts, as for death crates.
+            if (playerMotor == null && player != null)
+                player.TryGetComponent(out playerMotor);
+            AarisNearbyColliders cover = playerMotor != null
+                ? playerMotor.CombatCover : null;
+            return cover == null ||
+                !cover.TryGetInactiveCoverHit(sightLine, distance, out _);
         }
 
         private AarisDroppedWeapon FindDrop(int id)
