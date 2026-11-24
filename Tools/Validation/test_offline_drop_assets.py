@@ -161,7 +161,7 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         # streamer. Bots must consult its cached bounds, not trigger an
         # expensive Physics.SyncTransforms/enable-all-colliders per update.
         self.assertIn("internal bool WouldCrossInactiveCover(", br)
-        self.assertIn("nearbyColliders.HasPotentialInactiveObstacle(predicted,", br)
+        self.assertIn("nearbyColliders.HasPotentialInactiveObstacle(from + lookAhead + chest,", br)
         self.assertIn("new Vector3(0.36f, 0.90f, 0.36f)", br)
         self.assertIn("owner.WouldCrossInactiveCover(transform.position, displacement)", br)
         # Steering snapshots one native position before trying either side
