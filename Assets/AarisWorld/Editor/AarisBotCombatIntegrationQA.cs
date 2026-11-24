@@ -350,6 +350,58 @@ namespace Aaris.MapReview.Editor
             }
         }
 
+        // In a disposable native Unity Editor, confirm real IL/C# schedule
+        // semantics with reflection; game scripts live in another assembly.
+        // This does not simulate a Snapdragon phone or measure GPU FPS.
+        public static void RunHudLockSightBudgetQA()
+        {
+            var report = new StringBuilder("Unity " + Application.unityVersion + "\n");
+            try
+            {
+                VerifyHudLockSightBudget(report);
+                report.AppendLine("RESULT=PASS");
+            }
+            catch (Exception ex)
+            {
+                report.AppendLine("RESULT=FAIL " + ex);
+                throw;
+            }
+            finally
+            {
+                Debug.Log(report.ToString());
+            }
+        }
+
+        private static void VerifyHudLockSightBudget(StringBuilder report)
+        {
+            var method = typeof(AarisCombatFeedbackHUD).GetMethod(
+                "ScheduleLockedSightCheck", Static);
+            Check(method != null,
+                "Production HUD lock-sight gate compiles and is reachable", report);
+            // 60 rendered frames a second for two seconds. Previously every
+            // intermediate frame with a lock spent real cover raycasts.
+            float next = 0f;
+            int checks = 0;
+            for (int frame = 0; frame < 120; frame++)
+            {
+                float now = frame / 60f;
+                object[] args = { now, next };
+                if ((bool)method.Invoke(null, args)) checks++;
+                next = (float)args[1];
+            }
+            Check(checks >= 35 && checks <= 42,
+                "Locked Red-Lock samples bounded to about 20 per second", report);
+            object[] immediate = { 2f, 2f };
+            Check((bool)method.Invoke(null, immediate),
+                "Changed camera or optic can force immediate sight recheck", report);
+            object[] premature = { 2.001f, immediate[1] };
+            Check(!(bool)method.Invoke(null, premature),
+                "Early frame never repeats the same costly LOS query", report);
+            object[] due = { 2.05f, immediate[1] };
+            Check((bool)method.Invoke(null, due),
+                "Forty-five millisecond lock refresh admits new cover", report);
+        }
+
         private static void VerifyRivalCameraWake(StringBuilder report)
         {
             var root = new GameObject("Temporary rival camera wake QA");
