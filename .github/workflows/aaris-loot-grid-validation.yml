@@ -4,11 +4,13 @@ on:
     paths:
       - 'Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs'
       - 'Tools/Validation/test_loot_cell_streaming.py'
+      - 'Tools/Validation/test_weapon_floor_support_clearance.py'
       - '.github/workflows/aaris-loot-grid-validation.yml'
   push:
     paths:
       - 'Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs'
       - 'Tools/Validation/test_loot_cell_streaming.py'
+      - 'Tools/Validation/test_weapon_floor_support_clearance.py'
       - '.github/workflows/aaris-loot-grid-validation.yml'
 permissions:
   contents: read
@@ -22,5 +24,7 @@ jobs:
           persist-credentials: false
       - name: Prove 42m circle matches original full-index scan
         run: python3 Tools/Validation/test_loot_cell_streaming.py
+      - name: Ensure road and solid-floor weapons do not hover at grass height
+        run: python3 Tools/Validation/test_weapon_floor_support_clearance.py
       - name: Confirm no map data was modified
         run: echo "Only game loot query logic is under test; no scene, map, terrain, or rendering assets involved."
