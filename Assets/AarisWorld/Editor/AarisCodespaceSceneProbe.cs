@@ -710,20 +710,20 @@ namespace Aaris.MapReview.Editor
                 Vector3 canopy = root + Vector3.up * (height * 0.72f);
                 camera.transform.position = canopy + new Vector3(6f, 2f, -10f);
                 camera.transform.LookAt(canopy, Vector3.up);
-                report.detailVariation = Render(camera, 1600, 900,
+                report.detailVariation = Render(camera, 800, 450,
                     Path.Combine(Output, "painted-leaves-close.png"));
 
                 camera.transform.position = root + new Vector3(1.8f, 3.0f, -3.6f);
                 camera.transform.LookAt(root + Vector3.up * 2.8f, Vector3.up);
-                Render(camera, 1600, 900, Path.Combine(Output, "painted-bark-close.png"));
+                Render(camera, 800, 450, Path.Combine(Output, "painted-bark-close.png"));
 
                 camera.transform.position = root + new Vector3(2.4f, 2.4f, -4.0f);
                 camera.transform.LookAt(root + Vector3.up * 0.4f, Vector3.up);
-                Render(camera, 1600, 900, Path.Combine(Output, "painted-root-ground.png"));
+                Render(camera, 800, 450, Path.Combine(Output, "painted-root-ground.png"));
 
                 camera.transform.position = root + new Vector3(-45f, 36f, -58f);
                 camera.transform.LookAt(root + Vector3.up * (height * 0.55f), Vector3.up);
-                report.contextVariation = Render(camera, 1600, 900,
+                report.contextVariation = Render(camera, 800, 450,
                     Path.Combine(Output, "painted-forest-wide.png"));
                 report.targetX = root.x;
                 report.targetY = root.y;
