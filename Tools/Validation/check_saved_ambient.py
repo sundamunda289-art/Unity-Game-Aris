@@ -17,7 +17,7 @@ assert "m_AmbientMode: 3\n" in block, "Flat ambient not saved"
 assert "m_AmbientIntensity: 1.2\n" in block, "ambient intensity mismatch"
 # YAML serializes 0.70 and 1.0 as 0.7 and 1 respectively; check numbers,
 # not their exact textual decimal presentation.
-ambient = re.search(r"(?m)^  m_AmbientSkyColor: \\{r: ([0-9.]+), g: ([0-9.]+), b: ([0-9.]+), a: ([0-9.]+)\\}$", block)
+ambient = re.search(r"(?m)^\s*m_AmbientSkyColor:\s*\{r: ([0-9.]+), g: ([0-9.]+), b: ([0-9.]+), a: ([0-9.]+)\}\s*$", block)
 assert ambient, "Native ambient sky color absent"
 assert all(abs(float(value) - target) < 0.0001 for value, target
            in zip(ambient.groups(), (0.69, 0.70, 0.65, 1.0))), "Native ambient sky color mismatch"
