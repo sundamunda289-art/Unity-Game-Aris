@@ -178,7 +178,6 @@ namespace Aaris.MapReview.Editor
                 Set(bot, "nextFarSimulation", combatDue);
                 Set(bot, "nextCameraProbe", combatDue);
                 Set(bot, "nextDormantProximityProbe", combatDue);
-                Set(bot, "staggeredVisualDelay", combatDue);
                 Set(bot, "dormantOffscreenVirtual", true);
                 Call(bot, "SetCentralDormancy", true);
                 camera.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);

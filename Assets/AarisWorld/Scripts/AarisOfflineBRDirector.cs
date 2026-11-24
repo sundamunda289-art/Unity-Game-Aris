@@ -2493,8 +2493,6 @@ namespace Aaris.MapReview
             bool crossedDetailedBand = withinDetailedDistance != wasWithinDetailedDistance;
             wasWithinDetailedDistance = withinDetailedDistance;
             if (crossedDetailedBand) nextVisualCheck = now;
-            if (justEnteredCamera)
-                staggeredVisualDelay = Mathf.Min(staggeredVisualDelay, now);
             // A camera-entry event may admit a render mesh and hit receiver,
             // but must never advance the independent abstract combat clock.
             bool simulationDue = !farSimulation || now >= nextFarSimulation;
