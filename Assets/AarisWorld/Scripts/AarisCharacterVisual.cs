@@ -1226,6 +1226,29 @@ namespace Aaris.MapReview
                 Vector3 pole = forwardBend.normalized;
                 float poleSin = Vector3.Dot(axis, Vector3.Cross(bend, pole));
                 float poleCos = Mathf.Clamp(Vector3.Dot(bend, pole), -1f, 1f);
+                // A 180-degree knee-pole reversal has no unique signed
+                // shortest arc: floating-point noise can alternate +PI/-PI,
+                // swinging an intermediate crouch/prone knee sideways.
+                // Select the same biomechanically preferable arc on both
+                // sides of the singularity. At the halfway point, lift the
+                // knee instead of driving it into the ground. For a flat
+                // axis, use the cached anatomical hip-side direction.
+                // Value-only math: no new Transform reads, physics or GC.
+                if (poleCos < -0.985f && Mathf.Abs(poleSin) < 0.175f)
+                {
+                    Vector3 positiveTangent = Vector3.Cross(axis, bend);
+                    float upPreference = Vector3.Dot(positiveTangent, Vector3.up);
+                    if (Mathf.Abs(upPreference) < 0.02f &&
+                        anatomicalSideAxis.sqrMagnitude > 0.25f)
+                        upPreference = -Vector3.Dot(positiveTangent,
+                            anatomicalSideAxis);
+                    // Fully ambiguous vertical-axis poses use a fixed sign,
+                    // never the jittering sign of an almost-zero cross.
+                    if (Mathf.Abs(upPreference) < 0.02f) upPreference = 1f;
+                    poleSin = upPreference >= 0f
+                        ? Mathf.Abs(poleSin) + 0.0001f
+                        : -Mathf.Abs(poleSin) - 0.0001f;
+                }
                 float poleAngle = Mathf.Atan2(poleSin, poleCos) * Mathf.Rad2Deg;
                 bend = Quaternion.AngleAxis(
                     poleAngle * Mathf.Clamp01(kneePoleStrength), axis) * bend;

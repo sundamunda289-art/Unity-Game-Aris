@@ -1,0 +1,55 @@
+name: Aaris knee pole continuity regression
+on:
+  pull_request:
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisCharacterVisual.cs'
+      - 'Tools/Validation/test_balanced_low_stance_ik.py'
+      - '.github/workflows/aaris-knee-pole-regression.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/AarisWorld/Scripts/AarisCharacterVisual.cs'
+      - 'Tools/Validation/test_balanced_low_stance_ik.py'
+      - '.github/workflows/aaris-knee-pole-regression.yml'
+permissions:
+  contents: read
+jobs:
+  source-and-geometry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Validate Python syntax
+        run: python3 -m py_compile Tools/Validation/test_balanced_low_stance_ik.py
+      - name: Validate knee-pole geometry and low-stance contact invariants
+        run: |
+          python3 Tools/Validation/test_balanced_low_stance_ik.py
+          python3 Tools/Validation/test_locked_slope_foot_support.py
+          python3 Tools/Validation/test_native_stance_transition_capture.py
+      - name: Parse production C# with pinned syntax grammar
+        run: |
+          python3 -m pip install --disable-pip-version-check tree-sitter==0.26.0 tree-sitter-c-sharp==0.23.5
+          python3 - <<'PY'
+          from pathlib import Path
+          from tree_sitter import Language, Parser
+          import tree_sitter_c_sharp
+          path = Path('Assets/AarisWorld/Scripts/AarisCharacterVisual.cs')
+          syntax = Parser(Language(tree_sitter_c_sharp.language())).parse(path.read_bytes())
+          assert not syntax.root_node.has_error, 'Character visual C# syntax error'
+          print('PASS: production C# parsed without syntax errors')
+          print('NOT TESTED: Unity assemblies, native Editor or APK build')
+          PY
+      - name: Verify authored source whitespace
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('Assets/AarisWorld/Scripts/AarisCharacterVisual.cs')
+          lines=p.read_text().splitlines()
+          assert all(line==line.rstrip() for line in lines)
+          print('PASS: no trailing whitespace')
+          PY
+      - name: Evidence boundary
+        run: echo 'Geometry/source QA only. Unity Play Mode and native Android compile remain separate gates.'
