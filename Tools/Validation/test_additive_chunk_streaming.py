@@ -34,12 +34,13 @@ assert streamer.index('SampleMovement(now);') < streamer.index('if (inFlight != 
 assert 'nextPollAt = nextTransitionAt;' in streamer
 assert 'RuntimeInitializeOnLoadMethod' not in streamer  # no auto-bootstrap
 assert 'maxSpeculativeResidentCells = 2;' in streamer
-assert 'speculativeResidentCount >= maxSpeculativeResidentCells' in streamer
+assert 'speculativeResidentCount >= speculativeLimit' in streamer
+assert 'speculativeResidentCount == speculativeLimit' in streamer
 assert 'bool loadIsUrgent = false;' in streamer
 assert 'bool urgent = distance <= entrySquared;' in streamer
 assert 'loadIsUrgent = urgent;' in streamer
 assert 'if (unloadCell >= 0 && (loadCell < 0 || !loadIsUrgent))' in streamer
-assert 'if (!loadIsUrgent &&' in streamer  # projection cannot bypass the optional budget
+assert 'bool speculativeLoadBlocked = !loadIsUrgent &&' in streamer
 assert 'nearestLoad > entrySquared' not in streamer
 assert 'AarisMobileStreamingFrameGate.IsConstrainedDevice()' in streamer
 assert 'AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();' in streamer

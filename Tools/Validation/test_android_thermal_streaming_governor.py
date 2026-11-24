@@ -94,11 +94,14 @@ class AndroidThermalStreamingTests(unittest.TestCase):
 
     def test_native_chunk_prefetch_only_near_geometry_unchanged(self):
         android_block = WORLD.split("else if (loadCell >= 0)", 1)[1].split("#endif", 1)[0]
-        self.assertIn("if (!loadIsUrgent &&", android_block)
-        self.assertIn("AarisAndroidThermalGovernor.SuspendSpeculativePrefetch", android_block)
-        self.assertIn("AarisAndroidThermalGovernor.ModerateThermalPressure", android_block)
-        self.assertIn("speculativeResidentCount >= 1", android_block)
-        self.assertIn("speculativeResidentCount >= maxSpeculativeResidentCells", android_block)
+        self.assertIn("if (speculativeLoadBlocked) return;", android_block)
+        budget = WORLD.split("int speculativeLimit =", 1)[1].split("// Only make room", 1)[0]
+        self.assertIn("? maxSpeculativeResidentCells : int.MaxValue", budget)
+        self.assertIn("AarisAndroidThermalGovernor.ModerateThermalPressure", budget)
+        self.assertIn("speculativeLimit = Math.Min(speculativeLimit, 1)", budget)
+        self.assertIn("bool speculativeLoadBlocked = !loadIsUrgent &&", budget)
+        self.assertIn("AarisAndroidThermalGovernor.SuspendSpeculativePrefetch", budget)
+        self.assertIn("speculativeResidentCount >= speculativeLimit", budget)
         self.assertIn("if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()) return;", android_block)
         self.assertIn("if (!AarisMobileStreamingFrameGate.TryClaimUrgentSceneLoad()) return;", android_block)
         self.assertIn("if (loadIsUrgent)", android_block)

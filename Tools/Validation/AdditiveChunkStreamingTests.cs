@@ -127,10 +127,11 @@ namespace Aaris.MapReview
     internal static class AarisMobileStreamingFrameGate
     {
         internal static int physicsClaims, teardownClaims, trackedSceneLoads;
+        internal static bool allowOptionalBuild = true;
         internal static void TrackAdditiveSceneOperation(AsyncOperation operation)
         { if (operation != null) trackedSceneLoads++; }
         internal static bool IsConstrainedDevice() { return true; }
-        internal static bool TryClaimOptionalModelBuild() { return true; }
+        internal static bool TryClaimOptionalModelBuild() { return allowOptionalBuild; }
         internal static bool TryClaimUrgentSceneLoad() { return true; }
         internal static void ReservePhysicsStreamingFrame() { physicsClaims++; }
         internal static void ReserveNativeTeardownFrame() { teardownClaims++; }
@@ -193,6 +194,7 @@ internal static class AdditiveChunkStreamingTests
         AarisMobileStreamingFrameGate.physicsClaims = 0;
         AarisMobileStreamingFrameGate.teardownClaims = 0;
         AarisMobileStreamingFrameGate.trackedSceneLoads = 0;
+        AarisMobileStreamingFrameGate.allowOptionalBuild = true;
         AarisAndroidThermalGovernor.SuspendSpeculativePrefetch = false;
         AarisAndroidThermalGovernor.ModerateThermalPressure = false;
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -289,6 +291,62 @@ internal static class AdditiveChunkStreamingTests
             "a scoped lens must exclude the same side chunk");
     }
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+    private static void CheckCameraWarmYield(bool reachedRequired)
+    {
+        const string eastPath = "Assets/CellWarmEast.unity", westPath = "Assets/CellRouteWest.unity";
+        var camera = new Camera();
+        var motor = new AarisThirdPersonPlayer { AimCamera = camera };
+        var target = new Transform { component = motor };
+        ResetScene();
+        var manager = MakeMultiple(target,
+            new AarisAdditiveChunkStreamer.Chunk {
+                scenePath = eastPath, center = new Vector2(150f, 0f), halfExtents = new Vector2(20f, 20f)
+            },
+            new AarisAdditiveChunkStreamer.Chunk {
+                scenePath = westPath, center = new Vector2(-145f, 0f), halfExtents = new Vector2(20f, 20f)
+            });
+        camera.transform.forward = new Vector3 { x = 1f };
+        Frame(manager, target, 1f, 0f);
+        Frame(manager, target, 1.3f, 0f);
+        Check(SceneManager.loadCount == 1 && SceneManager.pendingPath == eastPath, "camera owns one warm detail scene");
+        SceneManager.Finish();
+        Frame(manager, target, 1.4f, 0f);
+        Frame(manager, target, 1.7f, reachedRequired ? 45f : 0f);
+
+        AarisAndroidThermalGovernor.ModerateThermalPressure = true;
+        camera.transform.forward = new Vector3 { x = -1f };
+        Frame(manager, target, 2f, 0f);
+        Frame(manager, target, 2.3f, 0f);
+        Check(SceneManager.unloadCount == 0, "looking away alone cannot unload a warm scene");
+        Frame(manager, target, 2.6f, -8f);
+        Frame(manager, target, 2.9f, -16f);
+        Check(SceneManager.unloadCount == 0, "camera turn grace keeps detail during the initial route change");
+
+        AarisMobileStreamingFrameGate.allowOptionalBuild = false;
+        Frame(manager, target, 3.2f, -24f);
+        Check(SceneManager.unloadCount == 0, "reclaim yields when another native system owns the frame");
+        AarisMobileStreamingFrameGate.allowOptionalBuild = true;
+        Frame(manager, target, 3.5f, -28f);
+        if (reachedRequired)
+        {
+            Check(SceneManager.unloadCount == 0 && SceneManager.loadCount == 1,
+                "a physically visited district retains normal residency after leaving the entry margin");
+            Frame(manager, target, 3.9f, -36f);
+            Check(SceneManager.loadCount == 2 && SceneManager.pendingPath == westPath,
+                "urgent west still loads through a full speculative budget");
+            return;
+        }
+        Check(SceneManager.unloadCount == 1 && SceneManager.loadCount == 1 && SceneManager.pendingPath == eastPath,
+            "an unused camera scene yields its full slot to actual predicted movement");
+        SceneManager.Finish();
+        Frame(manager, target, 3.6f, -28f);
+        Frame(manager, target, 3.9f, -32f);
+        Check(SceneManager.loadCount == 2 && SceneManager.pendingPath == westPath,
+            "the new route warms when the released slot becomes available");
+    }
+#endif
+
     private static void CheckDrivingPrefetch()
     {
         // Both endpoints miss the curved corner, but the swept road passes it.
@@ -341,6 +399,10 @@ internal static class AdditiveChunkStreamingTests
     {
         CheckCameraPrefetch();
         CheckDrivingPrefetch();
+#if UNITY_ANDROID && !UNITY_EDITOR
+        CheckCameraWarmYield(false);
+        CheckCameraWarmYield(true);
+#endif
         // Exact AABB bounds, strict entry/exit hysteresis, no GC in policy.
         Check(AarisChunkStreamingPolicy.OutsideDistanceSquared(100, 5, 0, 0, 100, 100) == 0f,
             "cell edge must stay inside");

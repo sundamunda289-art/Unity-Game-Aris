@@ -64,6 +64,10 @@ namespace Aaris.MapReview
         // No GameObjects, art, terrain, resolution or collider ranges change.
         private static AsyncOperation sharedSceneOperation;
         private static int sharedSceneCompletionFrame = -1;
+        private const float CameraWarmHoldSeconds = 1f;
+        private const float CameraWarmRetirementBuffer = 20f;
+        private int cameraWarmCell = -1;
+        private float cameraWarmKeepUntil;
 #endif
         private bool previousSampleValid;
         private AarisThirdPersonPlayer playerMotor;
@@ -181,7 +185,11 @@ namespace Aaris.MapReview
                 // Native renderer/physics integration and scene retirement can finish
                 // on this frame. Keep later optional builders from stacking onto it.
                 if (inFlightLoad)
+                {
                     AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
+                    if (finished == cameraWarmCell)
+                        cameraWarmKeepUntil = now + CameraWarmHoldSeconds;
+                }
                 else
                     AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();
 #endif
@@ -247,6 +255,10 @@ namespace Aaris.MapReview
             int loadCell = -1, unloadCell = -1;
             int viewCell = -1;
             int speculativeResidentCount = 0;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            bool cameraWarmCanYield = false;
+            float cameraRetirementMargin = loadMargin + CameraWarmRetirementBuffer;
+#endif
             bool loadIsUrgent = false;
             float nearestLoad = float.MaxValue, farthestUnload = -1f;
             float nearestView = float.MaxValue;
@@ -264,6 +276,23 @@ namespace Aaris.MapReview
                     cell.halfExtents.x, cell.halfExtents.y);
                 if (distance > entrySquared && distance <= exitSquared)
                     speculativeResidentCount++;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                if (i == cameraWarmCell)
+                {
+                    // Once it has served as required detail it gets the same
+                    // retention as every other district the player visited.
+                    if (distance <= entrySquared) cameraWarmCell = -1;
+                    else if (distance <= exitSquared)
+                    {
+                        bool keepWarm = distance <= cameraRetirementMargin * cameraRetirementMargin ||
+                            !steadyView || AarisChunkStreamingPolicy.IntersectsViewCone(
+                                viewPosition.x, viewPosition.z, viewDirection.x, viewDirection.y,
+                                viewSlope, cell.center.x, cell.center.y, cell.halfExtents.x, cell.halfExtents.y);
+                        if (keepWarm) cameraWarmKeepUntil = now + CameraWarmHoldSeconds;
+                        else cameraWarmCanYield = now >= cameraWarmKeepUntil;
+                    }
+                }
+#endif
                 if (distance > exitSquared &&
                     (distance > farthestUnload ||
                      (distance == farthestUnload && i < unloadCell)))
@@ -274,6 +303,7 @@ namespace Aaris.MapReview
             // has no owned detail already. Leave the other slot for movement.
             bool considerView = steadyView && maxSpeculativeResidentCells >= 2 &&
                                 speculativeResidentCount == 0;
+            float prefetchSlope = Mathf.Min(0.60f, viewSlope);
 #if UNITY_ANDROID && !UNITY_EDITOR
             considerView &= !AarisAndroidThermalGovernor.ModerateThermalPressure &&
                             !AarisAndroidThermalGovernor.SuspendSpeculativePrefetch;
@@ -304,7 +334,7 @@ namespace Aaris.MapReview
                     if (considerView && (distance < nearestView ||
                         (distance == nearestView && i < viewCell)) &&
                         AarisChunkStreamingPolicy.IntersectsViewCone(viewPosition.x, viewPosition.z,
-                            viewDirection.x, viewDirection.y, viewSlope,
+                            viewDirection.x, viewDirection.y, prefetchSlope,
                             cell.center.x, cell.center.y, cell.halfExtents.x, cell.halfExtents.y))
                     {
                         viewCell = i;
@@ -324,8 +354,28 @@ namespace Aaris.MapReview
                 }
             }
             // View-only work always yields to actual position or predicted movement.
-            // The camera never participates in retirement or collision ownership.
             if (loadCell < 0) loadCell = viewCell;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            int speculativeLimit = AarisMobileStreamingFrameGate.IsConstrainedDevice()
+                ? maxSpeculativeResidentCells : int.MaxValue;
+            if (AarisAndroidThermalGovernor.ModerateThermalPressure)
+                speculativeLimit = Math.Min(speculativeLimit, 1);
+            bool speculativeLoadBlocked = !loadIsUrgent &&
+                (AarisAndroidThermalGovernor.SuspendSpeculativePrefetch || speculativeResidentCount >= speculativeLimit);
+            // Only make room if retiring this one held view would admit the
+            // next travel load. Never recycle a cell the route still crosses.
+            if (loadCell >= 0 && loadCell != viewCell && speculativeLoadBlocked && unloadCell < 0 &&
+                cameraWarmCanYield && speculativeResidentCount == speculativeLimit &&
+                !AarisAndroidThermalGovernor.SuspendSpeculativePrefetch)
+            {
+                Chunk warm = chunks[cameraWarmCell];
+                if (float.IsPositiveInfinity(AarisChunkStreamingPolicy.FirstApproach(
+                    current.x, current.z, stepX, stepZ,
+                    warm.center.x, warm.center.y, warm.halfExtents.x, warm.halfExtents.y, loadMargin)) &&
+                    AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                    unloadCell = cameraWarmCell;
+            }
+#endif
             // One integration operation in flight across the *entire* world.
             // Essential visible cells win over memory retirement; distant
             // proxy scenery lives in the persistent scene during transitions.
@@ -343,24 +393,7 @@ namespace Aaris.MapReview
             else if (loadCell >= 0)
             {
 #if UNITY_ANDROID && !UNITY_EDITOR
-                // Android thermal pressure controls speculative IO and native
-                // activation, never a cell needed at the current player position.
-                // The full-detail cell still loads inside the original entry radius.
-                if (!loadIsUrgent &&
-                    AarisAndroidThermalGovernor.SuspendSpeculativePrefetch)
-                    return;
-                // Under MODERATE thermal load keep one future cell resident,
-                // instead of stacking two optional native scene activations.
-                if (!loadIsUrgent &&
-                    AarisAndroidThermalGovernor.ModerateThermalPressure &&
-                    speculativeResidentCount >= 1)
-                    return;
-                // Bound predicted-only residency on constrained devices. A cell
-                // inside the player's real load margin ALWAYS bypasses this cap.
-                if (!loadIsUrgent &&
-                    AarisMobileStreamingFrameGate.IsConstrainedDevice() &&
-                    speculativeResidentCount >= maxSpeculativeResidentCells)
-                    return;
+                if (speculativeLoadBlocked) return;
                 // Real-position entry must not inherit the thermal
                 // *speculative* delay. It still claims the global native slot
                 // and honours essential import, physics and teardown fences.
@@ -371,6 +404,9 @@ namespace Aaris.MapReview
                 else if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()) return;
 #endif
                 StartOperation(loadCell, true);
+#if UNITY_ANDROID && !UNITY_EDITOR
+                if (inFlight != null && loadCell == viewCell) cameraWarmCell = loadCell;
+#endif
             }
         }
 
@@ -417,10 +453,10 @@ namespace Aaris.MapReview
             float invLength = 1f / Mathf.Sqrt(planarLength);
             direction = new Vector2(forward.x * invLength, forward.z * invLength);
             position = lens.position;
-            // Track the centre of the actual horizontal field of view. Wide
-            // lenses warm only the central sector, and scopes narrow it further.
-            slope = Mathf.Min(0.60f, Mathf.Tan(view.fieldOfView * 0.5f * Mathf.Deg2Rad) * view.aspect);
-            return slope > 0f;
+            // Protect the whole visible width for retirement. Admission uses
+            // a narrower central sector so it can only warm one spare cell.
+            slope = Mathf.Tan(view.fieldOfView * 0.5f * Mathf.Deg2Rad) * view.aspect;
+            return slope > 0f && !float.IsInfinity(slope);
         }
 
         private void BuildSpatialIndexSlice()
@@ -453,6 +489,9 @@ namespace Aaris.MapReview
 
         private void ForgetResident(int index)
         {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (index == cameraWarmCell) cameraWarmCell = -1;
+#endif
             int slot = trackedResidentSlots[index] - 1;
             if (slot < 0) return;
             int last = trackedResidentIndices[--trackedResidentCount];
