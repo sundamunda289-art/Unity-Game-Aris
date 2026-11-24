@@ -87,19 +87,25 @@ namespace Aaris.MapReview.Editor
                         "authored renderer and Animator flags restored before pooling");
                     var newcomer = new GameObject("Rival after return");
                     newcomer.transform.SetParent(fixture.transform);
-                    GameObject returned = director.TakeRetiredRivalRig(newcomer.transform);
+                    var take = directorType.GetMethod("TakeRetiredRivalRig", Instance);
+                    var recycle = directorType.GetMethod("RecycleRetiredRivalRig", Instance);
+                    Check(take != null && recycle != null,
+                        "production rig-pool methods are accessible by reflection");
+                    GameObject returned = (GameObject)take.Invoke(director,
+                        new object[] { newcomer.transform });
                     Check(ReferenceEquals(returned, rig) && returned.activeInHierarchy,
                         "same native hierarchy returned without Instantiate");
                     Check(returned.transform.parent == newcomer.transform &&
                         returned.transform.localPosition == authoredLocal &&
                         returned.transform.localScale == authoredScale,
                         "authored fitted local placement and scale preserved");
-                    Check(director.RecycleRetiredRivalRig(returned),
+                    Check((bool)recycle.Invoke(director, new object[] { returned }),
                         "reentry rig can be safely released again");
                     var clear = directorType.GetMethod("ClearRetiredRivalRigPool", Instance);
                     if (clear == null) throw new InvalidOperationException("Clear method missing");
                     clear.Invoke(director, null);
-                    Check(rig == null && director.TakeRetiredRivalRig(newcomer.transform) == null,
+                    Check(rig == null &&
+                        (GameObject)take.Invoke(director, new object[] { newcomer.transform }) == null,
                         "low memory destroys idle rig and prevents reuse");
                 }
                 else
