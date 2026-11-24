@@ -49,7 +49,14 @@ class VehicleSessionSuspension(unittest.TestCase):
 
     def test_suspend_releases_held_input_without_unsafe_exit(self):
         end = SESSION[SESSION.index("private void ClearHeldDrivingInput()"):]
-        self.assertIn("private void OnDisable() => CancelDrivingInput();", end)
+        # Accept either the legacy one-liner or a structured lifecycle body.
+        # The new foliage cleanup must not bypass driving input cancellation.
+        disabled = end.split("private void OnDisable()", 1)[1]
+        self.assertIn("CancelDrivingInput();", disabled)
+        if "GrassInteractorId" in SESSION:
+            self.assertIn("Shader.SetGlobalVector(GrassInteractorId, Vector4.zero);", disabled)
+            self.assertLess(disabled.index("Shader.SetGlobalVector(GrassInteractorId, Vector4.zero);"),
+                            disabled.index("CancelDrivingInput();"))
         self.assertIn("if (car != null) car.SetInput(0f, 0f);", end)
         self.assertNotIn("ReleaseDriver(", end)
         self.assertNotIn("TryExit()", end)
