@@ -43,6 +43,7 @@ namespace Aaris.MapReview
         private readonly CasingSlot[] casings = new CasingSlot[MaximumCasingSlots];
         private static Material brassMaterial, shotgunMaterial;
         private Transform observer;
+        private AarisThirdPersonPlayer observerMotor;
         private int nextSlot, nextCasingSlot;
         // Physical bot gunfire is rare: no empty pooled-VFX Update or native
         // component dispatch is needed between nearby encounters.
@@ -87,7 +88,31 @@ namespace Aaris.MapReview
             casing.grounded = false;
         }
 
-        internal void Bind(Transform player) { observer = player; }
+        internal void Bind(Transform player)
+        {
+            observer = player;
+            // Cache once; never search for the player component while firing.
+            observerMotor = player != null
+                ? player.GetComponent<AarisThirdPersonPlayer>() : null;
+        }
+
+        // Damage and ammo are resolved by the director. Cull only optional
+        // presentation when the full shot lies outside the camera frustum.
+        // Reject shared exterior half-planes; never hide a crossing shot.
+        private bool ShotCompletelyOffscreen(Vector3 from, Vector3 to)
+        {
+            Camera camera = observerMotor != null ? observerMotor.AimCamera : null;
+            if (camera == null || !camera.isActiveAndEnabled) return false;
+            Vector3 a = camera.WorldToViewportPoint(from);
+            Vector3 b = camera.WorldToViewportPoint(to);
+            if (a.z <= 0f && b.z <= 0f) return true;
+            if (a.z <= 0f || b.z <= 0f) return false;
+            const float pad = 0.18f;
+            return (a.x < -pad && b.x < -pad) ||
+                   (a.x > 1f + pad && b.x > 1f + pad) ||
+                   (a.y < -pad && b.y < -pad) ||
+                   (a.y > 1f + pad && b.y > 1f + pad);
+        }
 
         private static Material MaterialFor(bool brass, bool shotgun = false)
         {
@@ -196,7 +221,7 @@ namespace Aaris.MapReview
             Vector3 from = shooter.position + Vector3.up * 1.29f +
                 shooter.forward * barrelReach;
             float length = (target - from).magnitude;
-            if (length < .18f) return;
+            if (length < .18f || ShotCompletelyOffscreen(from, target)) return;
             int index = nextSlot++ % MaximumSlots;
             Slot slot = slots[index];
             if (slot == null) slots[index] = slot = CreateSlot();
