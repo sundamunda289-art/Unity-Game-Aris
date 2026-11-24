@@ -50,6 +50,39 @@ layout_code = re.sub(r"//[^\n]*|/\*.*?\*/", "", layout, flags=re.S)
 assert "new " not in layout_code  # no allocations in this IK method
 assert "Physics.Raycast" not in layout
 
+# The intermediate stance guard must constrain only pelvis-local L/R
+# separation, never shorten the authored sagittal stride.
+assert "if (validAnatomicalRight && guard > 0.001f)" in layout
+assert "float lateralSeparation = Vector3.Dot(" in layout
+assert "rightGoal - leftGoal, anatomicalRight);" in layout
+assert "float excessLateral = Mathf.Abs(lateralSeparation) - 0.50f;" in layout
+assert "excessLateral * 0.5f, 0.16f) * guard;" in layout
+assert "Mathf.Sign(lateralSeparation) * eachShoeMetres" in layout
+assert "float stanceSpread = stanceSeparation.magnitude;" not in layout
+
+# Source-equivalent scalar projection along the imported pelvis axis.
+# x is anatomical lateral; z is fore-aft gait stagger, which must not change.
+def trim_transition_feet(left, right, guard):
+    separation = right[0] - left[0]
+    excess = abs(separation) - 0.50
+    if excess <= 0 or guard <= 0:
+        return left, right
+    shift = (1 if separation >= 0 else -1) * min(excess * 0.5, 0.16) * guard
+    return (left[0] + shift, left[1]), (right[0] - shift, right[1])
+
+for left, right in [
+    ((-.45, -.50), (.45, .50)),
+    ((-.15, -.70), (.15, .70)),
+    ((.45, -.35), (-.45, .42)),
+]:
+    for guard in (0, .01, .25, .5, 1):
+        trimmed_left, trimmed_right = trim_transition_feet(left, right, guard)
+        assert trimmed_left[1] == left[1] and trimmed_right[1] == right[1]
+        assert abs(trimmed_left[0] - left[0]) <= .16 + 1e-10
+        assert abs(trimmed_right[0] - right[0]) <= .16 + 1e-10
+        assert abs(trimmed_right[0] - trimmed_left[0]) <= abs(right[0] - left[0]) + 1e-10
+assert trim_transition_feet((-.15,-.70),(.15,.70),1) == ((-.15,-.70),(.15,.70))
+
 # Native baseline used 14/22cm fore-aft foot offsets and passed
 # the strict <=12cm inter-knee-height QA; keep this anatomical fallback
 # for normal hip sizes. Larger avatars gain a bounded width adjustment.

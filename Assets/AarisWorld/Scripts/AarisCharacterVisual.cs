@@ -1510,19 +1510,27 @@ namespace Aaris.MapReview
             // splay, by <=16cm per shoe, before the existing ground rays
             // sample those resolved target positions. At speed, in air or
             // at upright idle the correction vanishes naturally.
-            Vector3 stanceSeparation = Vector3.ProjectOnPlane(
-                rightGoal - leftGoal, Vector3.up);
-            float stanceSpread = stanceSeparation.magnitude;
+            // Only trim left/right separation. The previous 3D-horizontal
+            // magnitude also counted valid forward/backward foot stagger, so
+            // entering prone could pull both shoes along the stride direction.
+            // A pelvis-local lateral clamp preserves sagittal animation while
+            // remaining symmetric, capped at 16 cm/shoe and allocation-free.
             float guard = stationary * Mathf.SmoothStep(0f, 1f,
                 Mathf.InverseLerp(0.025f, 0.11f, lowPose));
-            if (stanceSpread > 0.50f && guard > 0.001f)
+            if (validAnatomicalRight && guard > 0.001f)
             {
-                float eachShoeMetres = Mathf.Min(
-                    (stanceSpread - 0.50f) * 0.5f, 0.16f) * guard;
-                Vector3 inward = stanceSeparation *
-                    (eachShoeMetres / stanceSpread);
-                leftGoal += inward;
-                rightGoal -= inward;
+                float lateralSeparation = Vector3.Dot(
+                    rightGoal - leftGoal, anatomicalRight);
+                float excessLateral = Mathf.Abs(lateralSeparation) - 0.50f;
+                if (excessLateral > 0f)
+                {
+                    float eachShoeMetres = Mathf.Min(
+                        excessLateral * 0.5f, 0.16f) * guard;
+                    Vector3 inward = anatomicalRight *
+                        (Mathf.Sign(lateralSeparation) * eachShoeMetres);
+                    leftGoal += inward;
+                    rightGoal -= inward;
+                }
             }
             // Native 30-frame Play Mode measurement of an ACTUALLY moving
             // prone actor found 0.66-0.81m lateral shoe separation even though

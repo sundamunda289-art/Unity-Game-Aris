@@ -181,36 +181,46 @@ assert visual.count('CorrectReversedSwingKnee(thigh, shin, foot, kneeForward);')
 assert 'Vector3 uprightKneeForward = AnatomicalKneeForward();' in visual
 assert visual.count('uprightContactWeight, uprightKneeForward,') == 2
 
-# Visual Play Mode evidence (2026-11-19) found mid-transition ankle spread
-# 0.702m entering prone and 0.769m leaving it, while steady prone was 0.495m.
-# Correct extreme spread before existing per-ankle support queries (no new rays).
-assert 'Vector3 stanceSeparation = Vector3.ProjectOnPlane(' in visual
-assert 'rightGoal - leftGoal, Vector3.up' in visual
-assert 'stanceSpread > 0.50f && guard > 0.001f' in visual
-assert 'Mathf.Min(' in visual and '(stanceSpread - 0.50f) * 0.5f, 0.16f' in visual
+# Earlier native QA found exaggerated low-stance ankle spread, but the
+# measured X/Z distance also contains authored fore/aft stagger. Correct the
+# pelvis-lateral component alone; do not distort a transitioning gait stride.
+assert 'if (validAnatomicalRight && guard > 0.001f)' in visual
+assert 'float lateralSeparation = Vector3.Dot(' in visual
+assert 'rightGoal - leftGoal, anatomicalRight);' in visual
+assert 'float excessLateral = Mathf.Abs(lateralSeparation) - 0.50f;' in visual
+assert 'excessLateral * 0.5f, 0.16f) * guard;' in visual
+assert 'Mathf.Sign(lateralSeparation) * eachShoeMetres' in visual
 assert 'leftGoal += inward;' in visual and 'rightGoal -= inward;' in visual
 # A 32% intermediate prone knee pole worsened return-to-standing lateral
 # knee metrics in real Unity playback (frame 1: 0.103m to 0.330m).
 # Preserve the original pole interpolation and limit only excessive feet.
 assert 'Mathf.Lerp(0.32f, 1f, proneKneeSettle)' not in visual
 assert 'float pronePoleStrength = proneKneeShare * proneKneeSettle *' in visual
-assert visual.index('Vector3 stanceSeparation =') < visual.index('if (correction < 0.001f) return;')
+assert visual.index('float lateralSeparation = Vector3.Dot(') < visual.index('if (correction < 0.001f) return;')
 assert visual.count('float leftAnkleY = SupportedAnkleY(') == 1
 assert visual.count('float rightAnkleY = SupportedAnkleY(') == 1
 import math
 def smooth(t):
     t = max(0.0, min(1.0, t))
     return t*t*(3.0-2.0*t)
-def guarded_spread(spread, low_pose, speed, solve_weight):
+def guarded_lateral(lateral, forward_stagger, low_pose, speed, solve_weight):
     stationary=1.0-smooth((speed-.07)/(.38-.07))
-    guard=stationary*smooth((low_pose-.18)/(.65-.18))
-    per_shoe=min(max(spread-.50,0.0)*.5,.16)*guard
-    return spread-2*per_shoe*solve_weight
-assert guarded_spread(.702,.98,0.0,.806)<.56
-assert guarded_spread(.769,.65,0.0,.654)<.66
-assert abs(guarded_spread(.702,0.0,0.0,1.0)-.702)<1e-9
-assert abs(guarded_spread(.702,1.0,.5,1.0)-.702)<1e-9
-assert abs(guarded_spread(.40,1.0,0.0,1.0)-.40)<1e-9
+    guard=stationary*smooth((low_pose-.025)/(.11-.025))
+    per_shoe=min(max(abs(lateral)-.50,0.0)*.5,.16)*guard
+    remaining=abs(lateral)-2*per_shoe*solve_weight
+    return remaining,forward_stagger
+assert guarded_lateral(.702,.4,.98,0.0,.806)[0]<.56
+assert guarded_lateral(.769,.3,.65,0.0,.654)[0]<.66
+assert abs(guarded_lateral(.702,.7,0.0,0.0,1.0)[0]-.702)<1e-9
+assert abs(guarded_lateral(.702,.7,1.0,.5,1.0)[0]-.702)<1e-9
+assert abs(guarded_lateral(.40,.7,1.0,0.0,1.0)[0]-.40)<1e-9
+for fore_aft in (-1.3,-.4,0.0,.4,1.3):
+    for lateral in (.30,.702,.769,1.3):
+        for low_pose in (0.0,.08,.65,.98):
+            for speed in (0.0,.2,.5):
+                corrected,stagger=guarded_lateral(lateral,fore_aft,low_pose,speed,1.0)
+                assert corrected <= lateral+1e-9
+                assert stagger == fore_aft
 
 # Cross(hipRight, worldUp) preserves the forward axis of a yaw-rotated
 # imported rig: controller-facing +Z must not replace anatomical facing.
