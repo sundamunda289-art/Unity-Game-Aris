@@ -19,6 +19,7 @@ namespace Aaris.MapReview
         private readonly RaycastHit[] cameraObstacles = new RaycastHit[32];
         // Avoid allocating a full hit array every frame in crowded forests.
         private readonly RaycastHit[] crowdedCameraObstacles = new RaycastHit[128];
+        private static readonly int GrassInteractShaderId = Shader.PropertyToID("_AarisGrassInteract");
         private AarisVehicleWorld world;
         private AarisThirdPersonPlayer footMotor;
         private AarisCharacterVisual characterVisual;
@@ -115,7 +116,13 @@ namespace Aaris.MapReview
         {
             // Update reads inputs; LateUpdate tracks Rigidbody interpolation.
             // Following the car in Update caused visible camera jitter.
-            if (car != null && followCamera != null) FollowCarCamera();
+            if (car == null) return;
+            if (followCamera != null) FollowCarCamera();
+            // One cheap uniform for the occupied vehicle. Parked cars do not
+            // bend any grass: only the active driver session has this path.
+            Vector3 pos = car.transform.position;
+            Shader.SetGlobalVector(GrassInteractShaderId,
+                new Vector4(pos.x, pos.y, pos.z, 2.25f));
         }
 
         public void SetSteering(float move, float steer)
@@ -656,6 +663,10 @@ namespace Aaris.MapReview
             if (!focused) CancelDrivingInput();
         }
 
-        private void OnDisable() => CancelDrivingInput();
+        private void OnDisable()
+        {
+            CancelDrivingInput();
+            Shader.SetGlobalVector(GrassInteractShaderId, Vector4.zero);
+        }
     }
 }
