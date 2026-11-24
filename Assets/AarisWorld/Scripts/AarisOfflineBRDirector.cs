@@ -969,14 +969,55 @@ namespace Aaris.MapReview
                 nearbyColliders.TryGetInactiveCoverHit(ray, distance, out _);
         }
 
+        // Distant math combat cannot rely on PhysX TerrainColliders: remote
+        // actors have no physics bodies, and the static obstacle grid tracks
+        // authored building cover rather than sculpted ground. Sample terrain
+        // only on scheduled virtual shot attempts, never on frame updates.
+        // The 3m spacing resolves normal terrain heightmap features across
+        // the existing <=38m bot firing range with at most 15 interior probes.
+        private bool HasTerrainCoverOnVirtualShot(
+            Vector3 origin, Vector3 path, float length)
+        {
+            if (terrainProbeMeta == null || terrainProbeMeta.Length == 0)
+                return false;
+            int segments = Mathf.Clamp(Mathf.CeilToInt(length / 3f), 1, 16);
+            for (int step = 1; step < segments; step++)
+            {
+                float fraction = (float)step / segments;
+                float x = origin.x + path.x * fraction;
+                float z = origin.z + path.z * fraction;
+                float shotY = origin.y + path.y * fraction;
+                for (int i = 0; i < terrainProbeMeta.Length; i++)
+                {
+                    TerrainProbeMeta meta = terrainProbeMeta[i];
+                    if (meta.tile == null || meta.data == null ||
+                        meta.size.x <= 0f || meta.size.z <= 0f ||
+                        x < meta.origin.x || x > meta.origin.x + meta.size.x ||
+                        z < meta.origin.z || z > meta.origin.z + meta.size.z)
+                        continue;
+                    float u = (x - meta.origin.x) / meta.size.x;
+                    float v = (z - meta.origin.z) / meta.size.z;
+                    // Include steep ridges: TryGetGround excludes those for
+                    // walking, but a hill must still stop a virtual bullet.
+                    float groundY = meta.origin.y +
+                        meta.data.GetInterpolatedHeight(u, v);
+                    if (groundY > shotY + 0.12f) return true;
+                    break;
+                }
+            }
+            return false;
+        }
+
         internal bool IsVirtualShotBlocked(Vector3 from, Vector3 to)
         {
-            if (nearbyColliders == null) return false;
             Vector3 origin = from + Vector3.up * 1.28f;
             Vector3 path = to + Vector3.up * 1.07f - origin;
             float length = path.magnitude;
-            return length > 0.001f && nearbyColliders.HasStreamedShotCover(
-                new Ray(origin, path / length), length);
+            // Degenerate rays cannot authorize remote damage.
+            if (length <= 0.001f) return true;
+            if (nearbyColliders != null && nearbyColliders.HasStreamedShotCover(
+                new Ray(origin, path / length), length)) return true;
+            return HasTerrainCoverOnVirtualShot(origin, path, length);
         }
 
         private void EvaluateZone(float elapsed)
