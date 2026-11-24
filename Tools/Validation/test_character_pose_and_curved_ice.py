@@ -184,8 +184,11 @@ assert visual.count('uprightContactWeight, uprightKneeForward,') == 2
 # Visual Play Mode evidence (2026-11-19) found mid-transition ankle spread
 # 0.702m entering prone and 0.769m leaving it, while steady prone was 0.495m.
 # Correct extreme spread before existing per-ankle support queries (no new rays).
-assert 'Vector3 stanceSeparation = Vector3.ProjectOnPlane(' in visual
-assert 'rightGoal - leftGoal, Vector3.up' in visual
+assert 'float transitionLateralSeparation = validAnatomicalRight' in visual
+assert 'Vector3.Dot(rightGoal - leftGoal, anatomicalRight)' in visual
+assert 'float stanceSpread = Mathf.Abs(transitionLateralSeparation);' in visual
+assert 'Mathf.Sign(transitionLateralSeparation) * eachShoeMetres' in visual
+assert 'Vector3 stanceSeparation = Vector3.ProjectOnPlane(' not in visual
 assert 'stanceSpread > 0.50f && guard > 0.001f' in visual
 assert 'Mathf.Min(' in visual and '(stanceSpread - 0.50f) * 0.5f, 0.16f' in visual
 assert 'leftGoal += inward;' in visual and 'rightGoal -= inward;' in visual
@@ -194,23 +197,40 @@ assert 'leftGoal += inward;' in visual and 'rightGoal -= inward;' in visual
 # Preserve the original pole interpolation and limit only excessive feet.
 assert 'Mathf.Lerp(0.32f, 1f, proneKneeSettle)' not in visual
 assert 'float pronePoleStrength = proneKneeShare * proneKneeSettle *' in visual
-assert visual.index('Vector3 stanceSeparation =') < visual.index('if (correction < 0.001f) return;')
+assert visual.index('float transitionLateralSeparation =') < visual.index('if (correction < 0.001f) return;')
 assert visual.count('float leftAnkleY = SupportedAnkleY(') == 1
 assert visual.count('float rightAnkleY = SupportedAnkleY(') == 1
 import math
 def smooth(t):
     t = max(0.0, min(1.0, t))
     return t*t*(3.0-2.0*t)
-def guarded_spread(spread, low_pose, speed, solve_weight):
-    stationary=1.0-smooth((speed-.07)/(.38-.07))
-    guard=stationary*smooth((low_pose-.18)/(.65-.18))
-    per_shoe=min(max(spread-.50,0.0)*.5,.16)*guard
-    return spread-2*per_shoe*solve_weight
-assert guarded_spread(.702,.98,0.0,.806)<.56
-assert guarded_spread(.769,.65,0.0,.654)<.66
-assert abs(guarded_spread(.702,0.0,0.0,1.0)-.702)<1e-9
-assert abs(guarded_spread(.702,1.0,.5,1.0)-.702)<1e-9
-assert abs(guarded_spread(.40,1.0,0.0,1.0)-.40)<1e-9
+def guarded_lateral(spread, low_pose, speed, solve_weight):
+    stationary = 1.0 - smooth((speed - .07) / (.38 - .07))
+    guard = stationary * smooth((low_pose - .025) / (.11 - .025))
+    shift = min(max(abs(spread) - .50, 0.0) * .5, .16) * guard
+    return spread - 2 * math.copysign(shift, spread) * solve_weight
+
+# Hypothetical lateral spread: total historic separation did not record
+# its sagittal component, so it cannot be used as measured lateral evidence.
+assert guarded_lateral(.702, .98, 0.0, .806) < .56
+assert guarded_lateral(.769, .65, 0.0, .654) < .66
+assert abs(guarded_lateral(-.702, .98, 0.0, .806) +
+           guarded_lateral(.702, .98, 0.0, .806)) < 1e-9
+assert abs(guarded_lateral(.702, 0.0, 0.0, 1.0) - .702) < 1e-9
+assert abs(guarded_lateral(.702, 1.0, .5, 1.0) - .702) < 1e-9
+assert abs(guarded_lateral(.40, 1.0, 0.0, 1.0) - .40) < 1e-9
+# The correction vector is parallel to anatomical hip-right, so even
+# large forward/back stagger remains untouched at every avatar yaw.
+for theta in (0, .25, .75, 1.5, math.pi):
+    right = (math.cos(theta), math.sin(theta))
+    forward = (-right[1], right[0])
+    for stagger in (-1.2, -.6, 0.0, .6, 1.2):
+        for lateral in (-.9, -.4, .4, .9):
+            corrected = guarded_lateral(lateral, 1.0, 0.0, 1.0)
+            shift = (lateral - corrected) * .5
+            inward = (right[0] * shift, right[1] * shift)
+            assert abs(inward[0]*forward[0] + inward[1]*forward[1]) < 1e-12
+            assert abs(shift) <= .16 + 1e-12
 
 # Cross(hipRight, worldUp) preserves the forward axis of a yaw-rotated
 # imported rig: controller-facing +Z must not replace anatomical facing.

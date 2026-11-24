@@ -36,7 +36,11 @@ class PoseAndStreamingIntegration(unittest.TestCase):
     def test_transitional_foot_splay_remains_symmetric_and_movement_safe(self):
         method = VISUAL.split("private void PlanBalancedLowStanceFeet(", 1)[1].split(
             "private struct AnkleSupportSample", 1)[0]
-        self.assertIn("Vector3.ProjectOnPlane(\n                rightGoal - leftGoal, Vector3.up)", method)
+        self.assertIn("float transitionLateralSeparation = validAnatomicalRight", method)
+        self.assertIn("Vector3.Dot(rightGoal - leftGoal, anatomicalRight)", method)
+        self.assertIn("float stanceSpread = Mathf.Abs(transitionLateralSeparation);", method)
+        self.assertIn("Mathf.Sign(transitionLateralSeparation) * eachShoeMetres", method)
+        self.assertNotIn("Vector3 stanceSeparation = Vector3.ProjectOnPlane(", method)
         self.assertIn("float guard = stationary * Mathf.SmoothStep(0f, 1f,", method)
         self.assertIn("if (stanceSpread > 0.50f && guard > 0.001f)", method)
         self.assertIn("(stanceSpread - 0.50f) * 0.5f, 0.16f", method)
