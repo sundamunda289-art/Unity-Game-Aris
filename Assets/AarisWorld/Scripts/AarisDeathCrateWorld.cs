@@ -41,6 +41,9 @@ namespace Aaris.MapReview
         // The authoritative capsule changes height during standing, crouch
         // and prone transitions. Cache the component, not its old height.
         private CharacterController playerCapsule;
+        // Reuse the player's authored collider-streaming index. It already
+        // contains solid buildings whose PhysX colliders were unloaded.
+        private AarisThirdPersonPlayer playerMotor;
         private float nextPoll;
         private int pickupProbeSerial;
         private int liveVisuals;
@@ -72,6 +75,8 @@ namespace Aaris.MapReview
             player = target;
             playerCapsule = target != null
                 ? target.GetComponent<CharacterController>() : null;
+            playerMotor = target != null
+                ? target.GetComponent<AarisThirdPersonPlayer>() : null;
             nextPoll = 0f;
         }
 
@@ -262,7 +267,8 @@ namespace Aaris.MapReview
             Vector3 delta = to + Vector3.up * .32f - origin;
             float distance = delta.magnitude;
             if (distance < .001f) return true;
-            int count = AarisPhysicsHitBuffer.Raycast(new Ray(origin, delta / distance),
+            Ray pickupRay = new Ray(origin, delta / distance);
+            int count = AarisPhysicsHitBuffer.Raycast(pickupRay,
                 distance, Physics.DefaultRaycastLayers, ref pickupHits, 256,
                 out RaycastHit[] hits);
             // At prone/stance transitions the pickup ray may begin above the
@@ -275,7 +281,13 @@ namespace Aaris.MapReview
                     hit.transform.IsChildOf(player))) continue;
                 return false;
             }
-            return true;
+            // A streamed-out wall has no native ray hit. Consult the existing
+            // indexed authored boxes/meshes without re-enabling PhysX; the
+            // short-reach probe preserves the LIVE stance-dependent ray.
+            AarisNearbyColliders cover = playerMotor != null
+                ? playerMotor.CombatCover : null;
+            return cover == null ||
+                !cover.TryGetInactiveCoverHit(pickupRay, distance, out _);
         }
 
         private Drop Nearest(Vector3 point, float radius, bool mustReach,
