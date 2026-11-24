@@ -134,6 +134,13 @@ namespace Aaris.MapReview
 
         public void TickDormantRivals(float now)
         {
+            if (dormantRivalCount != 0 && now >= nextDormantSweepAt &&
+                player != null && CanEngage)
+                TickDormantRivals(now, player.position);
+        }
+
+        private void TickDormantRivals(float now, Vector3 playerPosition)
+        {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             using var aiProfilerScope = k_DormantScan.Auto();
 #endif
@@ -164,7 +171,7 @@ namespace Aaris.MapReview
                         dormantRivalCount--;
                         continue;
                     }
-                    bot.TickDormantFromDirector();
+                    bot.TickDormantFromDirector(now, playerPosition);
                 }
                 if (dormantRivalSlots[i])
                     nextDormantSweepAt = Mathf.Min(nextDormantSweepAt,
@@ -468,7 +475,7 @@ namespace Aaris.MapReview
             hasDirectorPlayerPosition = true;
             WakeRivalsOnCameraChange(playerPosition, now);
             // Combat cadence is independent from presentation wake-ups.
-            TickDormantRivals(now);
+            TickDormantRivals(now, playerPosition);
             // Drive staged player-attacker selection once per rendered frame.
             // Do not rely on individual bots' staggered 0.35s think ticks.
             RefreshPlayerAttackers();
@@ -647,12 +654,12 @@ namespace Aaris.MapReview
             for (int i = 0; i < terrainProbeMeta.Length; i++)
             {
                 TerrainProbeMeta meta = terrainProbeMeta[i];
-                Terrain tile = meta.tile;
-                TerrainData data = meta.data;
-                if (tile == null || data == null) continue;
                 Vector3 origin = meta.origin, size = meta.size;
                 if (x < origin.x + margin || x > origin.x + size.x - margin ||
                     z < origin.z + margin || z > origin.z + size.z - margin) continue;
+                Terrain tile = meta.tile;
+                TerrainData data = meta.data;
+                if (tile == null || data == null) continue;
                 float u = (x - origin.x) / size.x;
                 float v = (z - origin.z) / size.z;
                 // Slope, ocean and native height sampling stay authoritative.
@@ -1830,10 +1837,11 @@ namespace Aaris.MapReview
             : Mathf.Min(nextFarSimulation,
                 Mathf.Min(nextDormantProximityProbe, nextCameraProbe));
 
-        internal void TickDormantFromDirector()
+        internal void TickDormantFromDirector(float now, Vector3 playerPosition)
         {
-            // Disabled native Update, unchanged AI simulation code.
-            if (centrallyDormant) Update();
+            // The director already verified the match and this rival's HP.
+            // Use its sampled player position and time across the whole batch.
+            TickRival(now, playerPosition);
         }
 
         internal void ForceDormantProximityProbe()
@@ -2371,10 +2379,15 @@ namespace Aaris.MapReview
             if (owner == null || !owner.CanEngage || !IsAlive ||
                 playerTarget == null || playerTargetHealth == null || playerTargetHealth.IsDead)
                 return;
+            TickRival(now, playerTarget.position);
+        }
+
+        private void TickRival(float now, Vector3 playerPosition)
+        {
             // Avoid 100 square roots each rendered frame on mobile. All
             // thresholds below are distances squared; the 90m policy is unchanged.
             float playerDistanceSqr =
-                (playerTarget.position - transform.position).sqrMagnitude;
+                (playerPosition - transform.position).sqrMagnitude;
             dormantOutOfVisualRange =
                 playerDistanceSqr >= FarVisualDistance * FarVisualDistance;
             if (dormantOutOfVisualRange)
@@ -2655,7 +2668,7 @@ namespace Aaris.MapReview
             if (!simulationDue) return;
             if (virtualBody)
             {
-                TickVirtualCombat(now, dt);
+                TickVirtualCombat(now, dt, playerPosition);
                 return;
             }
             // A new on-camera actor may wait one frame for native admission.
@@ -2880,7 +2893,7 @@ namespace Aaris.MapReview
 
         // Distant bots stay fully alive as logical actors without per-bot
         // PhysX movement, projectiles, animation, IK or weapon models.
-        private void TickVirtualCombat(float now, float dt)
+        private void TickVirtualCombat(float now, float dt, Vector3 playerPosition)
         {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             using var aiProfilerScope = k_RemoteCombat.Auto();
@@ -2975,7 +2988,7 @@ namespace Aaris.MapReview
             // those interactions require actual colliders and clear muzzle LOS.
             if (!hasTarget || now < nextAttack ||
                 distance > (carriedGun == null ? 2.25f : 38f) ||
-                (targetPosition - playerTarget.position).sqrMagnitude <
+                (targetPosition - playerPosition).sqrMagnitude <
                     FarSimulationDistance * FarSimulationDistance)
                 return;
             // Camera visibility affects presentation only. A distant LOD with

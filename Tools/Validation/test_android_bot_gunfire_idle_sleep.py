@@ -36,7 +36,7 @@ class IdleBotGunfireTests(unittest.TestCase):
         self.assertNotIn("new GameObject(", UPDATE)
         self.assertNotIn("new Slot(", UPDATE)
         self.assertNotIn("new CasingSlot(", UPDATE)
-        self.assertIn("TickVirtualCombat(now, dt);", AI)
+        self.assertIn("TickVirtualCombat(now, dt, playerPosition);", AI)
         self.assertIn("targetHealth.ApplyDamage(damage, gameObject);", AI)
 
     def test_pump_and_bolt_remain_live_through_ejection_at_30_to_120_fps(self):

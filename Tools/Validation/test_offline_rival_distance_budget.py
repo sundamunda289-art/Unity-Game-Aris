@@ -82,7 +82,7 @@ class FarRivalBudget(unittest.TestCase):
         self.assertIn("bool needsPhysicalReceiver = !virtualBody ||", update)
         self.assertIn("cameraRelevant && HasVisibleBody &&", update)
         self.assertIn("capsule.enabled = needsPhysicalReceiver;", update)
-        self.assertLess(update.index("TickVirtualCombat(now, dt);"),
+        self.assertLess(update.index("TickVirtualCombat(now, dt, playerPosition);"),
                         update.index("capsule.Move("))
         self.assertIn("hasAnimations && visualRoot != null && visualRoot.activeSelf", update)
         self.assertIn("targetHealth.ApplyDamage(damage, gameObject);", bot)
@@ -146,7 +146,7 @@ class FarRivalBudget(unittest.TestCase):
         self.assertIn("if (simulationDue)\n            {", update)
         self.assertIn("if (!simulationDue) return;", update)
         self.assertLess(update.index("if (!simulationDue) return;"),
-                        update.index("TickVirtualCombat(now, dt);"))
+                        update.index("TickVirtualCombat(now, dt, playerPosition);"))
 
         # A 100-rival phone-camera sweep may wake representation immediately,
         # but it must not increase movement, damage or the 350ms AI tick count.
@@ -221,7 +221,7 @@ class FarRivalBudget(unittest.TestCase):
         # Only renderer/collider admission is changed. The far simulation
         # scheduler and remote HP/damage path still use their original tick.
         self.assertIn("if (!simulationDue) return;", update)
-        self.assertIn("TickVirtualCombat(now, dt);", update)
+        self.assertIn("TickVirtualCombat(now, dt, playerPosition);", update)
 
     def test_near_offcamera_renderer_gate_preserves_combat_body(self):
         bot = SOURCE.split("internal sealed class AarisOfflineRival", 1)[1]
@@ -247,7 +247,7 @@ class FarRivalBudget(unittest.TestCase):
         self.assertIn("!detailedRenderingSuppressed", update)
         self.assertIn("bool needsPhysicalReceiver = !virtualBody ||", update)
         self.assertIn("capsule.Move(", update)
-        self.assertIn("TickVirtualCombat(now, dt);", update)
+        self.assertIn("TickVirtualCombat(now, dt, playerPosition);", update)
 
     def test_denied_camera_admission_retries_without_extra_combat(self):
         update = SOURCE.split("internal sealed class AarisOfflineRival", 1)[1]
@@ -261,7 +261,7 @@ class FarRivalBudget(unittest.TestCase):
         self.assertIn("nextVisualCheck = Mathf.Min(nextVisualCheck, now + 0.12f);", update)
         self.assertLess(retry, update.index("if (simulationDue)"))
         self.assertLess(update.index("if (!simulationDue) return;"),
-                        update.index("TickVirtualCombat(now, dt);"))
+                        update.index("TickVirtualCombat(now, dt, playerPosition);"))
         # Model the first camera admission denied by the native budget,
         # followed by a successful retry at the next 120ms probe.
         for fps in (15, 30, 60, 120):

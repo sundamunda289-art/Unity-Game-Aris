@@ -324,7 +324,7 @@ namespace Aaris.MapReview.Editor
                 Set(director, "radius", 100000f);
                 var alpha = new GameObject("Remote Alpha");
                 alpha.transform.SetParent(root.transform, false);
-                alpha.transform.position = Origin + Vector3.right * 500f;
+                alpha.transform.position = Origin + Vector3.right * 1000f;
                 var bravo = new GameObject("Remote Bravo");
                 bravo.transform.SetParent(root.transform, false);
                 bravo.transform.position = alpha.transform.position + Vector3.forward * 1.6f;
@@ -367,24 +367,31 @@ namespace Aaris.MapReview.Editor
                 Call(cover, "IndexCollider", 0);
                 Set(cover, "indexReady", true);
                 Set(director, "nearbyColliders", cover);
-                Call(alphaBot, "TickVirtualCombat", 15f, 0.35f);
+                Call(alphaBot, "TickVirtualCombat", 15f, 0.35f, Origin);
                 Check(bravoHP.CurrentHealth == 200f && box.enabled &&
                       (float)Get(alphaBot, "virtualCoverUntil") > 15f,
                     "Active authored wall blocks remote damage and prompts flanking", report);
                 box.enabled = false;
                 ((bool[])Get(cover, "disabledByStreaming"))[0] = true;
-                Call(alphaBot, "TickVirtualCombat", 17f, 0.35f);
+                Call(alphaBot, "TickVirtualCombat", 17f, 0.35f, Origin);
                 Check(bravoHP.CurrentHealth == 200f && !box.enabled &&
                       (float)Get(alphaBot, "virtualCoverUntil") > 17f,
                     "Streamed-out authored wall blocks remote damage without native physics", report);
                 wall.SetActive(false);
                 Set(bravoBot, "virtualBody", false);
                 for (int i = 0; i < 8; i++)
-                    Call(alphaBot, "TickVirtualCombat", 20f + i * 1.5f, 0.35f);
+                    Call(alphaBot, "TickVirtualCombat", 20f + i * 1.5f, 0.35f, Origin);
                 Check(bravoHP.CurrentHealth == 200f,
                     "Remote math cannot damage a full-physics rival", report);
 
                 Set(bravoBot, "virtualBody", true);
+                for (int i = 0; i < 8 && bravoHP.CurrentHealth == 200f; i++)
+                    Call(alphaBot, "TickVirtualCombat", 35f + i * 1.5f, 0.35f, Origin);
+                Check(bravoHP.CurrentHealth < 200f && !alphaBody.enabled && !bravoBody.enabled,
+                    "Off-camera rivals one kilometre away fight without PhysX receivers", report);
+                alpha.transform.position = Origin + Vector3.right * 300f;
+                bravo.transform.position = alpha.transform.position + Vector3.forward * 1.6f;
+
                 Set(bravoBot, "lastCameraRelevant", true);
                 var lod = new GameObject("On-camera distant LOD");
                 lod.transform.SetParent(bravo.transform, false);
@@ -397,7 +404,7 @@ namespace Aaris.MapReview.Editor
                     if (loss > 0f) lastAttacker = attacker;
                 };
                 for (int i = 0; i < 110 && !bravoHP.IsDead; i++)
-                    Call(alphaBot, "TickVirtualCombat", 40f + i * 1.5f, 0.35f);
+                    Call(alphaBot, "TickVirtualCombat", 60f + i * 1.5f, 0.35f, Origin);
                 Check(bravoHP.IsDead && remoteDeaths == 1,
                     "Remote virtual combat eliminates actual rival exactly once", report);
                 Check(lastAttacker == alpha,
@@ -411,7 +418,7 @@ namespace Aaris.MapReview.Editor
                 Set(alphaBot, "target", null);
                 Set(alphaBot, "targetHealth", null);
                 Vector3 beforeVoid = alpha.transform.position;
-                Call(alphaBot, "TickVirtualCombat", 500f, 0.35f);
+                Call(alphaBot, "TickVirtualCombat", 500f, 0.35f, Origin);
                 Check((alpha.transform.position - beforeVoid).sqrMagnitude < 0.0001f,
                     "Remote rival refuses movement across missing terrain", report);
             }

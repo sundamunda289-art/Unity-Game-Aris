@@ -4,7 +4,7 @@ import random as random_module
 import unittest
 from pathlib import Path
 S=(Path(__file__).resolve().parents[2]/"Assets/AarisWorld/Scripts/AarisOfflineBRDirector.cs").read_text()
-R=S.split("private void TickVirtualCombat(float now, float dt)",1)[1].split("private float NextVirtualRandom()",1)[0]
+R=S.split("private void TickVirtualCombat(",1)[1].split("private float NextVirtualRandom()",1)[0]
 B=S.split("internal sealed class AarisOfflineRival",1)[1]
 
 class RemoteDamageCache(unittest.TestCase):

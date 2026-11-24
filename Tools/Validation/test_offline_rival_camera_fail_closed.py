@@ -92,7 +92,7 @@ class RemoteCameraFailClosed(unittest.TestCase):
                             permitted_distant_mesh(distance, True, close_rig))
         self.assertFalse(virtual_physics(300, True, True))
         self.assertTrue(virtual_physics(300, False, False))
-        self.assertIn("TickVirtualCombat(now, dt);", RIVAL)
+        self.assertIn("TickVirtualCombat(now, dt, playerPosition);", RIVAL)
         self.assertIn("owner.ReportRivalElimination(attacker, gameObject);", RIVAL)
 
 

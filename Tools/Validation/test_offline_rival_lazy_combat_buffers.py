@@ -19,7 +19,7 @@ class DistantCombatMemory(unittest.TestCase):
   for name,size,kind in [('sightHits',20,'RaycastHit'),('crowdedSightHits',128,'RaycastHit'),('coverCandidates',24,'Collider'),('crowdedCoverCandidates',128,'Collider')]:
    self.assertIn(name+' = new '+kind+'['+str(size)+'];',helper)
   update=RIVAL.split('private void Update()',1)[1].split('private void TickVirtualCombat(',1)[0]
-  self.assertLess(update.index('TickVirtualCombat(now, dt);'),update.index('EnsurePhysicalCombatBuffers();'))
+  self.assertLess(update.index('TickVirtualCombat(now, dt, playerPosition);'),update.index('EnsurePhysicalCombatBuffers();'))
   self.assertLess(update.index('EnsurePhysicalCombatBuffers();'),update.index('if (now >= nextThink)'))
  def test_los_and_hit_callback_guards(self):
   for signature in ('private bool TryGetSightHit(', 'private bool MuzzlePathClear(', 'private void OnDamaged('):

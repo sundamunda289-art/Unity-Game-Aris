@@ -12,7 +12,7 @@ class RemoteBotBudget(unittest.TestCase):
         for token in (
             "private const int RivalCount = 100;",
             "private const float FarSimulationInterval = 0.35f;",
-            "TickVirtualCombat(now, dt);",
+            "TickVirtualCombat(now, dt, playerPosition);",
             "targetHealth.ApplyDamage(damage, gameObject);",
             "return bot == attackerOne || bot == attackerTwo;",
             "if (!cachedVirtualDamageRival.virtualBody)",

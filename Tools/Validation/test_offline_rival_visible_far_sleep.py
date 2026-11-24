@@ -22,7 +22,7 @@ class VisibleFarCentralSleepTests(unittest.TestCase):
         # player-bullet hit receiver or turn far combat into per-frame physics.
         self.assertIn("cameraRelevant && HasVisibleBody &&", u)
         self.assertIn("capsule.enabled = needsPhysicalReceiver;", u)
-        self.assertIn("TickVirtualCombat(now, dt);", u)
+        self.assertIn("TickVirtualCombat(now, dt, playerPosition);", u)
         self.assertIn("bool simulationDue = !farSimulation || now >= nextFarSimulation;", u)
         self.assertLess(u.index("SetCentralDormancy("),
                         u.index("bool simulationDue ="))
@@ -61,7 +61,7 @@ class VisibleFarCentralSleepTests(unittest.TestCase):
                 self.assertGreater(min(sleeping_fights), 20)
 
     def test_onscreen_far_receiver_and_mathematical_kills_still_authoritative(self):
-        self.assertIn("if (centrallyDormant) Update();", bot)
+        self.assertIn("TickRival(now, playerPosition);", bot)
         self.assertIn("now >= bot.NextDormantWakeTime", director)
         self.assertIn("bool needsPhysicalReceiver = !virtualBody ||", bot)
         self.assertIn("targetHealth.ApplyDamage(damage, gameObject);", bot)
