@@ -168,6 +168,29 @@ def check_custom_speedtree_shader():
     assert not any(term in source for term in ("Raycast(", "Physics.", "ComputeBuffer", "MaterialPropertyBlock"))
 
 
+def check_hue_variation_finite():
+    """Dark/black alpha-cutout texels must not introduce NaNs in leaf PBR."""
+    from math import isfinite
+
+    shader = (FOLIAGE / "CustomFunctions/AarisSpeedTree8MobilePasses.hlsl").read_text()
+    assert "maxBase /= max(newMaxBase, 0.0001h);" in shader
+    assert "maxBase /= newMaxBase;" not in shader
+    assert "half newMaxBase = max(shiftedColor.r" in shader
+    # Exercise representative pitch-black, nearly black and lit leaf colors.
+    hue_rgb = (0.45, 0.55, 0.34)
+    for base in ((0.0, 0.0, 0.0), (1e-6, 2e-6, 1e-6),
+                 (0.02, 0.05, 0.01), (0.25, 0.43, 0.13)):
+        for blend in (0.0, 0.15, 0.50, 1.0):
+            shifted = [a * (1 - blend) + b * blend for a, b in zip(base, hue_rgb)]
+            max_base = max(base)
+            max_shifted = max(shifted)
+            correction = 0.5 + 0.5 * max_base / max(max_shifted, 0.0001)
+            final = [min(1.0, c * correction) for c in shifted]
+            assert all(isfinite(c) and c >= 0.0 for c in final), (base, blend)
+            if blend == 0.0 and max_base > 0.0001:
+                assert all(abs(a - b) < 1e-7 for a, b in zip(base, final))
+
+
 if __name__ == "__main__":
     check_graph()
     check_interaction()
@@ -175,4 +198,5 @@ if __name__ == "__main__":
     check_speedtree_materials()
     check_tree_graph_illusions()
     check_custom_speedtree_shader()
+    check_hue_variation_finite()
     print("AARIS_MOBILE_FOLIAGE_CONTRACT_PASS")
