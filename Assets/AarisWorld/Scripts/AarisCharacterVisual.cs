@@ -1670,6 +1670,17 @@ namespace Aaris.MapReview
             // inventing a support plane at the motor origin.
             if (foot == null) return float.NaN;
             Vector3 origin = sampleWorld + Vector3.up * 0.70f;
+            // Retargeted crouch/prone clips can put an ankle more than 70cm
+            // below the actual grounded capsule. A ray beginning beneath the
+            // terrain misses that support and leaves the distorted pose intact.
+            // Lift the EXISTING ray origin to the capsule's bottom reference;
+            // preserve its 1.70m length, ground filtering and one probe/foot.
+            if (controller != null)
+            {
+                float capsuleBottomWorldY = transform.TransformPoint(
+                    controller.center - Vector3.up * (controller.height * 0.5f)).y;
+                origin.y = Mathf.Max(origin.y, capsuleBottomWorldY + 0.80f);
+            }
             // Do not exclude the whole player layer: terrain, bridges and the
             // actor are often all Default (layer 0). The hit loop below
             // filters only colliders belonging to this character.
