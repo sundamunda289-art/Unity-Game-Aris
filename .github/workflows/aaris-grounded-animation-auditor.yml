@@ -1,0 +1,40 @@
+name: Aaris grounded animation evidence auditor
+
+on:
+  pull_request:
+    paths:
+      - 'Tools/Validation/audit_motion_matrix_bones.py'
+      - 'Tools/Validation/test_motion_matrix_strict_anatomy.py'
+      - '.github/workflows/aaris-grounded-animation-auditor.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  strict-audit-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Compile evidence auditor Python
+        run: |
+          python3 -m py_compile Tools/Validation/audit_motion_matrix_bones.py
+          python3 -m py_compile Tools/Validation/test_motion_matrix_strict_anatomy.py
+      - name: Test all grounded low stances and airborne exclusions
+        run: python3 Tools/Validation/test_motion_matrix_strict_anatomy.py -v
+      - name: Verify strict native-telemetry CLI is available
+        run: |
+          python3 Tools/Validation/audit_motion_matrix_bones.py --help | grep -q -- '--strict-grounded-low-stance'
+      - name: Source formatting
+        run: git diff --check HEAD^ HEAD
+      - name: Evidence boundary
+        run: |
+          echo 'This job validates the evidence parser, not Unity C# compilation,'
+          echo 'Play Mode screenshots, actual bone coordinates or Android FPS.'
+          echo 'On real 30-frame native output, run:'
+          echo 'python3 Tools/Validation/audit_motion_matrix_bones.py --strict-grounded-low-stance /tmp/aaris-codespaces/motion-frames/report.txt'
