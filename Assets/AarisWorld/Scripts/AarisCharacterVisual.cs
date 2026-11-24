@@ -1669,7 +1669,16 @@ namespace Aaris.MapReview
             // surfaces, preserve the authored unsupported foot instead of
             // inventing a support plane at the motor origin.
             if (foot == null) return float.NaN;
-            Vector3 origin = sampleWorld + Vector3.up * 0.70f;
+            // Humanoid stance retargeting can temporarily push an ankle >70cm
+            // below terrain while the physical capsule stays on its platform.
+            // A ray starting at that ankle would miss the platform entirely.
+            // Ground probing remains one non-allocating query per shoe, at the
+            // final resolved X/Z, with its original 1.70m downward range.
+            float capsuleBottomY = controller != null && controller.enabled
+                ? controller.bounds.min.y : sampleWorld.y;
+            Vector3 origin = new Vector3(sampleWorld.x,
+                Mathf.Max(sampleWorld.y, capsuleBottomY) + 0.70f,
+                sampleWorld.z);
             // Do not exclude the whole player layer: terrain, bridges and the
             // actor are often all Default (layer 0). The hit loop below
             // filters only colliders belonging to this character.
