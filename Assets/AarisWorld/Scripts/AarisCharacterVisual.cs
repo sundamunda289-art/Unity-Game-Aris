@@ -1670,6 +1670,19 @@ namespace Aaris.MapReview
             // inventing a support plane at the motor origin.
             if (foot == null) return float.NaN;
             Vector3 origin = sampleWorld + Vector3.up * 0.70f;
+            // A retargeted crouch/prone frame can put the animated ankle more
+            // than 70cm below the grounded capsule. Starting the downward ray
+            // inside terrain misses that collider entirely (Unity Raycast rule).
+            // Raise only this existing sample's origin above the real capsule
+            // bottom, retaining the exact foot X/Z and one-query budget.
+            // Never apply a motor-height fallback in air or synthesize support
+            // on ledges: a real walkable ray hit is still mandatory.
+            if (controller != null && controller.isGrounded)
+            {
+                float capsuleFloorY = transform.TransformPoint(
+                    controller.center - Vector3.up * (controller.height * 0.5f)).y;
+                origin.y = Mathf.Max(origin.y, capsuleFloorY + 0.35f);
+            }
             // Do not exclude the whole player layer: terrain, bridges and the
             // actor are often all Default (layer 0). The hit loop below
             // filters only colliders belonging to this character.
