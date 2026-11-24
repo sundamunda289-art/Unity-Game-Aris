@@ -22,6 +22,12 @@ class MobilePerfOverlayContract(unittest.TestCase):
         self.assertIn("Percentile(0.99f)", SOURCE)
         self.assertIn("Time.unscaledDeltaTime * 1000f", SOURCE)
 
+    def test_display_argument_order(self):
+        self.assertIn('"AI {13}\\n"', SOURCE)
+        self.assertIn('"CSV {14}', SOURCE)
+        self.assertIn("monoMiB, unityReservedMiB, aiLabel,", SOURCE)
+        self.assertIn('writerFailed ? "ERROR" : recording ? "ON" : "OFF");', SOURCE)
+
     def test_async_bounded_csv_and_honest_counter_fallbacks(self):
         self.assertIn("Task.Run(() =>", SOURCE)
         self.assertIn("MaxPendingCsvChars = 65536", SOURCE)

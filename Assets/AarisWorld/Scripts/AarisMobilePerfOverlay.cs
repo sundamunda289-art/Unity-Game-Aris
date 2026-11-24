@@ -117,13 +117,13 @@ namespace Aaris.MapReview
                 "CPU main last {8} ms  |  GC last {9} B\n" +
                 "Unity mono {10:F0} MiB  reserved {11:F0} MiB\n" +
                 "AI {13}\n" +
-                "CSV {12}  |  F9 / 4 fingers: toggle",
+                "CSV {14}  |  F9 / 4 fingers: toggle",
                 fps, Application.targetFrameRate, p50, p95, p99,
                 maxFrameMs, stallsOver50, stallsOver100,
                 cpuMs < 0 ? "n/a" : cpuMs.ToString("F1", CultureInfo.InvariantCulture),
                 gcBytes < 0 ? "n/a" : gcBytes.ToString(CultureInfo.InvariantCulture),
-                monoMiB, unityReservedMiB, writerFailed ? "ERROR" : recording ? "ON" : "OFF",
-                aiLabel);
+                monoMiB, unityReservedMiB, aiLabel,
+                writerFailed ? "ERROR" : recording ? "ON" : "OFF");
 
             if (recording && !writerFailed)
             {
