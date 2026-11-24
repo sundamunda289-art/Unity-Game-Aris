@@ -544,7 +544,7 @@ namespace Aaris.MapReview.Editor
                 float z = PhotoOption("Z", 0f, -1000f, 1000f);
                 float yaw = PhotoOption("Yaw", 35f, -360f, 360f);
                 float pitch = PhotoOption("Pitch", 30f, 12f, 75f);
-                float distance = PhotoOption("Distance", 85f, 20f, 450f);
+                float distance = PhotoOption("Distance", 85f, 4f, 450f);
                 Terrain[] terrains = SurveyTerrains ?? LoadNativeScene();
                 result.terrainTiles = terrains.Length;
                 float ground = Elevation(terrains, x, z, float.NaN);
