@@ -641,6 +641,114 @@ namespace Aaris.MapReview.Editor
         }
 
 
+        // Real painted TerrainData trees have no scene MeshRenderer to target.
+        // Capture the nearest native SpeedTree prototype at actual tree position.
+        // Editor-only: no authoring, physics, TerrainData or gameplay mutations.
+        [MenuItem("Aaris/CI/Capture painted foliage close-ups")]
+        public static void CaptureNativeFoliageCloseups()
+        {
+            Directory.CreateDirectory(Output);
+            PhotoReport report = new PhotoReport {
+                mode = "painted-foliage", status = "failed", scene = Scene,
+                unityVersion = Application.unityVersion,
+                graphicsDevice = SystemInfo.graphicsDeviceType.ToString()
+            };
+            GameObject cameraObject = null;
+            try
+            {
+                Terrain[] terrains = LoadNativeScene();
+                report.terrainTiles = terrains.Length;
+                float closest = float.PositiveInfinity;
+                Vector3 root = Vector3.zero;
+                float height = 16f;
+                string treeName = null;
+                foreach (Terrain terrain in terrains)
+                {
+                    TerrainData data = terrain.terrainData;
+                    if (data == null) continue;
+                    TreePrototype[] prototypes = data.treePrototypes;
+                    Vector3 tile = terrain.transform.position;
+                    Vector3 size = data.size;
+                    foreach (TreeInstance tree in data.treeInstances)
+                    {
+                        if (tree.prototypeIndex < 0 || tree.prototypeIndex >= prototypes.Length)
+                            continue;
+                        GameObject prefab = prototypes[tree.prototypeIndex].prefab;
+                        if (prefab == null) continue;
+                        Vector3 world = tile + Vector3.Scale(tree.position, size);
+                        float dx = world.x - 418f, dz = world.z + 350f;
+                        float score = dx * dx + dz * dz;
+                        // Choose the real Pine materials this upgrade modifies when
+                        // available, without requiring that an exact coordinate exists.
+                        if (prefab.name.IndexOf("Pine", StringComparison.OrdinalIgnoreCase) < 0)
+                            score += 1000000f;
+                        if (score >= closest) continue;
+                        closest = score;
+                        root = new Vector3(world.x, terrain.SampleHeight(world) + tile.y, world.z);
+                        height = Mathf.Clamp(16f * Mathf.Max(0.25f, tree.heightScale), 7f, 42f);
+                        foreach (MeshFilter filter in prefab.GetComponentsInChildren<MeshFilter>(true))
+                        {
+                            if (filter.sharedMesh == null) continue;
+                            height = Mathf.Max(height, Mathf.Clamp(
+                                filter.sharedMesh.bounds.max.y * filter.transform.localScale.y
+                                * tree.heightScale, 7f, 42f));
+                        }
+                        treeName = prefab.name;
+                    }
+                }
+                if (treeName == null) throw new InvalidOperationException("NATIVE_PAINTED_TREE_NOT_FOUND");
+                cameraObject = new GameObject("__Aaris_Painted_Foliage_Closeup");
+                cameraObject.hideFlags = HideFlags.HideAndDontSave;
+                Camera camera = cameraObject.AddComponent<Camera>();
+                camera.enabled = false;
+                camera.fieldOfView = 60f;
+                camera.nearClipPlane = 0.08f;
+                camera.farClipPlane = 1200f;
+                camera.clearFlags = CameraClearFlags.Skybox;
+                camera.allowHDR = true;
+
+                Vector3 canopy = root + Vector3.up * (height * 0.72f);
+                camera.transform.position = canopy + new Vector3(6f, 2f, -10f);
+                camera.transform.LookAt(canopy, Vector3.up);
+                report.detailVariation = Render(camera, 1600, 900,
+                    Path.Combine(Output, "painted-leaves-close.png"));
+
+                camera.transform.position = root + new Vector3(1.8f, 3.0f, -3.6f);
+                camera.transform.LookAt(root + Vector3.up * 2.8f, Vector3.up);
+                Render(camera, 1600, 900, Path.Combine(Output, "painted-bark-close.png"));
+
+                camera.transform.position = root + new Vector3(2.4f, 2.4f, -4.0f);
+                camera.transform.LookAt(root + Vector3.up * 0.4f, Vector3.up);
+                Render(camera, 1600, 900, Path.Combine(Output, "painted-root-ground.png"));
+
+                camera.transform.position = root + new Vector3(-45f, 36f, -58f);
+                camera.transform.LookAt(root + Vector3.up * (height * 0.55f), Vector3.up);
+                report.contextVariation = Render(camera, 1600, 900,
+                    Path.Combine(Output, "painted-forest-wide.png"));
+                report.targetX = root.x;
+                report.targetY = root.y;
+                report.targetZ = root.z;
+                report.images = new[] { "painted-leaves-close.png", "painted-bark-close.png",
+                    "painted-root-ground.png", "painted-forest-wide.png" };
+                report.status = "passed";
+                report.reason = "NATIVE_TERRAINDATA_PAINTED_TREE_RENDERED";
+                Debug.Log("AARIS_NATIVE_PAINTED_FOLIAGE_PASSED:" + treeName);
+            }
+            catch (Exception e)
+            {
+                report.reason = e is InvalidOperationException
+                    ? e.Message : e.GetType().Name;
+                Debug.LogError("AARIS_NATIVE_PAINTED_FOLIAGE_FAILED:" + report.reason);
+                throw;
+            }
+            finally
+            {
+                if (cameraObject != null) UnityEngine.Object.DestroyImmediate(cameraObject);
+                File.WriteAllText(Path.Combine(Output, "painted-foliage-report.json"),
+                    JsonUtility.ToJson(report, true));
+            }
+        }
+
         [Serializable]
         private sealed class FoliageReport
         {
