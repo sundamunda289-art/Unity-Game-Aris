@@ -255,6 +255,7 @@ namespace Aaris.MapReview.Editor
                     Mathf.Abs((float)Read(burstGun, "nextFire") -
                         (Time.time + smg.ShotInterval)) < .0001f,
                     "A fresh automatic burst cannot spend idle time as shots");
+                burstObject.SetActive(false);
                 var light = (Light)Read(gun, "muzzleLight");
                 Check(light.enabled && light.shadows == LightShadows.None, "Player barrel burst casts no shadow map");
                 string globalRandomBeforeFlash =
@@ -346,11 +347,14 @@ namespace Aaris.MapReview.Editor
                 Check((int)Read(automatic, "pendingCasingEjections") == 0,
                     "Gun disable cancels delayed shell ejection without orphaned shots");
 
-                var bots = root.AddComponent<AarisRivalGunfireVfx>(); Call(bots, "Bind", actor.transform);
+                var botEffects = new GameObject("Isolated bot gunfire effects");
+                botEffects.transform.SetParent(root.transform, false);
+                var bots = botEffects.AddComponent<AarisRivalGunfireVfx>();
+                Call(bots, "Bind", actor.transform);
                 for (int i = 0; i < 6; i++) Call(bots, "Emit", actor.transform, new Vector3(0f, 1.2f, 4f), false);
                 int activeLights = 0;
                 foreach (Light burst in bots.GetComponentsInChildren<Light>())
-                    if (burst != light && burst.enabled) activeLights++;
+                    if (burst.enabled) activeLights++;
                 Check(activeLights == 2, "Six bot shots keep at most two active barrel lights");
                 var botShellRenderers = bots.GetComponentsInChildren<MeshFilter>(true);
                 int matchedBotCasings = 0;
@@ -362,8 +366,6 @@ namespace Aaris.MapReview.Editor
                         Check(filter.sharedMesh == casingMesh,
                             "Nearby bot shell shares the player's capped mesh");
                         matchedBotCasings++;
-                        // The pooled FX share the fixture root with the player,
-                        // floor and target. Count only FX-owned colliders.
                         botEffectColliders += filter.GetComponentsInChildren<Collider>(true).Length;
                     }
                 Check(matchedBotCasings == 6 &&
