@@ -293,7 +293,7 @@ class ExpansionIntegrity(unittest.TestCase):
         # the already evaluated shot damage. Health/headshots use their
         # dedicated receiver and UI notification path.
         self.assertIn("float damage = amount;", weapon)
-        self.assertIn("else damageable.ApplyDamage(damage, attacker);", weapon)
+        self.assertRegex(weapon, r"\belse\s*\{[^{}]*\bdamageable\.ApplyDamage\(damage, attacker\);")
         self.assertNotIn("Unity.Netcode", modular + panel)
         self.assertNotIn("NetworkBehaviour", modular + panel)
         # The original fused MeshCollider is never removed or turned off.
