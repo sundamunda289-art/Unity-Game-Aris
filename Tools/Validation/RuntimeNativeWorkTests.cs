@@ -71,6 +71,7 @@ internal sealed class ColliderFixture
     internal Collider[] obstacles=new Collider[1];
     internal Bounds[] worldBounds=new Bounds[1];
     internal bool[] streamed=new bool[1];
+    internal bool[] disabledByStreaming=new bool[1];
     private int query=1;
     private int[] visited=new int[1], wanted=new int[1];
     private List<int> nextActive=new List<int>();
@@ -132,6 +133,7 @@ internal static class RuntimeNativeWorkTests
                     Collider c=mode==0 ? null : new Collider { destroyed=mode==1,state=mode==3 };
                     var f=new ColliderFixture { lastPosition=player };
                     f.obstacles[0]=c; f.worldBounds[0]=bounds;
+                    f.disabledByStreaming[0]=mode==2;
                     Vector3 q=bounds.ClosestPoint(player);
                     float dx=q.x-player.x, dz=q.z-player.z;
                     float d2=dx*dx+dz*dz;
@@ -149,6 +151,8 @@ internal static class RuntimeNativeWorkTests
                     if(mode>=2)
                     {
                         Check(c.state==(expected || mode==3),"Collider state changed incorrectly");
+                        Check(f.disabledByStreaming[0]==(mode==2 && !expected),
+                            "Reactivated cover is no longer disabled by streaming");
                         if(d2>61f*61f) { Check(c.gets==0 && c.sets==0,"Far native state read"); skippedStateReads++; }
                     }
                     foreach(bool managed in new[]{false,true})
@@ -169,9 +173,17 @@ internal static class RuntimeNativeWorkTests
             {
                 var f=new ColliderFixture();
                 f.obstacles[0]=new Collider { state=active };
+                f.disabledByStreaming[0]=!active;
                 f.worldBounds[0]=new Bounds(new Vector3(distance,200,0),new Vector3(0,1,0));
                 Check(f.Grid(55f*55f,61f*61f)==(distance<=(active?61f:55f)),"Boundary changed");
             }
+        var externallyDisabled = new ColliderFixture();
+        externallyDisabled.obstacles[0] = new Collider { state=false };
+        AarisMobileStreamingFrameGate.ResetClaims();
+        Check(!externallyDisabled.Grid(55f*55f, 61f*61f) &&
+            !externallyDisabled.obstacles[0].state &&
+            AarisMobileStreamingFrameGate.Claimed == 0,
+            "Streaming must not resurrect an intentionally disabled collider");
     }
     private static void Ring()
     {
