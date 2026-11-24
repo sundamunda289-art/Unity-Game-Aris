@@ -943,9 +943,21 @@ namespace Aaris.MapReview
             Vector3 heading = distance > 0.00001f
                 ? displacement / distance : Vector3.zero;
             Vector3 lookAhead = heading * Mathf.Max(distance, 0.72f);
-            Vector3 predicted = from + lookAhead + Vector3.up * 0.9f;
-            return nearbyColliders.HasPotentialInactiveObstacle(predicted,
-                new Vector3(0.36f, 0.90f, 0.36f), Quaternion.identity);
+            Vector3 half = new Vector3(0.36f, 0.90f, 0.36f);
+            Vector3 chest = Vector3.up * 0.9f;
+            if (nearbyColliders.HasPotentialInactiveObstacle(from + lookAhead + chest,
+                half, Quaternion.identity)) return true;
+            // Long time-sliced steps must not tunnel through disabled thin cover.
+            // Probe the indexed obstacle grid, never allocate or wake PhysX.
+            if (distance <= 0.72f) return false;
+            const float stride = 0.36f;
+            int steps = Mathf.CeilToInt(distance / stride);
+            if (steps > 17) return true; // An untested teleport is unsafe.
+            for (int step = 1; step < steps; step++)
+                if (nearbyColliders.HasPotentialInactiveObstacle(
+                    from + heading * (distance * step / steps) + chest,
+                    half, Quaternion.identity)) return true;
+            return false;
         }
 
         internal bool IsVirtualShotBlocked(Vector3 from, Vector3 to)
