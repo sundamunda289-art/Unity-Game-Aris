@@ -10,6 +10,7 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisWeaponHUD.cs'
       - 'Tools/Validation/test_pro_gunplay_death_crate.py'
       - 'Tools/Validation/test_weapon_hit_feedback.py'
+      - 'Tools/Validation/test_android_bot_gunfire_visibility_budget.py'
       - 'Assets/AarisWorld/Scripts/AarisWeaponPickup.cs'
       - 'Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs'
       - 'Assets/AarisWorld/Scripts/AarisWeaponCatalog.cs'
@@ -41,6 +42,7 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisWeaponHUD.cs'
       - 'Tools/Validation/test_pro_gunplay_death_crate.py'
       - 'Tools/Validation/test_weapon_hit_feedback.py'
+      - 'Tools/Validation/test_android_bot_gunfire_visibility_budget.py'
       - 'Assets/AarisWorld/Scripts/AarisWeaponPickup.cs'
       - 'Assets/AarisWorld/Scripts/AarisWeaponLootWorld.cs'
       - 'Assets/AarisWorld/Scripts/AarisWeaponCatalog.cs'
@@ -92,6 +94,8 @@ jobs:
         run: python3 Tools/Validation/check_armed_locomotion.py
       - name: Verify off-screen gun visual pacing and camera-free beacon budget
         run: python3 Tools/Validation/test_loot_visibility_pacing.py
+      - name: Verify fully off-screen bot shot VFX rejection
+        run: python3 Tools/Validation/test_android_bot_gunfire_visibility_budget.py
       - name: Verify combat input safety during flight, pause and vehicle handoff
         run: python3 Tools/Validation/test_weapon_pause_input_authority.py
       - name: Verify scopes, physical damage, readable HP and 100-bot attack budget
