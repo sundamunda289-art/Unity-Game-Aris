@@ -241,6 +241,115 @@ namespace Aaris.MapReview.Editor
             }
         }
 
+        // Native editor regression for the same stance-aware pickup ray used
+        // in gameplay. Cover is intentionally disabled by streaming while its
+        // cached bounds remain in the existing authored collider index.
+        public static void RunStreamedCratePickupQA()
+        {
+            var report = new StringBuilder("Unity " + Application.unityVersion + "\n");
+            try
+            {
+                VerifyStreamedCratePickup(report);
+                report.AppendLine("RESULT=PASS");
+            }
+            catch (Exception ex)
+            {
+                report.AppendLine("RESULT=FAIL " + ex);
+                throw;
+            }
+            finally
+            {
+                Debug.Log(report.ToString());
+            }
+        }
+
+        private static void VerifyStreamedCratePickup(StringBuilder report)
+        {
+            var root = new GameObject("Isolated streamed crate reach QA");
+            try
+            {
+                var camera = new GameObject("QA saved player camera");
+                camera.transform.SetParent(root.transform, false);
+                camera.tag = "MainCamera";
+                camera.AddComponent<Camera>();
+
+                var actor = new GameObject("Stance-aware crate collector");
+                actor.transform.SetParent(root.transform, false);
+                actor.transform.position = Origin;
+                var motor = actor.AddComponent<AarisThirdPersonPlayer>();
+                motor.enabled = false;
+                actor.transform.position = Origin;
+                var capsule = actor.GetComponent<CharacterController>();
+                capsule.height = 1.8f;
+                capsule.center = Vector3.up * .9f;
+
+                var crate = root.AddComponent<AarisDeathCrateWorld>();
+                Call(crate, "Bind", actor.transform);
+                Vector3 from = actor.transform.position;
+                Vector3 to = from + Vector3.right * 2.0f;
+                Physics.SyncTransforms();
+                Check((bool)Call(crate, "Reachable", from, to),
+                    "Unobstructed two-metre crate is reachable", report);
+
+                var wall = new GameObject("Streamed-out crate divider");
+                wall.transform.SetParent(root.transform, false);
+                wall.transform.position = from + new Vector3(1f, .7f, 0f);
+                var box = wall.AddComponent<BoxCollider>();
+                box.size = new Vector3(.14f, 2f, 2f);
+                Physics.SyncTransforms();
+                Check(!(bool)Call(crate, "Reachable", from, to),
+                    "Live wall blocks crate pickup", report);
+
+                var indexObject = new GameObject("Pickup static cover index");
+                indexObject.transform.SetParent(root.transform, false);
+                var cover = indexObject.AddComponent<AarisNearbyColliders>();
+                cover.enabled = false;
+                Set(cover, "obstacles", new Collider[] { box });
+                Set(cover, "worldBounds", new Bounds[1]);
+                Set(cover, "localBoxBounds", new Bounds[1]);
+                Set(cover, "worldToBox", new Matrix4x4[1]);
+                Set(cover, "streamed", new bool[1]);
+                Set(cover, "disabledByStreaming", new bool[1]);
+                Set(cover, "probeVisited", new int[1]);
+                Set(cover, "target", actor.transform);
+                Call(cover, "IndexCollider", 0);
+                Set(cover, "indexReady", true);
+                // Exercise the real near-player query shortcut. It must NOT
+                // incorrectly skip short disabled-cover pickup probes.
+                Set(cover, "query", 1);
+                Set(cover, "lastPosition", from);
+                Set(motor, "nearbyColliders", cover);
+                cover.enabled = true;
+                Check(cover.isActiveAndEnabled,
+                    "Streaming index is active for native pickup QA", report);
+
+                box.enabled = false;
+                ((bool[])Get(cover, "disabledByStreaming"))[0] = true;
+                float[] stances = { 1.8f, 1.2f, .5f };
+                for (int i = 0; i < stances.Length; i++)
+                {
+                    capsule.height = stances[i];
+                    capsule.center = Vector3.up * stances[i] * .5f;
+                    Physics.SyncTransforms();
+                    Check(!(bool)Call(crate, "Reachable", from, to),
+                        "Streamed wall denies crate at stance height=" + stances[i], report);
+                }
+                box.enabled = true;
+                ((bool[])Get(cover, "disabledByStreaming"))[0] = false;
+                Physics.SyncTransforms();
+                Check(!(bool)Call(crate, "Reachable", from, to),
+                    "Re-enabled wall still denies crate pickup", report);
+                wall.SetActive(false);
+                Physics.SyncTransforms();
+                Check((bool)Call(crate, "Reachable", from, to),
+                    "Crate becomes reachable after divider removed", report);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
         private static void VerifyRivalCameraWake(StringBuilder report)
         {
             var root = new GameObject("Temporary rival camera wake QA");
