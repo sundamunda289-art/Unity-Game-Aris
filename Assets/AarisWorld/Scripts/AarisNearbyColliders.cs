@@ -651,7 +651,11 @@ namespace Aaris.MapReview
             Vector3 start = ray.origin, end = ray.GetPoint(distance);
             if (!Finite(start) || !Finite(end)) return false;
             float activeRadius = Mathf.Max(0f, activationDistance);
-            if (!includeActive && query > 0 &&
+            // The active-radius shortcut assumes all nearby colliders have
+            // finished enabling. That is normally true for long combat rays,
+            // but a <=3m crate pickup can overlap a collider still queued by
+            // streaming. Never skip its exact disabled-cover check.
+            if (!includeActive && distance > 3f && query > 0 &&
                 new Vector2(start.x - lastPosition.x, start.z - lastPosition.z).sqrMagnitude <
                     activeRadius * activeRadius &&
                 new Vector2(end.x - lastPosition.x, end.z - lastPosition.z).sqrMagnitude <
