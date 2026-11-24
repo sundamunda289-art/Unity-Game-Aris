@@ -361,6 +361,74 @@ namespace Aaris.MapReview
         private AnimationClip rivalIdle, rivalRun;
         private readonly Dictionary<Material, Material> rivalMaterialCache =
             new Dictionary<Material, Material>();
+        // One unused high-quality rig on 3-6 GB Android phones; at most two
+        // above 6 GB. A 2 GB phone deliberately keeps the existing destroy
+        // path so it does not reserve costly dormant skinning memory.
+        private readonly GameObject[] retiredRivalRigPool = new GameObject[2];
+        private int retiredRivalRigCount;
+        private bool retiredRigPoolingDisabledByMemoryPressure;
+
+        private int RetiredRivalRigCapacity
+        {
+            get
+            {
+                if (retiredRigPoolingDisabledByMemoryPressure) return 0;
+                int memoryMB = SystemInfo.systemMemorySize;
+                return memoryMB >= 6144 ? 2 : memoryMB >= 3072 ? 1 : 0;
+            }
+        }
+
+        internal GameObject TakeRetiredRivalRig(Transform newParent)
+        {
+            if (newParent == null) return null;
+            while (retiredRivalRigCount > 0)
+            {
+                int index = --retiredRivalRigCount;
+                GameObject rig = retiredRivalRigPool[index];
+                retiredRivalRigPool[index] = null;
+                if (rig == null) continue;
+                // A reused rig retains its fitted LOCAL pose and imported
+                // materials; never rescale the same skeleton a second time.
+                rig.transform.SetParent(newParent, false);
+                rig.SetActive(true);
+                return rig;
+            }
+            return null;
+        }
+
+        internal bool RecycleRetiredRivalRig(GameObject rig)
+        {
+            if (rig == null || retiredRivalRigCount >= RetiredRivalRigCapacity)
+                return false;
+            // Pool only passive imported FBX visuals. Scripts, physical bodies
+            // and active colliders may retain ownership or native simulation
+            // state and must follow the old Destroy path instead.
+            if (rig.GetComponentInChildren<SkinnedMeshRenderer>(true) == null ||
+                rig.GetComponentInChildren<MonoBehaviour>(true) != null ||
+                rig.GetComponentInChildren<Rigidbody>(true) != null ||
+                rig.GetComponentInChildren<Collider>(true) != null)
+                return false;
+            rig.SetActive(false);
+            rig.transform.SetParent(transform, false);
+            retiredRivalRigPool[retiredRivalRigCount++] = rig;
+            return true;
+        }
+
+        private void ClearRetiredRivalRigPool()
+        {
+            // A low-memory signal turns off this optional cache until the next
+            // match; repeated retirement cannot immediately refill it.
+            retiredRigPoolingDisabledByMemoryPressure = true;
+            for (int i = 0; i < retiredRivalRigCount; i++)
+            {
+                GameObject rig = retiredRivalRigPool[i];
+                retiredRivalRigPool[i] = null;
+                if (rig == null) continue;
+                if (Application.isPlaying) Destroy(rig);
+                else DestroyImmediate(rig);
+            }
+            retiredRivalRigCount = 0;
+        }
         // Begin visual loading away from the first terrain frames. Only one
         // ResourceRequest is active; no models, materials, LODs or tree counts change.
         private static readonly string[] RivalVisualResourcePaths =
@@ -546,7 +614,11 @@ namespace Aaris.MapReview
             director.player = actor.transform;
         }
 
-        private void Awake() { activeDirector = this; }
+        private void Awake()
+        {
+            activeDirector = this;
+            Application.lowMemory += ClearRetiredRivalRigPool;
+        }
 
         private void Start()
         {
@@ -2046,6 +2118,9 @@ namespace Aaris.MapReview
 
         private void OnDestroy()
         {
+            Application.lowMemory -= ClearRetiredRivalRigPool;
+            ClearRetiredRivalRigPool();
+            if (activeDirector == this) activeDirector = null;
             foreach (Material converted in rivalMaterialCache.Values)
                 if (converted != null) Destroy(converted);
             rivalMaterialCache.Clear();
@@ -2402,7 +2477,9 @@ namespace Aaris.MapReview
                 BuildFallbackSilhouette();
                 return;
             }
-            var visual = Instantiate(prefab, transform, false);
+            GameObject visual = owner.TakeRetiredRivalRig(transform);
+            bool reusedRig = visual != null;
+            if (!reusedRig) visual = Instantiate(prefab, transform, false);
             if (!AarisOfflineBRDirector.HasRenderableRivalPrefab(visual))
             {
                 Destroy(visual);
@@ -2411,6 +2488,8 @@ namespace Aaris.MapReview
             }
             visual.name = "Rival humanoid visual";
             visualRoot = visual;
+            if (!reusedRig)
+            {
             foreach (var c in visual.GetComponentsInChildren<Collider>(true))
             { c.enabled = false; Destroy(c); }
             foreach (var body in visual.GetComponentsInChildren<Rigidbody>(true))
@@ -2430,6 +2509,7 @@ namespace Aaris.MapReview
                 }
                 if (changed) renderer.sharedMaterials = materials;
             }
+            }
             CacheDetailedRenderers();
             var animator = visual.GetComponentInChildren<Animator>(true);
             if (animator == null) animator = visual.AddComponent<Animator>();
@@ -2442,7 +2522,10 @@ namespace Aaris.MapReview
             foreach (SkinnedMeshRenderer skin in
                 visual.GetComponentsInChildren<SkinnedMeshRenderer>(true))
                 skin.updateWhenOffscreen = false;
-            bool boneFitted = TryFitHumanoidModel(visual.transform, animator);
+            // Recycled rigs already have their exact authored skeleton fitted
+            // and cached LOCAL transform. Applying the scale again would
+            // shrink the model each time a bot returns from 190 metres away.
+            bool boneFitted = reusedRig || TryFitHumanoidModel(visual.transform, animator);
             if (!boneFitted)
             {
                 Bounds bounds = new Bounds();
@@ -2471,6 +2554,7 @@ namespace Aaris.MapReview
             // Apply culling before the graph-only early exit as well.
             animator.applyRootMotion = false;
             animator.cullingMode = AnimatorCullingMode.CullCompletely;
+            if (reusedRig && animator.enabled) animator.Rebind();
             if (animator.avatar == null || !animator.avatar.isValid ||
                 !animator.avatar.isHuman || idle == null || run == null) return;
             graph = PlayableGraph.Create("Aaris Offline Rival");
@@ -2509,6 +2593,18 @@ namespace Aaris.MapReview
             hasAnimations = false;
             visualBlend = 0f;
             GameObject retired = visualRoot;
+            // On camera exit forceRenderingOff and Animator.enabled may differ
+            // from authored values. Restore them BEFORE caching this rig:
+            // otherwise the next owner would inherit a permanently hidden mesh.
+            if (detailedRenderers != null && authoredRendererForcedOff != null)
+                for (int i = 0; i < detailedRenderers.Length; i++)
+                {
+                    Renderer renderer = detailedRenderers[i];
+                    if (renderer != null) renderer.forceRenderingOff =
+                        authoredRendererForcedOff[i];
+                }
+            if (detailedAnimator != null)
+                detailedAnimator.enabled = authoredAnimatorEnabled;
             visualRoot = null;
             visualBuilt = false;
             detailedRenderers = null;
@@ -2516,10 +2612,13 @@ namespace Aaris.MapReview
             detailedAnimator = null;
             detailedRenderingSuppressed = false;
             rigFarSince = -1f;
+            if (owner == null || !owner.RecycleRetiredRivalRig(retired))
+            {
 #if UNITY_ANDROID && !UNITY_EDITOR
-            AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();
+                AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();
 #endif
-            Destroy(retired);
+                Destroy(retired);
+            }
         }
 
         // Built only once per domain. Seven small cuboids yield one shared
