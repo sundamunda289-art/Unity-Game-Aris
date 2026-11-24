@@ -33,7 +33,7 @@ class RivalFacingRegression(unittest.TestCase):
         self.assertLess(UPDATE.index("facing = displacement.normalized;"),
                         UPDATE.index("capsule.Move("))
         self.assertIn(
-            "Vector3 facing = distance > .05f ? toward : transform.forward;", facing)
+            "Vector3 facing = distance > .05f ? toward : selfForward;", facing)
         self.assertNotIn("Physics.", facing)
         self.assertNotIn("GetComponent", facing)
 
