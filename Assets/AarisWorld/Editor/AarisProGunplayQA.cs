@@ -252,6 +252,25 @@ namespace Aaris.MapReview.Editor
                 gunObject.transform.localPosition = Vector3.up * 1.28f;
                 var gun = gunObject.AddComponent<AarisEquippedGun>();
                 gun.Configure(AarisWeaponCatalog.Get("Pistol"), 727u);
+                // Direct calls bypassing the HUD must still respect weapon state.
+                Set(gun, "magazine", 14);
+                int priorReserve = gun.Reserve;
+                gun.enabled = false;
+                Check(!gun.TryFire(camera, actor) && !gun.BeginReload() &&
+                    gun.Magazine == 14 && gun.Reserve == priorReserve &&
+                    !gun.Reloading && targetHp.CurrentHealth == 200f,
+                    "Back-stowed weapon rejects stale fire and reload requests");
+                gun.enabled = true;
+                Time.timeScale = 0f;
+                try
+                {
+                    Check(!gun.TryFire(camera, actor) && !gun.BeginReload() &&
+                        gun.Magazine == 14 && gun.Reserve == priorReserve &&
+                        !gun.Reloading && targetHp.CurrentHealth == 200f,
+                        "Paused weapon rejects stale fire and reload requests");
+                }
+                finally { Time.timeScale = 1f; }
+                Set(gun, "magazine", 15);
                 // No per-equip primitive/Collider allocations: player and
                 // bot metal shells must share one capped, UV-ready mesh.
                 var playerShell = (Renderer)Read(gun, "casingRenderer");
