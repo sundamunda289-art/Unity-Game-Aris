@@ -22,7 +22,8 @@ void AarisGrassInteraction_float(float3 WindPositionOS, float3 BasePositionOS, o
         {
             float falloff = saturate(1.0 - d2 / r2);
             float height = saturate(BasePositionOS.y);
-            float bend = falloff * falloff * height * 0.45;
+            // Keep the roots pinned: move tips noticeably, lower blades minimally.
+            float bend = falloff * falloff * height * height * 0.45;
             float2 dir = delta * rsqrt(max(d2, 0.01));
             Out += TransformWorldToObjectDir(
                 float3(dir.x * bend, -0.15 * bend, dir.y * bend), false);

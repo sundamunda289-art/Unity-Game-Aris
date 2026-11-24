@@ -1,0 +1,39 @@
+name: Mobile nature illusion static QA
+on:
+  pull_request:
+    paths:
+      - 'Assets/TerrainDemoScene_URP/ShaderGraphs/**'
+      - 'Assets/TerrainDemoScene_URP/Prefabs/Trees/**'
+      - 'Assets/AarisWorld/Scripts/AarisVehicleSession.cs'
+      - 'Tools/Validation/test_mobile_foliage_illusion_contract.py'
+      - '.github/workflows/aaris-mobile-nature-illusion-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/TerrainDemoScene_URP/ShaderGraphs/**'
+      - 'Assets/TerrainDemoScene_URP/Prefabs/Trees/**'
+      - 'Assets/AarisWorld/Scripts/AarisVehicleSession.cs'
+      - 'Tools/Validation/test_mobile_foliage_illusion_contract.py'
+      - '.github/workflows/aaris-mobile-nature-illusion-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  foliage-static-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Check mobile vegetation Shader Graph bindings and math
+        run: |
+          python3 Tools/Validation/test_mobile_foliage_illusion_contract.py
+      - name: Validate original tree LODs and reduced shadow workload
+        run: |
+          python3 Tools/Validation/test_mobile_tree_shadows.py
+      - name: Classify evidence honestly
+        run: |
+          echo 'Static checks only: Unity shader compilation and physical Android profiling still required.'

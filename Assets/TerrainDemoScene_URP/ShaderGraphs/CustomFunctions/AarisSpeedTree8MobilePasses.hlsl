@@ -263,7 +263,8 @@ SpeedTreeVertexOutput SpeedTree8Vert(SpeedTreeVertexInput input)
         // Reuse unused blue channel of existing vertex color interpolator.
         float rootHeight = max(vertexInput.positionWS.y - UNITY_MATRIX_M[1].w, 0.0);
         half contact = (half)saturate(1.0 - rootHeight * 0.76923077);
-        output.color.b = contact * contact;
+        // Match the smooth grounded contact curve used by the authored bark graph.
+        output.color.b = contact * contact * (3.0h - 2.0h * contact);
     #endif
     half3 normalWS = TransformObjectToWorldNormal(input.normal);
 
@@ -434,16 +435,18 @@ half4 SpeedTree8Frag(SpeedTreeFragmentInput input) : SV_Target
     // texture fetch, shader variant, interpolator or draw call.
     #if defined(EFFECT_SUBSURFACE) && !defined(EFFECT_BILLBOARD)
         half leafDetail = input.interpolated.color.b - 0.5h;
-        albedo *= half3(1.0h + leafDetail * 0.040h,
-                        1.0h + leafDetail * 0.027h,
-                        1.0h - leafDetail * 0.018h);
+        // More visible but restrained golden-green and deep-green variation,
+        // still using the same packed vertex channel and exactly zero samplers.
+        albedo *= half3(1.0h + leafDetail * 0.085h,
+                        1.0h + leafDetail * 0.075h,
+                        1.0h - leafDetail * 0.050h);
     #endif
 
     // normal
     #ifdef EFFECT_BUMP
         half3 normalTs = SampleNormal(uv, TEXTURE2D_ARGS(_BumpMap, sampler_BumpMap));
         #if !defined(EFFECT_SUBSURFACE) && !defined(EFFECT_BILLBOARD)
-            normalTs.xy *= 1.10h;
+            normalTs.xy *= 1.15h; // Bark relief from its existing normal map.
         #endif
     #else
         half3 normalTs = half3(0, 0, 1);
@@ -474,7 +477,8 @@ half4 SpeedTree8Frag(SpeedTreeFragmentInput input) : SV_Target
 
     #if !defined(EFFECT_SUBSURFACE) && !defined(EFFECT_BILLBOARD)
         half rootContact = saturate(input.interpolated.color.b);
-        albedo *= lerp(half3(1.0h, 1.0h, 1.0h), half3(0.81h, 0.86h, 0.76h), rootContact);
+        // Warm, earthy bark at the ground interface; preserves original bark texture.
+        albedo *= lerp(half3(1.0h, 1.0h, 1.0h), half3(0.84h, 0.80h, 0.73h), rootContact);
         occlusion *= 1.0h - 0.20h * rootContact;
     #endif
     InputData inputData;
@@ -496,12 +500,17 @@ half4 SpeedTree8Frag(SpeedTreeFragmentInput input) : SV_Target
         half back = saturate(0.5h - 0.5h * ndl);
         back *= back;
         half rim = 1.0h - saturate(abs(ndl));
-        half transmit = 0.42h * back + 0.08h * rim;
-        half shadowFill = 0.62h + 0.24h * saturate(inputData.normalWS.y);
+        rim *= rim; // Narrow sunlit leaf edges instead of a broad plastic band.
+        half transmit = 0.42h * back + 0.10h * rim;
+        // Reuse authored vertex/texture AO so deeply buried leaves do not glow.
+        // No extra shadow map access or extra surface/texture sample.
+        half shadowFill = (0.62h + 0.24h * saturate(inputData.normalWS.y)) *
+                          (0.60h + 0.40h * saturate(occlusion));
         half up = saturate(inputData.normalWS.y * 0.5h + 0.5h);
         half3 skyTint = lerp(half3(1.0h, 1.0h, 1.0h), half3(0.94h, 1.0h, 1.06h), up);
+        half3 warmSunTint = half3(1.04h, 1.0h, 0.86h);
         emission = albedo * _SubsurfaceColor.rgb *
-            (mainLight.color.rgb * (transmit * shadowFill) +
+            (mainLight.color.rgb * warmSunTint * (transmit * shadowFill) +
              inputData.bakedGI.rgb * skyTint * (_SubsurfaceIndirect * 0.24h));
     #endif
 

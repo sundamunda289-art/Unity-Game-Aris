@@ -44,6 +44,7 @@ def check_interaction():
     assert "float4 _AarisGrassInteractor;" in shader
     assert "TransformWorldToObjectDir" in shader
     assert "saturate(BasePositionOS.y)" in shader
+    assert "falloff * falloff * height * height * 0.45" in shader
     assert not any(term in shader for term in ("RWTexture", "ComputeBuffer", "Raycast", "Collider"))
     assert "Shader.SetGlobalVector(GrassInteractorId, next)" in motor
     assert "footMotor.transform.position" in motor
@@ -146,10 +147,16 @@ def check_custom_speedtree_shader():
     assert "half3 skyTint" in source and "half transmit" in source
     assert "Light mainLight = GetMainLight();" in source
     assert "Avoid a second shadow map" in source
-    assert "SampleNormal" in source and "normalTs.xy *= 1.10h" in source
+    assert "SampleNormal" in source and "normalTs.xy *= 1.15h" in source
     # The blue varying must be shared by non-subsurface bark root AO and
     # subsurface leaf variation, never requiring an extra TEXCOORD.
-    assert "output.color.b = contact * contact" in source
+    assert "output.color.b = contact * contact * (3.0h - 2.0h * contact)" in source
+    assert "half3(0.84h, 0.80h, 0.73h)" in source
+    assert "half3 warmSunTint" in source
+    assert "rim *= rim;" in source
+    assert "saturate(occlusion)" in source
+    assert "normalTs.xy *= 1.15h" in source
+    assert "leafDetail * 0.085h" in source
     assert "output.color.b = (half)frac(leafSeed * (leafSeed + 17.17))" in source
     assert "half leafDetail = input.interpolated.color.b - 0.5h" in source
     assert source.count("#if defined(EFFECT_SUBSURFACE) && !defined(EFFECT_BILLBOARD)") >= 2
