@@ -462,7 +462,7 @@ namespace Aaris.MapReview.Editor
                     new Vector3(24f, 0.08f, 8f);
                 Vector3 to = tileObject.transform.position +
                     new Vector3(24f, 0.08f, 40f);
-                Check(!director.IsVirtualShotBlocked(from, to),
+                Check(!(bool)Call(director, "IsVirtualShotBlocked", from, to),
                     "Flat remote terrain allows unobstructed virtual shots", report);
 
                 float[,] heights = new float[33, 33];
@@ -473,16 +473,16 @@ namespace Aaris.MapReview.Editor
                         heights[z, x] = .5f;
                 data.SetHeights(0, 0, heights);
                 terrainCollider.enabled = false;
-                Check(director.IsVirtualShotBlocked(from, to),
+                Check((bool)Call(director, "IsVirtualShotBlocked", from, to),
                     "Three-metre sampled terrain ridge blocks distant bot damage", report);
-                Check(director.IsVirtualShotBlocked(to, from),
+                Check((bool)Call(director, "IsVirtualShotBlocked", to, from),
                     "Virtual terrain obstruction works in both firing directions", report);
-                Check(!director.IsVirtualShotBlocked(
+                Check(!(bool)Call(director, "IsVirtualShotBlocked", 
                     from + Vector3.up * 6f, to + Vector3.up * 6f),
                     "Height clearance allows a genuinely elevated shot", report);
                 System.Array.Clear(heights, 0, heights.Length);
                 data.SetHeights(0, 0, heights);
-                Check(!director.IsVirtualShotBlocked(from, to),
+                Check(!(bool)Call(director, "IsVirtualShotBlocked", from, to),
                     "Distant virtual shot resumes after terrain ridge removal", report);
             }
             finally
