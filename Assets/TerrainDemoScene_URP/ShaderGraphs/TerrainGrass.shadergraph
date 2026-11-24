@@ -434,6 +434,9 @@
         },
         {
             "m_Id": "9575c284b6ad41e1a0814b08fbc61484"
+        },
+        {
+            "m_Id": "bfafb668767b5ee18b74cc655d50aad1"
         }
     ],
     "m_GroupDatas": [
@@ -1409,7 +1412,7 @@
             },
             "m_InputSlot": {
                 "m_Node": {
-                    "m_Id": "3048f621f56d4ee2af37be25cedb771c"
+                    "m_Id": "bfafb668767b5ee18b74cc655d50aad1"
                 },
                 "m_SlotId": 0
             }
@@ -2057,12 +2060,40 @@
                 },
                 "m_SlotId": 0
             }
+        },
+        {
+            "m_OutputSlot": {
+                "m_Node": {
+                    "m_Id": "9fe58952246040668853c4f6d52b08cd"
+                },
+                "m_SlotId": 0
+            },
+            "m_InputSlot": {
+                "m_Node": {
+                    "m_Id": "bfafb668767b5ee18b74cc655d50aad1"
+                },
+                "m_SlotId": 1
+            }
+        },
+        {
+            "m_OutputSlot": {
+                "m_Node": {
+                    "m_Id": "bfafb668767b5ee18b74cc655d50aad1"
+                },
+                "m_SlotId": 2
+            },
+            "m_InputSlot": {
+                "m_Node": {
+                    "m_Id": "3048f621f56d4ee2af37be25cedb771c"
+                },
+                "m_SlotId": 0
+            }
         }
     ],
     "m_VertexContext": {
         "m_Position": {
             "x": 3615.000244140625,
-            "y": -368.99993896484377
+            "y": -368.99993896484375
         },
         "m_Blocks": [
             {
@@ -13384,3 +13415,115 @@
     }
 }
 
+{
+    "m_SGVersion": 1,
+    "m_Type": "UnityEditor.ShaderGraph.CustomFunctionNode",
+    "m_ObjectId": "bfafb668767b5ee18b74cc655d50aad1",
+    "m_Group": {
+        "m_Id": ""
+    },
+    "m_Name": "AarisGrassInteraction (Custom Function)",
+    "m_DrawState": {
+        "m_Expanded": true,
+        "m_Position": {
+            "serializedVersion": "2",
+            "x": -420.0,
+            "y": -640.0,
+            "width": 250.0,
+            "height": 160.0
+        }
+    },
+    "m_Slots": [
+        {
+            "m_Id": "ab0885d317885e458e8fe7e35eb896c2"
+        },
+        {
+            "m_Id": "4d11b3a8425053b78fbdbf87566e944f"
+        },
+        {
+            "m_Id": "e85b2fa47dbe5e5b8c4d17fc8643b07c"
+        }
+    ],
+    "synonyms": [
+        "HLSL"
+    ],
+    "m_Precision": 1,
+    "m_PreviewExpanded": false,
+    "m_PreviewMode": 0,
+    "m_CustomColors": {
+        "m_SerializableColors": []
+    },
+    "m_SourceType": 0,
+    "m_FunctionName": "AarisGrassInteraction",
+    "m_FunctionSource": "2c102aa2b5584f61bc013ccbc09d85c7",
+    "m_FunctionBody": ""
+}
+
+{
+    "m_SGVersion": 0,
+    "m_Type": "UnityEditor.ShaderGraph.Vector3MaterialSlot",
+    "m_ObjectId": "ab0885d317885e458e8fe7e35eb896c2",
+    "m_Id": 0,
+    "m_DisplayName": "WindPositionOS",
+    "m_SlotType": 0,
+    "m_Hidden": false,
+    "m_ShaderOutputName": "WindPositionOS",
+    "m_StageCapability": 1,
+    "m_Value": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+    },
+    "m_DefaultValue": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+    },
+    "m_Labels": []
+}
+
+{
+    "m_SGVersion": 0,
+    "m_Type": "UnityEditor.ShaderGraph.Vector3MaterialSlot",
+    "m_ObjectId": "4d11b3a8425053b78fbdbf87566e944f",
+    "m_Id": 1,
+    "m_DisplayName": "BasePositionOS",
+    "m_SlotType": 0,
+    "m_Hidden": false,
+    "m_ShaderOutputName": "BasePositionOS",
+    "m_StageCapability": 1,
+    "m_Value": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+    },
+    "m_DefaultValue": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+    },
+    "m_Labels": []
+}
+
+{
+    "m_SGVersion": 0,
+    "m_Type": "UnityEditor.ShaderGraph.Vector3MaterialSlot",
+    "m_ObjectId": "e85b2fa47dbe5e5b8c4d17fc8643b07c",
+    "m_Id": 2,
+    "m_DisplayName": "Out",
+    "m_SlotType": 1,
+    "m_Hidden": false,
+    "m_ShaderOutputName": "Out",
+    "m_StageCapability": 1,
+    "m_Value": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+    },
+    "m_DefaultValue": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+    },
+    "m_Labels": []
+}
