@@ -3189,8 +3189,10 @@ namespace Aaris.MapReview
             Vector3 beforeMove = transform.position;
             CollisionFlags hit = capsule.Move(displacement +
                 Vector3.up * (verticalSpeed * dt));
-            // Preserve exact post-collision native registration and motion.
-            owner.TrackRivalPosition(spatialSlot, this, transform.position);
+            // Snapshot the authoritative post-collision pose ONCE for spatial
+            // registration, animation travel and real firing admission.
+            Vector3 afterMove = transform.position;
+            owner.TrackRivalPosition(spatialSlot, this, afterMove);
             if ((hit & CollisionFlags.Sides) != 0 && !canSee)
                 turnOffset = -turnOffset + UnityEngine.Random.Range(-28f, 28f);
 
@@ -3199,7 +3201,7 @@ namespace Aaris.MapReview
             {
                 // Animate based on *actual* capsule travel. Against a house
                 // or blocked corner the rival must not sprint in place.
-                Vector3 realTravel = transform.position - beforeMove;
+                Vector3 realTravel = afterMove - beforeMove;
                 realTravel.y = 0f;
                 float groundSpeed = realTravel.magnitude / Mathf.Max(0.001f, dt);
                 float wanted = Mathf.Clamp01(groundSpeed / 2.9f);
@@ -3228,10 +3230,15 @@ namespace Aaris.MapReview
             }
 
             // Punch only within contact range if no firearm is equipped.
+            // CharacterController.Move above may cross the attack-range edge
+            // during this very frame. Use the actual POST-move positions and
+            // facing for shot admission; the pre-move distance and 'toward'
+            // remain appropriate only for steering. Keep the original
+            // two-attacker, cooldown, LOS and muzzle obstruction checks.
             if (hasTarget && canSee &&
-                distance <= (carriedGun == null ? 2.25f : 38f) &&
+                IsPostMoveShotInRangeAndFacing(afterMove, transform.forward,
+                    target.position, carriedGun == null ? 2.25f : 38f) &&
                 (target != playerTarget || owner.MayAttackPlayer(this)) &&
-                Vector3.Dot(transform.forward, toward) > .84f &&
                 Time.time >= nextAttack && TryGetSightHit(target, out RaycastHit shotHit) &&
                 MuzzlePathClear(target))
             {
@@ -3368,8 +3375,16 @@ namespace Aaris.MapReview
             }
             // Never synthesize damage to the player or near-player rivals:
             // those interactions require actual colliders and clear muzzle LOS.
-            if (!hasTarget || now < nextAttack ||
-                distance > (carriedGun == null ? 2.25f : 38f) ||
+            // A far bot can move one metre between scheduled combat ticks.
+            // The original pre-move pursuit distance could authorize a shot
+            // AFTER the bot retreated outside 38m (or 2.25m melee reach), or
+            // deny one after approaching into range. Recheck against the
+            // updated selfPosition without another native Transform read.
+            if (!hasTarget || now < nextAttack) return;
+            float shotDistanceSqr =
+                HorizontalShotDistanceSquared(selfPosition, targetPosition);
+            float shotReach = carriedGun == null ? 2.25f : 38f;
+            if (shotDistanceSqr > shotReach * shotReach ||
                 (targetPosition - playerPosition).sqrMagnitude <
                     FarSimulationDistance * FarSimulationDistance)
                 return;
@@ -3404,11 +3419,35 @@ namespace Aaris.MapReview
             nextAttack = now + interval + NextVirtualRandom() * 0.25f;
             if (carriedGun != null) carriedMagazine--;
             float hitChance = carriedGun != null
-                ? Mathf.Lerp(0.72f, 0.30f, distance / 38f) : 0.58f;
+                ? Mathf.Lerp(0.72f, 0.30f,
+                    Mathf.Sqrt(shotDistanceSqr) / 38f) : 0.58f;
             if (NextVirtualRandom() >= hitChance) return;
             float damage = carriedGun != null
                 ? Mathf.Clamp(carriedGun.damage * 0.23f, 4f, 26f) : 6f;
             targetHealth.ApplyDamage(damage, gameObject);
+        }
+
+        // Horizontal range is intentional: stance and terrain elevation are
+        // handled by the separate physical LOS / virtual terrain-cover gate.
+        // These helpers allocate nothing and never touch native Unity objects.
+        private static float HorizontalShotDistanceSquared(Vector3 from, Vector3 to)
+        {
+            float dx = to.x - from.x, dz = to.z - from.z;
+            return dx * dx + dz * dz;
+        }
+
+        private static bool IsPostMoveShotInRangeAndFacing(
+            Vector3 from, Vector3 forward, Vector3 to, float reach)
+        {
+            Vector3 delta = to - from;
+            delta.y = 0f;
+            float distanceSqr = delta.sqrMagnitude;
+            // Squared-distance rejection avoids a square root for out-of-range
+            // shots. At near-zero separation the muzzle ray itself remains
+            // authoritative, as in the original physical firing path.
+            return distanceSqr <= reach * reach &&
+                (distanceSqr <= 0.0001f ||
+                 Vector3.Dot(forward, delta) > 0.84f * Mathf.Sqrt(distanceSqr));
         }
 
         private float NextVirtualRandom()

@@ -52,7 +52,7 @@ class RivalFacingRegression(unittest.TestCase):
 
     def test_source_preserves_combat_and_controller(self):
         self.assertIn("if (hasTarget && canSee &&", UPDATE)
-        self.assertIn("distance <= (carriedGun == null ? 2.25f : 38f)", UPDATE)
+        self.assertIn("IsPostMoveShotInRangeAndFacing(afterMove, transform.forward,", UPDATE)
         self.assertIn("owner.MayAttackPlayer(this)", UPDATE)
         self.assertIn("CollisionFlags hit = capsule.Move(displacement +", UPDATE)
         self.assertIn("float wanted = Mathf.Clamp01(groundSpeed / 2.9f);", UPDATE)

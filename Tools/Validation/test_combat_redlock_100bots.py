@@ -276,7 +276,7 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("private const float RivalHuntRadius = 110f;", BOTS)
         self.assertIn("float nearest = RivalHuntRadius * RivalHuntRadius;", BOTS)
         self.assertIn("(target.position - transform.position).sqrMagnitude < 42f * 42f && HasSight()", BOTS)
-        self.assertIn("distance <= (carriedGun == null ? 2.25f : 38f)", BOTS)
+        self.assertIn("IsPostMoveShotInRangeAndFacing(afterMove, transform.forward,", BOTS)
         # Far and near/visual gates use squared distances, no per-frame sqrt.
         self.assertIn("float playerDistanceSqr =", BOTS)
         self.assertIn("playerDistanceSqr < 76f * 76f", BOTS)
@@ -326,7 +326,7 @@ class CombatEndToEndContract(unittest.TestCase):
     def test_unarmed_bots_use_contact_melee_without_phantom_gunfire(self):
         attack = BOTS.split("if (hasTarget && canSee &&", 1)[1].split(
             "private void UpdateAnimationBlend", 1)[0]
-        self.assertIn("distance <= (carriedGun == null ? 2.25f : 38f)", attack)
+        self.assertIn("IsPostMoveShotInRangeAndFacing(afterMove, transform.forward,", attack)
         self.assertIn("AarisAudioDirector.Punch(transform.position + Vector3.up)", attack)
         self.assertIn("AarisAudioDirector.GunShot(carriedGun.category, carriedGun.id,", attack)
         self.assertNotIn('carriedGun.id : "Rival"', attack)

@@ -117,7 +117,7 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("if (canSee && !retreat && !seekingCover && carriedGun != null)", rival)
         self.assertIn("desired *= .23f; // Armed only", rival)
         self.assertIn("Vector3 beforeMove = transform.position;", rival)
-        self.assertIn("Vector3 realTravel = transform.position - beforeMove;", rival)
+        self.assertIn("Vector3 realTravel = afterMove - beforeMove;", rival)
         self.assertIn("realTravel.y = 0f;", rival)
         self.assertIn("groundSpeed / 2.9f", rival)
         self.assertNotIn("Mathf.Abs(moveSpeed) / 2.9f", rival)

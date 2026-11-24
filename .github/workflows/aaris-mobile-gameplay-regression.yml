@@ -28,6 +28,7 @@ on:
       - 'Tools/Validation/test_android_hotloop_blocking_calls.py'
       - 'Tools/Validation/test_android_shared_streaming_frame_gate.py'
       - 'Tools/Validation/test_offline_rival_distance_budget.py'
+      - 'Tools/Validation/test_rival_post_move_combat_range.py'
       - 'Tools/Validation/test_android_rival_rig_pool.py'
       - 'Tools/Validation/test_offline_rival_camera_fail_closed.py'
       - 'Tools/Validation/test_android_runtime_diagnostics_analysis.py'
@@ -90,6 +91,7 @@ on:
       - 'Tools/Validation/test_android_hotloop_blocking_calls.py'
       - 'Tools/Validation/test_android_shared_streaming_frame_gate.py'
       - 'Tools/Validation/test_offline_rival_distance_budget.py'
+      - 'Tools/Validation/test_rival_post_move_combat_range.py'
       - 'Tools/Validation/test_android_rival_rig_pool.py'
       - 'Tools/Validation/test_offline_rival_camera_fail_closed.py'
       - 'Tools/Validation/test_android_runtime_diagnostics_analysis.py'
@@ -159,6 +161,7 @@ jobs:
           python Tools/Validation/test_android_shared_streaming_frame_gate.py
           python Tools/Validation/test_android_async_upload_governor.py
           python Tools/Validation/test_offline_rival_distance_budget.py
+          python Tools/Validation/test_rival_post_move_combat_range.py
           python Tools/Validation/test_android_rival_rig_pool.py
           python Tools/Validation/test_offline_rival_central_scheduler.py
           python Tools/Validation/test_offline_rival_visible_far_sleep.py
@@ -236,7 +239,7 @@ jobs:
           PY
 
   ai-virtualization-native-compile:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && ((github.head_ref == 'feature/ai-near-offscreen-render-cull-20261124' || github.head_ref == 'feature/ai-bounded-humanoid-rig-reuse-20261124') || github.head_ref == 'feature/ai-offscreen-gunfire-vfx-20261124')
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && ((github.head_ref == 'feature/ai-near-offscreen-render-cull-20261124' || github.head_ref == 'feature/ai-bounded-humanoid-rig-reuse-20261124') || github.head_ref == 'feature/ai-offscreen-gunfire-vfx-20261124' || github.head_ref == 'fix/ai-postmove-shot-range-20261124')
     runs-on: ubuntu-24.04
     timeout-minutes: 14
     steps:

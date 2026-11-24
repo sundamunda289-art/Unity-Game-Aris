@@ -30,9 +30,9 @@ class NativeNearPose(unittest.TestCase):
         for needle in (
             "Vector3 beforeMove = transform.position;",
             "CollisionFlags hit = capsule.Move(displacement +",
-            "owner.TrackRivalPosition(spatialSlot, this, transform.position);",
-            "Vector3 realTravel = transform.position - beforeMove;",
-            "Vector3.Dot(transform.forward, toward) > .84f",
+            "owner.TrackRivalPosition(spatialSlot, this, afterMove);",
+            "Vector3 realTravel = afterMove - beforeMove;",
+            "IsPostMoveShotInRangeAndFacing(afterMove, transform.forward,",
             "owner.MayAttackPlayer(this)",
             "TryGetSightHit(target, out RaycastHit shotHit)",
             "MuzzlePathClear(target)",
@@ -46,7 +46,7 @@ class NativeNearPose(unittest.TestCase):
         self.assertLess(NEAR.index("Vector3 beforeMove = transform.position;"),
                         NEAR.index("capsule.Move(displacement +"))
         self.assertLess(NEAR.index("capsule.Move(displacement +"),
-                        NEAR.index("Vector3 realTravel = transform.position - beforeMove;"))
+                        NEAR.index("Vector3 realTravel = afterMove - beforeMove;"))
 
     def test_100_bot_steering_and_post_collision_parity(self):
         rng=random.Random(20261123)

@@ -63,7 +63,7 @@ class SpatialAttackerCoarseReject(unittest.TestCase):
     def test_world_cache_is_fresh_on_movement_even_inside_a_cell(self):
         self.assertLess(TRACK.index("rivalSpatialPositions[slot] = position;"),
                         TRACK.index("if (rivalSpatialRegistered[slot] &&"))
-        self.assertIn("owner.TrackRivalPosition(spatialSlot, this, transform.position);", SRC)
+        self.assertIn("owner.TrackRivalPosition(spatialSlot, this, afterMove);", SRC)
         self.assertIn("owner.TrackRivalPosition(spatialSlot, this, next);", SRC)
         self.assertIn("TrackRivalPosition(index, rival, point);", SRC)
         self.assertIn("UntrackRivalPosition(rival.SpatialSlot, rival);", SRC)
