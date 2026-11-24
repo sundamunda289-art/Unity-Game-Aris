@@ -387,6 +387,9 @@
         },
         {
             "m_Id": "da4a8eb71eb44342821f2c395278b563"
+        },
+        {
+            "m_Id": "1cfd8f4caede352c74ef57147017a8be"
         }
     ],
     "m_GroupDatas": [
@@ -1236,20 +1239,6 @@
                 "m_Node": {
                     "m_Id": "91b8fb56909f49c697520748ea15b6fb"
                 },
-                "m_SlotId": 1
-            },
-            "m_InputSlot": {
-                "m_Node": {
-                    "m_Id": "c2f72caa7dad497899ffb01123d35818"
-                },
-                "m_SlotId": 0
-            }
-        },
-        {
-            "m_OutputSlot": {
-                "m_Node": {
-                    "m_Id": "91b8fb56909f49c697520748ea15b6fb"
-                },
                 "m_SlotId": 4
             },
             "m_InputSlot": {
@@ -1706,12 +1695,68 @@
                 },
                 "m_SlotId": 0
             }
+        },
+        {
+            "m_OutputSlot": {
+                "m_Node": {
+                    "m_Id": "91b8fb56909f49c697520748ea15b6fb"
+                },
+                "m_SlotId": 1
+            },
+            "m_InputSlot": {
+                "m_Node": {
+                    "m_Id": "1cfd8f4caede352c74ef57147017a8be"
+                },
+                "m_SlotId": 0
+            }
+        },
+        {
+            "m_OutputSlot": {
+                "m_Node": {
+                    "m_Id": "1cfd8f4caede352c74ef57147017a8be"
+                },
+                "m_SlotId": 5
+            },
+            "m_InputSlot": {
+                "m_Node": {
+                    "m_Id": "c2f72caa7dad497899ffb01123d35818"
+                },
+                "m_SlotId": 0
+            }
+        },
+        {
+            "m_OutputSlot": {
+                "m_Node": {
+                    "m_Id": "000356dfe066491885538e6d75c2958e"
+                },
+                "m_SlotId": 0
+            },
+            "m_InputSlot": {
+                "m_Node": {
+                    "m_Id": "1cfd8f4caede352c74ef57147017a8be"
+                },
+                "m_SlotId": 3
+            }
+        },
+        {
+            "m_OutputSlot": {
+                "m_Node": {
+                    "m_Id": "5d07b48d755043c38b307b904ac0e703"
+                },
+                "m_SlotId": 0
+            },
+            "m_InputSlot": {
+                "m_Node": {
+                    "m_Id": "1cfd8f4caede352c74ef57147017a8be"
+                },
+                "m_SlotId": 4
+            }
         }
     ],
     "m_VertexContext": {
         "m_Position": {
             "x": 641.9998779296875,
-            "y": -857.0
+            "y": -857
         },
         "m_Blocks": [
             {
@@ -12314,5 +12359,143 @@
     "m_Property": {
         "m_Id": "7b5de6b4fcc244659d9d17f9aa2a174a"
     }
+}
+
+{
+    "m_SGVersion": 0,
+    "m_Type": "UnityEditor.ShaderGraph.Vector3MaterialSlot",
+    "m_ObjectId": "7e1467aef484f30e3113f7d6ed48c79c",
+    "m_Id": 0,
+    "m_DisplayName": "BaseColor",
+    "m_SlotType": 0,
+    "m_Hidden": false,
+    "m_ShaderOutputName": "BaseColor",
+    "m_StageCapability": 3,
+    "m_Value": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+    },
+    "m_DefaultValue": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+    },
+    "m_Labels": []
+}
+
+{
+    "m_SGVersion": 0,
+    "m_Type": "UnityEditor.ShaderGraph.Vector3MaterialSlot",
+    "m_ObjectId": "ae502753c33026f3f572351b5e924421",
+    "m_Id": 3,
+    "m_DisplayName": "NormalWS",
+    "m_SlotType": 0,
+    "m_Hidden": false,
+    "m_ShaderOutputName": "NormalWS",
+    "m_StageCapability": 3,
+    "m_Value": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+    },
+    "m_DefaultValue": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+    },
+    "m_Labels": []
+}
+
+{
+    "m_SGVersion": 0,
+    "m_Type": "UnityEditor.ShaderGraph.Vector3MaterialSlot",
+    "m_ObjectId": "64af380c7dd2362cf3c48a8446828902",
+    "m_Id": 4,
+    "m_DisplayName": "PivotWS",
+    "m_SlotType": 0,
+    "m_Hidden": false,
+    "m_ShaderOutputName": "PivotWS",
+    "m_StageCapability": 3,
+    "m_Value": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+    },
+    "m_DefaultValue": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+    },
+    "m_Labels": []
+}
+
+{
+    "m_SGVersion": 0,
+    "m_Type": "UnityEditor.ShaderGraph.Vector3MaterialSlot",
+    "m_ObjectId": "c0359a8fee9c146f94c1f6970961c7e5",
+    "m_Id": 5,
+    "m_DisplayName": "ColorOut",
+    "m_SlotType": 1,
+    "m_Hidden": false,
+    "m_ShaderOutputName": "ColorOut",
+    "m_StageCapability": 3,
+    "m_Value": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+    },
+    "m_DefaultValue": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+    },
+    "m_Labels": []
+}
+
+{
+    "m_SGVersion": 1,
+    "m_Type": "UnityEditor.ShaderGraph.CustomFunctionNode",
+    "m_ObjectId": "1cfd8f4caede352c74ef57147017a8be",
+    "m_Group": {
+        "m_Id": ""
+    },
+    "m_Name": "AarisLeafIllusion (Custom Function)",
+    "m_DrawState": {
+        "m_Expanded": true,
+        "m_Position": {
+            "serializedVersion": "2",
+            "x": -1500,
+            "y": 2250,
+            "width": 280,
+            "height": 165
+        }
+    },
+    "m_Slots": [
+        {
+            "m_Id": "7e1467aef484f30e3113f7d6ed48c79c"
+        },
+        {
+            "m_Id": "ae502753c33026f3f572351b5e924421"
+        },
+        {
+            "m_Id": "64af380c7dd2362cf3c48a8446828902"
+        },
+        {
+            "m_Id": "c0359a8fee9c146f94c1f6970961c7e5"
+        }
+    ],
+    "synonyms": [],
+    "m_Precision": 1,
+    "m_PreviewExpanded": false,
+    "m_DismissedVersion": 0,
+    "m_PreviewMode": 0,
+    "m_CustomColors": {
+        "m_SerializableColors": []
+    },
+    "m_SourceType": 1,
+    "m_FunctionName": "AarisLeafIllusion",
+    "m_FunctionSource": "",
+    "m_FunctionBody": "float seed = frac(dot(PivotWS.xz, float2(0.1031, 0.11369)));\nhalf t = (half)frac(seed * (seed + 17.17));\nhalf3 tone = lerp(half3(0.965h, 0.985h, 1.015h), half3(1.035h, 1.015h, 0.965h), t);\nhalf up = saturate((half)NormalWS.y * 0.5h + 0.5h);\nhalf3 skyTint = lerp(half3(1.0h, 1.0h, 1.0h), half3(0.995h, 1.005h, 1.025h), up);\nColorOut = BaseColor * tone * skyTint;"
 }
 
