@@ -427,8 +427,11 @@ half4 SpeedTree8Frag(SpeedTreeFragmentInput input) : SV_Target
         // preserve vibrance
         half maxBase = max(albedo.r, max(albedo.g, albedo.b));
         half newMaxBase = max(shiftedColor.r, max(shiftedColor.g, shiftedColor.b));
-        maxBase /= newMaxBase;
-        maxBase = maxBase * 0.5f + 0.5f;
+        // Near-black cutout texels can otherwise produce 0 / 0 (NaN).
+        // Preserve the authored hue response with one cheap safe denominator;
+        // no new samples, interpolators, shader variants or passes.
+        maxBase /= max(newMaxBase, 0.0001h);
+        maxBase = maxBase * 0.5h + 0.5h;
         shiftedColor.rgb *= maxBase;
 
         albedo = saturate(shiftedColor);
