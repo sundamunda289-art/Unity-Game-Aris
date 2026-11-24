@@ -31,7 +31,19 @@ namespace Aaris.MapReview
         private Image healthFill, hitFlash, opticalRing;
         private Text healthText, scopeText, hitDirection;
         private float displayedHealthFillWidth = -1f, targetHealthFillWidth;
-        private float nextAimCheck, hitFadeUntil;
+        private float nextAimCheck, nextLockedSightCheck, hitFadeUntil;
+        // Rechecking a confirmed lock used to raycast through native PhysX
+        // every rendered frame (60+ times/s) between 90ms acquisitions.
+        // The 45ms maximum delay is presentation-only: live gun damage still
+        // uses its independent authoritative camera/muzzle/cover queries.
+        private const float LockedSightCheckInterval = .045f;
+
+        internal static bool ScheduleLockedSightCheck(float now, ref float nextCheck)
+        {
+            if (now < nextCheck) return false;
+            nextCheck = now + LockedSightCheckInterval;
+            return true;
+        }
         private AarisOfflineRival lockedRival;
         private AarisEquippedGun lastAimGun;
         private Camera lastAimCamera;
@@ -413,6 +425,7 @@ namespace Aaris.MapReview
             if (gun != lastAimGun || aimCamera != lastAimCamera || activeScope != lastAimScope)
             {
                 nextAimCheck = now;
+                nextLockedSightCheck = now;
                 lastAimGun = gun;
                 lastAimCamera = aimCamera;
                 lastAimScope = activeScope;
@@ -422,14 +435,21 @@ namespace Aaris.MapReview
             else if (now >= nextAimCheck)
             {
                 nextAimCheck = now + .09f;
+                nextLockedSightCheck = now + LockedSightCheckInterval;
                 AarisOfflineBRDirector.TryAcquireAimLock(aimCamera, transform,
                     gun.Spec.rangeMetres, AarisEquippedGun.AimAssistCone(activeScope),
                     out _, out lockedRival);
             }
             else if (lockedRival != null &&
+                ScheduleLockedSightCheck(now, ref nextLockedSightCheck) &&
                 !AarisOfflineBRDirector.CanKeepAimLock(aimCamera, transform, lockedRival,
                     gun.Spec.rangeMetres, AarisEquippedGun.AimAssistCone(activeScope)))
+            {
+                // Force immediate reacquisition on the next visual tick rather
+                // than retaining a red marker for a now-occluded opponent.
                 lockedRival = null;
+                nextAimCheck = now;
+            }
             bool lockOn = lockedRival != null;
             string labelText = armed
                 ? ScopeHudText(scope, inventory.Aiming) : "";
