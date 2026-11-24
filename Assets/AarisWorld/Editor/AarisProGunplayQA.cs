@@ -79,6 +79,52 @@ namespace Aaris.MapReview.Editor
             Set(result, "current", 200f);
             return result;
         }
+        // Exercise synchronous observer re-entry using the real health component.
+        private static void CheckHealthObserverReentry(Transform root)
+        {
+            var victim = new GameObject("Reentrant health QA");
+            victim.transform.SetParent(root);
+            var attacker = new GameObject("First health event attacker");
+            attacker.transform.SetParent(root);
+            var second = new GameObject("Second health event attacker");
+            second.transform.SetParent(root);
+            var hp = Health(victim);
+            int deaths = 0;
+            float firstLoss = 0f, secondLoss = 0f;
+            bool fatalState = false;
+            hp.Died += h => { deaths++; fatalState = h.IsDead && h.CurrentHealth == 0f; };
+            hp.Damaged += (h, loss, source) =>
+            {
+                if (source == attacker) firstLoss += loss;
+                if (source == second) secondLoss += loss;
+            };
+            hp.HealthChanged += h =>
+            {
+                if (h.CurrentHealth == 190f) h.ApplyDamage(190f, second);
+            };
+            hp.ApplyDamage(10f, attacker);
+            Check(deaths == 1 && fatalState, "Nested damage emits exactly one fatal event");
+            Check(firstLoss == 10f && secondLoss == 190f,
+                "Nested damage preserves per-hit loss and attacker attribution");
+            hp.ApplyDamage(100f, second);
+            hp.RestoreHealth(100f);
+            Check(deaths == 1 && hp.CurrentHealth == 0f,
+                "Eliminated combatant cannot take another hit or heal");
+
+            var healingVictim = new GameObject("Reentrant healing QA");
+            healingVictim.transform.SetParent(root);
+            var healing = Health(healingVictim);
+            float observedLoss = 0f;
+            healing.Damaged += (h, loss, source) => observedLoss += loss;
+            healing.HealthChanged += h =>
+            {
+                if (h.CurrentHealth == 160f) h.RestoreHealth(20f);
+            };
+            healing.ApplyDamage(40f, attacker);
+            Check(observedLoss == 40f && healing.CurrentHealth == 180f,
+                "Synchronous healing cannot rewrite previous hit loss");
+        }
+
         private static void Log(string text, string stack, LogType type)
         {
             if (type == LogType.Error || type == LogType.Exception || type == LogType.Assert)
@@ -94,6 +140,7 @@ namespace Aaris.MapReview.Editor
             try
             {
                 Time.timeScale = 1f;
+                CheckHealthObserverReentry(root.transform);
                 var actor = new GameObject("Shooter"); actor.transform.SetParent(root.transform);
                 var own = actor.AddComponent<BoxCollider>();
                 own.size = new Vector3(.62f, 1.8f, .62f); own.center = Vector3.up * .9f;
