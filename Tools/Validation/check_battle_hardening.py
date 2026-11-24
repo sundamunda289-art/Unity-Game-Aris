@@ -60,10 +60,17 @@ def audit() -> None:
     damage = health.split("public void ApplyDamage(", 1)[1].split(
         "public void RestoreHealth(", 1
     )[0]
-    assert "if (current <= 0f) dead = true;" in damage
-    assert damage.index("if (current <= 0f) dead = true;") < damage.index(
+    # Snapshot the transition and actual HP loss before synchronous observers.
+    assert "bool fatal = current <= 0f;" in damage
+    assert "float actualLoss = previous - current;" in damage
+    assert damage.index("bool fatal = current <= 0f;") < damage.index(
+        "if (fatal) dead = true;"
+    ) < damage.index("HealthChanged?.Invoke(this);")
+    assert damage.index("float actualLoss = previous - current;") < damage.index(
         "HealthChanged?.Invoke(this);"
-    ) < damage.index("Died?.Invoke(this);")
+    ) < damage.index("Damaged?.Invoke(this, actualLoss, attacker);")
+    assert damage.index("if (!fatal) return;") < damage.index("Died?.Invoke(this);")
+    assert "if (!dead) return;" not in damage
     assert "Mathf.Min(helmetDurability, amount * helmetProtection)" in health
     assert "medicalHealth.TryEquipHelmet()" in tactical
     assert "if (!site.isHelmet) medkits++;" in tactical
