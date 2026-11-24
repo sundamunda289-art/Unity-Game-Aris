@@ -122,6 +122,10 @@ namespace Aaris.MapReview
         private float[] originalDetailDistances, appliedDetailDistances;
         private float[] originalBillboardDistances, appliedBillboardDistances;
         private float[] originalTreeDistances, appliedTreeDistances;
+        private AarisThirdPersonPlayer scopedViewPlayer;
+        private bool scopedVegetationRangeAvailable;
+        private float nextScopedViewCheck;
+        private int scopedVegetationTier;
         private int[] originalFullLodTreeCounts;
         private const int LowMemoryFullLodTreeLimit = 50;
         private TerrainData[] mobileWindData;
@@ -227,6 +231,8 @@ namespace Aaris.MapReview
             if (GetComponent<AarisAndroidThermalGovernor>() == null)
                 gameObject.AddComponent<AarisAndroidThermalGovernor>();
             startupDrop = FindFirstObjectByType<AarisOfflineDrop>();
+            if (scopedVegetationRangeAvailable)
+                scopedViewPlayer = FindFirstObjectByType<AarisThirdPersonPlayer>();
 #endif
             if (releaseTerrainPaintCpuCopies)
                 Debug.LogWarning("AARIS_TERRAIN_PAINT_RELEASE_DISABLED: preserve original alphamap GPU uploads.");
@@ -616,6 +622,7 @@ namespace Aaris.MapReview
             originalFullLodTreeCounts = new int[count];
             mobileWindData = new TerrainData[count];
             originalGrassWindStrength = new float[count];
+            scopedVegetationRangeAvailable = SystemInfo.systemMemorySize > 3072 && count > 0;
             for (int i = 0; i < count; i++)
             {
                 Terrain tile = mobileFoliageTiles[i];
@@ -691,6 +698,52 @@ namespace Aaris.MapReview
                       LowMemoryFullLodTreeLimit +
                       " shadow_max_m=" + appliedShadowDistance +
                       " cascades=" + appliedShadowCascades);
+        }
+
+        private void LateUpdate()
+        {
+            if (!scopedVegetationRangeAvailable) return;
+            float now = Time.unscaledTime;
+            // Poll cheaply in normal view. During zoom, contract the range
+            // on the frame the lens widens so the view never keeps a wide
+            // field and the expanded tree radius together for several frames.
+            if (scopedVegetationTier == 0 && now < nextScopedViewCheck) return;
+            nextScopedViewCheck = now + 0.16f;
+            int desired = 0;
+            Camera camera = scopedViewPlayer != null ? scopedViewPlayer.AimCamera : null;
+            if (camera != null && camera.isActiveAndEnabled && !camera.orthographic &&
+                !AarisAndroidThermalGovernor.SuspendSpeculativePrefetch)
+            {
+                float zoom = scopedViewPlayer.AimLookScale;
+                if (zoom < 0.68f)
+                    desired = ScopedVegetationTier(zoom, camera.fieldOfView, camera.aspect,
+                        scopedVegetationTier);
+            }
+            if (desired == scopedVegetationTier) return;
+            // Growing the native view is optional work. Shrink immediately
+            // when the scope closes, the frustum widens or the phone heats up.
+            if (desired > scopedVegetationTier &&
+                !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()) return;
+            scopedVegetationTier = desired;
+            for (int i = 0; i < mobileFoliageTiles.Length; i++)
+            {
+                Terrain tile = mobileFoliageTiles[i];
+                if (tile == null) continue;
+                float trees = ScopedVegetationDistance(600f, originalTreeDistances[i], desired);
+                if (!Mathf.Approximately(trees, appliedTreeDistances[i]) &&
+                    Mathf.Approximately(tile.treeDistance, appliedTreeDistances[i]))
+                {
+                    tile.treeDistance = trees;
+                    appliedTreeDistances[i] = trees;
+                }
+                float details = ScopedVegetationDistance(80f, originalDetailDistances[i], desired);
+                if (!Mathf.Approximately(details, appliedDetailDistances[i]) &&
+                    Mathf.Approximately(tile.detailObjectDistance, appliedDetailDistances[i]))
+                {
+                    tile.detailObjectDistance = details;
+                    appliedDetailDistances[i] = details;
+                }
+            }
         }
 
         // Android rounds requested FPS down to a divisor of the display rate.
@@ -807,6 +860,29 @@ namespace Aaris.MapReview
             sample.renderScale = androidPipeline.renderScale;
         }
 #endif
+
+        internal static int ScopedVegetationTier(float zoom, float verticalFov, float aspect,
+            int currentTier)
+        {
+            if (!(zoom > 0f && zoom < 1f) || !(aspect > 0f) ||
+                float.IsInfinity(aspect) || !(verticalFov > 0f && verticalFov < 179f))
+                return 0;
+            float currentTangent = Mathf.Tan(verticalFov * 0.5f * Mathf.Deg2Rad) * aspect;
+            float wideAngle = Mathf.Atan(currentTangent / zoom);
+            if (!(wideAngle > 0f)) return 0;
+            float visibleAngle = Mathf.Atan(currentTangent) / wideAngle;
+            // Angle times radius squared bounds the ground sector area.
+            // The wider exit thresholds still fit the wide-view envelope:
+            // .67 * 1.2² < 1 and .49 * (850 / 600)² < 1.
+            if (visibleAngle <= (currentTier == 2 ? 0.49f : 0.45f)) return 2;
+            return visibleAngle <= (currentTier >= 1 ? 0.67f : 0.64f) ? 1 : 0;
+        }
+
+        internal static float ScopedVegetationDistance(float wideView, float authored, int tier)
+        {
+            float multiplier = tier == 2 ? 850f / 600f : tier == 1 ? 1.2f : 1f;
+            return Mathf.Min(authored, wideView * multiplier);
+        }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
         private void FixedUpdate()

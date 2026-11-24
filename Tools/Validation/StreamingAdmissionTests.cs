@@ -249,11 +249,11 @@ internal static class StreamingAdmissionTests
         // streaming systems must each retain their own in-flight reservation.
         Configure(6144, "Adreno 610");
         var first = new AsyncOperation();
-        AarisMobileStreamingFrameGate.TrackAdditiveSceneLoad(first);
+        AarisMobileStreamingFrameGate.TrackAdditiveSceneOperation(first);
         Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild() &&
               Load() == null, "Scene started with overlapping FBX import");
         var second = new AsyncOperation();
-        AarisMobileStreamingFrameGate.TrackAdditiveSceneLoad(second);
+        AarisMobileStreamingFrameGate.TrackAdditiveSceneOperation(second);
         for (int frame = 2; frame <= 4; frame++)
         {
             Frame(frame);
@@ -283,7 +283,7 @@ internal static class StreamingAdmissionTests
               AarisMobileStreamingFrameGate.AdditiveSceneDeferredAttempts == 0,
             "Subsystem reset retained stale scene fences");
         Configure(8192, "Adreno 730");
-        AarisMobileStreamingFrameGate.TrackAdditiveSceneLoad(new AsyncOperation());
+        AarisMobileStreamingFrameGate.TrackAdditiveSceneOperation(new AsyncOperation());
         Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
             "High-end Android GPU was unnecessarily throttled");
     }

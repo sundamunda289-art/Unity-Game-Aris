@@ -277,6 +277,7 @@ namespace Aaris.MapReview
                 new Vector2(0,0), new Vector2(1f,0), new Vector2(.5f,1f)
             };
             mesh.RecalculateNormals();
+            mesh.RecalculateTangents();
             mesh.RecalculateBounds();
             GameObject roofObject = new GameObject("GabledPitchedRoof");
             roofObject.transform.SetParent(root, false);

@@ -102,7 +102,7 @@ namespace Aaris.MapReview
     internal static class AarisMobileStreamingFrameGate
     {
         internal static int physicsClaims, teardownClaims, trackedSceneLoads;
-        internal static void TrackAdditiveSceneLoad(AsyncOperation operation)
+        internal static void TrackAdditiveSceneOperation(AsyncOperation operation)
         { if (operation != null) trackedSceneLoads++; }
         internal static bool IsConstrainedDevice() { return true; }
         internal static bool TryClaimOptionalModelBuild() { return true; }

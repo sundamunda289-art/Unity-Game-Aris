@@ -12,7 +12,7 @@ HARNESS = (ROOT / "Tools/Validation/StreamingAdmissionTests.cs").read_text()
 class AdditiveSceneFence(unittest.TestCase):
     def test_opt_in_loader_registers_async_scene_without_blocking_queue(self):
         self.assertIn(
-            "if (load) AarisMobileStreamingFrameGate.TrackAdditiveSceneLoad(operation);",
+            "AarisMobileStreamingFrameGate.TrackAdditiveSceneOperation(operation);",
             STREAMER,
         )
         self.assertIn("operation.priority = -1;", STREAMER)
@@ -21,11 +21,11 @@ class AdditiveSceneFence(unittest.TestCase):
 
     def test_shared_admission_gates_optional_import_and_diagnostics(self):
         for token in (
-            "private static bool IsAdditiveSceneLoadBusy()",
+            "private static bool IsAdditiveSceneBusy()",
             "additiveIntegrationFrame = Time.frameCount;",
             "AdditiveSceneDeferredAttempts++;",
-            "additiveLoads.Clear();",
-            "if (IsAdditiveSceneLoadBusy()) return false;",
+            "additiveSceneOperations.Clear();",
+            "if (IsAdditiveSceneBusy()) return false;",
         ):
             self.assertIn(token, GATE)
         self.assertIn("private static void AdditiveSceneFence()", HARNESS)

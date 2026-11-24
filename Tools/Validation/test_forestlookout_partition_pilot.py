@@ -155,7 +155,8 @@ class ForestLookoutPilotSourceTests(unittest.TestCase):
         self.assertIn('silhouetteRenderers', p)
         self.assertIn('SceneManager.sceneLoaded += HandleSceneLoaded;', p)
         self.assertIn('SceneManager.sceneUnloaded += HandleSceneUnloaded;', p)
-        self.assertIn('ShowSilhouette(!scene.IsValid() || !scene.isLoaded);', p)
+        self.assertIn('ShowSilhouette(registeredChunk.LoadedHandles.Count == 0);', p)
+        self.assertIn('loadedScenes.TryGetValue(handle, out ChunkVisuals chunk)', p)
         self.assertNotIn('void Update()', p)
         for forbidden in ('QualitySettings.', 'TerrainData.', 'renderScale',
                           'treeDistance', 'allowSceneActivation = false'):

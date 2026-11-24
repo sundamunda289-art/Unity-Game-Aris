@@ -428,12 +428,9 @@ namespace Aaris.MapReview
                 }
                 operation.priority = -1;
 #if UNITY_ANDROID && !UNITY_EDITOR
-                // Scene integration may finish on a later render frame. Keep
-                // unrelated optional imports/diagnostics off this native work
-                // without pausing allowSceneActivation or Unity's IO queue.
-                if (load) AarisMobileStreamingFrameGate.TrackAdditiveSceneLoad(operation);
-#endif
-#if UNITY_ANDROID && !UNITY_EDITOR
+                // Both directions can finish in a later frame. The gate
+                // fences native scene work even for earlier Update callers.
+                AarisMobileStreamingFrameGate.TrackAdditiveSceneOperation(operation);
                 sharedSceneOperation = operation;
 #endif
                 inFlight = operation;

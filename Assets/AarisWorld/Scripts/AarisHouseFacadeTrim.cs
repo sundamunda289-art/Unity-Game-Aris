@@ -176,6 +176,9 @@ namespace Aaris.MapReview
             mesh.SetNormals(normals);
             mesh.SetUVs(0,uvs);
             mesh.SetTriangles(triangles,0);
+            // URP's limestone normal map needs an actual tangent basis for
+            // each facade face. Build it with the existing mesh upload.
+            mesh.RecalculateTangents();
             mesh.RecalculateBounds();
             mesh.UploadMeshData(true);
             return mesh;

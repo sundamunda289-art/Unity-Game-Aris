@@ -97,7 +97,7 @@ namespace Aaris.MapReview
         // Additive scene activation may consume native main-thread time after
         // asynchronous IO. Never pause allowSceneActivation (Unity's queue).
         // This persistent list allocates once and preserves overlapping streamers.
-        private static readonly System.Collections.Generic.List<AsyncOperation> additiveLoads =
+        private static readonly System.Collections.Generic.List<AsyncOperation> additiveSceneOperations =
             new System.Collections.Generic.List<AsyncOperation>(2);
         private static int additiveIntegrationFrame = -1;
         internal static int AdditiveSceneDeferredAttempts { get; private set; }
@@ -174,18 +174,18 @@ namespace Aaris.MapReview
         // Fence the real async scene-operation window and observed completion
         // frame against unrelated optional model construction and diagnostics.
         // No per-frame allocation, scene activation hold, or extra gameplay IO.
-        private static bool IsAdditiveSceneLoadBusy()
+        private static bool IsAdditiveSceneBusy()
         {
             bool waiting = false;
-            for (int i = additiveLoads.Count - 1; i >= 0; i--)
+            for (int i = additiveSceneOperations.Count - 1; i >= 0; i--)
             {
-                AsyncOperation op = additiveLoads[i];
+                AsyncOperation op = additiveSceneOperations[i];
                 if (op != null && !op.isDone)
                 {
                     waiting = true;
                     continue;
                 }
-                additiveLoads.RemoveAt(i);
+                additiveSceneOperations.RemoveAt(i);
                 additiveIntegrationFrame = Time.frameCount;
             }
             return waiting || additiveIntegrationFrame == Time.frameCount;
@@ -477,7 +477,7 @@ namespace Aaris.MapReview
             EssentialLootDeferredAttempts = 0;
             essentialJsonParseReservedThroughFrame = -1;
             EssentialJsonParseDeferredAttempts = 0;
-            additiveLoads.Clear();
+            additiveSceneOperations.Clear();
             additiveIntegrationFrame = -1;
             AdditiveSceneDeferredAttempts = 0;
             unusedAssetCleanup = null;
@@ -487,13 +487,13 @@ namespace Aaris.MapReview
         }
 #endif
 
-        // Called once when an authored additive scene starts loading.
+        // Called when an authored additive scene starts loading or unloading.
         // Essential player/world work remains unblocked.
-        internal static void TrackAdditiveSceneLoad(AsyncOperation operation)
+        internal static void TrackAdditiveSceneOperation(AsyncOperation operation)
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (operation == null || !IsConstrainedDevice()) return;
-            additiveLoads.Add(operation);
+            additiveSceneOperations.Add(operation);
             claimedFrame = Time.frameCount;
 #endif
         }
@@ -644,7 +644,7 @@ namespace Aaris.MapReview
             if (IsEssentialRigFrame() || IsAssetCleanupPending()) return false;
             if (IsEssentialJsonParseFrame()) return false;
             if (IsNativeTeardownSettleFrame()) return false;
-            if (IsAdditiveSceneLoadBusy()) return false;
+            if (IsAdditiveSceneBusy()) return false;
             // Observe both completion states even if the other is still busy.
             // Short-circuiting here can defer a completed request a second time.
             bool essentialAudioBusy = IsEssentialAudioImportBusy();
@@ -705,7 +705,7 @@ namespace Aaris.MapReview
                 CleanupDeferredAttempts++;
                 return false;
             }
-            if (IsAdditiveSceneLoadBusy())
+            if (IsAdditiveSceneBusy())
             {
                 AdditiveSceneDeferredAttempts++;
                 return false;

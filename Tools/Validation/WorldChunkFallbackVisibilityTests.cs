@@ -14,10 +14,22 @@ namespace UnityEngine
     public sealed class DisallowMultipleComponent : Attribute { }
     [AttributeUsage(AttributeTargets.Field)]
     public sealed class SerializeField : Attribute { }
+    public enum RuntimeInitializeLoadType { SubsystemRegistration }
+    [AttributeUsage(AttributeTargets.Method)]
+    public sealed class RuntimeInitializeOnLoadMethodAttribute : Attribute
+    {
+        public RuntimeInitializeOnLoadMethodAttribute(RuntimeInitializeLoadType loadType) { }
+    }
     public class MonoBehaviour { }
     public sealed class Renderer
     {
-        public bool enabled = true;
+        private bool visible = true;
+        public int reads;
+        public bool enabled
+        {
+            get { reads++; return visible; }
+            set { visible = value; }
+        }
     }
 }
 
@@ -28,40 +40,40 @@ namespace UnityEngine.SceneManagement
     {
         public string path;
         public bool isLoaded;
-        public bool IsValid() { return path != null; }
+        public int handle;
     }
     public static class SceneManager
     {
-        public static readonly Dictionary<string, bool> loaded =
-            new Dictionary<string, bool>();
+        private static readonly List<Scene> loaded = new List<Scene>();
+        private static int nextHandle;
         public static event Action<Scene, LoadSceneMode> sceneLoaded;
         public static event Action<Scene> sceneUnloaded;
+        public static int sceneCount { get { return loaded.Count; } }
+        public static int loadSubscribers
+        {
+            get { return sceneLoaded == null ? 0 : sceneLoaded.GetInvocationList().Length; }
+        }
 
-        public static Scene GetSceneByPath(string path)
+        public static Scene GetSceneAt(int index) { return loaded[index]; }
+
+        public static int RaiseLoad(string path, bool notify = true)
         {
-            bool present = loaded.ContainsKey(path);
-            return new Scene { path = present ? path : null,
-                               isLoaded = present && loaded[path] };
+            var scene = new Scene { path = path, isLoaded = true, handle = ++nextHandle };
+            loaded.Add(scene);
+            if (notify && sceneLoaded != null)
+                sceneLoaded(scene, LoadSceneMode.Additive);
+            return scene.handle;
         }
-        public static void RaiseLoad(string path)
+        public static void RaiseUnload(string path, bool pathKnown = true)
         {
-            loaded[path] = true;
-            if (sceneLoaded != null)
-                sceneLoaded(new Scene { path = path, isLoaded = true },
-                            LoadSceneMode.Additive);
-        }
-        public static void RaiseUnload(string path)
-        {
-            loaded[path] = false;
+            int index = loaded.FindIndex(s => s.path == path);
+            if (index < 0) throw new Exception("Missing loaded fixture scene " + path);
+            Scene scene = loaded[index];
+            loaded.RemoveAt(index);
+            scene.isLoaded = false;
+            if (!pathKnown) scene.path = null;
             if (sceneUnloaded != null)
-                sceneUnloaded(new Scene { path = path, isLoaded = false });
-        }
-        public static void RaiseUnloadWithoutStablePath(string path)
-        {
-            loaded[path] = false;
-            // Simulate native tear-down making the event Scene.path invalid.
-            if (sceneUnloaded != null)
-                sceneUnloaded(new Scene { path = null, isLoaded = false });
+                sceneUnloaded(scene);
         }
         public static void Reset()
         {
@@ -123,7 +135,7 @@ internal static class WorldChunkFallbackVisibilityTests
         SceneManager.RaiseLoad(target);
         Assert(!originalFar.enabled && !secondFar.enabled,
                "Full detail was not restored on reload");
-        SceneManager.RaiseUnloadWithoutStablePath(target);
+        SceneManager.RaiseUnload(target, pathKnown: false);
         Assert(originalFar.enabled && secondFar.enabled,
                "Native unload invalidated Scene.path and hid last-LOD silhouette");
 
@@ -152,7 +164,7 @@ internal static class WorldChunkFallbackVisibilityTests
         Call(c, "OnDisable");
 
         SceneManager.Reset();
-        SceneManager.loaded[target] = true;
+        SceneManager.RaiseLoad(target, notify: false);
         c = new AarisChunkFallbackVisibility();
         var alreadyLoaded = new Renderer();
         Set(c, "chunkScenePath", target);
@@ -161,6 +173,37 @@ internal static class WorldChunkFallbackVisibilityTests
         Assert(!alreadyLoaded.enabled, "Cold enable duplicated a resident full-detail chunk");
         Call(c, "OnDisable");
         Assert(alreadyLoaded.enabled, "Disable must release distant renderer");
+
+        SceneManager.Reset();
+        // Mirror the production manifest: 94 distant building components
+        // across 13 scene paths. An unrelated load must visit no renderers.
+        var members = new AarisChunkFallbackVisibility[94];
+        var silhouettes = new Renderer[members.Length];
+        SceneManager.RaiseLoad(target + 0, notify: false);
+        SceneManager.RaiseLoad(target + 0, notify: false);
+        for (int i = 0; i < members.Length; i++)
+        {
+            members[i] = new AarisChunkFallbackVisibility();
+            silhouettes[i] = new Renderer();
+            Set(members[i], "chunkScenePath", target + (i % 13));
+            Set(members[i], "silhouetteRenderers", new [] { silhouettes[i] });
+            Call(members[i], "OnEnable");
+        }
+        Assert(SceneManager.loadSubscribers == 1, "One registration per building is expensive");
+        int beforeUnrelated = silhouettes[1].reads;
+        SceneManager.RaiseLoad(other);
+        SceneManager.RaiseUnload(other, pathKnown: false);
+        Assert(silhouettes[1].reads == beforeUnrelated, "Unrelated event touched skyline");
+        SceneManager.RaiseUnload(target + 0, pathKnown: false);
+        Assert(!silhouettes[0].enabled, "First of two unloads duplicated a visible building");
+        SceneManager.RaiseUnload(target + 0, pathKnown: false);
+        Assert(silhouettes[0].enabled, "Last unload failed exact handle handoff");
+        beforeUnrelated = silhouettes[1].reads;
+        SceneManager.RaiseLoad(target + 2);
+        Assert(!silhouettes[2].enabled && silhouettes[1].reads == beforeUnrelated,
+               "Loading district two affected a different district");
+        foreach (var member in members) Call(member, "OnDisable");
+        Assert(SceneManager.loadSubscribers == 0, "Last registration failed to unsubscribe");
 
         Console.WriteLine("WORLD_CHUNK_FALLBACK_RUNTIME_PASS checks=" + checks);
         Console.WriteLine("Controlled API fixture only; no native Unity FPS or render screenshot claim.");

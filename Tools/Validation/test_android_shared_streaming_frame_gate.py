@@ -225,7 +225,7 @@ class SharedStreamingAdmission(unittest.TestCase):
         self.assertLess(policy.index("longHitchRecoveryThroughFrame = -1;"),
                         policy.index("float budget = CurrentFrameBudgetSeconds(frame);"))
         reset = GATE.split("private static void Reset()", 1)[1].split(
-            "internal static void TrackAdditiveSceneLoad(", 1
+            "internal static void TrackAdditiveSceneOperation(", 1
         )[0]
         self.assertIn("consecutiveLongHitchDeferrals = 0;", reset)
         fixture = (ROOT / "Tools/Validation/StreamingAdmissionTests.cs").read_text()
