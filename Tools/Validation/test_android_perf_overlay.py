@@ -22,6 +22,27 @@ class MobilePerfOverlayContract(unittest.TestCase):
         self.assertIn("Percentile(0.99f)", SOURCE)
         self.assertIn("Time.unscaledDeltaTime * 1000f", SOURCE)
 
+    def test_percentile_snapshot_does_not_overlap_optional_streaming(self):
+        # Preserve every inexpensive frame sample, even on a denied report frame.
+        sample = SOURCE.index("recentFramesMs[nextFrameIndex] = ms;")
+        due = SOURCE.index("if (Time.unscaledTime < nextReportAt) return;")
+        guard = SOURCE.index(
+            "AarisMobileStreamingFrameGate.TryClaimNonessentialDiagnosticFrame()")
+        advance = SOURCE.index(
+            "nextReportAt = Time.unscaledTime + RefreshIntervalSeconds;", due)
+        sorting = SOURCE.index("Array.Sort(sortedFramesMs, 0, frameCount);")
+        self.assertLess(sample, due)
+        self.assertLess(due, guard)
+        self.assertLess(guard, advance)
+        self.assertLess(advance, sorting)
+        self.assertIn(
+            "#if UNITY_ANDROID && !UNITY_EDITOR\n"
+            "            // Profiling and formatting", SOURCE)
+        self.assertIn(
+            "if (!AarisMobileStreamingFrameGate.TryClaimNonessentialDiagnosticFrame())\n"
+            "                return;", SOURCE)
+        self.assertIn("if (!overlayVisible && !recording)", SOURCE)
+
     def test_async_bounded_csv_and_honest_counter_fallbacks(self):
         self.assertIn("Task.Run(() =>", SOURCE)
         self.assertIn("MaxPendingCsvChars = 65536", SOURCE)
