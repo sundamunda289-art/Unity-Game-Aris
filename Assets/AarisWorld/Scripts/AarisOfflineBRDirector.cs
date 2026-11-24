@@ -1025,7 +1025,17 @@ namespace Aaris.MapReview
                 (killer.transform == player || killer.transform.IsChildOf(player)))
                 ShowPlayerKillConfirmation();
             if (statusCanvas == null || status == null) return;
-            if (recentKillFeed == null)
+            EnsureRecentKillFeed();
+            if (recentKillFeed == null) return;
+            recentKillFeed.text = (killer != null ? killer.name : "ZONE") +
+                "  >  " + victim.name;
+            killFeedClearAt = Time.time + 5.5f;
+            recentKillFeed.gameObject.SetActive(true);
+        }
+
+        private void EnsureRecentKillFeed()
+        {
+            if (recentKillFeed == null && statusCanvas != null && status != null)
             {
                 var node = new GameObject("Recent elimination",
                     typeof(RectTransform), typeof(Text));
@@ -1040,11 +1050,8 @@ namespace Aaris.MapReview
                 recentKillFeed.alignment = TextAnchor.MiddleRight;
                 recentKillFeed.color = Color.white;
                 recentKillFeed.raycastTarget = false;
+                recentKillFeed.gameObject.SetActive(false);
             }
-            recentKillFeed.text = (killer != null ? killer.name : "ZONE") +
-                "  >  " + victim.name;
-            killFeedClearAt = Time.time + 5.5f;
-            recentKillFeed.gameObject.SetActive(true);
         }
 
         private void ShowPlayerKillConfirmation()
@@ -1866,6 +1873,9 @@ namespace Aaris.MapReview
             status.alignment = TextAnchor.MiddleCenter;
             status.color = Color.white;
             status.raycastTarget = false;
+            // Prebuild feedback before the first elimination, not on its damage frame.
+            EnsureRecentKillFeed();
+            EnsurePlayerKillBanner();
         }
 
         private void CreateBoundary()

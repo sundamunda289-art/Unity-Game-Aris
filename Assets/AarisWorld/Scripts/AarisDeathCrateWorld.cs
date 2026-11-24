@@ -35,6 +35,7 @@ namespace Aaris.MapReview
         private static Material metal, trim, beamMaterial;
         private static Mesh beamMesh, crateCubeMesh;
         private readonly List<Drop> drops = new List<Drop>(100);
+        private readonly Stack<Drop> unusedDrops = new Stack<Drop>(100);
         private readonly Stack<GameObject> unusedVisuals = new Stack<GameObject>(MaxVisuals);
         private Transform player;
         // The authoritative capsule changes height during standing, crouch
@@ -49,7 +50,23 @@ namespace Aaris.MapReview
         // Never let a live rival capsule or moving vehicle become crate floor.
         private RaycastHit[] spawnGroundHits = new RaycastHit[16];
 
-        private void Awake() { instance = this; }
+        private void Awake()
+        {
+            instance = this;
+            // One logical record per rival; no Drop allocation on normal deaths.
+            for (int i = 0; i < 100; i++) unusedDrops.Push(new Drop());
+        }
+
+        private void RecycleDrop(Drop drop)
+        {
+            Release(drop);
+            drop.gun = null;
+            drop.looseAmmo = drop.medkits = drop.lastPickupProbe = 0;
+            drop.pendingGroundSnap = false;
+            drop.markerUntil = 0f;
+            drop.position = Vector3.zero;
+            if (unusedDrops.Count < 100) unusedDrops.Push(drop);
+        }
         internal void Bind(Transform target)
         {
             player = target;
@@ -77,15 +94,15 @@ namespace Aaris.MapReview
                     (VisualRadius + 20f) * (VisualRadius + 20f);
             if (!deferGroundSnap)
                 position = SnapToStationaryGround(position);
-            drops.Add(new Drop
-            {
-                position = position,
-                pendingGroundSnap = deferGroundSnap,
-                gun = state,
-                looseAmmo = state != null ? Mathf.Max(0, reserve) : 0,
-                medkits = Mathf.Max(0, medkits),
-                markerUntil = emptyMarker ? Time.time + 18f : 0f
-            });
+            // Unexpected extra synthetic spawns must not silently delete loot.
+            Drop record = unusedDrops.Count > 0 ? unusedDrops.Pop() : new Drop();
+            record.position = position;
+            record.pendingGroundSnap = deferGroundSnap;
+            record.gun = state;
+            record.looseAmmo = state != null ? Mathf.Max(0, reserve) : 0;
+            record.medkits = Mathf.Max(0, medkits);
+            record.markerUntil = emptyMarker ? Time.time + 18f : 0f;
+            drops.Add(record);
             // Do not allocate meshes, lights or native materials on the death hit.
             nextPoll = 0f;
         }
@@ -208,8 +225,8 @@ namespace Aaris.MapReview
                 }
                 if (!drop.HasContent)
                 {
-                    instance.Release(drop);
                     instance.drops.Remove(drop);
+                    instance.RecycleDrop(drop);
                 }
                 if (taken)
                 {
@@ -321,8 +338,8 @@ namespace Aaris.MapReview
                 bool showMarker = drop.HasContent || Time.time < drop.markerUntil;
                 if (!showMarker)
                 {
-                    Release(drop);
                     drops.RemoveAt(i--);
+                    RecycleDrop(drop);
                     continue;
                 }
                 float distance = (drop.position - here).sqrMagnitude;
