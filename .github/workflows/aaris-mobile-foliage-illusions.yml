@@ -1,0 +1,22 @@
+name: Aaris Mobile Foliage Illusion Static Gate
+on:
+  pull_request:
+    paths:
+      - 'Assets/TerrainDemoScene_URP/ShaderGraphs/**'
+      - 'Assets/AarisWorld/Scripts/AarisThirdPersonPlayer.cs'
+      - 'Tools/Validation/test_mobile_foliage_illusions.py'
+  push:
+    branches: [graphics/mobile-foliage-illusions-20261124]
+permissions:
+  contents: read
+jobs:
+  static-graph-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Validate graph edge/slot and source contracts
+        run: python3 Tools/Validation/test_mobile_foliage_illusions.py

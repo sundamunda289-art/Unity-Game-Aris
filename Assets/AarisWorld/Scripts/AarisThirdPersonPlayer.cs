@@ -32,6 +32,7 @@ namespace Aaris.MapReview
         [SerializeField] private float minLookPitch = -70f, maxLookPitch = 70f;
         [SerializeField] private float seaLevel = -38.07552f;
         [SerializeField] private AarisNearbyColliders nearbyColliders;
+        private static readonly int GrassInteractShaderId = Shader.PropertyToID("_AarisGrassInteract");
         private CharacterController controller;
         private Terrain[] terrains;
         // Layer 8 is reserved for the saved review player in TagManager and its prefab.
@@ -900,6 +901,7 @@ namespace Aaris.MapReview
             // Update is disabled and reactivate after control returns.
             ClearInput();
             RestorePlayerCameraVisibility();
+            Shader.SetGlobalVector(GrassInteractShaderId, Vector4.zero);
         }
 
         private void PlaceCamera(bool instant)
@@ -979,7 +981,13 @@ namespace Aaris.MapReview
             UpdatePlayerNearClipVisibility(pivot, next);
             followCamera.transform.SetPositionAndRotation(next, Quaternion.LookRotation(pivot + orbit * Vector3.forward * 0.5f - next));
         }
-        private void LateUpdate() { PlaceCamera(false); }
+        private void LateUpdate()
+        {
+            PlaceCamera(false);
+            // One global shader uniform, with no extra colliders or physics.
+            Vector3 p = transform.position;
+            Shader.SetGlobalVector(GrassInteractShaderId, new Vector4(p.x, p.y, p.z, 1.65f));
+        }
 
         /// <summary>
         /// Restore sole on-foot movement authority after a real aerial touchdown.

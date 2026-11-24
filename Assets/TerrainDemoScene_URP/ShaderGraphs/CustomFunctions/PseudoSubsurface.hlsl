@@ -1,28 +1,23 @@
-void PseudoSubsurface_half (half3 WorldPosition, half3 WorldNormal, half3 SSRadius, half ShadowResponse, out half3 ssAmount)
+#ifndef AARIS_PSEUDO_SUBSURFACE_INCLUDED
+#define AARIS_PSEUDO_SUBSURFACE_INCLUDED
+// Half precision wrapped Lambert, no extra shadow sampling, acos or pow.
+void PseudoSubsurface_half(half3 WorldPosition, half3 WorldNormal,
+    half3 SSRadius, half ShadowResponse, out half3 ssAmount)
 {
-
 #ifdef SHADERGRAPH_PREVIEW
-	half3 color = half3(0,0,0);
-	half3 atten = 1;
-	half3 dir = half3 (0.707, 0, 0.707);
-	
+    half3 sunColor = half3(1,1,1);
+    half3 sunDir = normalize(half3(0.7,0.6,0.4));
 #else
-	half4 shadowCoord = TransformWorldToShadowCoord(WorldPosition);
-	Light mainLight = GetMainLight(shadowCoord);
-	half3 color = mainLight.color;
-	half3 atten = mainLight.shadowAttenuation;
-	half3 dir = mainLight.direction;
-	
+    Light sun = GetMainLight();
+    half3 sunColor = sun.color;
+    half3 sunDir = sun.direction;
 #endif
-
-    half NdotL = dot(WorldNormal, -1 * dir);
-    half alpha = SSRadius;
-    half theta_m = acos(-alpha); // boundary of the lighting function
-
-    half theta = max(0, NdotL + alpha) - alpha;
-    half normalizer = (2 + alpha) / (2 * (1 + alpha));
-    half wrapped  = (pow(((theta + alpha) / (1 + alpha)), 1 + alpha)) * normalizer;
-	half shadow = lerp (1, atten, ShadowResponse);
-    ssAmount = abs(color * shadow  * wrapped);
-
+    half3 wrap = saturate(SSRadius);
+    half backFacing = dot(normalize(WorldNormal), -sunDir);
+    half3 lightWrap = saturate((backFacing + wrap) / (1.0h + wrap));
+    lightWrap = lightWrap * lightWrap * (3.0h - 2.0h * lightWrap);
+    // ShadowResponse was historically used for extra shadow-map reads;
+    // do not repeat that work for decorative transmission.
+    ssAmount = sunColor * lightWrap;
 }
+#endif
