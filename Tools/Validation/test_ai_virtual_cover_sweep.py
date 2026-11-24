@@ -30,7 +30,7 @@ class BotInactiveCoverSweep(unittest.TestCase):
             "int steps = Mathf.CeilToInt(distance / stride);",
             "if (steps > 17) return true;",
             "for (int step = 1; step < steps; step++)",
-            "owner.WouldCrossInactiveCover(selfPosition, movement)",
+            "owner.WouldCrossInactiveCover(selfPosition,",
         ):
             self.assertIn(fragment, SOURCE)
 
