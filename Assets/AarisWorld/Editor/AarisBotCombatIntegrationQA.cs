@@ -100,6 +100,7 @@ namespace Aaris.MapReview.Editor
                 VerifyDamage(report);
                 VerifyDestructibleHitConfirmation(report);
                 VerifyBots(report, active);
+                VerifyStreamedOutBotLineOfSight(report);
                 VerifyVirtualCombat(report);
                 VerifyVirtualTerrainSeam(report);
                 VerifyRivalCameraWake(report);
@@ -128,6 +129,115 @@ namespace Aaris.MapReview.Editor
             File.WriteAllText(Path.Combine(directory, "report.txt"), report.ToString());
             Debug.Log(report.ToString());
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);
+        }
+
+        // An isolated, executable native PhysX gate for the exact production
+        // rival sight/muzzle methods; can also run in a /tmp source-only project.
+        public static void RunStreamedBotCoverQA()
+        {
+            var report = new StringBuilder("Unity " + Application.unityVersion + "\n");
+            var active = Field(typeof(AarisOfflineBRDirector), "activeDirector", Static);
+            object previous = active.GetValue(null);
+            try
+            {
+                VerifyStreamedOutBotLineOfSight(report);
+                report.AppendLine("RESULT=PASS");
+            }
+            catch (Exception ex)
+            {
+                report.AppendLine("RESULT=FAIL " + ex);
+                throw;
+            }
+            finally
+            {
+                active.SetValue(null, previous);
+                string directory = Path.Combine(Path.GetTempPath(), "aaris-bot-streamed-cover-qa");
+                Directory.CreateDirectory(directory);
+                File.WriteAllText(Path.Combine(directory, "result.txt"), report.ToString());
+                Debug.Log(report.ToString());
+            }
+        }
+
+        private static void VerifyStreamedOutBotLineOfSight(StringBuilder report)
+        {
+            var root = new GameObject("Temporary streamed-cover bot sight QA");
+            try
+            {
+                var player = new GameObject("Streamed cover player");
+                player.transform.SetParent(root.transform, false);
+                player.transform.position = Origin;
+                var playerCapsule = Capsule(player);
+                QueryBody(player);
+                var playerHealth = Health(player);
+
+                var directorObject = new GameObject("Streamed cover director");
+                directorObject.transform.SetParent(root.transform, false);
+                var director = directorObject.AddComponent<AarisOfflineBRDirector>();
+                director.enabled = false;
+                Set(director, "player", player.transform);
+                Set(director, "playerHealth", playerHealth);
+
+                var shooter = new GameObject("Streamed cover bot");
+                shooter.transform.SetParent(root.transform, false);
+                shooter.transform.position = Origin + Vector3.forward * 7f;
+                shooter.transform.rotation = Quaternion.LookRotation(Vector3.back);
+                Capsule(shooter);
+                QueryBody(shooter);
+                var rival = shooter.AddComponent(BotType);
+                Set(rival, "owner", director);
+                Set(rival, "playerTarget", player.transform);
+                Set(rival, "playerTargetCapsule", playerCapsule);
+                Set(rival, "playerTargetHealth", playerHealth);
+                Physics.SyncTransforms();
+                Check((bool)Call(rival, "HasSightTo", player.transform),
+                    "Open real bot-to-player sight is allowed", report);
+
+                var wall = new GameObject("Streamable static wall");
+                wall.transform.SetParent(root.transform, false);
+                wall.transform.position = Origin + new Vector3(0f, 1.1f, 3f);
+                var box = wall.AddComponent<BoxCollider>();
+                box.size = new Vector3(1.5f, 2f, 0.14f);
+                Physics.SyncTransforms();
+                Check(!(bool)Call(rival, "HasSightTo", player.transform),
+                    "Live physical wall stops bot sight", report);
+
+                var streamer = directorObject.AddComponent<AarisNearbyColliders>();
+                Set(streamer, "obstacles", new Collider[] { box });
+                Set(streamer, "worldBounds", new Bounds[1]);
+                Set(streamer, "localBoxBounds", new Bounds[1]);
+                Set(streamer, "worldToBox", new Matrix4x4[1]);
+                Set(streamer, "streamed", new bool[1]);
+                Set(streamer, "disabledByStreaming", new bool[1]);
+                Set(streamer, "probeVisited", new int[1]);
+                Call(streamer, "IndexCollider", 0);
+                Set(streamer, "indexReady", true);
+                Set(director, "nearbyColliders", streamer);
+
+                box.enabled = false;
+                ((bool[])Get(streamer, "disabledByStreaming"))[0] = true;
+                Physics.SyncTransforms();
+                Check(!(bool)Call(rival, "HasSightTo", player.transform),
+                    "Streamed-out wall blocks real bot tactical sight", report);
+                object[] ray = { player.transform, default(RaycastHit) };
+                Check(!(bool)Call(rival, "TryGetSightHit", ray),
+                    "Streamed-out wall blocks real bot shot receiver", report);
+                Check(Mathf.Abs(playerHealth.CurrentHealth - 200f) < .01f,
+                    "Denied streamed-cover shot leaves player HP at 200", report);
+
+                box.enabled = true;
+                ((bool[])Get(streamer, "disabledByStreaming"))[0] = false;
+                Physics.SyncTransforms();
+                Check(!(bool)Call(rival, "HasSightTo", player.transform),
+                    "Re-enabled wall still stops bot sight", report);
+                wall.SetActive(false);
+                Physics.SyncTransforms();
+                Check((bool)Call(rival, "HasSightTo", player.transform),
+                    "Bot reacquires player after wall removal", report);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
         }
 
         private static void VerifyRivalCameraWake(StringBuilder report)
