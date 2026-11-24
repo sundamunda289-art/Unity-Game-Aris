@@ -268,7 +268,8 @@ def run():
     assert 'throw new FormatException("Duplicate weapon identifier.")' in catalog_cs
     assert "TryFirstOtherHit" not in gun_cs # renamed and rewritten, not a second weapon motor
     assert "FirstExternalHit" in gun_cs and "target = muzzleHit;" in gun_cs
-    assert "magazine--;" in gun_cs and "nextFire = Time.time + spec.ShotInterval;" in gun_cs
+    assert "magazine--;" in gun_cs and "Mathf.Max(nextFire + interval, Time.time - interval)" in gun_cs
+    assert "internal float NextFireTime => nextFire;" in gun_cs
     # Accepted shots get a pooled visual flash. Construction happens at
     # configuration/equip time, never inside the automatic-fire hot path.
     assert "private Renderer muzzleFlashRenderer;" in gun_cs
@@ -298,7 +299,7 @@ def run():
     assert "++tracerShotCounter % 3 == 0" not in fire_block
     assert "private const int ExtraTracerSlots = 2;" in gun_cs
     assert "tracerCursor++ % (ExtraTracerSlots + 1)" in gun_cs
-    assert "if (pellet == 0)" in fire_block
+    assert "if (pellet == 0 && !muzzleBlocked)" in fire_block
     assert "tracerTrail[index - 1] = shot;" in gun_cs
     assert "new LineRenderer" not in fire_block
     assert "AddComponent<LineRenderer>" not in fire_block

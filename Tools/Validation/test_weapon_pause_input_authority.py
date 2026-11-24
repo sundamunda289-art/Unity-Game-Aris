@@ -118,7 +118,9 @@ class OfflineWeaponPauseAndLandingAuthority(unittest.TestCase):
         update = section(FEEDBACK, "private void LateUpdate()", "private void OnDestroy()")
         self.assertIn("inventory.CanShowCombatReticle", update)
         self.assertIn("(drop == null || drop.HasLanded)", update)
-        self.assertIn("bool lockOn = armed && aimCamera != null &&", update)
+        self.assertIn("if (!armed || aimCamera == null || !aimCamera.isActiveAndEnabled)", update)
+        self.assertLess(update.index("lockedRival = null;"),
+                        update.index("TryAcquireAimLock("))
         self.assertIn("bool showOptic = armed && inventory.Aiming && scope >= 2;", update)
         self.assertIn("crosshair[i].gameObject.SetActive(armed);", update)
         self.assertIn("health.HealthChanged += HealthChanged;", FEEDBACK)

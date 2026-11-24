@@ -76,7 +76,7 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
         self.assertIn("tracerTrail[index - 1] = shot;", GUN)
         fire = GUN.split("public bool TryFire(", 1)[1].split(
             "private static bool IsAuthoredHeadHit", 1)[0]
-        self.assertIn("if (pellet == 0)", fire)
+        self.assertIn("if (pellet == 0 && !muzzleBlocked)", fire)
         self.assertIn("TriggerTracer(muzzle, impactPoint);", fire)
         self.assertNotIn("++tracerShotCounter % 3", fire)
         # Three slots outlive even the capped sniper-range streak lifetime.

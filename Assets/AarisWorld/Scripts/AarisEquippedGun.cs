@@ -52,10 +52,11 @@ namespace Aaris.MapReview
         private GameObject cachedOwner;
         private AarisBattleActions cachedActions;
         private AarisThirdPersonPlayer cachedMotor;
+        private AarisWeaponInventory cachedInventory;
         private int magazine, reserve;
         private float reloadUntil, nextFire;
         private uint spreadSeed;
-        private bool reloading;
+        private bool reloading, automaticCadence;
         // One tiny shared-material quad per equipped weapon. It is created
         // at equip/configuration time and only toggled on accepted shots;
         // automatic fire never allocates particles, lights or GameObjects.
@@ -142,6 +143,10 @@ namespace Aaris.MapReview
         public bool Configured => spec != null;
         public bool Automatic => spec != null && spec.automatic;
         public float SecondsBetweenShots => spec != null ? spec.ShotInterval : 1f;
+        internal float NextFireTime => nextFire;
+        internal void BreakAutomaticCadence() => automaticCadence = false;
+        internal static float AimAssistCone(int activeScope) =>
+            activeScope == 4 ? 1.4f : activeScope == 2 ? 2.3f : 3.7f;
         public int Magazine { get { RefreshReload(); return magazine; } }
         public int Reserve { get { RefreshReload(); return reserve; } }
         public bool Reloading { get { RefreshReload(); return reloading; } }
@@ -168,6 +173,7 @@ namespace Aaris.MapReview
             casingVisualSeed = state.SpreadSeed ^ 0xA15C0DEu;
             muzzleVisualSeed = state.SpreadSeed ^ 0xF1A5C1u;
             nextFire = state.NextShotAt;
+            BreakAutomaticCadence();
             reloadUntil = state.ReloadUntil;
             reloading = state.Reloading;
             EnsureMuzzleFlash();
@@ -971,6 +977,7 @@ namespace Aaris.MapReview
 
         private void OnDisable()
         {
+            BreakAutomaticCadence();
             if (muzzleFlashRenderer != null)
                 muzzleFlashRenderer.enabled = false;
             if (muzzleLight != null) muzzleLight.enabled = false;
@@ -1013,6 +1020,7 @@ namespace Aaris.MapReview
                 return false;
             reloadUntil = Time.time + spec.reloadSeconds;
             reloading = true;
+            BreakAutomaticCadence();
             AarisAudioDirector.ReloadStarted(transform.position);
             return true;
         }
@@ -1020,6 +1028,9 @@ namespace Aaris.MapReview
         private bool FirstExternalHit(Ray ray, float range, Transform owner,
             out RaycastHit nearest)
         {
+            if (!Physics.Raycast(ray, out nearest, range,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)) return false;
+            if (!nearest.collider.transform.IsChildOf(owner)) return true;
             nearest = default(RaycastHit);
             int count = AarisPhysicsHitBuffer.Raycast(ray, range,
                 Physics.DefaultRaycastLayers, ref rayHits, 256,
@@ -1051,7 +1062,13 @@ namespace Aaris.MapReview
             // Consume exactly one cartridge per trigger event, including
             // multi-pellet shotguns; reload and cooldown live in weapon state.
             magazine--;
-            nextFire = Time.time + spec.ShotInterval;
+            float interval = spec.ShotInterval;
+            // Carry frame lateness during a held burst so the rate doesn't
+            // round down to whole frames. Discard debt older than two shots.
+            nextFire = automaticCadence
+                ? Mathf.Max(nextFire + interval, Time.time - interval)
+                : Time.time + interval;
+            automaticCadence = spec.automatic;
             TriggerMuzzleFlash();
             ScheduleCasingEjection();
             if (cachedOwner != owner)
@@ -1059,6 +1076,7 @@ namespace Aaris.MapReview
                 cachedOwner = owner;
                 cachedActions = owner.GetComponent<AarisBattleActions>();
                 cachedMotor = owner.GetComponent<AarisThirdPersonPlayer>();
+                cachedInventory = owner.GetComponent<AarisWeaponInventory>();
             }
             float muzzleHeight = cachedActions != null
                 ? Mathf.Max(0.28f, cachedActions.CameraEyeHeight - 0.15f) : 1.3f;
@@ -1076,8 +1094,9 @@ namespace Aaris.MapReview
             // Bounded sight-assist is shared with the red HUD reticle; never
             // aim through cover. Actual bullets still use the muzzle obstruction ray.
             Vector3 shotForward = camera.transform.forward;
-            float assistCone = spec.scopePower == 4 ? 1.4f :
-                spec.scopePower == 2 ? 2.3f : 3.7f;
+            int activeScope = cachedInventory != null && cachedInventory.Current == this
+                ? cachedInventory.ActiveScopePower : 0;
+            float assistCone = AimAssistCone(activeScope);
             bool assistedLock = AarisOfflineBRDirector.TryAcquireAimTarget(
                 camera, owner.transform, spec.rangeMetres, assistCone,
                 out Vector3 assisted);
@@ -1099,6 +1118,7 @@ namespace Aaris.MapReview
                 Mathf.Min(spec.spreadDegrees * 0.30f,
                     14f / Mathf.Max(1f, spec.rangeMetres));
             bool impactSoundEmitted = false;
+            AarisNearbyColliders cover = cachedMotor != null ? cachedMotor.CombatCover : null;
             for (int pellet = 0; pellet < spec.pellets; pellet++)
             {
                 Vector2 spread = new Vector2(AarisWeaponRandom.Next01(ref spreadSeed) * 2f - 1f,
@@ -1111,17 +1131,17 @@ namespace Aaris.MapReview
                 bool targetFound = muzzleBlocked || FirstExternalHit(aim, spec.rangeMetres,
                     owner.transform, out target);
                 Vector3 destination = targetFound ? target.point : aim.GetPoint(spec.rangeMetres);
-                // Damage selection may keep the camera reticle's hit when both
-                // rays resolve to the same damageable object, but the audiovisual
-                // contact must still occur at the FIRST physical muzzle surface.
+                // The first physical muzzle surface controls damage and VFX.
                 Vector3 impactPoint = destination;
                 Vector3 impactNormal = targetFound ? target.normal : -look;
+                bool hitStreamedCover = false;
                 Vector3 path = destination - muzzle;
                 float distance = path.magnitude;
                 if (!muzzleBlocked && distance > 0.025f)
                 {
+                    Ray muzzleRay = new Ray(muzzle, path / distance);
                     bool muzzleHitFound = FirstExternalHit(
-                        new Ray(muzzle, path / distance), distance + 0.05f,
+                        muzzleRay, distance + 0.05f,
                         owner.transform, out RaycastHit muzzleHit);
                     // A camera-only ray hit must never award physical damage.
                     targetFound = muzzleHitFound;
@@ -1134,6 +1154,15 @@ namespace Aaris.MapReview
                         target = muzzleHit;
                         targetFound = true;
                     }
+                    float length = muzzleHitFound ? muzzleHit.distance : distance;
+                    if (cover != null && cover.TryGetInactiveCoverHit(muzzleRay,
+                        length, out float coverDistance))
+                    {
+                        impactPoint = muzzleRay.GetPoint(coverDistance);
+                        impactNormal = -muzzleRay.direction;
+                        targetFound = false;
+                        hitStreamedCover = true;
+                    }
                 }
                 else if (!muzzleBlocked)
                 {
@@ -1143,19 +1172,19 @@ namespace Aaris.MapReview
                 // Every real round gets a streak, including full-auto.
                 // A shotgun's pellets share one tracer; three pooled slots
                 // preserve overlapping automatic rounds until they expire.
-                if (pellet == 0)
+                if (pellet == 0 && !muzzleBlocked)
                     TriggerTracer(muzzle, impactPoint);
-                if (targetFound)
+                if ((targetFound || hitStreamedCover) && !impactSoundEmitted)
                 {
                     // A shotgun's first pellet can miss while a later one
                     // hits. Emit one impact cue for the first genuine hit,
                     // not only if pellet zero happens to connect.
-                    if (!impactSoundEmitted)
-                    {
-                        AarisAudioDirector.BulletImpact(impactPoint);
-                        TriggerImpactParticles(impactPoint, impactNormal);
-                        impactSoundEmitted = true;
-                    }
+                    AarisAudioDirector.BulletImpact(impactPoint);
+                    TriggerImpactParticles(impactPoint, impactNormal);
+                    impactSoundEmitted = true;
+                }
+                if (targetFound)
+                {
                     ApplyDamage(target.collider, spec.damage, owner, target.point,
                         spec.headshotMultiplier);
                 }
@@ -1195,7 +1224,10 @@ namespace Aaris.MapReview
         internal static bool ApplyDamage(Collider collider, float amount, GameObject attacker,
             Vector3? hitPosition, float headshotMultiplier = 1.75f)
         {
-            if (collider == null) return false;
+            if (collider == null || amount <= 0f || float.IsNaN(amount) ||
+                float.IsInfinity(amount)) return false;
+            if (attacker != null && collider.transform.IsChildOf(attacker.transform))
+                return false;
             for (Transform node = collider.transform; node != null; node = node.parent)
             {
                 // GetComponents<T>(List<T>) fills the reusable list without

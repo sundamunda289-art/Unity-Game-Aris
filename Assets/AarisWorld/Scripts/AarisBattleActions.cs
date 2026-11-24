@@ -45,8 +45,10 @@ namespace Aaris.MapReview
         // Short trigger edges survive a cooldown / slow Android input frame,
         // but must not manufacture a delayed shot after a long reload.
         private const float SemiTapBufferSeconds = 0.16f;
+        private const int MaximumAutomaticShotsPerFrame = 2;
         private float fireBufferUntil;
         private int attackSequence;
+        private int automaticShotFrame = -1, automaticShotsThisFrame;
         private float lastPunchTime = -10f;
         private float punchContactTime = -1f;
         private float lastShootTime = -10f;
@@ -86,6 +88,7 @@ namespace Aaris.MapReview
 
         public void Equip(AarisEquippedGun gun)
         {
+            if (equippedGun != null) equippedGun.BreakAutomaticCadence();
             equippedGun = gun;
             // A weapon transition invalidates the previous unarmed wind-up.
             // Releasing Fire still permits contact; changing equipment does not.
@@ -112,6 +115,7 @@ namespace Aaris.MapReview
             // fires or expires; automatic fire stops immediately on release.
             if (!held && (!IsArmed || equippedGun.Automatic))
             {
+                if (equippedGun != null) equippedGun.BreakAutomaticCadence();
                 semiShotQueued = false;
                 fireBufferUntil = 0f;
             }
@@ -373,6 +377,10 @@ namespace Aaris.MapReview
             {
                 if (!equippedGun.Automatic && !bufferedSemi) return;
                 ShootEquippedWeapon();
+                // At very low FPS a second deadline can fall in this frame.
+                // Keep the physics/VFX cost bounded after a long hitch.
+                if (equippedGun.Automatic && fireHeld && Time.time >= nextAttack)
+                    ShootEquippedWeapon();
                 return;
             }
 
@@ -389,16 +397,26 @@ namespace Aaris.MapReview
 
         private void ShootEquippedWeapon()
         {
+            if (equippedGun.Automatic)
+            {
+                if (automaticShotFrame != Time.frameCount)
+                {
+                    automaticShotFrame = Time.frameCount;
+                    automaticShotsThisFrame = 0;
+                }
+                if (automaticShotsThisFrame >= MaximumAutomaticShotsPerFrame) return;
+            }
             // One trigger edge consumes at most one shot. Shared by the HUD
             // press path and the held-fire Update path, so their cooldown and
             // animation sequencing cannot drift apart.
             if (equippedGun.TryFire(motor.AimCamera, gameObject))
             {
+                if (equippedGun.Automatic) automaticShotsThisFrame++;
                 semiShotQueued = false;
                 fireBufferUntil = 0f;
                 attackSequence++;
                 lastShootTime = Time.time;
-                nextAttack = Time.time + equippedGun.SecondsBetweenShots;
+                nextAttack = equippedGun.NextFireTime;
             }
             else nextAttack = Time.time + 0.04f;
         }
@@ -519,6 +537,7 @@ namespace Aaris.MapReview
             // backgrounding. Never let held fire, a buffered semi-auto tap or
             // a queued punch contact survive a control-authority interruption.
             fireHeld = false;
+            if (equippedGun != null) equippedGun.BreakAutomaticCadence();
             semiShotQueued = false;
             fireBufferUntil = 0f;
             punchContactTime = -1f;

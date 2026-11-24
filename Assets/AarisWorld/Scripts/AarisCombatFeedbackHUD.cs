@@ -30,7 +30,12 @@ namespace Aaris.MapReview
         private float nextHealthSafeCheck;
         private Image healthFill, hitFlash, opticalRing;
         private Text healthText, scopeText, hitDirection;
+        private float displayedHealthFillWidth = -1f, targetHealthFillWidth;
         private float nextAimCheck, hitFadeUntil;
+        private AarisOfflineRival lockedRival;
+        private AarisEquippedGun lastAimGun;
+        private Camera lastAimCamera;
+        private int lastAimScope = -1;
         private int numberIndex;
         private int lastHealth = -1, lastMax = -1;
         private int lastReticleTier = -1;
@@ -269,10 +274,22 @@ namespace Aaris.MapReview
             }
             // Keep the actual fill width authoritative even if sub-1 HP
             // damage or healing leaves the rounded integer label unchanged.
-            float fillWidth = 220f * Mathf.Clamp01(changed.CurrentHealth /
+            targetHealthFillWidth = 220f * Mathf.Clamp01(changed.CurrentHealth /
                 Mathf.Max(1f, changed.MaximumHealth));
-            if (healthFill.rectTransform.sizeDelta.x != fillWidth)
-                healthFill.rectTransform.sizeDelta = new Vector2(fillWidth, 10f);
+            if (displayedHealthFillWidth < 0f) UpdateHealthFill(0f);
+        }
+
+        private void UpdateHealthFill(float deltaTime)
+        {
+            if (displayedHealthFillWidth == targetHealthFillWidth) return;
+            float fillWidth = displayedHealthFillWidth < 0f ? targetHealthFillWidth :
+                Mathf.Lerp(displayedHealthFillWidth, targetHealthFillWidth,
+                    1f - Mathf.Exp(-18f * deltaTime));
+            if (Mathf.Abs(fillWidth - targetHealthFillWidth) < .05f)
+                fillWidth = targetHealthFillWidth;
+            if (fillWidth == displayedHealthFillWidth) return;
+            displayedHealthFillWidth = fillWidth;
+            healthFill.rectTransform.sizeDelta = new Vector2(fillWidth, 10f);
         }
 
         // The weapon fires through the motor's authored camera, which need not
@@ -361,6 +378,7 @@ namespace Aaris.MapReview
         {
             if (canvas == null) return;
             RefreshHealthSafeArea(false);
+            UpdateHealthFill(Time.unscaledDeltaTime);
             float now = Time.unscaledTime;
             if (hitFlash != null && hitFlash.gameObject.activeSelf)
             {
@@ -382,22 +400,37 @@ namespace Aaris.MapReview
                 label.rectTransform.anchoredPosition =
                     numberOrigin[i] + Vector2.up * ((.75f - remaining) * 52f);
             }
-            if (now < nextAimCheck) return;
-            nextAimCheck = now + .09f;
             if (inventory == null) inventory = GetComponent<AarisWeaponInventory>();
             // Keep the Red-Lock marker honest: if fire input is suspended,
             // hide the optic without hiding the authoritative HP bar.
             bool armed = inventory != null && inventory.CanShowCombatReticle &&
                 (drop == null || drop.HasLanded);
             RefreshAimCamera();
-            int scope = armed && inventory.Current != null && inventory.Current.Spec != null
-                ? inventory.Current.Spec.scopePower : 0;
-            RefreshReticleGeometry(scope);
-            bool lockOn = armed && aimCamera != null &&
-                AarisOfflineBRDirector.TryAcquireAimTarget(aimCamera, transform,
-                    inventory.Current.Spec.rangeMetres,
-                    scope == 4 ? 1.4f : scope == 2 ? 2.3f : 3.7f,
-                    out Vector3 ignoredDirection);
+            AarisEquippedGun gun = armed ? inventory.Current : null;
+            int scope = armed ? gun.Spec.scopePower : 0;
+            int activeScope = armed ? inventory.ActiveScopePower : 0;
+            RefreshReticleGeometry(activeScope);
+            if (gun != lastAimGun || aimCamera != lastAimCamera || activeScope != lastAimScope)
+            {
+                nextAimCheck = now;
+                lastAimGun = gun;
+                lastAimCamera = aimCamera;
+                lastAimScope = activeScope;
+            }
+            if (!armed || aimCamera == null || !aimCamera.isActiveAndEnabled)
+                lockedRival = null;
+            else if (now >= nextAimCheck)
+            {
+                nextAimCheck = now + .09f;
+                AarisOfflineBRDirector.TryAcquireAimLock(aimCamera, transform,
+                    gun.Spec.rangeMetres, AarisEquippedGun.AimAssistCone(activeScope),
+                    out _, out lockedRival);
+            }
+            else if (lockedRival != null &&
+                !AarisOfflineBRDirector.CanKeepAimLock(aimCamera, transform, lockedRival,
+                    gun.Spec.rangeMetres, AarisEquippedGun.AimAssistCone(activeScope)))
+                lockedRival = null;
+            bool lockOn = lockedRival != null;
             string labelText = armed
                 ? ScopeHudText(scope, inventory.Aiming) : "";
             if (scopeText.text != labelText) scopeText.text = labelText;

@@ -236,6 +236,25 @@ namespace Aaris.MapReview.Editor
                     "Tracer starts on rendered barrel path");
                 Check(flash.enabled && flash.sharedMaterial.renderQueue >= 3000,
                     "Accepted shot enables transparent muzzle flame");
+                var burstObject = new GameObject("Automatic cadence test");
+                burstObject.transform.SetParent(actor.transform, false);
+                var burstGun = burstObject.AddComponent<AarisEquippedGun>();
+                var smg = AarisWeaponCatalog.Get("SMG");
+                burstGun.Configure(smg, 902u);
+                Check(burstGun.TryFire(camera, actor), "Automatic gun starts its burst");
+                float scheduled = Time.time - .03f;
+                Set(burstGun, "nextFire", scheduled);
+                Check(burstGun.TryFire(camera, actor) &&
+                    Mathf.Abs((float)Read(burstGun, "nextFire") -
+                        (scheduled + smg.ShotInterval)) < .0001f &&
+                    !burstGun.TryFire(camera, actor),
+                    "Held automatic fire carries frame lateness without overshooting cadence");
+                Call(burstGun, "BreakAutomaticCadence");
+                Set(burstGun, "nextFire", scheduled);
+                Check(burstGun.TryFire(camera, actor) &&
+                    Mathf.Abs((float)Read(burstGun, "nextFire") -
+                        (Time.time + smg.ShotInterval)) < .0001f,
+                    "A fresh automatic burst cannot spend idle time as shots");
                 var light = (Light)Read(gun, "muzzleLight");
                 Check(light.enabled && light.shadows == LightShadows.None, "Player barrel burst casts no shadow map");
                 string globalRandomBeforeFlash =

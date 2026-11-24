@@ -49,7 +49,7 @@ class DormantPoseBudget(unittest.TestCase):
                   "targetPosition - selfPosition : selfForward * 18f",
                   "owner.TryZoneRetreatDirection(selfPosition,",
                   "owner.WouldCrossInactiveCover(selfPosition,",
-                  "Vector3 next = selfPosition + movement;",
+                  "Vector3 next = selfPosition + step;",
                   "owner.TryVirtualGround(next.x, next.z, out float ground)",
                   "owner.TrackRivalPosition(spatialSlot, this, next);",
                   "(targetPosition - playerTarget.position).sqrMagnitude",

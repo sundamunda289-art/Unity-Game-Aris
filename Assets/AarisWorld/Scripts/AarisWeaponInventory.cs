@@ -63,6 +63,7 @@ namespace Aaris.MapReview
         public AarisEquippedGun Current => equipped;
         public bool Aiming => aiming;
         public bool HasGun => equipped != null && equipped.Configured && !fistMode;
+        internal int ActiveScopePower => aiming && HasGun ? equipped.Spec.scopePower : 0;
         // Optics reflect the same paused/vehicle/flight handoff as real fire input.
         internal bool CanShowCombatReticle => HasGun && AcceptsPlayerWeaponInput;
         public bool HasStowedGun => stowed != null && stowed.Configured;
@@ -659,6 +660,11 @@ namespace Aaris.MapReview
         private void ResetCombatTransition()
         {
             if (combat != null) combat.SetFireHeld(false);
+            CancelAim();
+        }
+
+        internal void CancelAim()
+        {
             aiming = false;
             if (motor != null) motor.SetWeaponAimFov(-1f);
         }

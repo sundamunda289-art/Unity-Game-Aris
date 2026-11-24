@@ -19,9 +19,11 @@ namespace Aaris.MapReview
         [SerializeField] private float activationDistance = 55;
         [SerializeField] private float cellSize = 250;
         private Bounds[] worldBounds;
+        private Bounds[] localBoxBounds;
+        private Matrix4x4[] worldToBox;
         // Only supported static authored shapes are gated by the spatial grid.
         // Other collider types must remain enabled across disable/enable cycles.
-        private bool[] streamed;
+        private bool[] streamed, disabledByStreaming;
         private bool restoredOnDisable;
         private Coroutine deferredDeactivation;
         private Coroutine deferredIndexBuild;
@@ -78,7 +80,10 @@ namespace Aaris.MapReview
         {
             if (target == null || obstacles == null) { enabled = false; return; }
             worldBounds = new Bounds[obstacles.Length];
+            localBoxBounds = new Bounds[obstacles.Length];
+            worldToBox = new Matrix4x4[obstacles.Length];
             streamed = new bool[obstacles.Length];
+            disabledByStreaming = new bool[obstacles.Length];
             visited = new int[obstacles.Length]; wanted = new int[obstacles.Length];
             probeVisited = new int[obstacles.Length];
             colliderReleaseQueued = new bool[obstacles.Length];
@@ -147,7 +152,12 @@ namespace Aaris.MapReview
             // Collider.bounds is empty if its collider is disabled.
             Bounds local;
             if (c is MeshCollider mc && mc.sharedMesh != null) local = mc.sharedMesh.bounds;
-            else if (c is BoxCollider box) local = new Bounds(box.center, box.size);
+            else if (c is BoxCollider box)
+            {
+                local = new Bounds(box.center, box.size);
+                localBoxBounds[i] = local;
+                worldToBox[i] = box.transform.worldToLocalMatrix;
+            }
             else { worldBounds[i] = c.bounds; return; }
             streamed[i] = true;
             Matrix4x4 m = c.transform.localToWorldMatrix;
@@ -251,7 +261,10 @@ namespace Aaris.MapReview
                     float dx = nearest.x - framePosition.x;
                     float dz = nearest.z - framePosition.z;
                     if (dx * dx + dz * dz > safeDistanceSquared)
+                    {
+                        disabledByStreaming[i] = true;
                         c.enabled = false;
+                    }
                 }
                 processed++;
                 if (processed >= DeferredColliderUpdatesPerFrame ||
@@ -361,7 +374,7 @@ namespace Aaris.MapReview
                     // before querying Unity Object/Collider native state.
                     if (distanceSquared > retainLimit) continue;
                     Collider c = obstacles[i];
-                    if (c == null) continue;
+                    if (c == null || (!c.enabled && !disabledByStreaming[i])) continue;
                     // Existing active colliders have a wider exit radius.
                     // New colliders still enter at the authored distance.
                     float limit = c.enabled ? retainLimit : enterLimit;
@@ -373,6 +386,7 @@ namespace Aaris.MapReview
                         // An unchanged nearby wall never blocks optional model work.
                         AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
                         c.enabled = true;
+                        disabledByStreaming[i] = false;
                     }
                     nextActive.Add(i);
                 }
@@ -389,7 +403,7 @@ namespace Aaris.MapReview
                 float distanceSquared = dx * dx + dz * dz;
                 if (distanceSquared > retainLimit) continue;
                 Collider c = obstacles[i];
-                if (c == null) continue;
+                if (c == null || (!c.enabled && !disabledByStreaming[i])) continue;
                 float limit = c.enabled ? retainLimit : enterLimit;
                 if (distanceSquared > limit) continue;
                 wanted[i] = query;
@@ -399,6 +413,7 @@ namespace Aaris.MapReview
                     // An unchanged nearby wall never blocks optional model work.
                     AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
                     c.enabled = true;
+                    disabledByStreaming[i] = false;
                 }
                 nextActive.Add(i);
             }
@@ -418,7 +433,11 @@ namespace Aaris.MapReview
                             pendingColliderRelease.Add(i);
                         }
                     }
-                    else obstacles[i].enabled = false;
+                    else
+                    {
+                        disabledByStreaming[i] = true;
+                        obstacles[i].enabled = false;
+                    }
                 }
             List<int> swap = active; active = nextActive; nextActive = swap;
             if (forcePhysicsSync)
@@ -450,7 +469,10 @@ namespace Aaris.MapReview
                 colliderReleaseQueued[i] = false;
                 // A collider reacquired by the latest spatial refresh is live.
                 if (wanted[i] != query && obstacles[i] != null && obstacles[i].enabled)
+                {
+                    disabledByStreaming[i] = true;
                     obstacles[i].enabled = false;
+                }
             }
             pendingColliderRelease.Clear();
             colliderReleaseCursor = 0;
@@ -491,6 +513,7 @@ namespace Aaris.MapReview
                             AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
                             reservedReleaseFrame = true;
                         }
+                        disabledByStreaming[i] = true;
                         collider.enabled = false;
                     }
                 }
@@ -608,6 +631,86 @@ namespace Aaris.MapReview
             return false;
         }
 
+        // Long-range combat can reach past the active PhysX radius. Use the
+        // same static grid to find disabled cover without waking colliders.
+        // Boxes keep their exact oriented shape. Mesh bounds conservatively
+        // occlude a shot until the real mesh is active.
+        internal bool TryGetInactiveCoverHit(Ray ray, float distance, out float closest)
+        {
+            closest = distance;
+            if (!indexReady || !isActiveAndEnabled || distance <= 0f) return false;
+            Vector3 start = ray.origin, end = ray.GetPoint(distance);
+            if (!Finite(start) || !Finite(end)) return false;
+            float activeRadius = Mathf.Max(0f, activationDistance);
+            if (query > 0 &&
+                new Vector2(start.x - lastPosition.x, start.z - lastPosition.z).sqrMagnitude <
+                    activeRadius * activeRadius &&
+                new Vector2(end.x - lastPosition.x, end.z - lastPosition.z).sqrMagnitude <
+                    activeRadius * activeRadius) return false;
+            int firstX = Cell(Mathf.Min(start.x, end.x));
+            int lastX = Cell(Mathf.Max(start.x, end.x));
+            int firstZ = Cell(Mathf.Min(start.z, end.z));
+            int lastZ = Cell(Mathf.Max(start.z, end.z));
+            long width = (long)lastX - firstX + 1;
+            long depth = (long)lastZ - firstZ + 1;
+            if (width > MaxCellsPerProbe || depth > MaxCellsPerProbe ||
+                width * depth > MaxCellsPerProbe)
+            {
+                for (int i = 0; i < obstacles.Length; i++)
+                    ProbeInactiveCover(i, ray, ref closest);
+                return closest < distance;
+            }
+
+            if (probeQuery == int.MaxValue)
+            {
+                Array.Clear(probeVisited, 0, probeVisited.Length);
+                probeQuery = 0;
+            }
+            int stamp = ++probeQuery;
+            for (int x = firstX; x <= lastX; x++)
+                for (int z = firstZ; z <= lastZ; z++)
+                {
+                    if (!cells.TryGetValue(Key(x, z), out List<int> entries)) continue;
+                    foreach (int i in entries)
+                    {
+                        if (probeVisited[i] == stamp) continue;
+                        probeVisited[i] = stamp;
+                        ProbeInactiveCover(i, ray, ref closest);
+                    }
+                }
+            foreach (int i in oversizedIndices)
+                ProbeInactiveCover(i, ray, ref closest);
+            return closest < distance;
+        }
+
+        private void ProbeInactiveCover(int index, Ray ray, ref float closest)
+        {
+            if (!disabledByStreaming[index]) return;
+            Bounds bounds = worldBounds[index];
+            float distance = 0f;
+            if (!bounds.Contains(ray.origin) &&
+                !bounds.IntersectRay(ray, out distance)) return;
+            if (distance >= closest) return;
+            Collider candidate = obstacles[index];
+            if (candidate == null || candidate.enabled || candidate.isTrigger ||
+                !candidate.gameObject.activeInHierarchy) return;
+
+            if (candidate is BoxCollider)
+            {
+                Matrix4x4 inverse = worldToBox[index];
+                Vector3 localOrigin = inverse.MultiplyPoint3x4(ray.origin);
+                Vector3 localDirection = inverse.MultiplyVector(ray.direction);
+                float scale = localDirection.magnitude;
+                Bounds box = localBoxBounds[index];
+                if (scale <= 0f) return;
+                if (box.Contains(localOrigin)) distance = 0f;
+                else if (box.IntersectRay(new Ray(localOrigin, localDirection),
+                    out float localDistance)) distance = localDistance / scale;
+                else return;
+            }
+            if (distance < closest) closest = distance;
+        }
+
         private void OnEnable()
         {
             // OnDisable temporarily restores all authored colliders. Without a
@@ -663,7 +766,11 @@ namespace Aaris.MapReview
             // its original state, even when the component is toggled.
             for (int i = 0; i < obstacles.Length; i++)
                 if (streamed[i] && obstacles[i] != null)
+                {
+                    if (!disabledByStreaming[i]) continue;
                     obstacles[i].enabled = true;
+                    disabledByStreaming[i] = false;
+                }
         }
     }
 }

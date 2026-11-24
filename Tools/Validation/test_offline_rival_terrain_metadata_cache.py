@@ -39,14 +39,16 @@ class TerrainProbeContracts(unittest.TestCase):
         self.assertNotIn("tile.terrainData",PROBE)
 
     def test_ground_slope_ocean_margin_and_order_preserved(self):
-        for s in ("x < origin.x + 2f","x > origin.x + size.x - 2f",
-                  "z < origin.z + 2f","z > origin.z + size.z - 2f",
+        for s in ("float margin = 2f", "x < origin.x + margin",
+                  "x > origin.x + size.x - margin", "z < origin.z + margin",
+                  "z > origin.z + size.z - margin",
                   "float u = (x - origin.x) / size.x;",
                   "float v = (z - origin.z) / size.z;",
                   "data.GetInterpolatedNormal(u, v).y < 0.78f",
                   "origin.y + tile.SampleHeight(new Vector3(x, 0f, z))",
                   "height > OceanCutoff"):
             self.assertIn(s,PROBE)
+        self.assertIn("TryGetGround(x, z, out height, margin: 0f)", SOURCE)
         # Two overlapping tiles deliberately have different Y and slope;
         # neither the order nor the ocean/steep rejection may change.
         tiles=[(-1000,-38,-1000,2000,2000),(-500,3,-500,1000,1000)]

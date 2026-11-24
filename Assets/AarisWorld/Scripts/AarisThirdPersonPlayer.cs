@@ -75,6 +75,7 @@ namespace Aaris.MapReview
         private float nextOptionalComponentRefresh;
         private Vector3 horizontalVelocity;
         private float normalCameraFov;
+        private float normalCameraFovTangent;
         // Cache only the player-visual bit: other camera layers may change during ADS.
         private int originalPlayerVisualMask;
         private bool playerVisualsHiddenForCamera;
@@ -121,6 +122,20 @@ namespace Aaris.MapReview
         public float LastLandingImpactSpeed => lastLandingImpactSpeed;
         public float LastJumpStartedTime => lastJumpStarted;
         public Camera AimCamera => followCamera;
+        internal AarisNearbyColliders CombatCover => nearbyColliders;
+        internal float AimLookScale
+        {
+            get
+            {
+                if (followCamera == null || normalCameraFovTangent <= 0f) return 1f;
+                float currentFov = followCamera.fieldOfView;
+                if (currentFov >= normalCameraFov) return 1f;
+                // Translate the same swipe into similar screen-space motion
+                // while the vertical field of view animates in or out.
+                return Mathf.Tan(currentFov * .5f * Mathf.Deg2Rad) /
+                    normalCameraFovTangent;
+            }
+        }
         // Presentation systems read the real motor ceilings instead of
         // duplicating magic speed constants that can drift out of sync.
         public float JogSpeedMetresPerSecond => walkSpeed;
@@ -229,6 +244,7 @@ namespace Aaris.MapReview
             if (followCamera == null) followCamera = Camera.main;
             if (followCamera == null) { enabled = false; Debug.LogError("Saved player camera is missing."); return; }
             normalCameraFov = followCamera.fieldOfView;
+            normalCameraFovTangent = Mathf.Tan(normalCameraFov * .5f * Mathf.Deg2Rad);
             originalPlayerVisualMask = followCamera.cullingMask & PlayerVisualLayer;
             smoothedEyeHeight = pivotHeight;
             previousSimulateMouse = Input.simulateMouseWithTouches;
@@ -336,7 +352,7 @@ namespace Aaris.MapReview
             // Keep the serialized sensitivity as a user-tunable multiplier.
             // Upward touch movement looks up in both gameplay phases.
             float scale = Mathf.Clamp(720f / Mathf.Max(360f, Screen.height), 0.75f, 1.5f);
-            float sensitivity = lookSensitivity / 0.12f;
+            float sensitivity = lookSensitivity / 0.12f * AimLookScale;
             yaw += delta.x * 0.18f * scale * sensitivity;
             pitch = Mathf.Clamp(pitch - delta.y * 0.15f * scale * sensitivity,
                 minLookPitch, maxLookPitch);
@@ -1060,6 +1076,7 @@ namespace Aaris.MapReview
             horizontalVelocity = Vector3.zero;
             running = false;
             if (battle != null) { battle.SetFireHeld(false); battle.TryStand(); }
+            if (weaponInventory != null) weaponInventory.CancelAim();
             controller.stepOffset = battle != null
                 ? battle.GroundStepOffset : savedGroundStepOffset;
             lastGrounded = -10f; gait = travelSpeed = 0f;

@@ -179,6 +179,7 @@ namespace Aaris.MapReview
         private readonly Collider[] crowdedSpawnHits = new Collider[96];
         private readonly System.Random random = new System.Random();
         private Transform player;
+        private AarisThirdPersonPlayer playerMotor;
         private Camera cachedRivalCamera;
         private float nextRivalCameraLookup;
         private AarisOfflineHealth playerHealth;
@@ -411,6 +412,7 @@ namespace Aaris.MapReview
         private void Start()
         {
             if (player == null) { enabled = false; return; }
+            playerMotor = player.GetComponent<AarisThirdPersonPlayer>();
             playerHealth = player.GetComponent<AarisOfflineHealth>();
             if (playerHealth == null)
                 playerHealth = player.gameObject.AddComponent<AarisOfflineHealth>();
@@ -631,7 +633,7 @@ namespace Aaris.MapReview
             }
         }
 
-        private bool TryGetGround(float x, float z, out float height)
+        private bool TryGetGround(float x, float z, out float height, float margin = 2f)
         {
             height = 0f;
             if (terrainProbeMeta == null || terrainProbeMeta.Length == 0)
@@ -643,8 +645,8 @@ namespace Aaris.MapReview
                 TerrainData data = meta.data;
                 if (tile == null || data == null) continue;
                 Vector3 origin = meta.origin, size = meta.size;
-                if (x < origin.x + 2f || x > origin.x + size.x - 2f ||
-                    z < origin.z + 2f || z > origin.z + size.z - 2f) continue;
+                if (x < origin.x + margin || x > origin.x + size.x - margin ||
+                    z < origin.z + margin || z > origin.z + size.z - margin) continue;
                 float u = (x - origin.x) / size.x;
                 float v = (z - origin.z) / size.z;
                 // Slope, ocean and native height sampling stay authoritative.
@@ -701,12 +703,17 @@ namespace Aaris.MapReview
             if (Time.unscaledTime >= nextRivalCameraLookup)
             {
                 nextRivalCameraLookup = Time.unscaledTime + 0.5f;
-                Camera liveMain = Camera.main;
-                if (liveMain != null && liveMain.isActiveAndEnabled)
-                    cachedRivalCamera = liveMain;
-                else if (cachedRivalCamera == null || !cachedRivalCamera.isActiveAndEnabled)
-                    cachedRivalCamera = player != null
-                        ? player.GetComponentInChildren<Camera>(true) : null;
+                if (playerMotor != null)
+                    cachedRivalCamera = playerMotor.AimCamera;
+                else
+                {
+                    Camera liveMain = Camera.main;
+                    if (liveMain != null && liveMain.isActiveAndEnabled)
+                        cachedRivalCamera = liveMain;
+                    else if (cachedRivalCamera == null || !cachedRivalCamera.isActiveAndEnabled)
+                        cachedRivalCamera = player != null
+                            ? player.GetComponentInChildren<Camera>(true) : null;
+                }
             }
             // A missing or disabled gameplay camera is NOT evidence that a remote
             // fighter is visible. Avoid admitting distant meshes, animation and
@@ -725,7 +732,8 @@ namespace Aaris.MapReview
 
         internal bool TryVirtualGround(float x, float z, out float height)
         {
-            return TryGetGround(x, z, out height);
+            // The spawn margin must not become a four-metre gap between tiles.
+            return TryGetGround(x, z, out height, margin: 0f);
         }
 
         internal bool WouldCrossInactiveCover(Vector3 from, Vector3 displacement)
@@ -1239,27 +1247,36 @@ namespace Aaris.MapReview
                 ? Mathf.Max(0.28f, actions.CameraEyeHeight - 0.15f) : 1.3f;
             Vector3 anchor = shooter.position + Vector3.up * height;
             if (FirstMuzzleExternalHit(new Ray(anchor, shooter.forward), 0.24f,
-                shooter, out Collider shortBlocker))
+                shooter, out RaycastHit shortBlocker))
             {
                 // At contact range the first muzzle hit can be the visible
                 // target itself. Reject real cover, not the enemy the shot
                 // will physically hit; the camera LOS was checked separately.
-                return shortBlocker != null &&
-                    shortBlocker.transform.IsChildOf(victim);
+                return shortBlocker.collider.transform.IsChildOf(victim);
             }
             Vector3 muzzle = anchor + shooter.forward * 0.24f;
             Vector3 to = cameraImpact - muzzle;
             float distance = to.magnitude;
             if (distance <= 0.025f) return false;
-            return FirstMuzzleExternalHit(new Ray(muzzle, to / distance),
-                distance + 0.05f, shooter, out Collider first) &&
-                first.transform.IsChildOf(victim);
+            Ray ray = new Ray(muzzle, to / distance);
+            return FirstMuzzleExternalHit(ray, distance + 0.05f, shooter,
+                out RaycastHit first) && first.collider.transform.IsChildOf(victim) &&
+                !StreamedCoverBlocks(ray, first.distance);
+        }
+
+        private static bool StreamedCoverBlocks(Ray ray, float distance)
+        {
+            AarisNearbyColliders cover = activeDirector.nearbyColliders;
+            return cover != null && cover.TryGetInactiveCoverHit(ray, distance, out _);
         }
 
         private static bool FirstMuzzleExternalHit(Ray ray, float range,
-            Transform shooter, out Collider closest)
+            Transform shooter, out RaycastHit closest)
         {
-            closest = null;
+            if (!Physics.Raycast(ray, out closest, range,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)) return false;
+            if (!closest.collider.transform.IsChildOf(shooter)) return true;
+            closest = default;
             int count = AarisPhysicsHitBuffer.Raycast(ray, range,
                 Physics.DefaultRaycastLayers, ref muzzleAssistHits, 256,
                 out RaycastHit[] hits);
@@ -1270,21 +1287,45 @@ namespace Aaris.MapReview
                 if (collider == null || collider.transform.IsChildOf(shooter) ||
                     hits[i].distance >= nearest) continue;
                 nearest = hits[i].distance;
-                closest = collider;
+                closest = hits[i];
             }
-            return closest != null;
+            return nearest < float.PositiveInfinity;
         }
 
         internal static bool TryAcquireAimTarget(Camera camera, Transform shooter,
-            float range, float coneDegrees, out Vector3 aimedDirection)
+            float range, float coneDegrees, out Vector3 aimedDirection) =>
+            TryAcquireAimLock(camera, shooter, range, coneDegrees,
+                out aimedDirection, out _);
+
+        internal static bool TryAcquireAimLock(Camera camera, Transform shooter,
+            float range, float coneDegrees, out Vector3 aimedDirection,
+            out AarisOfflineRival lockedRival)
         {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             using var aiProfilerScope = k_AimSelection.Auto();
 #endif
             aimedDirection = Vector3.zero;
+            lockedRival = null;
             if (camera == null || shooter == null || activeDirector == null) return false;
             Vector3 origin = camera.transform.position;
             Vector3 cameraForward = camera.transform.forward;
+            var centerRay = new Ray(origin, cameraForward);
+            // A physical hit under the crosshair takes priority over snapping
+            // to a rival's torso. This also handles intentionally aimed headshots.
+            if (FirstMuzzleExternalHit(centerRay, range, shooter, out RaycastHit direct))
+            {
+                // Optional authored child hitboxes belong to the same rival.
+                AarisOfflineRival directRival =
+                    direct.collider.GetComponentInParent<AarisOfflineRival>();
+                if (directRival != null && directRival.IsAlive && directRival.HasVisibleBody &&
+                    !StreamedCoverBlocks(centerRay, direct.distance) &&
+                    MuzzlePathOpenTo(shooter, directRival.transform, direct.point))
+                {
+                    lockedRival = directRival;
+                    aimedDirection = cameraForward;
+                    return true;
+                }
+            }
             float maximumRangeSqr = range * range;
             float cachedCullRange = range + AimSpatialSlack;
             float cachedCullRangeSqr = cachedCullRange * cachedCullRange;
@@ -1349,7 +1390,8 @@ namespace Aaris.MapReview
                 if (candidate == null) break;
                 Vector3 direction = attempt == 0 ? d1 : attempt == 1 ? d2 : d3;
                 float distance = attempt == 0 ? r1 : attempt == 1 ? r2 : r3;
-                int count = AarisPhysicsHitBuffer.Raycast(new Ray(origin, direction),
+                Ray candidateRay = new Ray(origin, direction);
+                int count = AarisPhysicsHitBuffer.Raycast(candidateRay,
                     distance + .5f, Physics.DefaultRaycastLayers, ref assistHits, 256,
                     out RaycastHit[] hits);
                 float nearest = float.PositiveInfinity;
@@ -1363,16 +1405,48 @@ namespace Aaris.MapReview
                     { nearest = hits[i].distance; closest = collider; closestPoint = hits[i].point; }
                 }
                 if (closest != null && closest.transform.IsChildOf(candidate.transform) &&
+                    !StreamedCoverBlocks(candidateRay, nearest) &&
                     MuzzlePathOpenTo(shooter, candidate.transform, closestPoint))
                 {
                     aimedDirection = direction;
+                    lockedRival = candidate;
                     return true;
                 }
             }
             // Keep the original top-three fast path; only investigate the
             // next three when every centered body is physically obstructed.
             return TryAcquireAimFallback(origin, cameraForward, shooter,
-                maximumRangeSqr, minimumDot, first, second, third, out aimedDirection);
+                maximumRangeSqr, minimumDot, first, second, third, out aimedDirection,
+                out lockedRival);
+        }
+
+        internal static bool CanKeepAimLock(Camera camera, Transform shooter,
+            AarisOfflineRival rival, float range, float coneDegrees)
+        {
+            if (camera == null || activeDirector == null || rival == null ||
+                !rival.IsAlive || !rival.HasVisibleBody) return false;
+            Vector3 origin = camera.transform.position;
+            Vector3 forward = camera.transform.forward;
+            var centerRay = new Ray(origin, forward);
+            if (AimRayReachesRival(centerRay, range, shooter, rival.transform)) return true;
+            Vector3 to = rival.transform.position + Vector3.up * 1.12f - origin;
+            float lengthSquared = to.sqrMagnitude;
+            float projected = Vector3.Dot(forward, to);
+            float minimum = Mathf.Cos(coneDegrees * Mathf.Deg2Rad);
+            if (lengthSquared > range * range || projected <= 0f ||
+                projected * projected <= minimum * minimum * lengthSquared) return false;
+            var candidateRay = new Ray(origin, to);
+            return AimRayReachesRival(candidateRay, Mathf.Min(range, to.magnitude + .5f),
+                shooter, rival.transform);
+        }
+
+        private static bool AimRayReachesRival(Ray ray, float distance, Transform shooter,
+            Transform rival)
+        {
+            return FirstMuzzleExternalHit(ray, distance, shooter, out RaycastHit hit) &&
+                hit.collider.transform.IsChildOf(rival) &&
+                !StreamedCoverBlocks(ray, hit.distance) &&
+                MuzzlePathOpenTo(shooter, rival, hit.point);
         }
 
         private void RefreshStatus(float elapsed)
@@ -1399,9 +1473,10 @@ namespace Aaris.MapReview
         private static bool TryAcquireAimFallback(Vector3 origin, Vector3 forward,
             Transform shooter, float maxRangeSqr, float minimumDot,
             AarisOfflineRival first, AarisOfflineRival second,
-            AarisOfflineRival third, out Vector3 aimedDirection)
+            AarisOfflineRival third, out Vector3 aimedDirection, out AarisOfflineRival lockedRival)
         {
             aimedDirection = Vector3.zero;
+            lockedRival = null;
             float cachedCullRange = Mathf.Sqrt(maxRangeSqr) + AimSpatialSlack;
             float cachedCullRangeSqr = cachedCullRange * cachedCullRange;
             int used = 0;
@@ -1452,7 +1527,8 @@ namespace Aaris.MapReview
                 AarisOfflineRival bot = aimBots[attempt];
                 if (bot == null || !bot.IsAlive || !bot.HasVisibleBody) continue;
                 Vector3 direction = aimDirs[attempt];
-                int count = AarisPhysicsHitBuffer.Raycast(new Ray(origin, direction),
+                Ray candidateRay = new Ray(origin, direction);
+                int count = AarisPhysicsHitBuffer.Raycast(candidateRay,
                     aimRanges[attempt] + .5f, Physics.DefaultRaycastLayers,
                     ref assistHits, 256, out RaycastHit[] hits);
                 float nearest = float.PositiveInfinity;
@@ -1468,9 +1544,11 @@ namespace Aaris.MapReview
                     point = hits[i].point;
                 }
                 if (closest != null && closest.transform.IsChildOf(bot.transform) &&
+                    !StreamedCoverBlocks(candidateRay, nearest) &&
                     MuzzlePathOpenTo(shooter, bot.transform, point))
                 {
                     aimedDirection = direction;
+                    lockedRival = bot;
                     return true;
                 }
             }
@@ -2759,27 +2837,24 @@ namespace Aaris.MapReview
             float speed = retreat ? 3.2f :
                 hasTarget && distance < (carriedGun != null ? 13f : 2f) ? 0f : 2.85f;
             Vector3 movement = direction * (speed * dt);
-            if (movement.sqrMagnitude > 0.000001f &&
-                owner.WouldCrossInactiveCover(selfPosition, movement))
-            {
-                Vector3 tangent = Quaternion.Euler(0f, avoidanceHandedness * 80f, 0f)
-                    * movement;
-                movement = owner.WouldCrossInactiveCover(selfPosition, tangent)
-                    ? Vector3.zero : tangent;
-            }
             if (movement.sqrMagnitude > 0.000001f)
             {
-                Vector3 next = selfPosition + movement;
-                // Reject unplayable water/steep/ocean or missing terrain.
-                // A failed sample must never allow a bot to drift across
-                // the map at its previous Y while remaining a combatant.
-                if (owner.TryVirtualGround(next.x, next.z, out float ground))
+                for (int attempt = 0; attempt < 3; attempt++)
                 {
+                    // Try both sides of blocked cover or an invalid terrain
+                    // edge. Staying pointed into the same coastline or wall
+                    // indefinitely keeps an otherwise healthy rival stuck.
+                    Vector3 step = attempt == 0 ? movement :
+                        Quaternion.Euler(0f, avoidanceHandedness *
+                            (attempt == 1 ? 95f : -95f), 0f) * movement;
+                    if (owner.WouldCrossInactiveCover(selfPosition, step)) continue;
+                    Vector3 next = selfPosition + step;
+                    if (!owner.TryVirtualGround(next.x, next.z, out float ground)) continue;
                     next.y = ground + 0.08f;
                     transform.position = next;
                     owner.TrackRivalPosition(spatialSlot, this, next);
-                    if (direction.sqrMagnitude > 0.0001f)
-                        transform.rotation = Quaternion.LookRotation(direction);
+                    transform.rotation = Quaternion.LookRotation(step);
+                    break;
                 }
             }
             if (carriedGun != null && carriedMagazine == 0 && now >= nextAttack)

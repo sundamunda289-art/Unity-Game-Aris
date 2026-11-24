@@ -584,6 +584,7 @@ namespace Aaris.MapReview.Editor
             Physics.SyncTransforms();
             health.RestoreHealth(200f);
             victimHp.RestoreHealth(200f);
+            AdvanceHealthFill(hud, .5f);
             var healthLabel = (Text)Read(hud, "healthText");
             var fill = (Image)Read(hud, "healthFill");
             var scopeLabel = (Text)Read(hud, "scopeText");
@@ -600,27 +601,44 @@ namespace Aaris.MapReview.Editor
             // Includes every authored optical category: no scope, normal,
             // 2x and 4x. Real gun model must equip, actual reticle turn red,
             // ammo decrease, and enemy HP decrease via a physical bullet.
-            string[] guns = { "Shotgun", "SMG", "AssaultRifle", "Sniper", "Pistol" };
-            string[] expected = {
-                "NO SCOPE ADS", "NORMAL ADS", "2X ADS", "4X ADS", "NORMAL ADS"
+            string[] guns = {
+                "Shotgun", "SMG", "AssaultRifle", "BattleRifle", "Sniper", "DMR", "Pistol"
             };
+            int[] powers = { 0, 1, 2, 2, 4, 4, 1 };
+            string[] expected = {
+                "NO SCOPE ADS", "NORMAL ADS", "2X ADS", "2X ADS", "4X ADS",
+                "4X ADS", "NORMAL ADS"
+            };
+            float hipFov = (float)Read(player, "normalCameraFov");
             int verified = 0;
             for (int i = 0; i < guns.Length; i++)
             {
                 var spec = AarisWeaponCatalog.Get(guns[i]);
-                if (spec == null || spec.scopePower != (i == 0 ? 0 : i == 2 ? 2 : i == 3 ? 4 : 1))
+                if (spec == null || spec.scopePower != powers[i])
                     throw new InvalidOperationException("AUTHORED_SCOPE_MISSING_" + guns[i]);
                 AarisWeaponState dropped;
                 if (!inventory.TryPickup(new AarisWeaponState(spec, (uint)(100 + i)), out dropped) ||
                     inventory.Current == null || !inventory.HasGun)
                     throw new InvalidOperationException("REAL_GUN_EQUIP_FAILED_" + guns[i]);
+                ForceHudAimRefresh(hud);
+                if ((int)Read(hud, "lastReticleTier") != 0 || optic.gameObject.activeSelf)
+                    throw new InvalidOperationException("HIP_FIRE_USED_SCOPE_GEOMETRY_" + guns[i]);
                 if (inventory.Aiming) inventory.ToggleAim();
                 inventory.ToggleAim();
+                float adsFov = (float)Read(player, "weaponAimFov");
+                camera.fieldOfView = adsFov;
+                float scale = (float)player.GetType().GetProperty("AimLookScale", Private)
+                    .GetValue(player);
+                float expectedScale = Mathf.Tan(adsFov * .5f * Mathf.Deg2Rad) /
+                    Mathf.Tan(hipFov * .5f * Mathf.Deg2Rad);
+                if (!Mathf.Approximately(scale, expectedScale))
+                    throw new InvalidOperationException("SCOPE_LOOK_SENSITIVITY_FAILED_" + guns[i]);
                 camera.transform.position = calibration + Vector3.up * 1.45f;
                 camera.transform.LookAt(victim.transform.position + Vector3.up * 1.12f);
                 Physics.SyncTransforms();
                 ForceHudAimRefresh(hud);
                 if (scopeLabel.text != expected[i] || !inventory.Aiming ||
+                    (int)Read(hud, "lastReticleTier") != powers[i] ||
                     optic.gameObject.activeSelf != (spec.scopePower >= 2))
                     throw new InvalidOperationException("HUD_SCOPE_LABEL_OR_OPTIC_FAILED_" + guns[i] +
                         " label=" + scopeLabel.text);
@@ -643,6 +661,7 @@ namespace Aaris.MapReview.Editor
                     " Red-Lock, " + expected[i] + ", physical bullet, HUD damage popup");
                 verified++;
             }
+            camera.fieldOfView = hipFov;
 
             // Stance-specific camera/muzzle parity. The real on-foot
             // CharacterController needs a physical support before prone.
@@ -721,7 +740,9 @@ namespace Aaris.MapReview.Editor
                 Mathf.Abs(victimHp.CurrentHealth - beforeWallShot) > .001f)
                 throw new InvalidOperationException("REAL_WALL_SHOT_PASSED_COVER");
             Note("PASS real AssaultRifle no red-lock and no HP damage through wall");
+            wall.SetActive(false);
             Object.Destroy(wall);
+            VerifyStreamedScopeCover(hud, inventory, camera, victimCapsule, victimHp, calibration, ar);
             // A punch has no hit coordinate: validate actual 10 HP body damage
             // and the reusable floating damage-number feedback in Play Mode.
             victimHp.RestoreHealth(200f);
@@ -743,19 +764,105 @@ namespace Aaris.MapReview.Editor
             health.ApplyDamage(25f, victim.gameObject);
             var directionLabel = (Text)Read(hud, "hitDirection");
             if (healthLabel.text != "HP 175 / 200" ||
-                Mathf.Abs(fill.rectTransform.sizeDelta.x - 192.5f) > .2f ||
+                Mathf.Abs(fill.rectTransform.sizeDelta.x - 220f) > .1f ||
                 !((Image)Read(hud, "hitFlash")).gameObject.activeSelf ||
                 directionLabel == null || !directionLabel.gameObject.activeSelf ||
                 directionLabel.text != "HIT FRONT")
                 throw new InvalidOperationException("HP175_FLASH_OR_HIT_BEARING_FAILED");
+            AdvanceHealthFill(hud, .04f);
+            if (fill.rectTransform.sizeDelta.x <= 192.5f || fill.rectTransform.sizeDelta.x >= 220f)
+                throw new InvalidOperationException("HP_BAR_DID_NOT_ANIMATE_DOWN");
+            AdvanceHealthFill(hud, .5f);
+            if (Mathf.Abs(fill.rectTransform.sizeDelta.x - 192.5f) > .1f)
+                throw new InvalidOperationException("HP_BAR_DID_NOT_SETTLE_AT_87_5");
             Note("PASS native HP 175 / 200, 87.5% bar, hit flash and HIT FRONT");
             // A self-inflicted hit must never keep the previous enemy bearing.
             health.ApplyDamage(1f, player.gameObject);
             if (directionLabel.gameObject.activeSelf)
                 throw new InvalidOperationException("SELF_DAMAGE_STALE_ENEMY_DIRECTION");
             Note("PASS self damage clears the old enemy hit direction");
+            health.RestoreHealth(26f);
+            AdvanceHealthFill(hud, .04f);
+            if (healthLabel.text != "HP 200 / 200" ||
+                fill.rectTransform.sizeDelta.x <= 192.5f || fill.rectTransform.sizeDelta.x >= 220f)
+                throw new InvalidOperationException("HP_BAR_DID_NOT_ANIMATE_HEAL");
+            AdvanceHealthFill(hud, .5f);
+            if (Mathf.Abs(fill.rectTransform.sizeDelta.x - 220f) > .1f)
+                throw new InvalidOperationException("HEALED_HP_BAR_NOT_FULL");
+            Note("PASS authoritative HP text and smooth damage/heal fill");
             Note("SCOPE_TIERS_VERIFIED=4/4");
             Note("WEAPON_SCOPE_SHOTS_VERIFIED=" + verified + "/" + guns.Length);
+        }
+
+        private static void VerifyStreamedScopeCover(AarisCombatFeedbackHUD hud,
+            AarisWeaponInventory inventory, Camera camera,
+            CharacterController victimCapsule, AarisOfflineHealth victimHp,
+            Vector3 calibration, AarisWeaponSpec spec)
+        {
+            var fixture = new GameObject("Long-range streamed cover test");
+            fixture.SetActive(false);
+            var streamer = fixture.AddComponent<AarisNearbyColliders>();
+            var cover = new GameObject("Streamed house wall");
+            cover.transform.SetParent(fixture.transform);
+            cover.transform.position = calibration + new Vector3(0f, 1.25f, 75f);
+            var box = cover.AddComponent<BoxCollider>();
+            box.size = new Vector3(12f, 3f, .3f);
+            var fields = typeof(AarisNearbyColliders);
+            fields.GetField("obstacles", Private).SetValue(streamer, new Collider[] { box });
+            fields.GetField("target", Private).SetValue(streamer, player.transform);
+            var motorCover = player.GetType().GetField("nearbyColliders", Private);
+            var directorCover = director.GetType().GetField("nearbyColliders", Private);
+            object oldMotorCover = motorCover.GetValue(player);
+            object oldDirectorCover = directorCover.GetValue(director);
+            Vector3 previousPosition = victimCapsule.transform.position;
+            try
+            {
+                victimCapsule.enabled = false;
+                victimCapsule.transform.position = calibration + Vector3.forward * 120f;
+                victimCapsule.enabled = true;
+                camera.transform.LookAt(victimCapsule.transform.position + Vector3.up * 1.12f);
+                if (!inventory.TryPickup(new AarisWeaponState(spec, 411u), out _))
+                    throw new InvalidOperationException("STREAMED_COVER_RIFLE_MISSING");
+                inventory.ToggleAim();
+                Physics.SyncTransforms();
+                ForceHudAimRefresh(hud);
+                if (!(bool)Read(hud, "lastLock"))
+                    throw new InvalidOperationException("CLEAR_LONG_RANGE_RED_LOCK_MISSING");
+
+                motorCover.SetValue(player, streamer);
+                directorCover.SetValue(director, streamer);
+                fixture.SetActive(true);
+                Physics.SyncTransforms();
+                // Use the normal HUD update without forcing the next roster
+                // scan. The cached lock must turn white on the very next frame.
+                hud.GetType().GetMethod("LateUpdate", Private).Invoke(hud, null);
+                if (box.enabled || (bool)Read(hud, "lastLock"))
+                    throw new InvalidOperationException("STREAMED_OUT_WALL_DID_NOT_BREAK_RED_LOCK");
+                victimHp.RestoreHealth(200f);
+                int ammo = inventory.Current.Magazine;
+                if (!inventory.Current.TryFire(camera, player.gameObject) ||
+                    inventory.Current.Magazine != ammo - 1 || victimHp.CurrentHealth != 200f)
+                    throw new InvalidOperationException("STREAMED_OUT_WALL_ALLOWED_DAMAGE");
+                Note("PASS streamed-out wall clears Red-Lock immediately and stops damage");
+            }
+            finally
+            {
+                motorCover.SetValue(player, oldMotorCover);
+                directorCover.SetValue(director, oldDirectorCover);
+                fixture.SetActive(false);
+                Object.Destroy(fixture);
+                victimCapsule.enabled = false;
+                victimCapsule.transform.position = previousPosition;
+                victimCapsule.enabled = true;
+                camera.transform.LookAt(previousPosition + Vector3.up * 1.12f);
+                Physics.SyncTransforms();
+            }
+        }
+
+        private static void AdvanceHealthFill(AarisCombatFeedbackHUD hud, float seconds)
+        {
+            hud.GetType().GetMethod("UpdateHealthFill", Private).Invoke(hud,
+                new object[] { seconds });
         }
 
         private static void ForceHudAimRefresh(AarisCombatFeedbackHUD hud)

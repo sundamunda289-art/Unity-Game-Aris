@@ -99,6 +99,7 @@ namespace Aaris.MapReview.Editor
                 VerifyDestructibleHitConfirmation(report);
                 VerifyBots(report, active);
                 VerifyVirtualCombat(report);
+                VerifyVirtualTerrainSeam(report);
                 VerifyNearRivalRendererCulling(report);
                 VerifyBotLootCover(report);
             }
@@ -174,6 +175,47 @@ namespace Aaris.MapReview.Editor
         // Offscreen opponents use the real health receiver and own ammo
         // logic while both physical colliders stay disabled. This does not
         // claim an Android FPS result or construct a fake gun/rig.
+        private static void VerifyVirtualTerrainSeam(StringBuilder report)
+        {
+            var previous = Field(typeof(AarisOfflineBRDirector), "activeDirector", Static);
+            object original = previous.GetValue(null);
+            var root = new GameObject("Two adjacent virtual-combat terrain tiles");
+            var data = new TerrainData
+            {
+                heightmapResolution = 33,
+                size = new Vector3(50f, 10f, 50f)
+            };
+            try
+            {
+                var director = root.AddComponent<AarisOfflineBRDirector>();
+                var tiles = new Terrain[2];
+                for (int i = 0; i < tiles.Length; i++)
+                {
+                    var tile = Terrain.CreateTerrainGameObject(data);
+                    tile.transform.SetParent(root.transform);
+                    tile.transform.position = Origin + Vector3.right * i * data.size.x;
+                    tiles[i] = tile.GetComponent<Terrain>();
+                }
+                Set(director, "terrains", tiles);
+                Call(director, "CacheTerrainProbeMetadata");
+                var sample = typeof(AarisOfflineBRDirector).GetMethod("TryVirtualGround", Instance);
+                for (float offset = 49f; offset <= 51f; offset += .5f)
+                {
+                    object[] args = { Origin.x + offset, Origin.z + 25f, 0f };
+                    Check((bool)sample.Invoke(director, args) &&
+                        Mathf.Abs((float)args[2] - Origin.y) < .01f,
+                        "Remote bots can cross both sides of the terrain seam at " + offset,
+                        report);
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(data);
+                previous.SetValue(null, original);
+            }
+        }
+
         private static void VerifyVirtualCombat(StringBuilder report)
         {
             var root = new GameObject("Temporary remote 100-bot math combat QA");
@@ -555,6 +597,12 @@ namespace Aaris.MapReview.Editor
                 object[] args = { camera, player.transform, 50f, 2.3f, Vector3.zero };
                 Check((bool)acquire.Invoke(null, args),
                     "Red-Lock finds physical visible rival in range", report);
+                camera.transform.LookAt(bots[1].transform.position + Vector3.up * 1.57f);
+                Physics.SyncTransforms();
+                Check((bool)acquire.Invoke(null, args) &&
+                    Vector3.Dot(camera.transform.forward, (Vector3)args[4]) > .99999f,
+                    "Red-Lock keeps an intentional head-height aim direction", report);
+                camera.transform.LookAt(bots[1].transform.position + Vector3.up * 1.12f);
                 var sightWall = new GameObject("QA LOS wall");
                 sightWall.transform.SetParent(root.transform, false);
                 sightWall.transform.position = Origin + new Vector3(0f, 1.25f, 3f);

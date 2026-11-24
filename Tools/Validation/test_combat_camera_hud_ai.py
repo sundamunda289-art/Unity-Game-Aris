@@ -34,7 +34,9 @@ class CombatRegression(unittest.TestCase):
         self.assertIn(
             "changed.CurrentHealth < changed.MaximumHealth && current >= max", hp)
         self.assertIn("current = Mathf.Max(0, max - 1);", hp)
-        self.assertIn("float fillWidth = 220f * Mathf.Clamp01(changed.CurrentHealth /", hp)
+        self.assertIn("targetHealthFillWidth = 220f * Mathf.Clamp01(changed.CurrentHealth /", hp)
+        self.assertIn("Mathf.Lerp(displayedHealthFillWidth, targetHealthFillWidth,", hp)
+        self.assertIn("UpdateHealthFill(Time.unscaledDeltaTime);", HUD)
         self.assertIn("new Vector2(fillWidth, 10f)", hp)
         # Regression: the original integer-gated bar froze during multiple
         # fractional hits and displayed 200/200 immediately after damage.

@@ -21,7 +21,7 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("MuzzlePathOpenTo(shooter, candidate.transform, closestPoint)", BOTS)
         self.assertIn("new Ray(anchor, shooter.forward), 0.24f", BOTS)
         self.assertIn("new Ray(muzzle, to / distance)", BOTS)
-        self.assertIn("first.transform.IsChildOf(victim)", BOTS)
+        self.assertIn("first.collider.transform.IsChildOf(victim)", BOTS)
         self.assertIn("ref muzzleAssistHits, 256", BOTS)
         self.assertIn("collider.transform.IsChildOf(shooter)", BOTS)
         # Camera peeks over 1.4m wall, but the 1m barrel hits it.
@@ -40,7 +40,8 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertEqual(by_id["DMR"]["scopePower"], 4)
         self.assertEqual(by_id["Shotgun"]["scopePower"], 0)
         self.assertIn("AarisOfflineBRDirector.TryAcquireAimTarget", GUN)
-        self.assertIn("TryAcquireAimTarget(aimCamera, transform", HUD)
+        self.assertIn("TryAcquireAimLock(aimCamera, transform", HUD)
+        self.assertIn("CanKeepAimLock(aimCamera, transform, lockedRival", HUD)
         self.assertIn("if (closest != null && closest.transform.IsChildOf(candidate.transform) &&", BOTS)
         self.assertIn("shotForward = assisted;", GUN)
         self.assertNotIn("Vector3.Slerp(shotForward, assisted, .82f)", GUN)
@@ -247,7 +248,7 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("if (lastReticleTier == tier) return;", HUD)
         self.assertIn("float gap = tier == 0 ? 21f", HUD)
         self.assertIn("float stroke = tier == 0 ? 12f", HUD)
-        self.assertIn("RefreshReticleGeometry(scope);", HUD)
+        self.assertIn("RefreshReticleGeometry(activeScope);", HUD)
 
     def test_100_bots_locally_restrict_player_aggression(self):
         self.assertIn("private const int RivalCount = 100;", BOTS)
