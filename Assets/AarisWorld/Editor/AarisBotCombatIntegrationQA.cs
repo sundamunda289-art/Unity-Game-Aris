@@ -101,6 +101,7 @@ namespace Aaris.MapReview.Editor
                 VerifyDestructibleHitConfirmation(report);
                 VerifyBots(report, active);
                 VerifyStreamedOutBotLineOfSight(report);
+                VerifyStreamedGroundLootPickup(report);
                 VerifyVirtualCombat(report);
                 VerifyVirtualTerrainSeam(report);
                 VerifyVirtualTerrainShotCover(report);
@@ -400,6 +401,137 @@ namespace Aaris.MapReview.Editor
             object[] due = { 2.05f, immediate[1] };
             Check((bool)method.Invoke(null, due),
                 "Forty-five millisecond lock refresh admits new cover", report);
+        }
+
+        // Player and bot ground-gun pickup must obey the same disabled static
+        // cover as shots and death crates. Operates on real native BoxColliders
+        // inside a disposable Editor scene (no saved scene modification).
+        public static void RunStreamedGroundLootQA()
+        {
+            var report = new StringBuilder("Unity " + Application.unityVersion + "\n");
+            try
+            {
+                VerifyStreamedGroundLootPickup(report);
+                report.AppendLine("RESULT=PASS");
+            }
+            catch (Exception ex)
+            {
+                report.AppendLine("RESULT=FAIL " + ex);
+                throw;
+            }
+            finally
+            {
+                Debug.Log(report.ToString());
+            }
+        }
+
+        private static void VerifyStreamedGroundLootPickup(StringBuilder report)
+        {
+            var root = new GameObject("Isolated streamed ground-loot reach QA");
+            try
+            {
+                var view = new GameObject("Saved ground-loot QA camera");
+                view.transform.SetParent(root.transform, false);
+                view.tag = "MainCamera";
+                view.AddComponent<Camera>();
+
+                var actor = new GameObject("Ground-loot player");
+                actor.transform.SetParent(root.transform, false);
+                actor.transform.position = Origin;
+                var motor = actor.AddComponent<AarisThirdPersonPlayer>();
+                motor.enabled = false;
+                actor.transform.position = Origin;
+                var playerCapsule = actor.GetComponent<CharacterController>();
+                playerCapsule.height = 1.8f;
+                playerCapsule.center = Vector3.up * .9f;
+
+                var rival = new GameObject("Ground-loot rival without motor");
+                rival.transform.SetParent(root.transform, false);
+                rival.transform.position = Origin + Vector3.forward * 6f;
+                var rivalCapsule = rival.AddComponent<CharacterController>();
+                rivalCapsule.height = 1.8f;
+                rivalCapsule.center = Vector3.up * .9f;
+
+                var world = root.AddComponent<AarisWeaponLootWorld>();
+                Set(world, "player", actor.transform);
+                // Exercise the lazy fixture path as well as the production
+                // EnsureForPlayer cache (which assigns playerMotor directly).
+                Vector3 playerLoot = actor.transform.position + Vector3.right * 2f;
+                Vector3 botLoot = rival.transform.position + Vector3.right * 2f;
+                Physics.SyncTransforms();
+                Check((bool)Call(world, "HasClearPickupPath", actor.transform, playerLoot) &&
+                      (bool)Call(world, "HasClearPickupPath", rival.transform, botLoot),
+                    "Open ground-gun lanes allow player and rival pickups", report);
+                Check(Get(world, "playerMotor") == motor,
+                    "Floor-loot world caches the real player motor without Find", report);
+
+                var wall = new GameObject("Streamed-out ground-gun divider");
+                wall.transform.SetParent(root.transform, false);
+                wall.transform.position = Origin + new Vector3(1f, .7f, 3f);
+                var box = wall.AddComponent<BoxCollider>();
+                box.size = new Vector3(.14f, 2f, 13f);
+                Physics.SyncTransforms();
+                Check(!(bool)Call(world, "HasClearPickupPath", actor.transform, playerLoot) &&
+                      !(bool)Call(world, "HasClearPickupPath", rival.transform, botLoot),
+                    "Live house divider blocks both floor-gun pickup paths", report);
+
+                var gridObject = new GameObject("Floor-loot static cover grid");
+                gridObject.transform.SetParent(root.transform, false);
+                var cover = gridObject.AddComponent<AarisNearbyColliders>();
+                cover.enabled = false;
+                Set(cover, "target", actor.transform);
+                Set(cover, "obstacles", new Collider[] { box });
+                Set(cover, "worldBounds", new Bounds[1]);
+                Set(cover, "localBoxBounds", new Bounds[1]);
+                Set(cover, "worldToBox", new Matrix4x4[1]);
+                Set(cover, "streamed", new bool[1]);
+                Set(cover, "disabledByStreaming", new bool[1]);
+                Set(cover, "probeVisited", new int[1]);
+                Call(cover, "IndexCollider", 0);
+                Set(cover, "indexReady", true);
+                Set(cover, "query", 1);
+                Set(cover, "lastPosition", actor.transform.position);
+                Set(motor, "nearbyColliders", cover);
+                cover.enabled = true;
+
+                box.enabled = false;
+                ((bool[])Get(cover, "disabledByStreaming"))[0] = true;
+                float[] stanceHeights = { 1.8f, 1.2f, .5f };
+                for (int i = 0; i < stanceHeights.Length; i++)
+                {
+                    float h = stanceHeights[i];
+                    playerCapsule.height = h;
+                    playerCapsule.center = Vector3.up * h * .5f;
+                    rivalCapsule.height = h;
+                    rivalCapsule.center = Vector3.up * h * .5f;
+                    Physics.SyncTransforms();
+                    Check(!(bool)Call(world, "HasClearPickupPath",
+                              actor.transform, playerLoot) &&
+                          !(bool)Call(world, "HasClearPickupPath",
+                              rival.transform, botLoot),
+                        "Streamed house blocks player and rival gun pickup at stance height=" +
+                        h, report);
+                }
+                box.enabled = true;
+                ((bool[])Get(cover, "disabledByStreaming"))[0] = false;
+                Physics.SyncTransforms();
+                Check(!(bool)Call(world, "HasClearPickupPath",
+                          actor.transform, playerLoot) &&
+                      !(bool)Call(world, "HasClearPickupPath",
+                          rival.transform, botLoot),
+                    "Re-enabled wall still blocks both physical pickups", report);
+                wall.SetActive(false);
+                Physics.SyncTransforms();
+                Check((bool)Call(world, "HasClearPickupPath",
+                          actor.transform, playerLoot) &&
+                      (bool)Call(world, "HasClearPickupPath",
+                          rival.transform, botLoot),
+                    "Removing house divider restores both pickups", report);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
         }
 
         private static void VerifyRivalCameraWake(StringBuilder report)
