@@ -263,3 +263,22 @@ for start_angle in [-3.0,-2.5,-2.0,-1.5,-0.4,0.0,0.4,1.5,2.0,2.5,3.0]:
 
 print("PASS: anatomy-scaled crouch/prone IK, grounded knee hint and bend-circle stability")
 print("NOT TESTED: Unity retargeted visuals, real collisions or Android FPS")
+
+# The antiparallel correction must ease to an anatomical pole rather than
+# flipping at a hard dot-product cutoff (which is a 180-degree knee snap).
+assert "float reversalBlend = Mathf.SmoothStep(0f, 1f," in solver
+assert "Mathf.Clamp01((-0.70f - Vector3.Dot(animatedAxis, axis)) / 0.27f)" in solver
+assert "reversalBlend, axis) * bend;" in solver
+assert "axisDot < -0.985f" not in solver
+for dot in (-1., -.999, -.985, -.97, -.95, -.85, -.70, -.65):
+    gate=smooth(max(0.0,min(1.0,(-.70-dot)/.27)))
+    assert 0 <= gate <= 1
+    if dot <= -.97: assert gate == 1.0
+    if dot >= -.70: assert gate == 0.0
+last=0.0
+for i in range(1001):
+    d=-.70 - i*.0003
+    gate=smooth(max(0.0,min(1.0,(-.70-d)/.27)))
+    assert gate >= last and gate-last < .002
+    last=gate
+print("PASS: antiparallel knee rotates continuously toward anatomical pole")
