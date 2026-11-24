@@ -103,6 +103,7 @@ namespace Aaris.MapReview.Editor
                 VerifyStreamedOutBotLineOfSight(report);
                 VerifyVirtualCombat(report);
                 VerifyVirtualTerrainSeam(report);
+                VerifyVirtualTerrainShotCover(report);
                 VerifyRivalCameraWake(report);
                 VerifyNearRivalRendererCulling(report);
                 VerifyBotLootCover(report);
@@ -412,6 +413,82 @@ namespace Aaris.MapReview.Editor
                 Object.DestroyImmediate(root);
                 Object.DestroyImmediate(data);
                 previous.SetValue(null, original);
+            }
+        }
+
+        // Isolated terrain-only QA executable in the disposable native
+        // source-compile project. It does not change any shipping scene.
+        public static void RunVirtualTerrainCoverQA()
+        {
+            var report = new StringBuilder("Unity " + Application.unityVersion + "\n");
+            try
+            {
+                VerifyVirtualTerrainShotCover(report);
+                report.AppendLine("RESULT=PASS");
+            }
+            catch (Exception ex)
+            {
+                report.AppendLine("RESULT=FAIL " + ex);
+                throw;
+            }
+            finally
+            {
+                Debug.Log(report.ToString());
+            }
+        }
+
+        private static void VerifyVirtualTerrainShotCover(StringBuilder report)
+        {
+            var root = new GameObject("Isolated virtual terrain-shot cover QA");
+            var data = new TerrainData
+            {
+                heightmapResolution = 33,
+                size = new Vector3(48f, 8f, 48f)
+            };
+            try
+            {
+                var tileObject = Terrain.CreateTerrainGameObject(data);
+                tileObject.transform.SetParent(root.transform, false);
+                tileObject.transform.position = Origin + new Vector3(120f, 0f, 120f);
+                var tile = tileObject.GetComponent<Terrain>();
+                var terrainCollider = tileObject.GetComponent<TerrainCollider>();
+
+                var director = root.AddComponent<AarisOfflineBRDirector>();
+                director.enabled = false;
+                Set(director, "terrains", new Terrain[] { tile });
+                Call(director, "CacheTerrainProbeMetadata");
+
+                Vector3 from = tileObject.transform.position +
+                    new Vector3(24f, 0.08f, 8f);
+                Vector3 to = tileObject.transform.position +
+                    new Vector3(24f, 0.08f, 40f);
+                Check(!director.IsVirtualShotBlocked(from, to),
+                    "Flat remote terrain allows unobstructed virtual shots", report);
+
+                float[,] heights = new float[33, 33];
+                // This thin hill is > eye height, but is inside the original
+                // 38m virtual combat range. Sculpt it directly into TerrainData.
+                for (int z = 14; z <= 18; z++)
+                    for (int x = 0; x < 33; x++)
+                        heights[z, x] = .5f;
+                data.SetHeights(0, 0, heights);
+                terrainCollider.enabled = false;
+                Check(director.IsVirtualShotBlocked(from, to),
+                    "Three-metre sampled terrain ridge blocks distant bot damage", report);
+                Check(director.IsVirtualShotBlocked(to, from),
+                    "Virtual terrain obstruction works in both firing directions", report);
+                Check(!director.IsVirtualShotBlocked(
+                    from + Vector3.up * 6f, to + Vector3.up * 6f),
+                    "Height clearance allows a genuinely elevated shot", report);
+                System.Array.Clear(heights, 0, heights.Length);
+                data.SetHeights(0, 0, heights);
+                Check(!director.IsVirtualShotBlocked(from, to),
+                    "Distant virtual shot resumes after terrain ridge removal", report);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(data);
             }
         }
 
