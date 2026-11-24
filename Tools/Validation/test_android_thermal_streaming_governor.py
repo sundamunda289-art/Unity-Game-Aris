@@ -103,7 +103,8 @@ class AndroidThermalStreamingTests(unittest.TestCase):
         self.assertIn("if (!AarisMobileStreamingFrameGate.TryClaimUrgentSceneLoad()) return;", android_block)
         self.assertIn("if (loadIsUrgent)", android_block)
         # Original actual-position policy always overrides optional thermal prefetch.
-        self.assertIn("loadIsUrgent = distance <= entrySquared;", WORLD)
+        self.assertIn("bool urgent = distance <= entrySquared;", WORLD)
+        self.assertIn("loadIsUrgent = urgent;", WORLD)
         self.assertIn("if (unloadCell >= 0 && (loadCell < 0 || !loadIsUrgent))", WORLD)
         self.assertIn("SceneManager.LoadSceneAsync(path, LoadSceneMode.Additive)", WORLD)
         self.assertIn("SceneManager.UnloadSceneAsync(path)", WORLD)

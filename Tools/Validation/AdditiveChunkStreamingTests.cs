@@ -289,21 +289,70 @@ internal static class AdditiveChunkStreamingTests
             "a scoped lens must exclude the same side chunk");
     }
 
+    private static void CheckDrivingPrefetch()
+    {
+        // Both endpoints miss the curved corner, but the swept road passes it.
+        float first = AarisChunkStreamingPolicy.FirstApproach(60, 127, 80, 0, 100, 100, 10, 10, 20);
+        Check(first > .243f && first < .244f, "approach finds the first rounded-corner intersection");
+        Check(float.IsPositiveInfinity(AarisChunkStreamingPolicy.FirstApproach(
+            70, 130, 5, 0, 100, 100, 10, 10, 20)), "a bounding-square corner miss stays a miss");
+        Check(AarisChunkStreamingPolicy.FirstApproach(140, 100, -80, 0, 100, 100, 10, 10, 20) == .125f,
+            "negative axial driving reaches the same straight margin");
+        Check(float.IsPositiveInfinity(AarisChunkStreamingPolicy.FirstApproach(
+            62, 100, 0, 0, 100, 100, 10, 10, 20)), "stationary position does not speculate");
+
+        const string nextPath = "Assets/CellAfterBend.unity";
+        var target = new Transform();
+        ResetScene();
+        var manager = MakeMultiple(target,
+            new AarisAdditiveChunkStreamer.Chunk {
+                scenePath = nextPath, center = new Vector2(145, 0), halfExtents = new Vector2(20, 20)
+            },
+            new AarisAdditiveChunkStreamer.Chunk {
+                scenePath = Path, center = new Vector2(120, 0), halfExtents = new Vector2(8, 20)
+            });
+        Set(manager, "lookaheadSeconds", 5f);
+        Frame(manager, target, 1f, 0f);
+        Frame(manager, target, 1.3f, 8f);
+        Check(SceneManager.loadCount == 1 && SceneManager.pendingPath == Path,
+            "the first district on the route wins even when the projection ends inside a later one");
+
+        ResetScene();
+        manager = MakeMultiple(target,
+            new AarisAdditiveChunkStreamer.Chunk {
+                scenePath = Path, center = new Vector2(0, 0), halfExtents = new Vector2(20, 20)
+            },
+            new AarisAdditiveChunkStreamer.Chunk {
+                scenePath = nextPath, center = new Vector2(190, 0), halfExtents = new Vector2(20, 20)
+            });
+        Frame(manager, target, 1f, 0f);
+        for (int i = 1; i <= 7; i++) Frame(manager, target, 1f + .3f * i, 8f * i);
+        Check(SceneManager.loadCount == 1, "sampling while busy cannot start parallel loads");
+        SceneManager.Finish();
+        Frame(manager, target, 3.2f, 57f);
+        Frame(manager, target, 3.3f, 60f);
+        Check(SceneManager.loadCount == 1, "operation completion still gets its full cooldown");
+        Frame(manager, target, 3.46f, 64f);
+        Check(SceneManager.loadCount == 2 && SceneManager.pendingPath == nextPath,
+            "fresh driving samples warm the next scene at the end of cooldown after a long native load");
+    }
+
     public static int Main()
     {
         CheckCameraPrefetch();
+        CheckDrivingPrefetch();
         // Exact AABB bounds, strict entry/exit hysteresis, no GC in policy.
         Check(AarisChunkStreamingPolicy.OutsideDistanceSquared(100, 5, 0, 0, 100, 100) == 0f,
             "cell edge must stay inside");
         Check(AarisChunkStreamingPolicy.OutsideDistanceSquared(130, 140, 0, 0, 100, 100) == 2500f,
             "outside distance should include both axes");
         float px, pz;
-        AarisChunkStreamingPolicy.Predict(200, 0, 210, 0, .3f, 1.25f, 35, 90, out px, out pz);
-        Check(px < 200 && px > 150, "prefetch should follow observed movement");
-        AarisChunkStreamingPolicy.Predict(-300, 0, 200, 0, .3f, 1.25f, 35, 90, out px, out pz);
-        Check(px == -300, "teleport cannot trigger predictive prefetch");
-        AarisChunkStreamingPolicy.Predict(200, 0, 210, 0, 5f, 1.25f, 35, 90, out px, out pz);
-        Check(px == 200, "resume gap should disable extrapolation");
+        AarisChunkStreamingPolicy.SampleVelocity(200, 0, 210, 0, .3f, 35, 90, out px, out pz);
+        Check(px < -30f && px >= -35f, "prefetch should follow observed movement");
+        AarisChunkStreamingPolicy.SampleVelocity(-300, 0, 200, 0, .3f, 35, 90, out px, out pz);
+        Check(px == 0f, "teleport cannot trigger predictive prefetch");
+        AarisChunkStreamingPolicy.SampleVelocity(200, 0, 210, 0, 5f, 35, 90, out px, out pz);
+        Check(px == 0f, "resume gap should disable extrapolation");
 
         ResetScene();
         var target = new Transform();
@@ -350,9 +399,8 @@ internal static class AdditiveChunkStreamingTests
         Frame(manager, target, 3.6f, 180f);
         Check(SceneManager.loadCount == 1, "near-player scene bypasses speculative cap");
 
-        // Regression: a predicted point INSIDE the cell has outside-distance 0.
-        // Its numeric priority ties entrySquared, but the actual player is still
-        // outside the entry margin. It must remain speculative and respect cap=0.
+        // A path can enter the cell while the actual player remains outside
+        // the entry margin. It must remain speculative and respect cap=0.
         ResetScene();
         target = new Transform();
         manager = Make(target);

@@ -69,6 +69,9 @@ namespace Aaris.MapReview
         private AarisThirdPersonPlayer playerMotor;
         private Camera previousViewCamera;
         private Vector3 previousViewForward;
+        private float previousViewAt;
+        private Vector2 sampledVelocity;
+        private float nextMovementSampleAt;
         // Round-robin check of one resident scene per poll; other scene
         // managers can retire an authored cell after this streamer loaded it.
         // Sparse resident roster: the cold, nonresident world costs O(1) to
@@ -140,7 +143,9 @@ namespace Aaris.MapReview
         private void OnEnable()
         {
             nextPollAt = 0f;
+            nextMovementSampleAt = 0f;
             previousSampleValid = false;
+            sampledVelocity = default(Vector2);
             previousViewCamera = null;
             nextReconcileIndex = 0;
         }
@@ -149,6 +154,7 @@ namespace Aaris.MapReview
         {
             if (states == null || player == null) return;
             float now = Time.unscaledTime;
+            SampleMovement(now);
             if (inFlight != null)
             {
                 if (!inFlight.isDone) return;
@@ -212,25 +218,28 @@ namespace Aaris.MapReview
             // a missing cell while this one-time warmup is still in progress.
             BuildSpatialIndexSlice();
             if (now < nextPollAt) return;
+            if (now < nextTransitionAt)
+            {
+                // Wake at the end of the native cooldown. A check just
+                // before it expires must not add another full polling gap.
+                nextPollAt = nextTransitionAt;
+                return;
+            }
             nextPollAt = now + Mathf.Max(0.05f, pollSeconds);
             ReconcileOneLoadedChunk();
 
             Vector3 current = player.position;
-            float elapsed = now - previousSampleAt;
-            bool steadyView = TryGetSteadyView(elapsed, out Vector3 viewPosition,
+            bool steadyView = TryGetSteadyView(now, out Vector3 viewPosition,
                 out Vector2 viewDirection, out float viewSlope);
-            float projectedX = current.x, projectedZ = current.z;
-            if (previousSampleValid)
-                AarisChunkStreamingPolicy.Predict(current.x, current.z,
-                    previousSample.x, previousSample.z, elapsed,
-                    Mathf.Max(lookaheadSeconds, System.Math.Min(maxLoadAwareLeadSeconds,
-                        observedLoadSeconds * 1.5f + 0.25f)),
-                    maxPredictedSpeed, teleportRejectSpeed,
-                    out projectedX, out projectedZ);
-            previousSample = current;
-            previousSampleAt = now;
-            previousSampleValid = true;
-            if (now < nextTransitionAt) return;
+            float leadSeconds = Mathf.Max(lookaheadSeconds, Math.Min(maxLoadAwareLeadSeconds,
+                observedLoadSeconds * 1.5f + 0.25f));
+            float stepX = sampledVelocity.x * leadSeconds, stepZ = sampledVelocity.y * leadSeconds;
+            // A scheduling poll can land between observation ticks. Guard
+            // against applying a velocity from before an intervening teleport.
+            float travelLimit = teleportRejectSpeed * (now - previousSampleAt);
+            float sinceX = current.x - previousSample.x, sinceZ = current.z - previousSample.z;
+            if (!(sinceX * sinceX + sinceZ * sinceZ <= travelLimit * travelLimit))
+                stepX = stepZ = 0f;
 
             float entrySquared = loadMargin * loadMargin;
             float exitMargin = Mathf.Max(unloadMargin, loadMargin + 1f);
@@ -238,8 +247,6 @@ namespace Aaris.MapReview
             int loadCell = -1, unloadCell = -1;
             int viewCell = -1;
             int speculativeResidentCount = 0;
-            // Numeric priority can tie the entry threshold when predicted position
-            // is already inside a distant cell. Urgency must use actual position.
             bool loadIsUrgent = false;
             float nearestLoad = float.MaxValue, farthestUnload = -1f;
             float nearestView = float.MaxValue;
@@ -287,11 +294,12 @@ namespace Aaris.MapReview
                 float distance = AarisChunkStreamingPolicy.OutsideDistanceSquared(
                     current.x, current.z, cell.center.x, cell.center.y,
                     cell.halfExtents.x, cell.halfExtents.y);
-                float predicted = AarisChunkStreamingPolicy.OutsideDistanceSquared(
-                    projectedX, projectedZ, cell.center.x, cell.center.y,
-                    cell.halfExtents.x, cell.halfExtents.y);
                 if (distance > exitSquared) continue;
-                if (distance > entrySquared && predicted > entrySquared)
+                bool urgent = distance <= entrySquared;
+                float priority = urgent ? distance : AarisChunkStreamingPolicy.FirstApproach(
+                    current.x, current.z, stepX, stepZ,
+                    cell.center.x, cell.center.y, cell.halfExtents.x, cell.halfExtents.y, loadMargin);
+                if (float.IsPositiveInfinity(priority))
                 {
                     if (considerView && (distance < nearestView ||
                         (distance == nearestView && i < viewCell)) &&
@@ -304,17 +312,15 @@ namespace Aaris.MapReview
                     }
                     continue;
                 }
-                float priority = distance <= entrySquared
-                    ? distance : entrySquared + predicted;
-                // A bucket index has different traversal order from the old
-                // array scan. Deterministic tie-breaking preserves ownership
-                // and loading order for equal-distance neighbouring cells.
-                if (priority < nearestLoad ||
-                    (priority == nearestLoad && (loadCell < 0 || i < loadCell)))
+                // Required detail ranks by current distance. Movement-only
+                // candidates rank by the first contact along the route.
+                if (loadCell < 0 || (urgent && !loadIsUrgent) ||
+                    (urgent == loadIsUrgent && (priority < nearestLoad ||
+                    (priority == nearestLoad && i < loadCell))))
                 {
                     nearestLoad = priority;
                     loadCell = i;
-                    loadIsUrgent = distance <= entrySquared;
+                    loadIsUrgent = urgent;
                 }
             }
             // View-only work always yields to actual position or predicted movement.
@@ -368,7 +374,23 @@ namespace Aaris.MapReview
             }
         }
 
-        private bool TryGetSteadyView(float elapsed, out Vector3 position,
+        private void SampleMovement(float now)
+        {
+            if (now < nextMovementSampleAt) return;
+            nextMovementSampleAt = now + Mathf.Max(0.05f, pollSeconds);
+            // Read-only sampling continues during native IO. Keep a recent
+            // velocity instead of confusing a slow load with an app resume.
+            Vector3 position = player.position;
+            if (previousSampleValid)
+                AarisChunkStreamingPolicy.SampleVelocity(position.x, position.z,
+                    previousSample.x, previousSample.z, now - previousSampleAt,
+                    maxPredictedSpeed, teleportRejectSpeed, out sampledVelocity.x, out sampledVelocity.y);
+            previousSample = position;
+            previousSampleAt = now;
+            previousSampleValid = true;
+        }
+
+        private bool TryGetSteadyView(float now, out Vector3 position,
             out Vector2 direction, out float slope)
         {
             position = default(Vector3);
@@ -382,12 +404,14 @@ namespace Aaris.MapReview
             }
             Transform lens = view.transform;
             Vector3 forward = lens.forward;
+            float elapsed = now - previousViewAt;
             // One normal polling interval with the same camera and a steady
             // heading prevents a fast pan or a resume from warming a district.
             bool steady = view == previousViewCamera && elapsed >= 0.05f && elapsed <= 1.5f &&
                           Vector3.Dot(forward, previousViewForward) >= 0.97f;
             previousViewCamera = view;
             previousViewForward = forward;
+            previousViewAt = now;
             float planarLength = forward.x * forward.x + forward.z * forward.z;
             if (!steady || !(planarLength >= 0.36f)) return false;
             float invLength = 1f / Mathf.Sqrt(planarLength);

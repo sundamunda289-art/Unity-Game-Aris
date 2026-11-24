@@ -35,16 +35,12 @@ namespace Aaris.MapReview
                 halfX * Math.Abs(normalX) + halfZ * Math.Abs(normalZ) >= 0f;
         }
 
-        // Reject teleports/resumes rather than extrapolating hundreds of metres.
-        // This predicts *loading* only; unloading always uses actual position.
-        internal static void Predict(float x, float z, float oldX, float oldZ,
-            float elapsed, float leadSeconds, float speedCap,
-            float teleportSpeed, out float predictedX, out float predictedZ)
+        // One bounded velocity sample, reused while native scene IO is busy.
+        internal static void SampleVelocity(float x, float z, float oldX, float oldZ,
+            float elapsed, float speedCap, float teleportSpeed, out float speedX, out float speedZ)
         {
-            predictedX = x;
-            predictedZ = z;
-            if (elapsed < 0.05f || elapsed > 1.5f || leadSeconds <= 0f)
-                return;
+            speedX = speedZ = 0f;
+            if (elapsed < 0.05f || elapsed > 1.5f) return;
             float vx = (x - oldX) / elapsed;
             float vz = (z - oldZ) / elapsed;
             float speedSquared = vx * vx + vz * vz;
@@ -54,8 +50,68 @@ namespace Aaris.MapReview
             float speed = (float)Math.Sqrt(speedSquared);
             if (speed <= 1f) return;
             float ratio = Math.Min(1f, speedCap / speed);
-            predictedX += vx * ratio * leadSeconds;
-            predictedZ += vz * ratio * leadSeconds;
+            speedX = vx * ratio;
+            speedZ = vz * ratio;
+        }
+
+        // The load margin around a rectangle consists of two strips and its
+        // rounded corners. Return the first point along the movement segment
+        // that reaches it; Infinity means the segment misses the whole band.
+        internal static float FirstApproach(float x, float z, float stepX, float stepZ,
+            float centerX, float centerZ, float halfX, float halfZ, float margin)
+        {
+            float lengthSquared = stepX * stepX + stepZ * stepZ;
+            if (!(lengthSquared > 0f)) return float.PositiveInfinity;
+            float left = centerX - halfX, right = centerX + halfX;
+            float bottom = centerZ - halfZ, top = centerZ + halfZ;
+            // Reject misses cheaply against the enclosing rectangle first.
+            float first = BoxEntry(x, z, stepX, stepZ,
+                left - margin, right + margin, bottom - margin, top + margin);
+            if (float.IsPositiveInfinity(first)) return first;
+            float entryX = x + first * stepX, entryZ = z + first * stepZ;
+            if ((entryX >= left && entryX <= right) || (entryZ >= bottom && entryZ <= top))
+                return first;
+
+            float best = Math.Min(
+                BoxEntry(x, z, stepX, stepZ, left - margin, right + margin, bottom, top),
+                BoxEntry(x, z, stepX, stepZ, left, right, bottom - margin, top + margin));
+            float marginSquared = margin * margin;
+            best = Math.Min(best, CornerEntry(x - left, z - bottom, stepX, stepZ, lengthSquared, marginSquared));
+            best = Math.Min(best, CornerEntry(x - left, z - top, stepX, stepZ, lengthSquared, marginSquared));
+            best = Math.Min(best, CornerEntry(x - right, z - bottom, stepX, stepZ, lengthSquared, marginSquared));
+            return Math.Min(best, CornerEntry(x - right, z - top, stepX, stepZ, lengthSquared, marginSquared));
+        }
+
+        private static float BoxEntry(float x, float z, float stepX, float stepZ,
+            float left, float right, float bottom, float top)
+        {
+            float first = 0f, last = 1f;
+            return ClipAxis(x, stepX, left, right, ref first, ref last) &&
+                   ClipAxis(z, stepZ, bottom, top, ref first, ref last) ? first : float.PositiveInfinity;
+        }
+
+        private static bool ClipAxis(float origin, float step, float min, float max,
+            ref float first, ref float last)
+        {
+            if (step == 0f) return origin >= min && origin <= max;
+            float a = (min - origin) / step, b = (max - origin) / step;
+            first = Math.Max(first, Math.Min(a, b));
+            last = Math.Min(last, Math.Max(a, b));
+            return first <= last;
+        }
+
+        private static float CornerEntry(float x, float z, float stepX, float stepZ,
+            float lengthSquared, float marginSquared)
+        {
+            float outside = x * x + z * z - marginSquared;
+            if (outside <= 0f) return 0f;
+            float toward = -(x * stepX + z * stepZ);
+            float discriminant = toward * toward - lengthSquared * outside;
+            if (!(toward > 0f) || discriminant < 0f) return float.PositiveInfinity;
+            // Equivalent to (toward - sqrt(discriminant)) / lengthSquared,
+            // with less cancellation when starting just outside the corner.
+            float first = outside / (toward + (float)Math.Sqrt(discriminant));
+            return first <= 1f ? first : float.PositiveInfinity;
         }
     }
 

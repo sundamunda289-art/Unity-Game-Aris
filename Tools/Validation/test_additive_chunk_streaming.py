@@ -10,8 +10,8 @@ for token in ('LoadSceneAsync(path, LoadSceneMode.Additive)',
               'UnloadSceneAsync(path)', 'SceneUtility.GetBuildIndexByScenePath',
               'TryClaimOptionalModelBuild()', 'ReserveNativeTeardownFrame()',
               'states[i].externallyOwned', 'inFlight != null',
-              'AarisChunkStreamingPolicy.Predict',
-              'distance > exitSquared', 'predicted > entrySquared'):
+              'AarisChunkStreamingPolicy.SampleVelocity', 'AarisChunkStreamingPolicy.FirstApproach',
+              'distance > exitSquared', 'float.IsPositiveInfinity(priority)'):
     assert token in streamer, token
 for disallowed in ('Resources.UnloadUnusedAssets(', 'WaitForCompletion(',
                    'TerrainData.treeInstances', 'QualitySettings.',
@@ -30,13 +30,16 @@ assert 'if (sharedSceneCompletionFrame == Time.frameCount) return;' in streamer
 assert 'sharedSceneOperation = operation;' in streamer
 assert 'ReferenceEquals(sharedSceneOperation, inFlight)' in streamer
 assert streamer.index('if (sharedSceneOperation != null)') < streamer.index('if (now < nextPollAt) return;')
+assert streamer.index('SampleMovement(now);') < streamer.index('if (inFlight != null)')
+assert 'nextPollAt = nextTransitionAt;' in streamer
 assert 'RuntimeInitializeOnLoadMethod' not in streamer  # no auto-bootstrap
 assert 'maxSpeculativeResidentCells = 2;' in streamer
 assert 'speculativeResidentCount >= maxSpeculativeResidentCells' in streamer
 assert 'bool loadIsUrgent = false;' in streamer
-assert 'loadIsUrgent = distance <= entrySquared;' in streamer
+assert 'bool urgent = distance <= entrySquared;' in streamer
+assert 'loadIsUrgent = urgent;' in streamer
 assert 'if (unloadCell >= 0 && (loadCell < 0 || !loadIsUrgent))' in streamer
-assert 'if (!loadIsUrgent &&' in streamer  # even predicted-inside priority ties
+assert 'if (!loadIsUrgent &&' in streamer  # projection cannot bypass the optional budget
 assert 'nearestLoad > entrySquared' not in streamer
 assert 'AarisMobileStreamingFrameGate.IsConstrainedDevice()' in streamer
 assert 'AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();' in streamer
