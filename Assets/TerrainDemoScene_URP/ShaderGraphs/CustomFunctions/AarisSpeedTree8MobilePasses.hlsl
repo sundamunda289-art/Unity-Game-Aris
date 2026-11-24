@@ -254,8 +254,11 @@ SpeedTreeVertexOutput SpeedTree8Vert(SpeedTreeVertexInput input)
     // Reuse the blue color interpolator (reserved for root AO on bark).
     // SpeedTree leaf anchors are stable while the already-authored wind moves.
     #if defined(EFFECT_SUBSURFACE) && !defined(EFFECT_BILLBOARD)
-        float2 leafAnchorXZ = input.texcoord1.zw +
-            float2(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[2].w);
+        // SpeedTree packs anchor XYZ across texcoord1.zw and texcoord2.w.
+        // Transform the full anchor so rotated/scaled instances do not color
+        // leaves from the wrong local axis (formerly local Y was used as Z).
+        float3 leafAnchorOS = float3(input.texcoord1.z, input.texcoord1.w, input.texcoord2.w);
+        float2 leafAnchorXZ = TransformObjectToWorld(leafAnchorOS).xz;
         float leafSeed = frac(dot(leafAnchorXZ, float2(0.1031, 0.11369)));
         output.color.b = (half)frac(leafSeed * (leafSeed + 17.17));
     #endif
