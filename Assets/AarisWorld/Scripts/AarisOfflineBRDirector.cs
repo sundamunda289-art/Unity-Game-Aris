@@ -960,6 +960,15 @@ namespace Aaris.MapReview
             return false;
         }
 
+        // Real PhysX rays cannot see static cover disabled by the Android
+        // collider streamer. Query the existing indexed geometry only when
+        // a physical target is otherwise clear; no extra Raycast or allocation.
+        internal bool HasInactiveRivalShotCover(Ray ray, float distance)
+        {
+            return nearbyColliders != null && distance > 0f &&
+                nearbyColliders.TryGetInactiveCoverHit(ray, distance, out _);
+        }
+
         internal bool IsVirtualShotBlocked(Vector3 from, Vector3 to)
         {
             if (nearbyColliders == null) return false;
@@ -3369,7 +3378,9 @@ namespace Aaris.MapReview
                         firstCollider.transform.IsChildOf(transform))
                         return false;
                     shotHit = nearestHit;
-                    return firstCollider.transform.IsChildOf(victim);
+                    return firstCollider.transform.IsChildOf(victim) &&
+                        (owner == null ||
+                         !owner.HasInactiveRivalShotCover(ray, nearestHit.distance));
                 }
             }
             float first = distance + 1f;
@@ -3386,7 +3397,9 @@ namespace Aaris.MapReview
                     shotHit = hit;
                 }
             }
-            return closest != null && closest.transform.IsChildOf(victim);
+            return closest != null && closest.transform.IsChildOf(victim) &&
+                (owner == null ||
+                 !owner.HasInactiveRivalShotCover(ray, shotHit.distance));
         }
 
         // The LOS origin may lie beyond a thin nearby wall. A scheduled shot
@@ -3420,7 +3433,9 @@ namespace Aaris.MapReview
                      !hit.transform.IsChildOf(intendedVictim)))
                     return false;
             }
-            return true;
+            // The first 48cm can contain streamed-out thin cover that a
+            // long ray starting at the muzzle never intersects.
+            return owner == null || !owner.HasInactiveRivalShotCover(ray, .48f);
         }
 
         private void OnDamaged(AarisOfflineHealth victim, float loss, GameObject attacker)
