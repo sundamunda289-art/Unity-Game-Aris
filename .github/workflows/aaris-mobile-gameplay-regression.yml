@@ -233,7 +233,7 @@ jobs:
           PY
 
   ai-virtualization-native-compile:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feature/ai-near-offscreen-render-cull-20261124'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && (github.head_ref == 'feature/ai-near-offscreen-render-cull-20261124' || github.head_ref == 'feature/ai-offscreen-gunfire-vfx-20261124')
     runs-on: ubuntu-24.04
     timeout-minutes: 14
     steps:
