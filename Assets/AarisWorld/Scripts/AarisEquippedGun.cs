@@ -1015,6 +1015,10 @@ namespace Aaris.MapReview
 
         public bool BeginReload()
         {
+            // Public entry points must reject stale calls for back-stowed,
+            // disabled or paused weapons. RefreshReload can still resolve an
+            // already-started reload when a stored weapon is drawn again.
+            if (!isActiveAndEnabled || Time.timeScale <= 0f) return false;
             RefreshReload();
             if (spec == null || reloading || magazine >= spec.magazineSize || reserve == 0)
                 return false;
@@ -1051,6 +1055,8 @@ namespace Aaris.MapReview
 
         public bool TryFire(Camera camera, GameObject owner)
         {
+            // Reject before touching ammo, cooldown, VFX or physical damage.
+            if (!isActiveAndEnabled || Time.timeScale <= 0f) return false;
             RefreshReload();
             if (spec == null || camera == null || owner == null || reloading ||
                 Time.time < nextFire) return false;
