@@ -111,8 +111,31 @@ namespace Aaris.MapReview
             }
         }
 
+        // One global vertex-only grass interactor; reuse current world-space player/vehicle.
+        private static readonly int GrassInteractorId = Shader.PropertyToID("_AarisGrassInteractor");
+        private Vector4 lastGrassInteractor;
+
+        private void PublishGrassInteractor()
+        {
+            Vector4 next = Vector4.zero;
+            if (car != null && car.isActiveAndEnabled)
+            {
+                Vector3 p = car.transform.position;
+                next = new Vector4(p.x, p.y, p.z, 2.6f);
+            }
+            else if (footMotor != null && footMotor.isActiveAndEnabled)
+            {
+                Vector3 p = footMotor.transform.position;
+                next = new Vector4(p.x, p.y, p.z, 1.25f);
+            }
+            if (next.Equals(lastGrassInteractor)) return;
+            Shader.SetGlobalVector(GrassInteractorId, next);
+            lastGrassInteractor = next;
+        }
+
         private void LateUpdate()
         {
+            PublishGrassInteractor();
             // Update reads inputs; LateUpdate tracks Rigidbody interpolation.
             // Following the car in Update caused visible camera jitter.
             if (car != null && followCamera != null) FollowCarCamera();
@@ -656,6 +679,11 @@ namespace Aaris.MapReview
             if (!focused) CancelDrivingInput();
         }
 
-        private void OnDisable() => CancelDrivingInput();
+        private void OnDisable()
+        {
+            Shader.SetGlobalVector(GrassInteractorId, Vector4.zero);
+            lastGrassInteractor = Vector4.zero;
+            CancelDrivingInput();
+        }
     }
 }
