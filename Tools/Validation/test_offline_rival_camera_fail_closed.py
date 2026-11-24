@@ -20,39 +20,37 @@ def permitted_distant_mesh(distance, on_camera, full_rig=False):
 
 
 def virtual_physics(distance, on_camera, has_visible_body):
-    return distance >= 185 and not (on_camera and has_visible_body and distance < 485)
+    return distance >= 155 and not (on_camera and has_visible_body and distance < 485)
 
 
 class RemoteCameraFailClosed(unittest.TestCase):
     def test_camera_missing_or_disabled_is_not_visible(self):
-        method = DIRECTOR.split("internal bool IsDistantRivalOnScreen(", 1)[1].split(
-            "internal bool TryVirtualGround(", 1)[0]
-        expected = ("if (cachedRivalCamera == null || "
-                    "!cachedRivalCamera.isActiveAndEnabled) return false;")
-        self.assertIn(expected, method)
-        self.assertNotIn("!cachedRivalCamera.isActiveAndEnabled) return true;", method)
-        self.assertIn("Time.unscaledTime + 0.5f", method)
-        self.assertIn("if (Time.unscaledTime >= nextRivalCameraLookup)", method)
-        self.assertIn("Camera liveMain = Camera.main;", method)
-        self.assertIn("cachedRivalCamera = liveMain;", method)
-        self.assertIn("cachedRivalCamera.WorldToViewportPoint(", method)
+        resolve = DIRECTOR.split("private Camera RivalCameraForFrame()", 1)[1].split(
+            "internal bool IsDistantRivalOnScreen(", 1)[0]
+        probe = DIRECTOR.split("internal bool IsDistantRivalOnScreen(", 1)[1].split(
+            "private bool RivalIntersectsFrustum(", 1)[0]
+        self.assertIn("cachedRivalCamera.isActiveAndEnabled ? cachedRivalCamera : null", resolve)
+        self.assertIn("if (ReferenceEquals(camera, null)) return false;", probe)
+        self.assertIn("rivalCameraFrame == frame", resolve)
+        self.assertIn("rivalFrustumFrame != rivalCameraFrame", probe)
+        self.assertIn("GeometryUtility.CalculateFrustumPlanes(camera, rivalFrustum);", probe)
 
     def test_camera_swap_with_old_camera_still_enabled(self):
-        method = DIRECTOR.split("internal bool IsDistantRivalOnScreen(", 1)[1].split(
-            "internal bool TryVirtualGround(", 1)[0]
+        method = DIRECTOR.split("private Camera RivalCameraForFrame()", 1)[1].split(
+            "internal bool IsDistantRivalOnScreen(", 1)[0]
+        self.assertIn("cachedRivalCamera = playerMotor.AimCamera;", method)
         self.assertIn("if (liveMain != null && liveMain.isActiveAndEnabled)", method)
         self.assertIn("cachedRivalCamera = liveMain;", method)
         self.assertEqual(method.count("Camera.main"), 1)
         self.assertLess(method.index("if (Time.unscaledTime >= nextRivalCameraLookup)"),
                         method.index("Camera liveMain = Camera.main;"))
-        self.assertIn("!cachedRivalCamera.isActiveAndEnabled) return false;", method)
+        self.assertIn("Time.unscaledTime + 0.5f", method)
 
     def test_far_clipped_rivals_do_not_materialize_hidden_render_or_physics(self):
-        method = DIRECTOR.split("internal bool IsDistantRivalOnScreen(", 1)[1].split(
-            "internal bool TryVirtualGround(", 1)[0]
-        self.assertIn("v.z <= cachedRivalCamera.farClipPlane + 2f", method)
-        self.assertIn("v.x >= -0.07f && v.x <= 1.07f", method)
-        self.assertIn("v.y >= -0.1f && v.y <= 1.1f", method)
+        method = DIRECTOR.split("private bool RivalIntersectsFrustum(", 1)[1].split(
+            "private void WakeRivalsOnCameraChange(", 1)[0]
+        self.assertIn("i == 5 ? 2f : 1.2f", method)
+        self.assertIn("Vector3.Dot(plane.normal, center) + plane.distance < -margin", method)
         # Camera projection's x/y can look valid outside the far clipping
         # plane, but rendering and native receiver admission must not be.
         def admitted(depth, far_clip):
@@ -67,7 +65,7 @@ class RemoteCameraFailClosed(unittest.TestCase):
             "private CharacterController EnsurePhysicalReceiver(", 1)[0]
         update = RIVAL.split("private void Update()", 1)[1].split(
             "private void TickVirtualCombat(", 1)[0]
-        self.assertIn("if (spawnDistanceSqr >= 185f * 185f ||", init)
+        self.assertIn("if (spawnDistanceSqr >= DetailedDistance * DetailedDistance ||", init)
         self.assertIn("!spawnCameraRelevant))", init)
         self.assertIn("virtualBody = true;", init)
         self.assertIn("if (capsule != null) capsule.enabled = false;", init)
@@ -82,7 +80,7 @@ class RemoteCameraFailClosed(unittest.TestCase):
         full_rigs = sum(permitted_full_rig(d, False) for d in distances)
         distant_meshes = sum(permitted_distant_mesh(d, False) for d in distances)
         remote_receivers = sum(not virtual_physics(d, False, False)
-                               for d in distances if d >= 185)
+                               for d in distances if d >= 155)
         self.assertEqual((full_rigs, distant_meshes, remote_receivers), (2, 0, 0))
 
     def test_camera_recovers_remote_rendering_without_combat_restart(self):

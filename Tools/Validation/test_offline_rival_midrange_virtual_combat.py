@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""90-185 m unseen virtualization / non-physical combat safety contract.
+"""90-155 m unseen virtualization / non-physical combat safety contract.
 Source + deterministic policy model; not a native or Android profiler test.
 """
 from pathlib import Path
@@ -15,13 +15,13 @@ VIRTUAL = RIVAL.split("private void TickVirtualCombat(", 1)[1].split(
 
 
 def virtual(distance, on_camera):
-    return distance >= 185 or (distance >= 90 and not on_camera)
+    return distance >= 155 or (distance >= 90 and not on_camera)
 
 
 def abstract_damage_allowed(shooter_distance, victim_distance,
-                            victim_virtual, victim_camera, victim_rendered):
+                            victim_virtual, blocked_by_cover):
     return (shooter_distance >= 90 and victim_distance >= 90 and
-            victim_virtual and not victim_camera and not victim_rendered)
+            victim_virtual and not blocked_by_cover)
 
 
 class MidrangeVirtualCombat(unittest.TestCase):
@@ -35,29 +35,31 @@ class MidrangeVirtualCombat(unittest.TestCase):
         self.assertEqual(sum(d < 485 and False for d in remote), 0)
         self.assertEqual(sum(virtual(d, False) for d in near), 0)
 
-    def test_90_185_offscreen_transition_preserves_visible_hit_receivers(self):
+    def test_90_155_offscreen_transition_preserves_visible_hit_receivers(self):
         self.assertFalse(virtual(89.9, False))
         self.assertTrue(virtual(90., False))
         self.assertTrue(virtual(150., False))
         self.assertFalse(virtual(150., True))
+        self.assertTrue(virtual(155., True))
         self.assertTrue(virtual(300., True))
         self.assertIn("bool shouldVirtualize =", UPDATE)
         self.assertIn("bool shouldRestorePhysics =", UPDATE)
         self.assertIn("if (!simulationDue) return;", UPDATE)
         self.assertIn("bool needsPhysicalReceiver = !virtualBody ||", UPDATE)
 
-    def test_abstract_damage_only_between_hidden_distant_fighters(self):
-        self.assertTrue(abstract_damage_allowed(130, 140, True, False, False))
-        for args in ((60, 140, True, False, False),
-                     (130, 70, True, False, False),
-                     (130, 140, False, False, False),
-                     (130, 140, True, True, False),
-                     (130, 140, True, False, True)):
+    def test_abstract_damage_respects_physical_mode_and_cover_independently_of_camera(self):
+        self.assertTrue(abstract_damage_allowed(130, 140, True, False))
+        self.assertTrue(abstract_damage_allowed(300, 320, True, False))
+        for args in ((60, 140, True, False),
+                     (130, 70, True, False),
+                     (130, 140, False, False),
+                     (300, 320, True, True)):
             self.assertFalse(abstract_damage_allowed(*args))
         self.assertIn("target.TryGetComponent<AarisOfflineRival>", VIRTUAL)
-        self.assertIn("!hiddenTarget.virtualBody", VIRTUAL)
-        self.assertIn("hiddenTarget.lastCameraRelevant", VIRTUAL)
-        self.assertIn("hiddenTarget.HasVisibleBody", VIRTUAL)
+        self.assertIn("!cachedVirtualDamageRival.virtualBody", VIRTUAL)
+        self.assertIn("owner.IsVirtualShotBlocked(selfPosition, targetPosition)", VIRTUAL)
+        self.assertNotIn("lastCameraRelevant", VIRTUAL)
+        self.assertNotIn("HasVisibleBody", VIRTUAL)
         self.assertIn("targetHealth.ApplyDamage(damage, gameObject);", VIRTUAL)
         self.assertIn("FarSimulationDistance * FarSimulationDistance", VIRTUAL)
 

@@ -281,7 +281,7 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("float playerDistanceSqr =", BOTS)
         self.assertIn("playerDistanceSqr < 76f * 76f", BOTS)
         self.assertIn("playerDistanceSqr < 105f * 105f", BOTS)
-        self.assertIn("playerDistanceSqr < 155f * 155f", BOTS)
+        self.assertIn("playerDistanceSqr < DetailedDistance * DetailedDistance", BOTS)
         self.assertNotIn("Vector3.Distance(playerTarget.position, transform.position)", BOTS)
         # The aggression cap is independent of inter-bot hunting radius.
         self.assertIn("return bot == attackerOne || bot == attackerTwo;", BOTS)

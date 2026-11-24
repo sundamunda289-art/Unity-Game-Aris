@@ -13,9 +13,9 @@ class VisibleFarCentralSleepTests(unittest.TestCase):
         eligible = u.split("bool dormantVisibleFarVirtual =", 1)[1].split(
             "SetCentralDormancy(", 1)[0]
         for token in ("!dormantOutOfVisualRange", "lastCameraRelevant",
-                      "virtualBody", "playerDistanceSqr >= 185f * 185f",
+                      "virtualBody", "playerDistanceSqr >= DetailedDistance * DetailedDistance",
                       "visualRoot == null || !visualRoot.activeSelf",
-                      "nextDormantProximityProbe = now + 0.12f;"):
+                      "nextDormantProximityProbe = nextCameraProbe;"):
             self.assertIn(token, eligible)
         self.assertIn("dormantVisibleFarVirtual);", u)
         # Changing the update dispatcher must never remove the stationary

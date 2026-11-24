@@ -8,7 +8,7 @@ SOURCE=(Path(__file__).resolve().parents[2]/"Assets/AarisWorld/Scripts/AarisOffl
 class SpawnVirtualStart(unittest.TestCase):
     def test_first_frame_distant_capsules_are_disabled(self):
         init=SOURCE.split("internal void Initialize(AarisOfflineBRDirector",1)[1].split("private void BuildVisual()",1)[0]
-        self.assertIn("if (spawnDistanceSqr >= 185f * 185f ||",init)
+        self.assertIn("if (spawnDistanceSqr >= DetailedDistance * DetailedDistance ||",init)
         self.assertIn("!spawnCameraRelevant))",init)
         self.assertIn("virtualBody = true;",init)
         self.assertIn("capsule.enabled = false;",init)
@@ -21,7 +21,7 @@ class SpawnVirtualStart(unittest.TestCase):
         self.assertIn("if (!visualBuilt && playerDistanceSqr < 105f * 105f)",SOURCE)
     def test_near_and_far_logic_is_continuous(self):
         def state(distance,on_screen):
-            virtual = distance >= 185 or (distance >= 90 and not on_screen)
+            virtual = distance >= 155 or (distance >= 90 and not on_screen)
             initial_rig = distance < 55 or (distance < 100 and on_screen)
             return virtual,initial_rig
         self.assertEqual(state(40,False),(False,True))
@@ -29,6 +29,8 @@ class SpawnVirtualStart(unittest.TestCase):
         self.assertEqual(state(100,False),(True,False))
         self.assertEqual(state(100,True),(False,False))
         self.assertEqual(state(80,True),(False,True))
+        self.assertEqual(state(154.9,True),(False,False))
+        self.assertEqual(state(155,True),(True,False))
         self.assertEqual(state(400,False),(True,False))
         self.assertEqual(state(1000,True),(True,False))
 

@@ -19,9 +19,8 @@ class DormantFarProximityTests(unittest.TestCase):
         self.assertLess(UPDATE.index(guard), UPDATE.index("float playerDistanceSqr"))
 
     def test_no_nearby_throttle_and_no_ai_tick_suppression(self):
-        self.assertIn("private const float DormantProximityProbeInterval = 0.10f;", BOT)
         self.assertIn("playerDistanceSqr >= FarVisualDistance * FarVisualDistance;", UPDATE)
-        self.assertIn("nextDormantProximityProbe = now + DormantProximityProbeInterval;", UPDATE)
+        self.assertIn("nextDormantProximityProbe = nextCameraProbe;", UPDATE)
         self.assertIn("if (farSimulation && now < nextFarSimulation && !justEnteredCamera &&", UPDATE)
         self.assertIn("TickVirtualCombat(now, dt);", UPDATE)
         # The throttle cannot return if the next scheduled AI tick is due.
@@ -64,19 +63,18 @@ class DormantFarProximityTests(unittest.TestCase):
             self.assertIn(part, UPDATE)
         self.assertIn("if (simulationDue && carriedGun == null && now >= nextLootAt)", UPDATE)
 
-    def test_midrange_100ms_wakeup_matches_350ms_combat_ticks(self):
+    def test_one_midrange_probe_matches_350ms_combat_ticks(self):
         for fps in (30, 60, 120):
-            next_ai = next_cam = next_probe = baseline_due = 0.
+            next_ai = next_cam = baseline_due = 0.
             ai = baseline = expensive = 0
             for frame in range(1, fps * 8 + 1):
                 now = frame / fps
                 if now >= baseline_due:
                     baseline += 1
                     baseline_due = now + .35
-                if now < next_ai and now < next_probe and now < next_cam:
+                if now < next_ai and now < next_cam:
                     continue
                 expensive += 1
-                next_probe = now + .1
                 if now >= next_cam:
                     next_cam = now + .12
                 if now >= next_ai:
@@ -84,8 +82,8 @@ class DormantFarProximityTests(unittest.TestCase):
                     next_ai = now + .35
             self.assertEqual(ai, baseline)
             self.assertLess(expensive, fps * 8 * .5)
-            # A teleport into a physical range wakes within 100ms + one frame.
-            self.assertLessEqual(.1 + 1/fps, .135)
+            # The shared deadline avoids a second proximity-only wake.
+            self.assertLessEqual(expensive, 8 * (1 / .12 + 1 / .35))
 
     def test_teleport_into_visual_band_wakes_within_100ms(self):
         for fps in (30, 60, 120):

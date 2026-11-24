@@ -22,7 +22,7 @@ class CentralDormantSchedulerTests(unittest.TestCase):
         self.assertIn("Mathf.Min(nextFarSimulation, nextDormantProximityProbe)", BOT)
         self.assertIn("Mathf.Min(nextDormantProximityProbe, nextCameraProbe)", BOT)
         self.assertIn("private const float FarSimulationInterval = 0.35f;", BOT)
-        self.assertIn("private const float DormantProximityProbeInterval = 0.10f;", BOT)
+        self.assertIn("nextDormantProximityProbe = nextCameraProbe;", BOT)
 
     def test_100_far_bot_combat_ticks_identical_to_old_per_frame_driver(self):
         for fps in (30, 60, 120):

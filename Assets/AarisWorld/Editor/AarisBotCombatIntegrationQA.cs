@@ -6,6 +6,7 @@ using System.Text;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Playables;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
 
@@ -100,6 +101,7 @@ namespace Aaris.MapReview.Editor
                 VerifyBots(report, active);
                 VerifyVirtualCombat(report);
                 VerifyVirtualTerrainSeam(report);
+                VerifyRivalCameraWake(report);
                 VerifyNearRivalRendererCulling(report);
                 VerifyBotLootCover(report);
             }
@@ -127,6 +129,85 @@ namespace Aaris.MapReview.Editor
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);
         }
 
+        private static void VerifyRivalCameraWake(StringBuilder report)
+        {
+            var root = new GameObject("Temporary rival camera wake QA");
+            try
+            {
+                root.transform.position = Origin;
+                var playerHP = Health(root);
+                var end = root.AddComponent<AarisOfflineMatchEnd>();
+                var director = root.AddComponent<AarisOfflineBRDirector>();
+                Set(director, "player", root.transform);
+                Set(director, "playerHealth", playerHP);
+                Set(director, "matchEnd", end);
+                Set(director, "started", true);
+                Set(director, "activeRivals", 1);
+
+                var cameraNode = new GameObject("Gameplay camera");
+                cameraNode.transform.SetParent(root.transform, false);
+                cameraNode.transform.localPosition = Vector3.up * 0.95f;
+                var camera = cameraNode.AddComponent<Camera>();
+                camera.aspect = 1f;
+                camera.fieldOfView = 50f;
+                camera.farClipPlane = 350f;
+                Set(director, "cachedRivalCamera", camera);
+                Set(director, "nextRivalCameraLookup", float.MaxValue);
+                Check((bool)Call(director, "IsDistantRivalOnScreen",
+                          Origin + new Vector3(140f, 0f, 300f)) &&
+                      !(bool)Call(director, "IsDistantRivalOnScreen",
+                          Origin + new Vector3(145f, 0f, 300f)) &&
+                      (bool)Call(director, "IsDistantRivalOnScreen",
+                          Origin + Vector3.forward * 351.5f) &&
+                      !(bool)Call(director, "IsDistantRivalOnScreen",
+                          Origin + Vector3.forward * 354f),
+                    "Shared camera frustum keeps silhouette margin and rejects offscreen and far-clipped bodies",
+                    report);
+
+                var actor = new GameObject("Sleeping scoped rival");
+                actor.transform.SetParent(root.transform, false);
+                actor.transform.localPosition = new Vector3(70f, 0f, 300f);
+                var health = Health(actor);
+                var bot = actor.AddComponent(BotType);
+                Call(bot, "Initialize", director, health, root.transform, playerHP, 0);
+                var roster = (Array)Get(director, "rivals");
+                roster.SetValue(bot, 0);
+                Call(director, "TrackRivalPosition", 0, bot, actor.transform.position);
+                float now = Time.time;
+                float combatDue = now + 10f;
+                Set(bot, "nextFarSimulation", combatDue);
+                Set(bot, "nextCameraProbe", combatDue);
+                Set(bot, "nextDormantProximityProbe", combatDue);
+                Set(bot, "staggeredVisualDelay", combatDue);
+                Set(bot, "dormantOffscreenVirtual", true);
+                Call(bot, "SetCentralDormancy", true);
+                camera.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+                Call(director, "WakeRivalsOnCameraChange", Origin, now);
+                director.TickDormantRivals(now);
+                Check(Get(bot, "farVisualRoot") == null &&
+                      actor.GetComponent<CharacterController>() == null,
+                    "A sleeping off-camera rival keeps no mesh or native hit receiver", report);
+
+                camera.transform.localRotation = Quaternion.identity;
+                Call(director, "WakeRivalsOnCameraChange", Origin, now);
+                director.TickDormantRivals(now);
+                var mesh = (GameObject)Get(bot, "farVisualRoot");
+                var body = actor.GetComponent<CharacterController>();
+                Check(mesh != null && mesh.activeSelf && body != null && body.enabled &&
+                      !((Behaviour)bot).enabled && (bool)Get(bot, "virtualBody") &&
+                      (float)Get(bot, "nextFarSimulation") == combatDue,
+                    "Camera cut restores distant LOD and hit receiver without an early combat tick", report);
+
+                camera.fieldOfView = 16f;
+                Call(director, "WakeRivalsOnCameraChange", Origin, now);
+                director.TickDormantRivals(now);
+                Check(!mesh.activeSelf && !body.enabled &&
+                      (float)Get(bot, "nextFarSimulation") == combatDue,
+                    "Scope projection change culls the rival before its next scheduled tick", report);
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
         // A 20m enemy behind the camera must still be targetable and keep
         // its physical AI alive, but submit no mesh or shadow draw. Verify
         // the actual Renderer.forceRenderingOff state and authored overrides.
@@ -147,23 +228,31 @@ namespace Aaris.MapReview.Editor
                 authoredHidden.transform.SetParent(rig.transform, false);
                 var hiddenRenderer = authoredHidden.AddComponent<MeshRenderer>();
                 hiddenRenderer.forceRenderingOff = true;
+                var animator = rig.AddComponent<Animator>();
 
                 Set(bot, "visualRoot", rig);
+                Set(bot, "detailedAnimator", animator);
+                Set(bot, "authoredAnimatorEnabled", true);
                 Call(bot, "CacheDetailedRenderers");
                 Call(bot, "SetDetailedRenderVisibility", false);
-                Check(normalRenderer.forceRenderingOff && hiddenRenderer.forceRenderingOff,
-                    "near off-camera rival submits zero detailed renderers", report);
+                Check(normalRenderer.forceRenderingOff && hiddenRenderer.forceRenderingOff &&
+                      !animator.enabled,
+                    "near off-camera rival suppresses detailed renderers and fallback Animator", report);
                 var body = BotType.GetProperty("HasVisibleBody",
                     BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                 Check(body != null && (bool)body.GetValue(bot) && ((Behaviour)bot).enabled,
                     "near hidden rival remains a live targetable actor", report);
+                var graph = PlayableGraph.Create("QA restarted hidden graph");
+                graph.Play();
+                Set(bot, "graph", graph);
+                Set(bot, "hasAnimations", true);
                 Call(bot, "SetDetailedRenderVisibility", false);
-                Check(normalRenderer.forceRenderingOff,
-                    "repeat camera probe does not reactivate hidden rendering", report);
+                Check(normalRenderer.forceRenderingOff && !graph.IsPlaying(),
+                    "repeated hidden probe stops a restarted PlayableGraph", report);
 
                 Call(bot, "SetDetailedRenderVisibility", true);
                 Check(!normalRenderer.forceRenderingOff &&
-                    hiddenRenderer.forceRenderingOff,
+                    hiddenRenderer.forceRenderingOff && animator.enabled && graph.IsPlaying(),
                     "camera reentry restores original renderer flags", report);
             }
             finally
@@ -258,6 +347,48 @@ namespace Aaris.MapReview.Editor
                 Set(bravoBot, "virtualBody", true);
                 alphaBody.enabled = false;
                 bravoBody.enabled = false;
+
+                // Populate the real streamed-cover grid without running its
+                // startup coroutine in this synchronous Edit Mode fixture.
+                var wall = new GameObject("Virtual shot cover");
+                wall.transform.SetParent(root.transform, false);
+                wall.transform.position = alpha.transform.position + new Vector3(0f, 1f, .8f);
+                wall.transform.rotation = Quaternion.Euler(0f, 22f, 0f);
+                var box = wall.AddComponent<BoxCollider>();
+                box.size = new Vector3(3f, 3f, .15f);
+                var cover = directorGo.AddComponent<AarisNearbyColliders>();
+                Set(cover, "obstacles", new Collider[] { box });
+                Set(cover, "worldBounds", new Bounds[1]);
+                Set(cover, "localBoxBounds", new Bounds[1]);
+                Set(cover, "worldToBox", new Matrix4x4[1]);
+                Set(cover, "streamed", new bool[1]);
+                Set(cover, "disabledByStreaming", new bool[1]);
+                Set(cover, "probeVisited", new int[1]);
+                Call(cover, "IndexCollider", 0);
+                Set(cover, "indexReady", true);
+                Set(director, "nearbyColliders", cover);
+                Call(alphaBot, "TickVirtualCombat", 15f, 0.35f);
+                Check(bravoHP.CurrentHealth == 200f && box.enabled &&
+                      (float)Get(alphaBot, "virtualCoverUntil") > 15f,
+                    "Active authored wall blocks remote damage and prompts flanking", report);
+                box.enabled = false;
+                ((bool[])Get(cover, "disabledByStreaming"))[0] = true;
+                Call(alphaBot, "TickVirtualCombat", 17f, 0.35f);
+                Check(bravoHP.CurrentHealth == 200f && !box.enabled &&
+                      (float)Get(alphaBot, "virtualCoverUntil") > 17f,
+                    "Streamed-out authored wall blocks remote damage without native physics", report);
+                wall.SetActive(false);
+                Set(bravoBot, "virtualBody", false);
+                for (int i = 0; i < 8; i++)
+                    Call(alphaBot, "TickVirtualCombat", 20f + i * 1.5f, 0.35f);
+                Check(bravoHP.CurrentHealth == 200f,
+                    "Remote math cannot damage a full-physics rival", report);
+
+                Set(bravoBot, "virtualBody", true);
+                Set(bravoBot, "lastCameraRelevant", true);
+                var lod = new GameObject("On-camera distant LOD");
+                lod.transform.SetParent(bravo.transform, false);
+                Set(bravoBot, "farVisualRoot", lod);
                 int remoteDeaths = 0;
                 GameObject lastAttacker = null;
                 bravoHP.Died += _ => remoteDeaths++;
@@ -266,11 +397,11 @@ namespace Aaris.MapReview.Editor
                     if (loss > 0f) lastAttacker = attacker;
                 };
                 for (int i = 0; i < 110 && !bravoHP.IsDead; i++)
-                    Call(alphaBot, "TickVirtualCombat", 20f + i * 1.5f, 0.35f);
+                    Call(alphaBot, "TickVirtualCombat", 40f + i * 1.5f, 0.35f);
                 Check(bravoHP.IsDead && remoteDeaths == 1,
                     "Remote virtual combat eliminates actual rival exactly once", report);
                 Check(lastAttacker == alpha,
-                    "Remote damage retains actual rival attacker identity", report);
+                    "On-camera distant LOD can be defeated and retains actual rival attacker identity", report);
                 Check(!alphaBody.enabled && !bravoBody.enabled,
                     "Both remote combatants fought without physical capsules", report);
                 Check(playerHP.CurrentHealth == 200f,

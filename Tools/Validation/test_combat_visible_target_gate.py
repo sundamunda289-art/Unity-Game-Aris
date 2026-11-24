@@ -16,9 +16,9 @@ class StreamedRivalTargetGates(unittest.TestCase):
         self.assertNotIn("public bool IsAlive => health != null && !health.IsDead &&", SOURCE)
 
     def test_4x_targets_use_pooled_distant_3d_lod_not_more_skeletons(self):
-        self.assertIn("private const float FarVisualDistance = 485f;", SOURCE)
+        self.assertIn("internal const float FarVisualDistance = 485f;", SOURCE)
         self.assertIn("if (!visualBuilt && playerDistanceSqr < 105f * 105f)", SOURCE)
-        self.assertIn("bool visible = playerDistanceSqr < 155f * 155f &&", SOURCE)
+        self.assertIn("bool visible = withinDetailedDistance &&", SOURCE)
         self.assertIn("(playerDistanceSqr < 55f * 55f || cameraRelevant);", SOURCE)
         self.assertIn("playerDistanceSqr < FarVisualDistance * FarVisualDistance", SOURCE)
         self.assertIn("(visualRoot == null || !visualRoot.activeSelf)", SOURCE)

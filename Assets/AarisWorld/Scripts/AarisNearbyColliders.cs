@@ -635,14 +635,23 @@ namespace Aaris.MapReview
         // same static grid to find disabled cover without waking colliders.
         // Boxes keep their exact oriented shape. Mesh bounds conservatively
         // occlude a shot until the real mesh is active.
-        internal bool TryGetInactiveCoverHit(Ray ray, float distance, out float closest)
+        internal bool TryGetInactiveCoverHit(Ray ray, float distance, out float closest) =>
+            TryGetStreamedCoverHit(ray, distance, includeActive: false, out closest);
+
+        // Virtual fighters use the same static cover whether PhysX currently
+        // has it loaded or not. Query cached geometry without waking colliders.
+        internal bool HasStreamedShotCover(Ray ray, float distance) =>
+            TryGetStreamedCoverHit(ray, distance, includeActive: true, out _);
+
+        private bool TryGetStreamedCoverHit(Ray ray, float distance,
+            bool includeActive, out float closest)
         {
             closest = distance;
             if (!indexReady || !isActiveAndEnabled || distance <= 0f) return false;
             Vector3 start = ray.origin, end = ray.GetPoint(distance);
             if (!Finite(start) || !Finite(end)) return false;
             float activeRadius = Mathf.Max(0f, activationDistance);
-            if (query > 0 &&
+            if (!includeActive && query > 0 &&
                 new Vector2(start.x - lastPosition.x, start.z - lastPosition.z).sqrMagnitude <
                     activeRadius * activeRadius &&
                 new Vector2(end.x - lastPosition.x, end.z - lastPosition.z).sqrMagnitude <
@@ -657,7 +666,7 @@ namespace Aaris.MapReview
                 width * depth > MaxCellsPerProbe)
             {
                 for (int i = 0; i < obstacles.Length; i++)
-                    ProbeInactiveCover(i, ray, ref closest);
+                    ProbeStreamedCover(i, ray, includeActive, ref closest);
                 return closest < distance;
             }
 
@@ -675,25 +684,29 @@ namespace Aaris.MapReview
                     {
                         if (probeVisited[i] == stamp) continue;
                         probeVisited[i] = stamp;
-                        ProbeInactiveCover(i, ray, ref closest);
+                        ProbeStreamedCover(i, ray, includeActive, ref closest);
                     }
                 }
             foreach (int i in oversizedIndices)
-                ProbeInactiveCover(i, ray, ref closest);
+                ProbeStreamedCover(i, ray, includeActive, ref closest);
             return closest < distance;
         }
 
-        private void ProbeInactiveCover(int index, Ray ray, ref float closest)
+        private void ProbeStreamedCover(int index, Ray ray, bool includeActive,
+            ref float closest)
         {
-            if (!disabledByStreaming[index]) return;
+            bool streamedOut = disabledByStreaming[index];
+            if (includeActive ? !streamed[index] : !streamedOut) return;
             Bounds bounds = worldBounds[index];
             float distance = 0f;
             if (!bounds.Contains(ray.origin) &&
                 !bounds.IntersectRay(ray, out distance)) return;
             if (distance >= closest) return;
             Collider candidate = obstacles[index];
-            if (candidate == null || candidate.enabled || candidate.isTrigger ||
+            if (candidate == null || candidate.isTrigger ||
                 !candidate.gameObject.activeInHierarchy) return;
+            bool enabled = candidate.enabled;
+            if (includeActive ? !enabled && !streamedOut : enabled) return;
 
             if (candidate is BoxCollider)
             {

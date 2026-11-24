@@ -15,15 +15,16 @@ class RemoteBotBudget(unittest.TestCase):
             "TickVirtualCombat(now, dt);",
             "targetHealth.ApplyDamage(damage, gameObject);",
             "return bot == attackerOne || bot == attackerTwo;",
-            "if (!hiddenTarget.virtualBody || hiddenTarget.lastCameraRelevant ||",
+            "if (!cachedVirtualDamageRival.virtualBody)",
+            "owner.IsVirtualShotBlocked(selfPosition, targetPosition)",
         ):
             self.assertIn(token, DIR)
 
     def test_3_zone_representation_is_independent_of_fights(self):
         for token in (
             "private const float FarSimulationDistance = 90f;",
-            "playerDistanceSqr < 155f * 155f",
-            "private const float FarVisualDistance = 485f;",
+            "private const float DetailedDistance = 155f;",
+            "internal const float FarVisualDistance = 485f;",
             "lastCameraRelevant && virtualBody",
             "visualRoot.SetActive(false);",
             "farVisualRoot.SetActive(false);",
