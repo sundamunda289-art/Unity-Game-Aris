@@ -285,9 +285,7 @@ namespace Aaris.MapReview
                     else if (distance <= exitSquared)
                     {
                         bool keepWarm = distance <= cameraRetirementMargin * cameraRetirementMargin ||
-                            !steadyView || AarisChunkStreamingPolicy.IntersectsViewCone(
-                                viewPosition.x, viewPosition.z, viewDirection.x, viewDirection.y,
-                                viewSlope, cell.center.x, cell.center.y, cell.halfExtents.x, cell.halfExtents.y);
+                            !steadyView || CameraWarmMayBeVisible(cell, viewPosition, viewDirection, viewSlope);
                         if (keepWarm) cameraWarmKeepUntil = now + CameraWarmHoldSeconds;
                         else cameraWarmCanYield = now >= cameraWarmKeepUntil;
                     }
@@ -409,6 +407,22 @@ namespace Aaris.MapReview
 #endif
             }
         }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private bool CameraWarmMayBeVisible(Chunk cell, Vector3 position, Vector2 direction, float slope)
+        {
+            // Enclose the perspective frustum's horizontal projection even
+            // when the camera tilts. A steep view can project behind the
+            // planar forward axis; keep its candidate rather than guessing.
+            float vertical = slope / previousViewCamera.aspect;
+            float radius = Mathf.Sqrt(slope * slope + vertical * vertical);
+            float rise = Math.Abs(previousViewForward.y);
+            float forward = Mathf.Sqrt(1f - rise * rise) - rise * radius;
+            return !(forward > 0f) || AarisChunkStreamingPolicy.IntersectsViewCone(
+                position.x, position.z, direction.x, direction.y, radius / forward,
+                cell.center.x, cell.center.y, cell.halfExtents.x, cell.halfExtents.y);
+        }
+#endif
 
         private void SampleMovement(float now)
         {

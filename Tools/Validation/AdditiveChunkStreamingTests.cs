@@ -344,6 +344,15 @@ internal static class AdditiveChunkStreamingTests
         Frame(manager, target, 3.9f, -32f);
         Check(SceneManager.loadCount == 2 && SceneManager.pendingPath == westPath,
             "the new route warms when the released slot becomes available");
+        Set(manager, "previousViewForward", new Vector3 { x = .7141428f, y = .7f });
+        var visibility = typeof(AarisAdditiveChunkStreamer).GetMethod("CameraWarmMayBeVisible",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        var tiltedScene = new AarisAdditiveChunkStreamer.Chunk {
+            center = new Vector2(-150, 0), halfExtents = new Vector2(20, 20)
+        };
+        Check((bool)visibility.Invoke(manager, new object[] {
+            tiltedScene, new Vector3(), new Vector2(1f, 0f), 1f
+        }), "steep camera whose projected view can reach behind must keep its warm cell");
     }
 #endif
 
