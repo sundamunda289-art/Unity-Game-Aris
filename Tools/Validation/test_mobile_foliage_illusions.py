@@ -48,4 +48,8 @@ assert "acos(" not in pseudo.split("void PseudoSubsurface_half")[1] and "pow(" n
 player=(ROOT/"Assets/AarisWorld/Scripts/AarisThirdPersonPlayer.cs").read_text()
 assert 'Shader.PropertyToID("_AarisGrassInteract")' in player
 assert 'Shader.SetGlobalVector(GrassInteractShaderId' in player
+vehicle=(ROOT/"Assets/AarisWorld/Scripts/AarisVehicleSession.cs").read_text()
+assert 'Shader.PropertyToID("_AarisGrassInteract")' in vehicle
+assert 'new Vector4(pos.x, pos.y, pos.z, 2.25f)' in vehicle
+assert 'Shader.SetGlobalVector(GrassInteractShaderId, Vector4.zero)' in vehicle
 print("AARIS_FOLIAGE_STATIC_SHADERGRAPH_PASS")
