@@ -67,6 +67,7 @@ namespace Aaris.MapReview
     {
         private readonly List<int> pendingColliderRelease = new List<int>();
         private readonly bool[] colliderReleaseQueued;
+        private readonly bool[] disabledByStreaming;
         private readonly Collider[] obstacles;
         private readonly int[] wanted;
         private readonly Bounds[] worldBounds;
@@ -83,6 +84,7 @@ namespace Aaris.MapReview
         public ReleaseFixture(int n, int actualRetirements)
         {
             colliderReleaseQueued = new bool[n];
+            disabledByStreaming = new bool[n];
             obstacles = new Collider[n];
             wanted = new int[n];
             worldBounds = new Bounds[n];
@@ -100,7 +102,13 @@ namespace Aaris.MapReview
         private int DisabledCount()
         {
             int count=0;
-            foreach (var collider in obstacles) if (!collider.enabled) count++;
+            for (int i = 0; i < obstacles.Length; i++)
+            {
+                bool disabled = !obstacles[i].enabled;
+                Assert(disabledByStreaming[i] == disabled,
+                    "only actual streaming retirements should become inactive cover");
+                if (disabled) count++;
+            }
             return count;
         }
         private static void Assert(bool condition, string message)

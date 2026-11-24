@@ -18,12 +18,18 @@ namespace UnityEngine
     }
     public struct Quaternion
     {
-        public float cos, sin;
-        public static Quaternion identity => new Quaternion { cos=1 };
+        public float x => 0f;
+        public float z => 0f;
+        public float y, w;
+        public static Quaternion identity => new Quaternion { w=1 };
         public static Quaternion Yaw(double angle) =>
-            new Quaternion { cos=(float)Math.Cos(angle), sin=(float)Math.Sin(angle) };
-        public static Vector3 operator *(Quaternion q, Vector3 v) =>
-            new Vector3(q.cos*v.x+q.sin*v.z, v.y, -q.sin*v.x+q.cos*v.z);
+            new Quaternion { y=(float)Math.Sin(angle/2), w=(float)Math.Cos(angle/2) };
+        public static Vector3 operator *(Quaternion q, Vector3 v)
+        {
+            float cos = 1f - 2f * q.y * q.y;
+            float sin = 2f * q.w * q.y;
+            return new Vector3(cos*v.x+sin*v.z, v.y, -sin*v.x+cos*v.z);
+        }
     }
     public struct Bounds
     {
