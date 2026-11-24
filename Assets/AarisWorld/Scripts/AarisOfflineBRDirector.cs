@@ -701,10 +701,13 @@ namespace Aaris.MapReview
             int frame = Time.frameCount;
 #if UNITY_EDITOR
             // Edit-mode QA can set a camera pose between synchronous calls.
-            if (Application.isPlaying && rivalCameraFrame == frame)
-#else
-            if (rivalCameraFrame == frame)
+            if (!Application.isPlaying)
+            {
+                rivalCameraFrame = -1;
+                rivalFrustumFrame = -1;
+            }
 #endif
+            if (rivalCameraFrame == frame)
                 return rivalCameraThisFrame;
             rivalCameraFrame = frame;
             if (playerMotor != null)
@@ -728,11 +731,7 @@ namespace Aaris.MapReview
         {
             Camera camera = RivalCameraForFrame();
             if (ReferenceEquals(camera, null)) return false;
-#if UNITY_EDITOR
-            if (!Application.isPlaying || rivalFrustumFrame != rivalCameraFrame)
-#else
             if (rivalFrustumFrame != rivalCameraFrame)
-#endif
             {
                 GeometryUtility.CalculateFrustumPlanes(camera, rivalFrustum);
                 rivalFrustumFrame = rivalCameraFrame;
