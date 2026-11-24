@@ -35,8 +35,8 @@ class CoverProbe(unittest.TestCase):
                   "distance > 0.00001f",
                   "displacement / distance : Vector3.zero",
                   "heading * Mathf.Max(distance, 0.72f)",
-                  "HasPotentialInactiveObstacle(predicted,",
-                  "new Vector3(0.36f, 0.90f, 0.36f)"):
+                  "HasPotentialInactiveObstacle(from + lookAhead + chest,",
+                  "Vector3 half = new Vector3(0.36f, 0.90f, 0.36f)"):
             self.assertIn(s,A)
         self.assertEqual(A.count("displacement.magnitude"),1)
         self.assertNotIn("displacement.normalized",A)
