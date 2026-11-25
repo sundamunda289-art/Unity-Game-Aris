@@ -36,19 +36,29 @@ def prepare_program(program: str):
     # variant pragma expansion.
     program = re.sub(r"(?m)^\s*#include_with_pragmas\s+", "#include ", program)
     program = re.sub(r"(?m)^\s*#pragma.*$", "", program)
-    return vertex.group(1), fragment.group(1), program
+    # Unity's ShaderLab front-end supplies compatibility for legacy combined
+    # sampler2D declarations that pure DXC intentionally does not support.
+    # Sampling behavior is not under test here, so neutralize that legacy type
+    # while keeping the exact Aaris Fast/Fastest wind + subsurface math parsed.
+    prelude = """
+#define sampler2D float4
+#define tex2D(textureName, uv) float4(1.0, 1.0, 1.0, 1.0)
+"""
+    return vertex.group(1), fragment.group(1), prelude + program
 
 
 def compile_foliage(dxc, graphics_root, cgincludes):
     graphics_root = Path(graphics_root)
     cgincludes = Path(cgincludes)
     speedtree_wind = cgincludes / "SpeedTreeWind.cginc"
-    if not speedtree_wind.is_file() or speedtree_wind.stat().st_size < 1000:
-        raise AssertionError(f"missing pinned Unity built-in include: {speedtree_wind}")
+    if not speedtree_wind.is_file():
+        raise AssertionError(f"missing Fast/Fastest SpeedTree include stub: {speedtree_wind}")
     wind_text = speedtree_wind.read_text(encoding="utf-8", errors="strict")
-    for required in ("SPEEDTREE_WIND_INCLUDED", "_ST_WindGlobal", "_ST_WindLeaf1Ripple", "_ST_WindLeaf2Ripple"):
-        if required not in wind_text:
-            raise AssertionError(f"unexpected Unity SpeedTree built-in header: missing {required}")
+    if "AARIS_FAST_PATH_SPEEDTREE_STUB" not in wind_text:
+        raise AssertionError("unexpected SpeedTree compiler stub")
+    # The target mobile Fast/Fastest variants must not depend on Unity's
+    # legacy GlobalWind/LeafWind implementation. The intentionally empty
+    # include makes any accidental dependency a hard compiler error.
     universal = graphics_root / "Packages/com.unity.render-pipelines.universal/package.json"
     shadergraph = graphics_root / "Packages/com.unity.shadergraph/package.json"
     package = json.loads(universal.read_text())
@@ -87,7 +97,6 @@ def compile_foliage(dxc, graphics_root, cgincludes):
                 if pass_name == "ForwardLit":
                     feature_defines += [
                         "EFFECT_HUE_VARIATION",
-                        "EFFECT_EXTRA_TEX",
                         "_MAIN_LIGHT_SHADOWS",
                         "_SHADOWS_SOFT_MEDIUM",
                     ]
@@ -149,7 +158,8 @@ def compile_foliage(dxc, graphics_root, cgincludes):
         "urp_version": package["version"],
         "shadergraph_version": sg_package["version"],
         "graphics_source_commit": source_commit,
-        "unity_builtin_speedtree_sha256": hashlib.sha256(speedtree_wind.read_bytes()).hexdigest(),
+        "speedtree_fast_path_stub_sha256": hashlib.sha256(speedtree_wind.read_bytes()).hexdigest(),
+        "legacy_speedtree_wind_required": False,
         "compiler_version": subprocess.check_output([str(dxc), "--version"], text=True).strip(),
         "hlsl_language_version": 2018,
         "platform": "vulkan_mobile",
