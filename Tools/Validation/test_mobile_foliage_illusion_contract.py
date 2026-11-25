@@ -140,6 +140,11 @@ def check_custom_speedtree_shader():
     assert "guid: d353c971ad804ad385b5e3a933e53721" in meta
     assert 'Shader "Aaris/Nature/SpeedTree8Mobile"' in shader
     assert '#pragma multi_compile_instancing' in shader
+    # These keywords select packed vertex color data AND fragment consumers.
+    # Fragment-only variants leave vertex data incorrect on stage-aware APIs.
+    for keyword in ("EFFECT_HUE_VARIATION", "EFFECT_SUBSURFACE"):
+        assert shader.count("#pragma shader_feature_local " + keyword) == 2
+        assert "#pragma shader_feature_local_fragment " + keyword not in shader
     assert '#include "CustomFunctions/AarisSpeedTree8MobilePasses.hlsl"' in shader
     assert "UNITY_SETUP_INSTANCE_ID" in source
     assert "float3 treePos" in source and "hueVariationAmount" in source
