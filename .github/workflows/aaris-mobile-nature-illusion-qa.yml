@@ -40,7 +40,7 @@ jobs:
           persist-credentials: false
       - name: Hydrate bounded native foliage and URP audit assets
         run: |
-          git lfs pull --include='Assets/TerrainDemoScene_URP/Prefabs/Details/Materials/*.asset,Assets/TerrainDemoScene_URP/Settings/URP/URP-HighQuality Pipeline Asset.asset,Assets/TerrainDemoScene_URP/Settings/URP/Universal Render Pipeline Asset_Renderer.asset' --exclude=''
+          git lfs pull --include='Assets/TerrainDemoScene_URP/Prefabs/Details/Materials/*.asset,Assets/TerrainDemoScene_URP/Prefabs/Volumes/PostProcess Profile.asset,Assets/TerrainDemoScene_URP/Settings/URP/URP-HighQuality Pipeline Asset.asset,Assets/TerrainDemoScene_URP/Settings/URP/Universal Render Pipeline Asset_Renderer.asset' --exclude=''
       - name: Audit actual mobile URP renderer source settings
         run: |
           python3 Tools/Validation/check_mobile_urp_renderer.py
