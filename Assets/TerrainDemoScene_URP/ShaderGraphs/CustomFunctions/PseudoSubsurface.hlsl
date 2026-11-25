@@ -15,6 +15,16 @@ void AarisDetailGround_half(half3 LeafColor, half4 TerrainColorAndHeight, half D
     Height01 = TerrainColorAndHeight.w;
     half3 terrainColor = TerrainColorAndHeight.rgb;
     half fade = saturate(DistanceFade);
+    // At full terrain fade, root/instance/leaf colour math is algebraically
+    // discarded by lerp(..., terrainColor, 1). Return the exact same output
+    // before paying that fragment work. Keep residual transmission identical.
+    UNITY_BRANCH if (fade >= 1.0h)
+    {
+        Out = terrainColor;
+        half farHeightMask = Height01 * Height01 * (3.0h - 2.0h * Height01);
+        TransmissionColor = terrainColor * (0.20h + 0.80h * farHeightMask) * 0.25h;
+        return;
+    }
     half contact = saturate(1.0h - 2.0h * Height01);
     half rootBlend = 0.38h * contact * contact * (3.0h - 2.0h * contact);
     half variation = (saturate(InstanceSeed) - 0.5h) * saturate(Profile.x);
@@ -58,7 +68,9 @@ void PseudoSubsurface_half(float3 WorldPosition, half3 WorldNormal, half3 SSRadi
     half back = saturate((radius - ndl) / (1.0h + radius));
     half wrapped = back * back * (3.0h - 2.0h * back);
     half edge = 1.0h - saturate(abs(ndl));
-    half rim = edge * edge;
+    // Prevent a flat bright outline when the shrub is front-lit. The rim is
+    // transmission, so it should appear only as the light wraps behind leaves.
+    half rim = edge * edge * back;
     half skyFill = 0.055h * saturate(n.y * 0.5h + 0.5h);
     half transmission = (0.14h + 0.23h * radius) * wrapped + 0.10h * rim;
     half3 warmSun = half3(1.04h, 1.0h, 0.86h);

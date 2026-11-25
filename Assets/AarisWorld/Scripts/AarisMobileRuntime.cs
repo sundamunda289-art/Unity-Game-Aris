@@ -98,6 +98,12 @@ namespace Aaris.MapReview
         private float lastAppliedRenderScale = 1f;
         private int originalMsaaSamples, appliedMsaaSamples;
         private bool modifiedMsaaSamples;
+        // The authored URP asset keeps camera color/depth copies available for
+        // desktop/demo content. The shipping Android world has no active
+        // SceneColor/SceneDepth, depth-post, soft-particle or camera override
+        // consumer, so constrained tile GPUs can skip both copies at runtime.
+        private bool originalCameraOpaqueTexture, originalCameraDepthTexture;
+        private bool modifiedCameraOpaqueTexture, modifiedCameraDepthTexture;
         private float originalMipBudgetMB, appliedMipBudgetMB;
         private bool modifiedMipBudget;
         // Limit simultaneous texture-streaming file reads without lowering mip resolution.
@@ -395,6 +401,28 @@ namespace Aaris.MapReview
                     Debug.Log("AARIS_ANDROID_MSAA_BUDGET original=" +
                         originalMsaaSamples + " applied=" + appliedMsaaSamples);
                 }
+
+                // URP's Opaque/Depth Texture toggles create readable copies;
+                // they do not disable the camera depth buffer, shadow maps,
+                // HDR lighting or post color grading. Our mobile source audit
+                // proves no active shipping consumer on this path. Skipping
+                // both copies saves full-screen tile-memory traffic.
+                originalCameraOpaqueTexture = androidPipeline.supportsCameraOpaqueTexture;
+                if (originalCameraOpaqueTexture)
+                {
+                    androidPipeline.supportsCameraOpaqueTexture = false;
+                    modifiedCameraOpaqueTexture = true;
+                }
+                originalCameraDepthTexture = androidPipeline.supportsCameraDepthTexture;
+                if (originalCameraDepthTexture)
+                {
+                    androidPipeline.supportsCameraDepthTexture = false;
+                    modifiedCameraDepthTexture = true;
+                }
+                if (modifiedCameraOpaqueTexture || modifiedCameraDepthTexture)
+                    Debug.Log("AARIS_ANDROID_CAMERA_COPY_BUDGET opaque=" +
+                        (originalCameraOpaqueTexture ? "off" : "already-off") +
+                        " depth=" + (originalCameraDepthTexture ? "off" : "already-off"));
             }
             // Mipmap streaming was already enabled by the saved QualitySettings.
             // Bound its texture residency on low-RAM phones without modifying
@@ -1157,6 +1185,12 @@ namespace Aaris.MapReview
             if (modifiedMsaaSamples && androidPipeline != null &&
                 androidPipeline.msaaSampleCount == appliedMsaaSamples)
                 androidPipeline.msaaSampleCount = originalMsaaSamples;
+            if (modifiedCameraOpaqueTexture && androidPipeline != null &&
+                !androidPipeline.supportsCameraOpaqueTexture)
+                androidPipeline.supportsCameraOpaqueTexture = originalCameraOpaqueTexture;
+            if (modifiedCameraDepthTexture && androidPipeline != null &&
+                !androidPipeline.supportsCameraDepthTexture)
+                androidPipeline.supportsCameraDepthTexture = originalCameraDepthTexture;
             if (modifiedMipBudget &&
                 Mathf.Approximately(QualitySettings.streamingMipmapsMemoryBudget, appliedMipBudgetMB))
                 QualitySettings.streamingMipmapsMemoryBudget = originalMipBudgetMB;

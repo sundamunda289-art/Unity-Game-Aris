@@ -4,6 +4,11 @@
 #ifndef UNIVERSAL_SPEEDTREE8_PASSES_INCLUDED
 #define UNIVERSAL_SPEEDTREE8_PASSES_INCLUDED
 
+// One alpha-test contract for visible, shadow and depth passes. Tree color
+// texture mip coverage is imported against the same value to avoid density
+// pumping/shimmer when a lower mip becomes active.
+static const half AARIS_TREE_ALPHA_CUTOFF = 0.3333h;
+
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GBufferOutput.hlsl"
 #include "Packages/com.unity.shadergraph/ShaderGraphLibrary/Nature/SpeedTreeCommon.hlsl"
@@ -61,7 +66,6 @@ struct SpeedTreeVertexDepthOutput
 {
     half2 uv                        : TEXCOORD0;
     half4 color                     : TEXCOORD1;
-    half3 viewDirWS                 : TEXCOORD2;
     float4 clipPos                  : SV_POSITION;
     UNITY_VERTEX_INPUT_INSTANCE_ID
     UNITY_VERTEX_OUTPUT_STEREO
@@ -73,12 +77,13 @@ struct SpeedTreeVertexDepthNormalOutput
     half4 color                     : TEXCOORD1;
 
     #ifdef EFFECT_BUMP
-        half4 normalWS              : TEXCOORD2;    // xyz: normal, w: viewDir.x
-        half4 tangentWS             : TEXCOORD3;    // xyz: tangent, w: viewDir.y
-        half4 bitangentWS           : TEXCOORD4;    // xyz: bitangent, w: viewDir.z
+        // DepthNormals only needs the tangent basis. Do not spend three
+        // interpolator W channels carrying a view direction it never reads.
+        half3 normalWS              : TEXCOORD2;
+        half3 tangentWS             : TEXCOORD3;
+        half3 bitangentWS           : TEXCOORD4;
     #else
         half3 normalWS              : TEXCOORD2;
-        half3 viewDirWS             : TEXCOORD3;
     #endif
 
     float4 clipPos                  : SV_POSITION;
@@ -130,6 +135,7 @@ void AarisFastLeafWind(inout SpeedTreeVertexInput input, inout float3 positionOS
     float3 anchorOS, float3 windOS, bool leafTwo, float distanceSq, float gust,
     float timeSeconds, float fieldPhase)
 {
+    const float microFlutterDistanceSq = 28.0 * 28.0;
     const float fullFlutterDistanceSq = 35.0 * 35.0;
     const float endFlutterDistanceSq = 75.0 * 75.0;
     UNITY_BRANCH if (distanceSq >= endFlutterDistanceSq)
@@ -141,11 +147,20 @@ void AarisFastLeafWind(inout SpeedTreeVertexInput input, inout float3 positionOS
     float rippleAmplitude = leafTwo ? _ST_WindLeaf2Ripple.y : _ST_WindLeaf1Ripple.y;
     // Reuse the already-computed landscape phase for stable per-tree
     // variation. Identical cloned meshes no longer flutter in lockstep.
-    // Use the existing gust to gently vary the flutter speed, without another
-    // wave, texture read or time state. The derivative stays bounded even at 30fps.
+    // The first wave covers the entire near/mid wind band.
     float leafPhase = timeSeconds * 0.72 + dot(anchorOS, float3(0.31, 0.57, 0.41))
         + fieldPhase * 1.618 + (leafTwo ? 0.37 : 0.0) + 0.16 * gust;
     float flutter = 2.0 * AarisSmoothWindWave(leafPhase) - 1.0;
+    // Spend one extra sampler-free polynomial wave only where individual
+    // leaves are large enough on screen to justify it. distanceSq is uniform
+    // for the whole tree instance, so this branch does not split its vertices.
+    // Farther leaves keep the cheaper single-wave path and >75 m keeps none.
+    UNITY_BRANCH if (distanceSq < microFlutterDistanceSq)
+    {
+        float microPhase = leafPhase * 1.73 + anchorOS.y * 0.91 + (leafTwo ? 0.29 : 0.0);
+        float microFlutter = 2.0 * AarisSmoothWindWave(microPhase) - 1.0;
+        flutter = 0.82 * flutter + 0.18 * microFlutter;
+    }
     float bend = min(abs(rippleAmplitude) * 5.0, 0.18) * saturate(input.texcoord3.x) * fade;
     float angle = bend * gust * (0.23 + 0.77 * flutter);
     float3 rotation = float3(windOS.z, 0.0, -windOS.x) * angle;
@@ -153,8 +168,13 @@ void AarisFastLeafWind(inout SpeedTreeVertexInput input, inout float3 positionOS
     // Small-angle hinge rotation: pin the anchor, and move the lighting
     // basis with the leaf. The 0.18 radian cap limits stretch.
     positionOS += cross(rotation, positionOS - anchorOS);
-    input.normal += cross(rotation, input.normal);
-    #if defined(EFFECT_BUMP)
+    // SceneSelection and DepthOnly never consume the lighting basis. Keep
+    // their silhouette identical but skip dead normal/tangent rotations.
+    // ShadowCaster still needs the deformed normal for ApplyShadowBias.
+    #if !defined(DEPTH_ONLY) || defined(SHADOW_CASTER)
+        input.normal += cross(rotation, input.normal);
+    #endif
+    #if defined(EFFECT_BUMP) && !defined(DEPTH_ONLY)
         input.tangent.xyz += cross(rotation, input.tangent.xyz);
     #endif
 }
@@ -482,8 +502,6 @@ SpeedTreeVertexDepthOutput SpeedTree8VertDepth(SpeedTreeVertexInput input)
 
     VertexPositionInputs vertexInput = GetVertexPositionInputs(input.vertex.xyz);
 
-    output.viewDirWS = GetWorldSpaceNormalizeViewDir(vertexInput.positionWS);
-
 #ifdef SHADOW_CASTER
     half3 normalWS = TransformObjectToWorldNormal(input.normal);
 
@@ -563,7 +581,9 @@ half3 AarisLeafSun(InputData inputData, Light light, half occlusion)
     half ndl = dot(inputData.normalWS, light.direction);
     half back = saturate(0.5h - 0.5h * ndl);
     half rim = 1.0h - saturate(abs(ndl));
-    rim *= rim;
+    // A grazing-light rim should not become a white halo on front-lit cards.
+    // Gate it by the same back-light term: one multiply, no extra sample.
+    rim *= rim * back;
     half towardSun = saturate(-dot(inputData.viewDirectionWS, light.direction));
     half transmit = 0.38h * back * back + rim * (0.035h + 0.115h * towardSun * towardSun);
     half visibility = saturate(light.distanceAttenuation) * light.shadowAttenuation;
@@ -672,7 +692,7 @@ half4 SpeedTree8Frag(SpeedTreeFragmentInput input) : SV_Target
     half4 diffuse = SampleAlbedoAlpha(uv, TEXTURE2D_ARGS(_MainTex, sampler_MainTex)) * _Color;
 
     half alpha = diffuse.a * input.interpolated.color.a;
-    alpha = AlphaDiscard(alpha, 0.3333);
+    alpha = AlphaDiscard(alpha, AARIS_TREE_ALPHA_CUTOFF);
 
     #ifdef LOD_FADE_CROSSFADE
         LODFadeCrossFade(input.interpolated.clipPos);
@@ -824,7 +844,7 @@ half4 SpeedTree8FragDepth(SpeedTreeVertexDepthOutput input) : SV_Target
     half4 diffuse = SampleAlbedoAlpha(uv, TEXTURE2D_ARGS(_MainTex, sampler_MainTex)) * _Color;
 
     half alpha = diffuse.a * input.color.a;
-    AlphaDiscard(alpha, 0.3333);
+    AlphaDiscard(alpha, AARIS_TREE_ALPHA_CUTOFF);
 
     #ifdef LOD_FADE_CROSSFADE
         LODFadeCrossFade(input.clipPos);
@@ -851,20 +871,13 @@ SpeedTreeVertexDepthNormalOutput SpeedTree8VertDepthNormal(SpeedTreeVertexInput 
 
     VertexPositionInputs vertexInput = GetVertexPositionInputs(input.vertex.xyz);
     half3 normalWS = TransformObjectToWorldNormal(input.normal);
-    half3 viewDirWS = GetWorldSpaceNormalizeViewDir(vertexInput.positionWS);
     #ifdef EFFECT_BUMP
         real sign = input.tangent.w * GetOddNegativeScale();
-        output.normalWS.xyz = normalWS;
-        output.tangentWS.xyz = TransformObjectToWorldDir(input.tangent.xyz);
-        output.bitangentWS.xyz = cross(output.normalWS.xyz, output.tangentWS.xyz) * sign;
-
-        // View dir packed in w.
-        output.normalWS.w = viewDirWS.x;
-        output.tangentWS.w = viewDirWS.y;
-        output.bitangentWS.w = viewDirWS.z;
+        output.normalWS = normalWS;
+        output.tangentWS = TransformObjectToWorldDir(input.tangent.xyz);
+        output.bitangentWS = cross(output.normalWS, output.tangentWS) * sign;
     #else
         output.normalWS = normalWS;
-        output.viewDirWS = viewDirWS;
     #endif
 
     output.clipPos = vertexInput.positionCS;
@@ -880,7 +893,7 @@ half4 SpeedTree8FragDepthNormal(SpeedTreeDepthNormalFragmentInput input) : SV_Ta
     half4 diffuse = SampleAlbedoAlpha(uv, TEXTURE2D_ARGS(_MainTex, sampler_MainTex)) * _Color;
 
     half alpha = diffuse.a * input.interpolated.color.a;
-    AlphaDiscard(alpha, 0.3333);
+    AlphaDiscard(alpha, AARIS_TREE_ALPHA_CUTOFF);
 
     #ifdef LOD_FADE_CROSSFADE
         LODFadeCrossFade(input.interpolated.clipPos);

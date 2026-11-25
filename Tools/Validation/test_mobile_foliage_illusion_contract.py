@@ -52,6 +52,50 @@ def check_graph():
                 for e in edges if e["m_OutputSlot"]["m_Node"]["m_Id"] == node["m_ObjectId"]
                 and e["m_OutputSlot"]["m_SlotId"] == port]
 
+    def slot_id(node, display_name, slot_type):
+        matches = []
+        for ref in node.get("m_Slots", []):
+            slot = nodes[ref["m_Id"]]
+            if slot.get("m_DisplayName") == display_name and slot.get("m_SlotType") == slot_type:
+                matches.append(slot["m_Id"])
+        assert len(matches) == 1, (node.get("m_Name"), display_name, matches)
+        return matches[0]
+
+    # The expensive custom wind must be multiplied by the distance movement
+    # envelope before it can reach the final vertex position. This keeps the
+    # large painted undergrowth population static outside Animation Cutoff.
+    wind = next(b for b in blocks if b.get("m_Type") == "UnityEditor.ShaderGraph.SubGraphNode"
+                and b.get("m_Name") == "Wind")
+    cutoff = next(b for b in blocks if b.get("m_Type") == "UnityEditor.ShaderGraph.SubGraphNode"
+                  and b.get("m_Name") == "DistanceCutoff")
+    move_port = slot_id(cutoff, "out_movement", 1)
+    one_minus = next(n for n, _ in destinations(cutoff, move_port)
+                     if n.get("m_Name") == "One Minus")
+    power = next(n for n, _ in destinations(one_minus, slot_id(one_minus, "Out", 1))
+                 if n.get("m_Name") == "Power")
+    movement_multiply = next(n for n, _ in destinations(power, slot_id(power, "Out", 1))
+                             if n.get("m_Name") == "Multiply")
+    wind_out = slot_id(wind, "Out_Vector1", 1)
+    assert any(n["m_ObjectId"] == movement_multiply["m_ObjectId"]
+               for n, _ in destinations(wind, wind_out))
+
+    position = next(b for b in blocks if b.get("m_Name") == "VertexDescription.Position")
+    adjacency = {}
+    for edge in edges:
+        src = edge["m_OutputSlot"]["m_Node"]["m_Id"]
+        dst = edge["m_InputSlot"]["m_Node"]["m_Id"]
+        adjacency.setdefault(src, set()).add(dst)
+    frontier = [movement_multiply["m_ObjectId"]]
+    visited = set(frontier)
+    while frontier:
+        current = frontier.pop()
+        for nxt in adjacency.get(current, ()):
+            if nxt in visited:
+                continue
+            visited.add(nxt)
+            frontier.append(nxt)
+    assert position["m_ObjectId"] in visited
+
     pack = next(b for b in blocks if b.get("m_FunctionName") == "AarisPackDetailGround")
     [(interpolator, _)] = destinations(pack, 3)
     assert interpolator["m_SerializedDescriptor"] == "VertexDescription.TerrainColorMatch#4"
@@ -72,6 +116,8 @@ def check_interaction():
     assert "float4 _AarisGrassInteractor;" in shader
     assert "float inverseRadiusSq = _AarisGrassInteractor.w;" in shader
     assert "float radial = d2 * inverseRadiusSq;" in shader
+    assert "float3 pivot = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);" in shader
+    assert "TransformObjectToWorld(float3(0.0, 0.0, 0.0))" not in shader
     assert "TransformWorldToObjectDir" in shader
     assert "saturate(BasePositionOS.y)" in shader
     assert "falloff * falloff * vertical * 0.45" in shader
@@ -85,6 +131,8 @@ def check_interaction():
     assert "rcp(max(GroundHeight, 0.05))" in shader
     assert "BasePositionOS.y * inverseHeight" in shader
     assert "TransformObjectToWorld(BasePositionOS).xz" in shader
+    assert "heightDelta < 1.8 && radial < 9.0" in shader
+    assert shader.index("radial < 9.0") < shader.index("TransformObjectToWorld(BasePositionOS).xz")
     assert "min(1.0, max(GroundHeight, 0.25))" in shader
     assert not any(term in shader for term in ("RWTexture", "ComputeBuffer", "Raycast", "Collider"))
     assert "Shader.SetGlobalVector(GrassInteractorId, next)" in motor
@@ -114,6 +162,7 @@ def check_mobile_transmission():
     assert "contact * contact * (3.0h - 2.0h * contact)" in shader
     assert "unity_SHAr.w, unity_SHAg.w, unity_SHAb.w" in shader
     assert "ambient * skyFill * coolFill" in shader
+    assert "half rim = edge * edge * back;" in shader
 
 
 def check_ground_detail_mips():
@@ -144,6 +193,14 @@ def check_speedtree_materials():
         "Conifer/Materials/Conifer_Branches.mat",
         "Cypress/Materials/Cypress_Forest_Desktop.mat",
     ]
+    distant_leaves = [
+        "Pines/Pine_A/Materials/Pine_A_Distant.mat",
+        "Pines/Pine_B/Materials/Pine_B_Distant.mat",
+        "Pines/Pine_C/Materials/Pine_C_Distant.mat",
+        "Pines/Pine_D/Materials/Pine_D_Distant.mat",
+        "Conifer/Materials/Conifer_Branches_Distant.mat",
+        "Cypress/Materials/Cypress_Forest_Desktop_Distant.mat",
+    ]
     bark = [
         "Pines/Pine_A/Materials/Pine_A_Bark.mat",
         "Pines/Pine_B/Materials/Pine_B_Bark.mat",
@@ -162,7 +219,95 @@ def check_speedtree_materials():
     for name in leaves:
         s = (TREE / name).read_text()
         assert "- EFFECT_SUBSURFACE" in s, name
+        assert "- _WINDQUALITY_FAST" in s, name
 
+    for name in distant_leaves:
+        s = (TREE / name).read_text()
+        assert "- EFFECT_SUBSURFACE" in s, name
+        assert "- EFFECT_BUMP" in s, name
+        assert "- _WINDQUALITY_FASTEST" in s, name
+        assert "m_EnableInstancingVariants: 1" in s, name
+
+    billboards = (
+        "Pines/Pine_A/Materials/Pine_A_Billboard.mat",
+        "Pines/Pine_B/Materials/Pine_B_Billboard.mat",
+        "Pines/Pine_C/Materials/Pine_C_Billboard.mat",
+        "Pines/Pine_D/Materials/Pine_D_Billboard.mat",
+        "Conifer/Materials/Conifer_Billboard.mat",
+        "Cypress/Materials/Cypress_Forest_Desktop_Billboard.mat",
+    )
+    for name in billboards:
+        s = (TREE / name).read_text()
+        assert "- EFFECT_BILLBOARD" in s, name
+        assert "- _WINDQUALITY_NONE" in s, name
+        assert "- EFFECT_BUMP" in s, name
+        assert "m_EnableInstancingVariants: 1" in s, name
+
+
+
+def check_tree_alpha_mip_contract():
+    """Keep the native-verified coverage bias that preserves distant canopy fullness."""
+    passes = (FOLIAGE / "CustomFunctions/AarisSpeedTree8MobilePasses.hlsl").read_text()
+    cutoff_match = re.search(r"AARIS_TREE_ALPHA_CUTOFF\s*=\s*([0-9.]+)h;", passes)
+    assert cutoff_match and abs(float(cutoff_match.group(1)) - 0.3333) < 1e-6
+
+    # Deliberate exception to the generic "match alpha-test cutoff" importer
+    # guidance: earlier same-camera native foliage renders showed that 0.3333
+    # coverage made the authored conifer canopies visibly sparse. Keep the
+    # original 0.5 coverage bias until another native A/B render proves a
+    # replacement is visually better on this exact asset set.
+    metas = (
+        "Pines/Pine_A/Textures/Pine_A_Color.png.meta",
+        "Pines/Pine_B/Textures/Pine_B_Color.png.meta",
+        "Pines/Pine_C/Textures/Pine_C_Color.png.meta",
+        "Pines/Pine_D/Textures/Pine_D_Color.png.meta",
+        "Conifer/Textures/Conifer_Color.png.meta",
+        "Cypress/Textures/Cypress_Forest_Desktop_Color.tif.meta",
+        "Pines/Pine_A/Textures/Pine_A_Billboard_Color.png.meta",
+        "Pines/Pine_B/Textures/Pine_B_Billboard_Color.png.meta",
+        "Pines/Pine_C/Textures/Pine_C_Billboard_Color.png.meta",
+        "Pines/Pine_D/Textures/Pine_D_Billboard_Color.png.meta",
+        "Conifer/Textures/Conifer_Billboard_Color.png.meta",
+        "Cypress/Textures/Cypress_Forest_Desktop_Billboard_Color.tif.meta",
+    )
+    for meta_name in metas:
+        meta = (TREE / meta_name).read_text()
+        assert "    enableMipMap: 1\n" in meta, meta_name
+        assert "    mipMapsPreserveCoverage: 1\n" in meta, meta_name
+        actual = float(re.search(r"alphaTestReferenceValue: ([0-9.]+)", meta).group(1))
+        assert abs(actual - 0.5) < 1e-6, (meta_name, actual)
+
+
+def check_speedtree_lod_morph_contract():
+    """Native SpeedTree mesh LODs morph instead of double-drawing crossfades."""
+    families = (
+        ("Pines/Pine_A/Pine_A.prefab", "Pines/Pine_A/Pine_A.st.meta"),
+        ("Pines/Pine_B/Pine_B.prefab", "Pines/Pine_B/Pine_B.st.meta"),
+        ("Pines/Pine_C/Pine_C.prefab", "Pines/Pine_C/Pine_C.st.meta"),
+        ("Pines/Pine_D/Pine_D.prefab", "Pines/Pine_D/Pine_D.st.meta"),
+        ("Conifer/Conifer.prefab", "Conifer/Conifer.st.meta"),
+        ("Cypress/Cypress_Forest_Desktop.prefab", "Cypress/Cypress_Forest_Desktop.st.meta"),
+    )
+    for prefab_name, source_meta_name in families:
+        prefab = (TREE / prefab_name).read_text()
+        assert prefab.count("m_FadeMode: 2") == 1, prefab_name
+        assert "m_AnimateCrossFading: 1" in prefab, prefab_name
+        source_meta = (TREE / source_meta_name).read_text()
+        assert "SpeedTreeImporter:" in source_meta, source_meta_name
+        assert "enableSmoothLODTransition: 1" in source_meta, source_meta_name
+        assert "hasBillboard: 1" in source_meta, source_meta_name
+
+    # DeepForest reuses Pine_D's original SpeedTree LOD geometry.
+    deep = (TREE / "DeepForest/DeepForestPine.prefab").read_text()
+    assert deep.count("m_FadeMode: 2") == 1
+    assert "m_AnimateCrossFading: 1" in deep
+
+    shader = (FOLIAGE / "AarisSpeedTree8Mobile.shader").read_text()
+    passes = (FOLIAGE / "CustomFunctions/AarisSpeedTree8MobilePasses.hlsl").read_text()
+    assert shader.count("LOD_FADE_PERCENTAGE") >= 5
+    assert "#if defined(LOD_FADE_PERCENTAGE)" in passes
+    assert "input.vertex.xyz = lerp(input.vertex.xyz, input.texcoord2.xyz, lodValue);" in passes
+    assert passes.index("#if !defined(EFFECT_BILLBOARD)") < passes.index("#if defined(LOD_FADE_PERCENTAGE)")
 
 
 def check_tree_graph_illusions():
@@ -235,7 +380,7 @@ def check_custom_speedtree_shader():
     assert "output.color.b = contact * contact * (3.0h - 2.0h * contact)" in source
     assert "half3(0.84h, 0.80h, 0.73h)" in source
     assert "half3 warmSunTint" in source
-    assert "rim *= rim;" in source
+    assert "rim *= rim * back;" in source
     assert "saturate(occlusion)" in source
     assert "normalTs.xy *= 1.15h" in source
     assert "leafDetail * 0.085h" in source
@@ -252,6 +397,26 @@ def check_custom_speedtree_shader():
     assert "float2 leafAnchorXZ = input.texcoord1.zw +" not in source
     assert "half leafDetail = input.interpolated.color.b - 0.5h" in source
     assert source.count("#if defined(EFFECT_SUBSURFACE) && !defined(EFFECT_BILLBOARD)") >= 2
+
+    # Shadow/depth/scene-selection and DepthNormals do not consume view
+    # direction. Keep those mobile passes free of a per-vertex normalize and
+    # unused interpolator channels; ForwardLit still carries its real view dir.
+    depth_struct = source[source.index("struct SpeedTreeVertexDepthOutput"):
+                          source.index("struct SpeedTreeVertexDepthNormalOutput")]
+    depth_normal_struct = source[source.index("struct SpeedTreeVertexDepthNormalOutput"):
+                                 source.index("struct SpeedTreeDepthNormalFragmentInput")]
+    depth_vert = source[source.index("SpeedTreeVertexDepthOutput SpeedTree8VertDepth"):
+                        source.index("void InitializeInputData")]
+    dn_vert = source[source.index("SpeedTreeVertexDepthNormalOutput SpeedTree8VertDepthNormal"):
+                     source.index("half4 SpeedTree8FragDepthNormal")]
+    assert "viewDirWS" not in depth_struct
+    assert "viewDirWS" not in depth_normal_struct
+    assert "GetWorldSpaceNormalizeViewDir" not in depth_vert
+    assert "GetWorldSpaceNormalizeViewDir" not in dn_vert
+    assert "half3 normalWS" in depth_normal_struct
+    assert "half3 tangentWS" in depth_normal_struct
+    assert "half3 bitangentWS" in depth_normal_struct
+
     assert not any(term in source for term in ("Raycast(", "Physics.", "ComputeBuffer", "MaterialPropertyBlock"))
 
 
@@ -322,9 +487,17 @@ def check_mobile_leaf_wind():
     assert "float3 windOS" in wind and "dot(anchorOS," in wind
     assert "timeSeconds * 0.72" in wind and "fieldPhase * 1.618" in wind
     assert "+ 0.16 * gust" in wind
+    assert "microFlutterDistanceSq = 28.0 * 28.0" in wind
+    assert "distanceSq < microFlutterDistanceSq" in wind
+    assert "float microPhase = leafPhase * 1.73" in wind
+    assert "flutter = 0.82 * flutter + 0.18 * microFlutter" in wind
+    assert wind.count("AarisSmoothWindWave(") == 2
     assert "_ST_WindLeaf1Ripple.x" not in wind and "_ST_WindLeaf2Ripple.x" not in wind
     assert "cross(rotation, positionOS - anchorOS)" in wind
-    assert "cross(rotation, input.normal)" in wind and "cross(rotation, input.tangent.xyz)" in wind
+    assert "#if !defined(DEPTH_ONLY) || defined(SHADOW_CASTER)" in wind
+    assert "cross(rotation, input.normal)" in wind
+    assert "#if defined(EFFECT_BUMP) && !defined(DEPTH_ONLY)" in wind
+    assert "cross(rotation, input.tangent.xyz)" in wind
     start = source.index("float3 AarisCoherentTreeSway(")
     sway = source[start:source.index("\n}\n", start)]
     assert "inverseHeight <= 0.00001" in sway
@@ -402,7 +575,12 @@ def check_continuous_wind_math():
                 for i in range(fps * 3):
                     t = fp32(elapsed + i / fps)
                     gust = 0.40 + 0.60 * field(x, z, t)
-                    flutter = 2.0 * wave(fp32(t * 0.72 + 0.173 + (x * .011 + z * .035) * 1.618 + 0.16 * gust)) - 1.0
+                    leaf_phase = fp32(t * 0.72 + 0.173 + (x * .011 + z * .035) * 1.618 + 0.16 * gust)
+                    flutter = 2.0 * wave(leaf_phase) - 1.0
+                    # Near-field second band is a convex blend of two bounded
+                    # waves, so it cannot exceed the original angular cap.
+                    micro = 2.0 * wave(fp32(leaf_phase * 1.73 + 0.2 * .91 + .29)) - 1.0
+                    flutter = .82 * flutter + .18 * micro
                     ang.append(0.18 * gust * (0.23 + 0.77 * flutter))
                 assert all(isfinite(a) and abs(a) <= 0.18 for a in ang)
                 assert len(set(ang)) > fps
@@ -549,7 +727,8 @@ def check_canopy_asset_bindings():
     assert "input.interpolated.probeOcclusion," in passes
     assert "inputData.shadowMask = half4(1, 1, 1, 1);" in passes
     assert "if (geometry <= GEOM_TYPE_FROND)" in passes
-    assert passes.count("AlphaDiscard(alpha, 0.3333)") == 3
+    assert "static const half AARIS_TREE_ALPHA_CUTOFF = 0.3333h;" in passes
+    assert passes.count("AlphaDiscard(alpha, AARIS_TREE_ALPHA_CUTOFF)") == 3
 
 
 def check_canopy_math():
@@ -633,7 +812,7 @@ def check_canopy_math():
             ndl=i*.01
             back=max(0,min(1,(radius-ndl)/(1+radius)))
             wrapped=back*back*(3-2*back)
-            rim=(1-abs(ndl))**2
+            rim=(1-abs(ndl))**2*back
             transmit=(.14+.23*radius)*wrapped+.10*rim
             assert 0 <= transmit <= .47 + 1e-9
 
@@ -644,6 +823,8 @@ if __name__ == "__main__":
     check_mobile_transmission()
     check_ground_detail_mips()
     check_speedtree_materials()
+    check_tree_alpha_mip_contract()
+    check_speedtree_lod_morph_contract()
     check_tree_graph_illusions()
     check_custom_speedtree_shader()
     check_hue_variation_finite()
@@ -652,4 +833,4 @@ if __name__ == "__main__":
     check_canopy_asset_bindings()
     check_canopy_math()
     print("AARIS_MOBILE_FOLIAGE_CONTRACT_PASS")
-    print("12 foliage source/math groups checked")
+    print("14 foliage source/math groups checked")
