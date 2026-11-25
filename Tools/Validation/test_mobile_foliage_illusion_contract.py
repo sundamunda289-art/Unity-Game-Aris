@@ -238,6 +238,29 @@ def check_custom_speedtree_shader():
     assert "rim *= rim;" in source
     assert "saturate(occlusion)" in source
     assert "normalTs.xy *= 1.15h" in source
+
+    # ShadowCaster/DepthOnly/SceneSelection and DepthNormals never consume a
+    # camera vector. Keep those mobile passes lean: UV + vertex alpha share
+    # one half3 and DepthNormals carries only its actual normal basis.
+    depth_struct = source[source.index("struct SpeedTreeVertexDepthOutput"):
+                          source.index("struct SpeedTreeVertexDepthNormalOutput")]
+    assert "half3 uvAlpha" in depth_struct
+    assert "viewDirWS" not in depth_struct and "half4 color" not in depth_struct
+    depth_normal_struct = source[source.index("struct SpeedTreeVertexDepthNormalOutput"):
+                                 source.index("struct SpeedTreeDepthNormalFragmentInput")]
+    assert "half3 uvAlpha" in depth_normal_struct
+    assert "viewDirWS" not in depth_normal_struct
+    for packed_view in ("half4 normalWS", "half4 tangentWS", "half4 bitangentWS"):
+        assert packed_view not in depth_normal_struct
+    depth_vert = source[source.index("SpeedTreeVertexDepthOutput SpeedTree8VertDepth("):
+                        source.index("void InitializeInputData(")]
+    assert "output.uvAlpha = half3(input.texcoord.xy, input.color.a)" in depth_vert
+    assert "GetWorldSpaceNormalizeViewDir" not in depth_vert
+    depth_normal_vert = source[source.index("SpeedTreeVertexDepthNormalOutput SpeedTree8VertDepthNormal("):
+                               source.index("half4 SpeedTree8FragDepthNormal(")]
+    assert "output.uvAlpha = half3(input.texcoord.xy, input.color.a)" in depth_normal_vert
+    assert "GetWorldSpaceNormalizeViewDir" not in depth_normal_vert
+    assert "input.uvAlpha.z" in source and "input.interpolated.uvAlpha.z" in source
     assert "leafDetail * 0.085h" in source
     assert "output.color.b = (half)frac(leafSeed * (leafSeed + 17.17))" in source
     # SpeedTree leaf anchor is XYZ = (uv1.z, uv1.w, uv2.w), not uv1.zw as XZ.
