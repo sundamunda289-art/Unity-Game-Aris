@@ -204,6 +204,32 @@ def check_mobile_transmission():
     assert "0.035h + 0.020h * up" in shader
 
 
+def check_neutral_ground_chroma_fastpath():
+    """Neutral grass skips shrub chroma math without changing the color model."""
+    shader = (FOLIAGE / "CustomFunctions/PseudoSubsurface.hlsl").read_text()
+    start = shader.index("void AarisDetailGround_half")
+    end = shader.index("\n}\n", start)
+    detail = shader[start:end]
+    branch = "UNITY_BRANCH if (Profile.x > 0.0h)"
+    assert branch in detail
+    assert detail.index(branch) < detail.index("saturate(InstanceSeed)")
+    assert "half3 localColor = LeafColor * Profile.w;" in detail
+    assert "localColor *= 1.0h + variation * half3(0.10h, 0.07h, -0.05h);" in detail
+
+    def saturate(value):
+        return max(0.0, min(1.0, value))
+
+    # The new branch is algebraically identical for every profile value:
+    # non-positive profiles used to multiply by zero variation, positive
+    # profiles execute the exact original expression.
+    for profile in (-0.25, 0.0, 0.0001, 0.35, 0.92, 1.0, 1.4):
+        for seed in (-0.2, 0.0, 0.25, 0.5, 0.9, 1.0, 1.2):
+            old = (saturate(seed) - 0.5) * saturate(profile)
+            new = ((saturate(seed) - 0.5) * saturate(profile)
+                   if profile > 0.0 else 0.0)
+            assert abs(old - new) < 1e-12
+
+
 def check_ground_detail_mips():
     """Keep imported alpha mip coverage at the authored terrain-detail cutoff."""
     textures = TREE.parent / "Details/Textures"
@@ -733,6 +759,7 @@ if __name__ == "__main__":
     check_interaction()
     check_red_bush_broadphase()
     check_mobile_transmission()
+    check_neutral_ground_chroma_fastpath()
     check_ground_detail_mips()
     check_speedtree_materials()
     check_tree_graph_illusions()
@@ -743,4 +770,4 @@ if __name__ == "__main__":
     check_canopy_asset_bindings()
     check_canopy_math()
     print("AARIS_MOBILE_FOLIAGE_CONTRACT_PASS")
-    print("13 foliage source/math groups checked")
+    print("14 foliage source/math groups checked")
