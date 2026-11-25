@@ -17,9 +17,15 @@ void AarisDetailGround_half(half3 LeafColor, half4 TerrainColorAndHeight, half D
     half fade = saturate(DistanceFade);
     half contact = saturate(1.0h - 2.0h * Height01);
     half rootBlend = 0.38h * contact * contact * (3.0h - 2.0h * contact);
-    half variation = (saturate(InstanceSeed) - 0.5h) * saturate(Profile.x);
-    half3 localColor = LeafColor * Profile.w *
-        (1.0h + variation * half3(0.10h, 0.07h, -0.05h));
+    // Ordinary grass uses the neutral canopy profile. Keep that dominant
+    // detail draw out of shrub-only chroma ALU; Profile is uniform per
+    // instanced material, so this branch does not diverge within a draw.
+    half3 localColor = LeafColor * Profile.w;
+    UNITY_BRANCH if (Profile.x > 0.0h)
+    {
+        half variation = (saturate(InstanceSeed) - 0.5h) * saturate(Profile.x);
+        localColor *= 1.0h + variation * half3(0.10h, 0.07h, -0.05h);
+    }
     half3 rootedColor = lerp(localColor, terrainColor * half3(0.88h, 0.83h, 0.75h), rootBlend);
     Out = lerp(rootedColor, terrainColor, fade);
     // Suppress artificial emission near soil and far silhouettes. Existing
