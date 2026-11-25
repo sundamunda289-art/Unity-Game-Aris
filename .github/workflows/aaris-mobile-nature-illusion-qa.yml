@@ -40,6 +40,9 @@ jobs:
       - name: Check mobile vegetation Shader Graph bindings and math
         run: |
           python3 Tools/Validation/test_mobile_foliage_illusion_contract.py
+      - name: Validate original tree prefabs, coverage fullness and proportions
+        run: |
+          python3 Tools/Validation/test_tree_proportions.py
       - name: Validate original tree LODs and reduced shadow workload
         run: |
           python3 Tools/Validation/test_mobile_tree_shadows.py
