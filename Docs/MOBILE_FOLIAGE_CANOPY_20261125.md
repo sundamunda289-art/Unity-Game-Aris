@@ -51,6 +51,12 @@ textures, collision geometry, shadow budgets and URP render scale are unchanged.
   zero shader/C# errors. Same-camera tree A/B readbacks stayed effectively
   unchanged (close RMS 0.163/255, wide-forest RMS 0.196/255) while removing
   crown-gradient and extra normalization work from the distant leaf vertex path.
+- ShadowCaster, DepthOnly and SceneSelection now pack only UV + vertex alpha
+  into one half3 varying and no longer calculate/interpolate an unused camera
+  direction. DepthNormals uses the same UV/alpha packing and carries only the
+  normal/tangent basis consumed by its fragment stage. ForwardLit, alpha clip,
+  wind deformation, shadow bias and depth-normal output are unchanged; this is
+  a vertex/interpolator cost reduction with no intended visual tradeoff.
 
 ## Evidence
 
