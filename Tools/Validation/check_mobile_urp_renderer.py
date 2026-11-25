@@ -79,7 +79,12 @@ def main() -> None:
     assert data["additional_lights_mode"] == 0, data
     assert data["srp_batcher"] == 1, data
     assert data["renderer_features_empty"], data
-    assert data["depth_priming_mode"] in (0, 1, 2), data
+    # URP enum: Disabled=0, Auto=1, Forced=2. Auto avoids forcing an
+    # unconditional mobile depth prepass while still honoring real consumers.
+    assert data["depth_priming_mode"] == 1, data
+    # Preserve authored image quality; budget phones are tuned at runtime,
+    # never by permanently lowering the source render scale.
+    assert abs(data["render_scale"] - 1.0) < 1e-6, data
 
     # Cross-check the real Android fallback that protects the authored desktop
     # settings on Adreno 610 without lowering source texture/mesh quality.
@@ -103,7 +108,7 @@ def main() -> None:
         "budget_detail_distance_m": 80,
         "budget_tree_billboard_distance_m": 85,
         "budget_full_lod_tree_cap": 50,
-        "depth_priming_review_required": data["depth_priming_mode"] == 2,
+        "depth_priming_auto_guarded": data["depth_priming_mode"] == 1,
         "unity_editor_tested": False,
         "android_device_tested": False,
         "status": "mobile_urp_renderer_source_audit_passed",
