@@ -22,13 +22,22 @@ void AarisGrassInteraction_float(float3 WindPositionOS, float3 BasePositionOS,
         // object-to-world matrix multiply for every grass/bush vertex.
         float3 pivot = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
         float2 delta = pivot.xz - _AarisGrassInteractor.xz;
-        // The large red shrub is wider than the player's contact radius.
-        // Local leaf positions make its outer canopy rustle, not only its pivot.
-        UNITY_BRANCH if (Profile.x > 0.001 && GroundHeight > 1.5)
-            delta = TransformObjectToWorld(BasePositionOS).xz - _AarisGrassInteractor.xz;
         float d2 = dot(delta, delta);
         float radial = d2 * inverseRadiusSq;
         float heightDelta = abs(pivot.y - _AarisGrassInteractor.y);
+
+        // The large red shrub is wider than the player's contact radius, so
+        // nearby outer leaves use their real world position. Do not pay that
+        // matrix transform on every vertex of every distant shrub: normalized
+        // radial is uniform for the whole instance, and 9 == (3 radii)^2 is a
+        // deliberately conservative coarse zone around the active interactor.
+        UNITY_BRANCH if (Profile.x > 0.001 && GroundHeight > 1.5 &&
+                         heightDelta < 1.8 && radial < 9.0)
+        {
+            delta = TransformObjectToWorld(BasePositionOS).xz - _AarisGrassInteractor.xz;
+            d2 = dot(delta, delta);
+            radial = d2 * inverseRadiusSq;
+        }
         if (radial < 1.0 && heightDelta < 1.8)
         {
             // Fade the response on slopes and during a jump, including at
