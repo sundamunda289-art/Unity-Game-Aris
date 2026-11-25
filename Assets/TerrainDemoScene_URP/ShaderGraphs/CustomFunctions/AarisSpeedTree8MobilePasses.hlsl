@@ -59,9 +59,10 @@ struct SpeedTreeVertexOutput
 
 struct SpeedTreeVertexDepthOutput
 {
-    half2 uv                        : TEXCOORD0;
-    half4 color                     : TEXCOORD1;
-    half3 viewDirWS                 : TEXCOORD2;
+    // Depth/selection/shadow fragments need only UV and vertex alpha.
+    // Pack them into one varying; view direction and RGB vertex color were
+    // never consumed by these passes.
+    half3 uvAlpha                   : TEXCOORD0;
     float4 clipPos                  : SV_POSITION;
     UNITY_VERTEX_INPUT_INSTANCE_ID
     UNITY_VERTEX_OUTPUT_STEREO
@@ -69,16 +70,16 @@ struct SpeedTreeVertexDepthOutput
 
 struct SpeedTreeVertexDepthNormalOutput
 {
-    half2 uv                        : TEXCOORD0;
-    half4 color                     : TEXCOORD1;
+    // DepthNormals also needs only UV + alpha plus the lighting basis.
+    // No camera vector is consumed by SpeedTree8FragDepthNormal.
+    half3 uvAlpha                   : TEXCOORD0;
 
     #ifdef EFFECT_BUMP
-        half4 normalWS              : TEXCOORD2;    // xyz: normal, w: viewDir.x
-        half4 tangentWS             : TEXCOORD3;    // xyz: tangent, w: viewDir.y
-        half4 bitangentWS           : TEXCOORD4;    // xyz: bitangent, w: viewDir.z
+        half3 normalWS              : TEXCOORD1;
+        half3 tangentWS             : TEXCOORD2;
+        half3 bitangentWS           : TEXCOORD3;
     #else
-        half3 normalWS              : TEXCOORD2;
-        half3 viewDirWS             : TEXCOORD3;
+        half3 normalWS              : TEXCOORD1;
     #endif
 
     float4 clipPos                  : SV_POSITION;
@@ -475,14 +476,12 @@ SpeedTreeVertexDepthOutput SpeedTree8VertDepth(SpeedTreeVertexInput input)
     UNITY_TRANSFER_INSTANCE_ID(input, output);
     UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
 
-    // handle speedtree wind and lod
+    // Handle SpeedTree wind/LOD, then carry only what the alpha-cutout
+    // fragment consumes. This path intentionally does no camera-vector work.
     InitializeData(input, unity_LODFade.x);
-    output.uv = input.texcoord.xy;
-    output.color = input.color;
+    output.uvAlpha = half3(input.texcoord.xy, input.color.a);
 
     VertexPositionInputs vertexInput = GetVertexPositionInputs(input.vertex.xyz);
-
-    output.viewDirWS = GetWorldSpaceNormalizeViewDir(vertexInput.positionWS);
 
 #ifdef SHADOW_CASTER
     half3 normalWS = TransformObjectToWorldNormal(input.normal);
@@ -668,10 +667,10 @@ half4 SpeedTree8Frag(SpeedTreeFragmentInput input) : SV_Target
     UNITY_SETUP_INSTANCE_ID(input.interpolated);
     UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input.interpolated);
 
-    half2 uv = input.interpolated.uv;
+    half2 uv = input.interpolated.uvAlpha.xy;
     half4 diffuse = SampleAlbedoAlpha(uv, TEXTURE2D_ARGS(_MainTex, sampler_MainTex)) * _Color;
 
-    half alpha = diffuse.a * input.interpolated.color.a;
+    half alpha = diffuse.a * input.interpolated.uvAlpha.z;
     alpha = AlphaDiscard(alpha, 0.3333);
 
     #ifdef LOD_FADE_CROSSFADE
@@ -820,10 +819,10 @@ half4 SpeedTree8FragDepth(SpeedTreeVertexDepthOutput input) : SV_Target
     UNITY_SETUP_INSTANCE_ID(input);
     UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
 
-    half2 uv = input.uv;
+    half2 uv = input.uvAlpha.xy;
     half4 diffuse = SampleAlbedoAlpha(uv, TEXTURE2D_ARGS(_MainTex, sampler_MainTex)) * _Color;
 
-    half alpha = diffuse.a * input.color.a;
+    half alpha = diffuse.a * input.uvAlpha.z;
     AlphaDiscard(alpha, 0.3333);
 
     #ifdef LOD_FADE_CROSSFADE
@@ -846,25 +845,17 @@ SpeedTreeVertexDepthNormalOutput SpeedTree8VertDepthNormal(SpeedTreeVertexInput 
     UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
 
     AarisInitializeLitGeometry(input);
-    output.uv = input.texcoord.xy;
-    output.color = input.color;
+    output.uvAlpha = half3(input.texcoord.xy, input.color.a);
 
     VertexPositionInputs vertexInput = GetVertexPositionInputs(input.vertex.xyz);
     half3 normalWS = TransformObjectToWorldNormal(input.normal);
-    half3 viewDirWS = GetWorldSpaceNormalizeViewDir(vertexInput.positionWS);
     #ifdef EFFECT_BUMP
         real sign = input.tangent.w * GetOddNegativeScale();
-        output.normalWS.xyz = normalWS;
-        output.tangentWS.xyz = TransformObjectToWorldDir(input.tangent.xyz);
-        output.bitangentWS.xyz = cross(output.normalWS.xyz, output.tangentWS.xyz) * sign;
-
-        // View dir packed in w.
-        output.normalWS.w = viewDirWS.x;
-        output.tangentWS.w = viewDirWS.y;
-        output.bitangentWS.w = viewDirWS.z;
+        output.normalWS = normalWS;
+        output.tangentWS = TransformObjectToWorldDir(input.tangent.xyz);
+        output.bitangentWS = cross(output.normalWS, output.tangentWS) * sign;
     #else
         output.normalWS = normalWS;
-        output.viewDirWS = viewDirWS;
     #endif
 
     output.clipPos = vertexInput.positionCS;
@@ -910,7 +901,7 @@ half4 SpeedTree8FragDepthNormal(SpeedTreeDepthNormalFragmentInput input) : SV_Ta
     #endif
 
     #if defined(EFFECT_BUMP)
-        float3 normalWS = TransformTangentToWorld(normalTs, half3x3(input.interpolated.tangentWS.xyz, input.interpolated.bitangentWS.xyz, input.interpolated.normalWS.xyz));
+        float3 normalWS = TransformTangentToWorld(normalTs, half3x3(input.interpolated.tangentWS, input.interpolated.bitangentWS, input.interpolated.normalWS));
         return half4(NormalizeNormalPerPixel(normalWS), 0.0h);
     #else
         return half4(NormalizeNormalPerPixel(input.interpolated.normalWS * normalTs.z), 0.0h);
