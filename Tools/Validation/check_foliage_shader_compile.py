@@ -5,6 +5,7 @@ integration with Unity 6 / URP 17.3 headers for representative mobile Vulkan
 variants. It is not a Unity ShaderLab import, Android build, or device benchmark.
 """
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -44,6 +45,10 @@ def compile_foliage(dxc, graphics_root, cgincludes):
     speedtree_wind = cgincludes / "SpeedTreeWind.cginc"
     if not speedtree_wind.is_file() or speedtree_wind.stat().st_size < 1000:
         raise AssertionError(f"missing pinned Unity built-in include: {speedtree_wind}")
+    wind_text = speedtree_wind.read_text(encoding="utf-8", errors="strict")
+    for required in ("SPEEDTREE_WIND_INCLUDED", "_ST_WindGlobal", "_ST_WindLeaf1Ripple", "_ST_WindLeaf2Ripple"):
+        if required not in wind_text:
+            raise AssertionError(f"unexpected Unity SpeedTree built-in header: missing {required}")
     universal = graphics_root / "Packages/com.unity.render-pipelines.universal/package.json"
     shadergraph = graphics_root / "Packages/com.unity.shadergraph/package.json"
     package = json.loads(universal.read_text())
@@ -144,6 +149,7 @@ def compile_foliage(dxc, graphics_root, cgincludes):
         "urp_version": package["version"],
         "shadergraph_version": sg_package["version"],
         "graphics_source_commit": source_commit,
+        "unity_builtin_speedtree_sha256": hashlib.sha256(speedtree_wind.read_bytes()).hexdigest(),
         "compiler_version": subprocess.check_output([str(dxc), "--version"], text=True).strip(),
         "hlsl_language_version": 2018,
         "platform": "vulkan_mobile",
