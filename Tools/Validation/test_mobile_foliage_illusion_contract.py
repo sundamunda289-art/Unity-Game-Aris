@@ -87,6 +87,8 @@ def check_interaction():
     assert "rcp(max(GroundHeight, 0.05))" in shader
     assert "BasePositionOS.y * inverseHeight" in shader
     assert "TransformObjectToWorld(BasePositionOS).xz" in shader
+    assert "heightDelta < 1.8 && radial < 9.0" in shader
+    assert shader.index("radial < 9.0") < shader.index("TransformObjectToWorld(BasePositionOS).xz")
     assert "min(1.0, max(GroundHeight, 0.25))" in shader
     assert not any(term in shader for term in ("RWTexture", "ComputeBuffer", "Raycast", "Collider"))
     assert "Shader.SetGlobalVector(GrassInteractorId, next)" in motor
