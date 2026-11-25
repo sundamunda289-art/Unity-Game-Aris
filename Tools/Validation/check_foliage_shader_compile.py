@@ -100,6 +100,8 @@ def compile_foliage(dxc, graphics_root, cgincludes):
     lod_variants = (
         ("steady", ()),
         ("percentage", ("LOD_FADE_PERCENTAGE",)),
+        ("crossfade", ("LOD_FADE_CROSSFADE",)),
+        ("percentage_crossfade", ("LOD_FADE_PERCENTAGE", "LOD_FADE_CROSSFADE")),
     )
 
     platform_variants = (
