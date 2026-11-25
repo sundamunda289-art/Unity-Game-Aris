@@ -254,7 +254,8 @@ def check_mobile_leaf_wind():
     wind = source[start:source.index("\n}\n", start)]
     assert wind.index("distanceSq >= endFlutterDistanceSq") < wind.index("AarisSmoothWindWave")
     assert "float3 windOS" in wind and "dot(anchorOS," in wind
-    assert "timeSeconds * 0.95" in wind and "fieldPhase * 1.618" in wind
+    assert "timeSeconds * 0.72" in wind and "fieldPhase * 1.618" in wind
+    assert "+ 0.16 * gust" in wind
     assert "_ST_WindLeaf1Ripple.x" not in wind and "_ST_WindLeaf2Ripple.x" not in wind
     assert "cross(rotation, positionOS - anchorOS)" in wind
     assert "cross(rotation, input.normal)" in wind and "cross(rotation, input.tangent.xyz)" in wind
@@ -335,13 +336,32 @@ def check_continuous_wind_math():
                 for i in range(fps * 3):
                     t = fp32(elapsed + i / fps)
                     gust = 0.40 + 0.60 * field(x, z, t)
-                    flutter = 2.0 * wave(fp32(t * 0.95 + 0.173 + (x * .011 + z * .035) * 1.618)) - 1.0
+                    flutter = 2.0 * wave(fp32(t * 0.72 + 0.173 + (x * .011 + z * .035) * 1.618 + 0.16 * gust)) - 1.0
                     ang.append(0.18 * gust * (0.23 + 0.77 * flutter))
                 assert all(isfinite(a) and abs(a) <= 0.18 for a in ang)
                 assert len(set(ang)) > fps
                 # Analytic bound: |wave'| <= 3 cycles^-1, including the
                 # slow gust envelope. A 30fps frame cannot flip the leaf.
                 assert max(abs(a - b) for a, b in zip(ang, ang[1:])) < 1.0 / fps + 0.0005
+
+    # Compare the old fixed clock with the gust-warped clock across phases.
+    # This is angular displacement per frame, not GPU performance evidence.
+    for fps in (30, 45, 60, 90):
+        old_peak = new_peak = 0.0
+        for phase in (0.0, 0.173, 0.33, 0.71):
+            for spatial in (-46.0, 0.0, 46.0):
+                for elapsed in (0.0, 1200.0, 7200.0):
+                    old, new = [], []
+                    for i in range(fps * 10):
+                        t = fp32(elapsed + i / fps)
+                        gust = 0.40 + 0.60 * wave(spatial - t * 0.18)
+                        for rate, warp, samples in ((0.95, 0.0, old), (0.72, 0.16, new)):
+                            flutter = 2.0 * wave(fp32(t * rate + phase + spatial * 1.618 + warp * gust)) - 1.0
+                            samples.append(0.18 * gust * (0.23 + 0.77 * flutter))
+                    assert len(set(new)) > fps
+                    old_peak = max(old_peak, max(abs(a - b) for a, b in zip(old, old[1:])))
+                    new_peak = max(new_peak, max(abs(a - b) for a, b in zip(new, new[1:])))
+        assert new_peak < 0.85 * old_peak, (fps, old_peak, new_peak)
 
     def sway(y, inverse_height, adherence, amplitude, gust, f):
         if inverse_height <= 0.00001 or f <= 0.0:
