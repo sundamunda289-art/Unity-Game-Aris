@@ -4,6 +4,11 @@
 #ifndef UNIVERSAL_SPEEDTREE8_PASSES_INCLUDED
 #define UNIVERSAL_SPEEDTREE8_PASSES_INCLUDED
 
+// One alpha-test contract for visible, shadow and depth passes. Tree color
+// texture mip coverage is imported against the same value to avoid density
+// pumping/shimmer when a lower mip becomes active.
+static const half AARIS_TREE_ALPHA_CUTOFF = 0.3333h;
+
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GBufferOutput.hlsl"
 #include "Packages/com.unity.shadergraph/ShaderGraphLibrary/Nature/SpeedTreeCommon.hlsl"
@@ -684,7 +689,7 @@ half4 SpeedTree8Frag(SpeedTreeFragmentInput input) : SV_Target
     half4 diffuse = SampleAlbedoAlpha(uv, TEXTURE2D_ARGS(_MainTex, sampler_MainTex)) * _Color;
 
     half alpha = diffuse.a * input.interpolated.color.a;
-    alpha = AlphaDiscard(alpha, 0.3333);
+    alpha = AlphaDiscard(alpha, AARIS_TREE_ALPHA_CUTOFF);
 
     #ifdef LOD_FADE_CROSSFADE
         LODFadeCrossFade(input.interpolated.clipPos);
@@ -836,7 +841,7 @@ half4 SpeedTree8FragDepth(SpeedTreeVertexDepthOutput input) : SV_Target
     half4 diffuse = SampleAlbedoAlpha(uv, TEXTURE2D_ARGS(_MainTex, sampler_MainTex)) * _Color;
 
     half alpha = diffuse.a * input.color.a;
-    AlphaDiscard(alpha, 0.3333);
+    AlphaDiscard(alpha, AARIS_TREE_ALPHA_CUTOFF);
 
     #ifdef LOD_FADE_CROSSFADE
         LODFadeCrossFade(input.clipPos);
@@ -892,7 +897,7 @@ half4 SpeedTree8FragDepthNormal(SpeedTreeDepthNormalFragmentInput input) : SV_Ta
     half4 diffuse = SampleAlbedoAlpha(uv, TEXTURE2D_ARGS(_MainTex, sampler_MainTex)) * _Color;
 
     half alpha = diffuse.a * input.interpolated.color.a;
-    AlphaDiscard(alpha, 0.3333);
+    AlphaDiscard(alpha, AARIS_TREE_ALPHA_CUTOFF);
 
     #ifdef LOD_FADE_CROSSFADE
         LODFadeCrossFade(input.interpolated.clipPos);
