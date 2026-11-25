@@ -149,6 +149,14 @@ def check_speedtree_materials():
         "Conifer/Materials/Conifer_Branches.mat",
         "Cypress/Materials/Cypress_Forest_Desktop.mat",
     ]
+    distant_leaves = [
+        "Pines/Pine_A/Materials/Pine_A_Distant.mat",
+        "Pines/Pine_B/Materials/Pine_B_Distant.mat",
+        "Pines/Pine_C/Materials/Pine_C_Distant.mat",
+        "Pines/Pine_D/Materials/Pine_D_Distant.mat",
+        "Conifer/Materials/Conifer_Branches_Distant.mat",
+        "Cypress/Materials/Cypress_Forest_Desktop_Distant.mat",
+    ]
     bark = [
         "Pines/Pine_A/Materials/Pine_A_Bark.mat",
         "Pines/Pine_B/Materials/Pine_B_Bark.mat",
@@ -167,6 +175,14 @@ def check_speedtree_materials():
     for name in leaves:
         s = (TREE / name).read_text()
         assert "- EFFECT_SUBSURFACE" in s, name
+        assert "- _WINDQUALITY_FAST" in s, name
+
+    for name in distant_leaves:
+        s = (TREE / name).read_text()
+        assert "- EFFECT_SUBSURFACE" in s, name
+        assert "- EFFECT_BUMP" in s, name
+        assert "- _WINDQUALITY_FASTEST" in s, name
+        assert "m_EnableInstancingVariants: 1" in s, name
 
     billboards = (
         "Pines/Pine_A/Materials/Pine_A_Billboard.mat",
