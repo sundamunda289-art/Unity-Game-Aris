@@ -52,6 +52,50 @@ def check_graph():
                 for e in edges if e["m_OutputSlot"]["m_Node"]["m_Id"] == node["m_ObjectId"]
                 and e["m_OutputSlot"]["m_SlotId"] == port]
 
+    def slot_id(node, display_name, slot_type):
+        matches = []
+        for ref in node.get("m_Slots", []):
+            slot = nodes[ref["m_Id"]]
+            if slot.get("m_DisplayName") == display_name and slot.get("m_SlotType") == slot_type:
+                matches.append(slot["m_Id"])
+        assert len(matches) == 1, (node.get("m_Name"), display_name, matches)
+        return matches[0]
+
+    # The expensive custom wind must be multiplied by the distance movement
+    # envelope before it can reach the final vertex position. This keeps the
+    # large painted undergrowth population static outside Animation Cutoff.
+    wind = next(b for b in blocks if b.get("m_Type") == "UnityEditor.ShaderGraph.SubGraphNode"
+                and b.get("m_Name") == "Wind")
+    cutoff = next(b for b in blocks if b.get("m_Type") == "UnityEditor.ShaderGraph.SubGraphNode"
+                  and b.get("m_Name") == "DistanceCutoff")
+    move_port = slot_id(cutoff, "out_movement", 1)
+    one_minus = next(n for n, _ in destinations(cutoff, move_port)
+                     if n.get("m_Name") == "One Minus")
+    power = next(n for n, _ in destinations(one_minus, slot_id(one_minus, "Out", 1))
+                 if n.get("m_Name") == "Power")
+    movement_multiply = next(n for n, _ in destinations(power, slot_id(power, "Out", 1))
+                             if n.get("m_Name") == "Multiply")
+    wind_out = slot_id(wind, "Out_Vector1", 1)
+    assert any(n["m_ObjectId"] == movement_multiply["m_ObjectId"]
+               for n, _ in destinations(wind, wind_out))
+
+    position = next(b for b in blocks if b.get("m_Name") == "VertexDescription.Position")
+    adjacency = {}
+    for edge in edges:
+        src = edge["m_OutputSlot"]["m_Node"]["m_Id"]
+        dst = edge["m_InputSlot"]["m_Node"]["m_Id"]
+        adjacency.setdefault(src, set()).add(dst)
+    frontier = [movement_multiply["m_ObjectId"]]
+    visited = set(frontier)
+    while frontier:
+        current = frontier.pop()
+        for nxt in adjacency.get(current, ()):
+            if nxt in visited:
+                continue
+            visited.add(nxt)
+            frontier.append(nxt)
+    assert position["m_ObjectId"] in visited
+
     pack = next(b for b in blocks if b.get("m_FunctionName") == "AarisPackDetailGround")
     [(interpolator, _)] = destinations(pack, 3)
     assert interpolator["m_SerializedDescriptor"] == "VertexDescription.TerrainColorMatch#4"
