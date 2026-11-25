@@ -65,6 +65,18 @@ def main() -> None:
             "active": None if active_match is None else active_match.group(1) == "1",
         })
 
+    active_post = {
+        item["name"] for item in volume_objects if item["active"] is True
+    }
+    # These effects need depth/motion inputs and would invalidate the
+    # constrained-phone camera-depth-copy optimization.
+    depth_sensitive_post = sorted(
+        active_post.intersection({"DepthOfField", "MotionBlur"})
+    )
+    assert not depth_sensitive_post, (
+        "depth-sensitive post effect now active: " + ", ".join(depth_sensitive_post)
+    )
+
     guid_match = re.search(r"(?m)^guid:\s*([0-9a-f]{32})\s*$", renderer_meta)
     assert guid_match and guid_match.group(1) == EXPECTED_RENDERER_GUID
     assert EXPECTED_RENDERER_GUID in pipeline, "pipeline no longer points at audited renderer"
@@ -118,6 +130,10 @@ def main() -> None:
         "Mathf.Min(originalDetailDistances[i], 80f)",
         "Mathf.Min(originalBillboardDistances[i], 85f)",
         "private const int LowMemoryFullLodTreeLimit = 50;",
+        "androidPipeline.supportsCameraOpaqueTexture = false;",
+        "androidPipeline.supportsCameraDepthTexture = false;",
+        "androidPipeline.supportsCameraOpaqueTexture = originalCameraOpaqueTexture;",
+        "androidPipeline.supportsCameraDepthTexture = originalCameraDepthTexture;",
     ):
         assert contract in runtime, contract
 
@@ -129,6 +145,9 @@ def main() -> None:
         "budget_detail_distance_m": 80,
         "budget_tree_billboard_distance_m": 85,
         "budget_full_lod_tree_cap": 50,
+        "budget_camera_opaque_texture": False,
+        "budget_camera_depth_texture": False,
+        "active_depth_sensitive_post_effects": depth_sensitive_post,
         "depth_priming_auto_guarded": data["depth_priming_mode"] == 1,
         "unity_editor_tested": False,
         "android_device_tested": False,
