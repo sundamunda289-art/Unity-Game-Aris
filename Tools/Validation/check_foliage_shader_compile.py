@@ -183,6 +183,80 @@ def compile_foliage(dxc, graphics_root, cgincludes):
                                 }
                             )
 
+        # The six authored billboard materials all use the same real mobile
+        # keyword contract: EFFECT_BILLBOARD + _WINDQUALITY_NONE + EFFECT_BUMP.
+        # Exercise the final mesh-to-billboard steady/crossfade path separately
+        # rather than pretending a Fast/Fastest billboard configuration exists.
+        billboard_lod_variants = (
+            ("steady", ()),
+            ("crossfade", ("LOD_FADE_CROSSFADE",)),
+        )
+        for pass_name in MOBILE_PASSES:
+            vertex, fragment, hlsl = prepare_program(programs[pass_name])
+            src = work / f"{pass_name}-billboard.hlsl"
+            src.write_text(hlsl, encoding="utf-8")
+            for lod_name, lod_defines in billboard_lod_variants:
+                feature_defines = ["_WINDQUALITY_NONE", "EFFECT_BILLBOARD", *lod_defines]
+                if pass_name in ("ForwardLit", "DepthNormals"):
+                    feature_defines += ["EFFECT_BUMP"]
+                if pass_name == "ForwardLit":
+                    feature_defines += ["_MAIN_LIGHT_SHADOWS", "_SHADOWS_SOFT_MEDIUM"]
+
+                for platform_name, platform_define in platform_variants:
+                    for stage, entry, profile in (
+                        ("vertex", vertex, "vs_6_0"),
+                        ("fragment", fragment, "ps_6_0"),
+                    ):
+                        output = work / f"{pass_name}-billboard-{lod_name}-{platform_name}-{stage}.spv"
+                        defines = [
+                            platform_define,
+                            "SHADER_API_MOBILE",
+                            "UNITY_COMPILER_HLSL",
+                            "UNITY_VERSION=600030",
+                            "SHADER_TARGET=35",
+                            "UNITY_HARDWARE_TIER3",
+                            f"SHADER_STAGE_{stage.upper()}",
+                            *feature_defines,
+                        ]
+                        cmd = [
+                            str(dxc),
+                            "-E", entry,
+                            "-T", profile,
+                            "-HV", "2018",
+                            "-I", str(graphics_root),
+                            "-I", str(SHADER_DIR),
+                            "-I", str(cgincludes),
+                            "-spirv",
+                            "-fspv-target-env=vulkan1.1",
+                            "-fvk-use-dx-layout",
+                            "-Fo", str(output),
+                        ]
+                        for define in defines:
+                            cmd += ["-D", define]
+                        done = subprocess.run(
+                            [*cmd, str(src)],
+                            capture_output=True,
+                            text=True,
+                        )
+                        if done.returncode != 0:
+                            raise AssertionError(
+                                f"{pass_name} billboard {lod_name} {platform_name} {stage}\n"
+                                f"stdout:\n{done.stdout}\nstderr:\n{done.stderr}"
+                            )
+                        if not output.is_file() or output.stat().st_size == 0:
+                            raise AssertionError(f"empty compiler output: {output}")
+                        results.append(
+                            {
+                                "pass": pass_name,
+                                "wind": "none",
+                                "geometry": "billboard",
+                                "lod": lod_name,
+                                "platform_macro": platform_name,
+                                "stage": stage,
+                                "status": "compiled",
+                            }
+                        )
+
     # Shader Graph custom functions are compiled separately because Unity's
     # generated graph shader is Editor-owned. These wrappers exercise the real
     # player/vehicle bush bend and shrub transmission functions against the same
