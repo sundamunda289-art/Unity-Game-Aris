@@ -387,7 +387,10 @@ def check_mobile_leaf_wind():
     assert wind.count("AarisSmoothWindWave(") == 2
     assert "_ST_WindLeaf1Ripple.x" not in wind and "_ST_WindLeaf2Ripple.x" not in wind
     assert "cross(rotation, positionOS - anchorOS)" in wind
-    assert "cross(rotation, input.normal)" in wind and "cross(rotation, input.tangent.xyz)" in wind
+    assert "#if !defined(DEPTH_ONLY) || defined(SHADOW_CASTER)" in wind
+    assert "cross(rotation, input.normal)" in wind
+    assert "#if defined(EFFECT_BUMP) && !defined(DEPTH_ONLY)" in wind
+    assert "cross(rotation, input.tangent.xyz)" in wind
     start = source.index("float3 AarisCoherentTreeSway(")
     sway = source[start:source.index("\n}\n", start)]
     assert "inverseHeight <= 0.00001" in sway
