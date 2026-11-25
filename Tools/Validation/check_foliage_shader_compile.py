@@ -152,6 +152,95 @@ def compile_foliage(dxc, graphics_root, cgincludes):
                         }
                     )
 
+    # Shader Graph custom functions are compiled separately because Unity's
+    # generated graph shader is Editor-owned. These wrappers exercise the real
+    # player/vehicle bush bend and shrub transmission functions against the same
+    # pinned URP headers and mobile Vulkan target.
+    repo_root = Path.cwd()
+    custom_sources = {
+        "ground_interaction_vertex": (
+            "vs_6_0",
+            "AarisGroundInteractionProbe",
+            """#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Assets/TerrainDemoScene_URP/ShaderGraphs/CustomFunctions/AarisGrassInteraction.hlsl"
+struct AarisProbeAttributes { float3 positionOS : POSITION; };
+float4 AarisGroundInteractionProbe(AarisProbeAttributes input) : SV_POSITION
+{
+    float3 outPosition;
+    float3 bendSlope;
+    AarisGrassInteraction_float(input.positionOS, input.positionOS, 2.2,
+        float4(1.0, 0.0, 0.0, 1.0), outPosition, bendSlope);
+    return TransformObjectToHClip(outPosition + bendSlope * 0.0);
+}
+""",
+            ("SHADER_STAGE_VERTEX",),
+        ),
+        "shrub_transmission_fragment": (
+            "ps_6_0",
+            "AarisShrubTransmissionProbe",
+            """#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+#include "Assets/TerrainDemoScene_URP/ShaderGraphs/CustomFunctions/PseudoSubsurface.hlsl"
+half4 AarisShrubTransmissionProbe(float4 positionCS : SV_POSITION) : SV_Target
+{
+    half3 transmission;
+    PseudoSubsurface_half(float3(0.0, 0.0, 0.0), normalize(half3(0.2h, 0.9h, 0.3h)),
+        half3(2.0h, 2.0h, 2.0h), 1.0h, transmission);
+    half3 rooted;
+    half3 transmissionColor;
+    half height01;
+    AarisDetailGround_half(half3(0.25h, 0.55h, 0.18h),
+        half4(0.28h, 0.24h, 0.16h, 0.35h), 0.0h, 0.63h,
+        half4(0.35h, 0.0h, 0.0h, 1.0h), rooted, transmissionColor, height01);
+    return half4(transmission + rooted * 0.0h + transmissionColor * 0.0h + height01 * 0.0h, 1.0h);
+}
+""",
+            ("SHADER_STAGE_FRAGMENT",),
+        ),
+    }
+    with tempfile.TemporaryDirectory(prefix="aaris-ground-foliage-hlsl-") as custom_workdir:
+        custom_work = Path(custom_workdir)
+        for probe_name, (profile, entry, source_text, stage_defines) in custom_sources.items():
+            src = custom_work / f"{probe_name}.hlsl"
+            output = custom_work / f"{probe_name}.spv"
+            src.write_text(source_text, encoding="utf-8")
+            cmd = [
+                str(dxc),
+                "-E", entry,
+                "-T", profile,
+                "-HV", "2018",
+                "-I", str(graphics_root),
+                "-I", str(repo_root),
+                "-spirv",
+                "-fspv-target-env=vulkan1.1",
+                "-fvk-use-dx-layout",
+                "-Fo", str(output),
+            ]
+            defines = [
+                "SHADER_API_VULKAN",
+                "SHADER_API_MOBILE",
+                "UNITY_COMPILER_HLSL",
+                "UNITY_VERSION=600030",
+                "SHADER_TARGET=35",
+                "UNITY_HARDWARE_TIER3",
+                *stage_defines,
+            ]
+            for define in defines:
+                cmd += ["-D", define]
+            done = subprocess.run([*cmd, str(src)], capture_output=True, text=True)
+            if done.returncode != 0:
+                raise AssertionError(
+                    f"{probe_name}\nstdout:\n{done.stdout}\nstderr:\n{done.stderr}"
+                )
+            if not output.is_file() or output.stat().st_size == 0:
+                raise AssertionError(f"empty compiler output: {output}")
+            results.append({
+                "pass": probe_name,
+                "wind": "n/a",
+                "stage": "vertex" if profile.startswith("vs_") else "fragment",
+                "status": "compiled",
+            })
+
     report = {
         "status": "dxc_foliage_hlsl_checks_passed",
         "unity_version_target": "6000.3.26f1",
