@@ -576,7 +576,14 @@ half3 AarisLeafSun(half3 normalWS, half3 viewDirectionWS, Light light, half occl
     // Gate fake thin-leaf glow by sun-behind-view using the existing view vector.
     half viewBack = saturate(-dot(viewDirectionWS, light.direction));
     half viewLobe = 0.78h + 0.22h * viewBack * viewBack;
-    half transmit = 0.34h * back2 * viewLobe + 0.06h * rim * (0.35h + 0.65h * back);
+    // Reuse that same interpolated view direction for a true card-edge lobe.
+    // The three coefficients still sum to the previous 0.40 peak budget:
+    // richer golden-green edges without increasing the maximum fake energy.
+    half viewRim = 1.0h - saturate(abs(dot(normalWS, viewDirectionWS)));
+    viewRim *= viewRim;
+    half transmit = 0.31h * back2 * viewLobe
+        + 0.055h * rim * (0.35h + 0.65h * back)
+        + 0.035h * viewRim * back * (0.65h + 0.35h * viewBack);
     half visibility = saturate(light.distanceAttenuation) * light.shadowAttenuation;
     half3 warmSunTint = half3(1.04h, 1.0h, 0.86h);
     return light.color * warmSunTint * (transmit * visibility * (0.6h + 0.4h * occlusion));
