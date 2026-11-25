@@ -203,6 +203,38 @@ def check_tree_alpha_mip_contract():
         assert abs(actual - 0.5) < 1e-6, (meta_name, actual)
 
 
+def check_speedtree_lod_morph_contract():
+    """Native SpeedTree mesh LODs morph instead of double-drawing crossfades."""
+    families = (
+        ("Pines/Pine_A/Pine_A.prefab", "Pines/Pine_A/Pine_A.st.meta"),
+        ("Pines/Pine_B/Pine_B.prefab", "Pines/Pine_B/Pine_B.st.meta"),
+        ("Pines/Pine_C/Pine_C.prefab", "Pines/Pine_C/Pine_C.st.meta"),
+        ("Pines/Pine_D/Pine_D.prefab", "Pines/Pine_D/Pine_D.st.meta"),
+        ("Conifer/Conifer.prefab", "Conifer/Conifer.st.meta"),
+        ("Cypress/Cypress_Forest_Desktop.prefab", "Cypress/Cypress_Forest_Desktop.st.meta"),
+    )
+    for prefab_name, source_meta_name in families:
+        prefab = (TREE / prefab_name).read_text()
+        assert prefab.count("m_FadeMode: 2") == 1, prefab_name
+        assert "m_AnimateCrossFading: 1" in prefab, prefab_name
+        source_meta = (TREE / source_meta_name).read_text()
+        assert "SpeedTreeImporter:" in source_meta, source_meta_name
+        assert "enableSmoothLODTransition: 1" in source_meta, source_meta_name
+        assert "hasBillboard: 1" in source_meta, source_meta_name
+
+    # DeepForest reuses Pine_D's original SpeedTree LOD geometry.
+    deep = (TREE / "DeepForest/DeepForestPine.prefab").read_text()
+    assert deep.count("m_FadeMode: 2") == 1
+    assert "m_AnimateCrossFading: 1" in deep
+
+    shader = (FOLIAGE / "AarisSpeedTree8Mobile.shader").read_text()
+    passes = (FOLIAGE / "CustomFunctions/AarisSpeedTree8MobilePasses.hlsl").read_text()
+    assert shader.count("LOD_FADE_PERCENTAGE") >= 5
+    assert "#if defined(LOD_FADE_PERCENTAGE)" in passes
+    assert "input.vertex.xyz = lerp(input.vertex.xyz, input.texcoord2.xyz, lodValue);" in passes
+    assert passes.index("#if !defined(EFFECT_BILLBOARD)") < passes.index("#if defined(LOD_FADE_PERCENTAGE)")
+
+
 def check_tree_graph_illusions():
     """Validate root contact and stable instance tint without disturbing emission."""
     for file_name, func_name, expected_outputs in (
@@ -717,6 +749,7 @@ if __name__ == "__main__":
     check_ground_detail_mips()
     check_speedtree_materials()
     check_tree_alpha_mip_contract()
+    check_speedtree_lod_morph_contract()
     check_tree_graph_illusions()
     check_custom_speedtree_shader()
     check_hue_variation_finite()
@@ -725,4 +758,4 @@ if __name__ == "__main__":
     check_canopy_asset_bindings()
     check_canopy_math()
     print("AARIS_MOBILE_FOLIAGE_CONTRACT_PASS")
-    print("13 foliage source/math groups checked")
+    print("14 foliage source/math groups checked")
