@@ -130,6 +130,7 @@ void AarisFastLeafWind(inout SpeedTreeVertexInput input, inout float3 positionOS
     float3 anchorOS, float3 windOS, bool leafTwo, float distanceSq, float gust,
     float timeSeconds, float fieldPhase)
 {
+    const float microFlutterDistanceSq = 28.0 * 28.0;
     const float fullFlutterDistanceSq = 35.0 * 35.0;
     const float endFlutterDistanceSq = 75.0 * 75.0;
     UNITY_BRANCH if (distanceSq >= endFlutterDistanceSq)
@@ -141,11 +142,20 @@ void AarisFastLeafWind(inout SpeedTreeVertexInput input, inout float3 positionOS
     float rippleAmplitude = leafTwo ? _ST_WindLeaf2Ripple.y : _ST_WindLeaf1Ripple.y;
     // Reuse the already-computed landscape phase for stable per-tree
     // variation. Identical cloned meshes no longer flutter in lockstep.
-    // Use the existing gust to gently vary the flutter speed, without another
-    // wave, texture read or time state. The derivative stays bounded even at 30fps.
+    // The first wave covers the entire near/mid wind band.
     float leafPhase = timeSeconds * 0.72 + dot(anchorOS, float3(0.31, 0.57, 0.41))
         + fieldPhase * 1.618 + (leafTwo ? 0.37 : 0.0) + 0.16 * gust;
     float flutter = 2.0 * AarisSmoothWindWave(leafPhase) - 1.0;
+    // Spend one extra sampler-free polynomial wave only where individual
+    // leaves are large enough on screen to justify it. distanceSq is uniform
+    // for the whole tree instance, so this branch does not split its vertices.
+    // Farther leaves keep the cheaper single-wave path and >75 m keeps none.
+    UNITY_BRANCH if (distanceSq < microFlutterDistanceSq)
+    {
+        float microPhase = leafPhase * 1.73 + anchorOS.y * 0.91 + (leafTwo ? 0.29 : 0.0);
+        float microFlutter = 2.0 * AarisSmoothWindWave(microPhase) - 1.0;
+        flutter = 0.82 * flutter + 0.18 * microFlutter;
+    }
     float bend = min(abs(rippleAmplitude) * 5.0, 0.18) * saturate(input.texcoord3.x) * fade;
     float angle = bend * gust * (0.23 + 0.77 * flutter);
     float3 rotation = float3(windOS.z, 0.0, -windOS.x) * angle;
