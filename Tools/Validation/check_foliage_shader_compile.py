@@ -97,6 +97,11 @@ def compile_foliage(dxc, graphics_root, cgincludes):
         ("fastest", ()),
     )
 
+    lod_variants = (
+        ("steady", ()),
+        ("percentage", ("LOD_FADE_PERCENTAGE",)),
+    )
+
     platform_variants = (
         ("vulkan", "SHADER_API_VULKAN"),
         ("gles3", "SHADER_API_GLES3"),
@@ -109,70 +114,72 @@ def compile_foliage(dxc, graphics_root, cgincludes):
             src = work / f"{pass_name}.hlsl"
             src.write_text(hlsl, encoding="utf-8")
             for wind_name, wind_defines in wind_variants:
-                # Depth/selection passes intentionally do not sample leaf PBR,
-                # while ForwardLit compiles the full normal/subsurface path.
-                feature_defines = list(wind_defines)
-                if pass_name in ("ForwardLit", "DepthNormals"):
-                    feature_defines += ["EFFECT_BUMP", "EFFECT_SUBSURFACE"]
-                if pass_name == "ForwardLit":
-                    feature_defines += [
-                        "EFFECT_HUE_VARIATION",
-                        "_MAIN_LIGHT_SHADOWS",
-                        "_SHADOWS_SOFT_MEDIUM",
-                    ]
+                for lod_name, lod_defines in lod_variants:
+                    # Depth/selection passes intentionally do not sample leaf PBR,
+                    # while ForwardLit compiles the full normal/subsurface path.
+                    feature_defines = [*wind_defines, *lod_defines]
+                    if pass_name in ("ForwardLit", "DepthNormals"):
+                        feature_defines += ["EFFECT_BUMP", "EFFECT_SUBSURFACE"]
+                    if pass_name == "ForwardLit":
+                        feature_defines += [
+                            "EFFECT_HUE_VARIATION",
+                            "_MAIN_LIGHT_SHADOWS",
+                            "_SHADOWS_SOFT_MEDIUM",
+                        ]
 
-                for platform_name, platform_define in platform_variants:
-                    for stage, entry, profile in (
-                        ("vertex", vertex, "vs_6_0"),
-                        ("fragment", fragment, "ps_6_0"),
-                    ):
-                        output = work / f"{pass_name}-{wind_name}-{platform_name}-{stage}.spv"
-                        defines = [
-                            platform_define,
-                            "SHADER_API_MOBILE",
-                            "UNITY_COMPILER_HLSL",
-                            "UNITY_VERSION=600030",
-                            "SHADER_TARGET=35",
-                            "UNITY_HARDWARE_TIER3",
-                            f"SHADER_STAGE_{stage.upper()}",
-                            *feature_defines,
-                        ]
-                        cmd = [
-                            str(dxc),
-                            "-E", entry,
-                            "-T", profile,
-                            "-HV", "2018",
-                            "-I", str(graphics_root),
-                            "-I", str(SHADER_DIR),
-                            "-I", str(cgincludes),
-                            "-spirv",
-                            "-fspv-target-env=vulkan1.1",
-                            "-fvk-use-dx-layout",
-                            "-Fo", str(output),
-                        ]
-                        for define in defines:
-                            cmd += ["-D", define]
-                        done = subprocess.run(
-                            [*cmd, str(src)],
-                            capture_output=True,
-                            text=True,
-                        )
-                        if done.returncode != 0:
-                            raise AssertionError(
-                                f"{pass_name} {wind_name} {platform_name} {stage}\n"
-                                f"stdout:\n{done.stdout}\nstderr:\n{done.stderr}"
+                    for platform_name, platform_define in platform_variants:
+                        for stage, entry, profile in (
+                            ("vertex", vertex, "vs_6_0"),
+                            ("fragment", fragment, "ps_6_0"),
+                        ):
+                            output = work / f"{pass_name}-{wind_name}-{lod_name}-{platform_name}-{stage}.spv"
+                            defines = [
+                                platform_define,
+                                "SHADER_API_MOBILE",
+                                "UNITY_COMPILER_HLSL",
+                                "UNITY_VERSION=600030",
+                                "SHADER_TARGET=35",
+                                "UNITY_HARDWARE_TIER3",
+                                f"SHADER_STAGE_{stage.upper()}",
+                                *feature_defines,
+                            ]
+                            cmd = [
+                                str(dxc),
+                                "-E", entry,
+                                "-T", profile,
+                                "-HV", "2018",
+                                "-I", str(graphics_root),
+                                "-I", str(SHADER_DIR),
+                                "-I", str(cgincludes),
+                                "-spirv",
+                                "-fspv-target-env=vulkan1.1",
+                                "-fvk-use-dx-layout",
+                                "-Fo", str(output),
+                            ]
+                            for define in defines:
+                                cmd += ["-D", define]
+                            done = subprocess.run(
+                                [*cmd, str(src)],
+                                capture_output=True,
+                                text=True,
                             )
-                        if not output.is_file() or output.stat().st_size == 0:
-                            raise AssertionError(f"empty compiler output: {output}")
-                        results.append(
-                            {
-                                "pass": pass_name,
-                                "wind": wind_name,
-                                "platform_macro": platform_name,
-                                "stage": stage,
-                                "status": "compiled",
-                            }
-                        )
+                            if done.returncode != 0:
+                                raise AssertionError(
+                                    f"{pass_name} {wind_name} {lod_name} {platform_name} {stage}\n"
+                                    f"stdout:\n{done.stdout}\nstderr:\n{done.stderr}"
+                                )
+                            if not output.is_file() or output.stat().st_size == 0:
+                                raise AssertionError(f"empty compiler output: {output}")
+                            results.append(
+                                {
+                                    "pass": pass_name,
+                                    "wind": wind_name,
+                                    "lod": lod_name,
+                                    "platform_macro": platform_name,
+                                    "stage": stage,
+                                    "status": "compiled",
+                                }
+                            )
 
     # Shader Graph custom functions are compiled separately because Unity's
     # generated graph shader is Editor-owned. These wrappers exercise the real
