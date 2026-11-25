@@ -9,6 +9,7 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisVehicleSession.cs'
       - 'Tools/Validation/test_mobile_foliage_illusion_contract.py'
       - 'Tools/Validation/check_foliage_shader_compile.py'
+      - 'Tools/Validation/test_far_detail_fade_equivalence.py'
       - 'Tools/Validation/check_mobile_urp_renderer.py'
       - 'Assets/TerrainDemoScene_URP/Settings/URP/*.asset'
       - '.github/workflows/aaris-mobile-nature-illusion-qa.yml'
@@ -22,6 +23,7 @@ on:
       - 'Assets/AarisWorld/Scripts/AarisVehicleSession.cs'
       - 'Tools/Validation/test_mobile_foliage_illusion_contract.py'
       - 'Tools/Validation/check_foliage_shader_compile.py'
+      - 'Tools/Validation/test_far_detail_fade_equivalence.py'
       - 'Tools/Validation/check_mobile_urp_renderer.py'
       - 'Assets/TerrainDemoScene_URP/Settings/URP/*.asset'
       - '.github/workflows/aaris-mobile-nature-illusion-qa.yml'
@@ -47,6 +49,9 @@ jobs:
       - name: Check mobile vegetation Shader Graph bindings and math
         run: |
           python3 Tools/Validation/test_mobile_foliage_illusion_contract.py
+      - name: Prove full terrain-fade fast path preserves output
+        run: |
+          python3 Tools/Validation/test_far_detail_fade_equivalence.py
       - name: Validate original tree prefabs, coverage fullness and proportions
         run: |
           python3 Tools/Validation/test_tree_proportions.py
