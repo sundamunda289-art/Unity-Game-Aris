@@ -66,7 +66,6 @@ struct SpeedTreeVertexDepthOutput
 {
     half2 uv                        : TEXCOORD0;
     half4 color                     : TEXCOORD1;
-    half3 viewDirWS                 : TEXCOORD2;
     float4 clipPos                  : SV_POSITION;
     UNITY_VERTEX_INPUT_INSTANCE_ID
     UNITY_VERTEX_OUTPUT_STEREO
@@ -78,12 +77,13 @@ struct SpeedTreeVertexDepthNormalOutput
     half4 color                     : TEXCOORD1;
 
     #ifdef EFFECT_BUMP
-        half4 normalWS              : TEXCOORD2;    // xyz: normal, w: viewDir.x
-        half4 tangentWS             : TEXCOORD3;    // xyz: tangent, w: viewDir.y
-        half4 bitangentWS           : TEXCOORD4;    // xyz: bitangent, w: viewDir.z
+        // DepthNormals only needs the tangent basis. Do not spend three
+        // interpolator W channels carrying a view direction it never reads.
+        half3 normalWS              : TEXCOORD2;
+        half3 tangentWS             : TEXCOORD3;
+        half3 bitangentWS           : TEXCOORD4;
     #else
         half3 normalWS              : TEXCOORD2;
-        half3 viewDirWS             : TEXCOORD3;
     #endif
 
     float4 clipPos                  : SV_POSITION;
@@ -497,8 +497,6 @@ SpeedTreeVertexDepthOutput SpeedTree8VertDepth(SpeedTreeVertexInput input)
 
     VertexPositionInputs vertexInput = GetVertexPositionInputs(input.vertex.xyz);
 
-    output.viewDirWS = GetWorldSpaceNormalizeViewDir(vertexInput.positionWS);
-
 #ifdef SHADOW_CASTER
     half3 normalWS = TransformObjectToWorldNormal(input.normal);
 
@@ -868,20 +866,13 @@ SpeedTreeVertexDepthNormalOutput SpeedTree8VertDepthNormal(SpeedTreeVertexInput 
 
     VertexPositionInputs vertexInput = GetVertexPositionInputs(input.vertex.xyz);
     half3 normalWS = TransformObjectToWorldNormal(input.normal);
-    half3 viewDirWS = GetWorldSpaceNormalizeViewDir(vertexInput.positionWS);
     #ifdef EFFECT_BUMP
         real sign = input.tangent.w * GetOddNegativeScale();
-        output.normalWS.xyz = normalWS;
-        output.tangentWS.xyz = TransformObjectToWorldDir(input.tangent.xyz);
-        output.bitangentWS.xyz = cross(output.normalWS.xyz, output.tangentWS.xyz) * sign;
-
-        // View dir packed in w.
-        output.normalWS.w = viewDirWS.x;
-        output.tangentWS.w = viewDirWS.y;
-        output.bitangentWS.w = viewDirWS.z;
+        output.normalWS = normalWS;
+        output.tangentWS = TransformObjectToWorldDir(input.tangent.xyz);
+        output.bitangentWS = cross(output.normalWS, output.tangentWS) * sign;
     #else
         output.normalWS = normalWS;
-        output.viewDirWS = viewDirWS;
     #endif
 
     output.clipPos = vertexInput.positionCS;
