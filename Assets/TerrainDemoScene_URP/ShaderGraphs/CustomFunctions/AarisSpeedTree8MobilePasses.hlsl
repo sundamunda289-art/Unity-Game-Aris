@@ -573,7 +573,9 @@ half3 AarisLeafSun(InputData inputData, Light light, half occlusion)
     half ndl = dot(inputData.normalWS, light.direction);
     half back = saturate(0.5h - 0.5h * ndl);
     half rim = 1.0h - saturate(abs(ndl));
-    rim *= rim;
+    // A grazing-light rim should not become a white halo on front-lit cards.
+    // Gate it by the same back-light term: one multiply, no extra sample.
+    rim *= rim * back;
     half towardSun = saturate(-dot(inputData.viewDirectionWS, light.direction));
     half transmit = 0.38h * back * back + rim * (0.035h + 0.115h * towardSun * towardSun);
     half visibility = saturate(light.distanceAttenuation) * light.shadowAttenuation;
