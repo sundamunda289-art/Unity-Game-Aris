@@ -16,6 +16,7 @@ PIPELINE = URP_DIR / "URP-HighQuality Pipeline Asset.asset"
 RENDERER = URP_DIR / "Universal Render Pipeline Asset_Renderer.asset"
 RENDERER_META = RENDERER.with_suffix(RENDERER.suffix + ".meta")
 RUNTIME = ROOT / "Assets/AarisWorld/Scripts/AarisMobileRuntime.cs"
+VOLUME_PROFILE = ROOT / "Assets/TerrainDemoScene_URP/Prefabs/Volumes/PostProcess Profile.asset"
 
 EXPECTED_RENDERER_GUID = "e16a06fa1e6a5b34eb28ed4924ae327d"
 
@@ -44,6 +45,25 @@ def main() -> None:
     renderer = hydrated_text(RENDERER)
     renderer_meta = RENDERER_META.read_text(encoding="utf-8")
     runtime = RUNTIME.read_text(encoding="utf-8")
+    volume = hydrated_text(VOLUME_PROFILE)
+
+    # Evidence-only inventory of serialized post-processing objects. Unity's
+    # VolumeProfile YAML keeps each component in its own object block; names
+    # are safe to report and let CI distinguish depth-based effects from
+    # ordinary color/bloom grading without opening the Editor.
+    volume_objects = []
+    for block in re.split(r"(?m)^--- !u!114 &", volume):
+        name_match = re.search(r"(?m)^\s*m_Name:\s*(.*?)\s*$", block)
+        if not name_match:
+            continue
+        name = name_match.group(1).strip()
+        if not name:
+            continue
+        active_match = re.search(r"(?m)^\s*active:\s*([01])\s*$", block)
+        volume_objects.append({
+            "name": name,
+            "active": None if active_match is None else active_match.group(1) == "1",
+        })
 
     guid_match = re.search(r"(?m)^guid:\s*([0-9a-f]{32})\s*$", renderer_meta)
     assert guid_match and guid_match.group(1) == EXPECTED_RENDERER_GUID
@@ -70,6 +90,7 @@ def main() -> None:
         "shadow_distance_m": scalar(pipeline, "m_ShadowDistance", float),
         "shadow_cascades": integer(pipeline, "m_ShadowCascadeCount"),
         "srp_batcher": integer(pipeline, "m_UseSRPBatcher"),
+        "post_profile_objects": volume_objects,
     }
 
     # Stable mobile architecture invariants. These are quality-neutral guards:
