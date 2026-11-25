@@ -82,8 +82,8 @@ Shader "Aaris/Nature/SpeedTree8Mobile"
             #pragma shader_feature_local_vertex _WINDQUALITY_NONE _WINDQUALITY_FAST _WINDQUALITY_BETTER _WINDQUALITY_BEST _WINDQUALITY_PALM
             #pragma shader_feature_local EFFECT_BILLBOARD
             #pragma shader_feature_local EFFECT_BUMP
-            #pragma shader_feature_local_fragment EFFECT_HUE_VARIATION
-            #pragma shader_feature_local_fragment EFFECT_SUBSURFACE
+            #pragma shader_feature_local EFFECT_HUE_VARIATION
+            #pragma shader_feature_local EFFECT_SUBSURFACE
             #pragma shader_feature_local_fragment EFFECT_EXTRA_TEX
 
             #define ENABLE_WIND
@@ -163,8 +163,8 @@ Shader "Aaris/Nature/SpeedTree8Mobile"
             #pragma shader_feature_local_vertex _WINDQUALITY_NONE _WINDQUALITY_FAST _WINDQUALITY_BETTER _WINDQUALITY_BEST _WINDQUALITY_PALM
             #pragma shader_feature_local EFFECT_BILLBOARD
             #pragma shader_feature_local EFFECT_BUMP
-            #pragma shader_feature_local_fragment EFFECT_HUE_VARIATION
-            #pragma shader_feature_local_fragment EFFECT_SUBSURFACE
+            #pragma shader_feature_local EFFECT_HUE_VARIATION
+            #pragma shader_feature_local EFFECT_SUBSURFACE
             #pragma shader_feature_local_fragment EFFECT_EXTRA_TEX
 
             #define ENABLE_WIND
