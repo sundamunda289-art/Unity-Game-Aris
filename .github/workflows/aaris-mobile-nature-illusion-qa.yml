@@ -118,7 +118,7 @@ jobs:
           EOF
           grep -q 'AARIS_FAST_PATH_SPEEDTREE_STUB' /tmp/aaris-unity-cgincludes/SpeedTreeWind.cginc
 
-      - name: Compile representative Fast and Fastest foliage variants for mobile Vulkan
+      - name: Compile Fast/Fastest foliage through Vulkan + GLES3 macro paths
         run: |
           set -euo pipefail
           python3 Tools/Validation/check_foliage_shader_compile.py \
