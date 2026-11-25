@@ -168,6 +168,21 @@ def check_speedtree_materials():
         s = (TREE / name).read_text()
         assert "- EFFECT_SUBSURFACE" in s, name
 
+    billboards = (
+        "Pines/Pine_A/Materials/Pine_A_Billboard.mat",
+        "Pines/Pine_B/Materials/Pine_B_Billboard.mat",
+        "Pines/Pine_C/Materials/Pine_C_Billboard.mat",
+        "Pines/Pine_D/Materials/Pine_D_Billboard.mat",
+        "Conifer/Materials/Conifer_Billboard.mat",
+        "Cypress/Materials/Cypress_Forest_Desktop_Billboard.mat",
+    )
+    for name in billboards:
+        s = (TREE / name).read_text()
+        assert "- EFFECT_BILLBOARD" in s, name
+        assert "- _WINDQUALITY_NONE" in s, name
+        assert "- EFFECT_BUMP" in s, name
+        assert "m_EnableInstancingVariants: 1" in s, name
+
 
 
 def check_tree_alpha_mip_contract():
