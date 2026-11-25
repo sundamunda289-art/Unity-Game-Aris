@@ -170,6 +170,52 @@ def check_speedtree_materials():
 
 
 
+def check_tree_alpha_mip_contract():
+    """Coverage-preserving mip cutoff must match the alpha test that consumes it."""
+    passes = (FOLIAGE / "CustomFunctions/AarisSpeedTree8MobilePasses.hlsl").read_text()
+    cutoff_match = re.search(r"AARIS_TREE_ALPHA_CUTOFF\s*=\s*([0-9.]+)h;", passes)
+    assert cutoff_match
+    tree_cutoff = float(cutoff_match.group(1))
+
+    near = (
+        ("Pines/Pine_A/Textures/Pine_A_Color.png.meta", tree_cutoff),
+        ("Pines/Pine_B/Textures/Pine_B_Color.png.meta", tree_cutoff),
+        ("Pines/Pine_C/Textures/Pine_C_Color.png.meta", tree_cutoff),
+        ("Pines/Pine_D/Textures/Pine_D_Color.png.meta", tree_cutoff),
+        ("Conifer/Textures/Conifer_Color.png.meta", tree_cutoff),
+        ("Cypress/Textures/Cypress_Forest_Desktop_Color.tif.meta", tree_cutoff),
+    )
+    for meta_name, expected in near:
+        meta = (TREE / meta_name).read_text()
+        assert "    enableMipMap: 1\n" in meta, meta_name
+        assert "    mipMapsPreserveCoverage: 1\n" in meta, meta_name
+        actual = float(re.search(r"alphaTestReferenceValue: ([0-9.]+)", meta).group(1))
+        assert abs(actual - expected) < 1e-6, (meta_name, actual, expected)
+
+    billboards = (
+        ("Pines/Pine_A/Materials/Pine_A_Billboard.mat",
+         "Pines/Pine_A/Textures/Pine_A_Billboard_Color.png.meta"),
+        ("Pines/Pine_B/Materials/Pine_B_Billboard.mat",
+         "Pines/Pine_B/Textures/Pine_B_Billboard_Color.png.meta"),
+        ("Pines/Pine_C/Materials/Pine_C_Billboard.mat",
+         "Pines/Pine_C/Textures/Pine_C_Billboard_Color.png.meta"),
+        ("Pines/Pine_D/Materials/Pine_D_Billboard.mat",
+         "Pines/Pine_D/Textures/Pine_D_Billboard_Color.png.meta"),
+        ("Conifer/Materials/Conifer_Billboard.mat",
+         "Conifer/Textures/Conifer_Billboard_Color.png.meta"),
+        ("Cypress/Materials/Cypress_Forest_Desktop_Billboard.mat",
+         "Cypress/Textures/Cypress_Forest_Desktop_Billboard_Color.tif.meta"),
+    )
+    for material_name, meta_name in billboards:
+        material = (TREE / material_name).read_text()
+        expected = float(re.search(r"_AlphaClipThreshold: ([0-9.]+)", material).group(1))
+        meta = (TREE / meta_name).read_text()
+        assert "    enableMipMap: 1\n" in meta, meta_name
+        assert "    mipMapsPreserveCoverage: 1\n" in meta, meta_name
+        actual = float(re.search(r"alphaTestReferenceValue: ([0-9.]+)", meta).group(1))
+        assert abs(actual - expected) < 1e-6, (meta_name, actual, expected)
+
+
 def check_tree_graph_illusions():
     """Validate root contact and stable instance tint without disturbing emission."""
     for file_name, func_name, expected_outputs in (
@@ -564,7 +610,8 @@ def check_canopy_asset_bindings():
     assert "input.interpolated.probeOcclusion," in passes
     assert "inputData.shadowMask = half4(1, 1, 1, 1);" in passes
     assert "if (geometry <= GEOM_TYPE_FROND)" in passes
-    assert passes.count("AlphaDiscard(alpha, 0.3333)") == 3
+    assert "static const half AARIS_TREE_ALPHA_CUTOFF = 0.3333h;" in passes
+    assert passes.count("AlphaDiscard(alpha, AARIS_TREE_ALPHA_CUTOFF)") == 3
 
 
 def check_canopy_math():
@@ -659,6 +706,7 @@ if __name__ == "__main__":
     check_mobile_transmission()
     check_ground_detail_mips()
     check_speedtree_materials()
+    check_tree_alpha_mip_contract()
     check_tree_graph_illusions()
     check_custom_speedtree_shader()
     check_hue_variation_finite()
@@ -667,4 +715,4 @@ if __name__ == "__main__":
     check_canopy_asset_bindings()
     check_canopy_math()
     print("AARIS_MOBILE_FOLIAGE_CONTRACT_PASS")
-    print("12 foliage source/math groups checked")
+    print("13 foliage source/math groups checked")
