@@ -91,6 +91,26 @@ jobs:
           #ifndef SPEEDTREE_WIND_INCLUDED
           #define SPEEDTREE_WIND_INCLUDED
           // AARIS_FAST_PATH_SPEEDTREE_STUB
+          // Fast/Fastest still consume Unity-populated wind uniforms, but do
+          // not call the legacy high-quality wind functions.
+          CBUFFER_START(SpeedTreeWind)
+          float4 _ST_WindVector;
+          float4 _ST_WindGlobal;
+          float4 _ST_WindBranch;
+          float4 _ST_WindBranchTwitch;
+          float4 _ST_WindBranchWhip;
+          float4 _ST_WindBranchAnchor;
+          float4 _ST_WindBranchAdherences;
+          float4 _ST_WindTurbulences;
+          float4 _ST_WindLeaf1Ripple;
+          float4 _ST_WindLeaf1Tumble;
+          float4 _ST_WindLeaf1Twitch;
+          float4 _ST_WindLeaf2Ripple;
+          float4 _ST_WindLeaf2Tumble;
+          float4 _ST_WindLeaf2Twitch;
+          float4 _ST_WindFrondRipple;
+          float4 _ST_WindAnimation;
+          CBUFFER_END
           #endif
           EOF
           grep -q 'AARIS_FAST_PATH_SPEEDTREE_STUB' /tmp/aaris-unity-cgincludes/SpeedTreeWind.cginc
