@@ -52,9 +52,7 @@ jobs:
     name: Pinned URP 17.3 mobile HLSL compiler gate
     needs: foliage-static-contract
     runs-on: ubuntu-latest
-    timeout-minutes: 28
-    env:
-      GAMECI_IMAGE: unityci/editor:ubuntu-6000.3.26f1-base-3
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,21 +82,143 @@ jobs:
           GIT_LFS_SKIP_SMUDGE=1 git -C /tmp/aaris-unity-graphics checkout --detach FETCH_HEAD
 
           # SpeedTree8Input references a Unity Editor built-in include which is
-          # not stored in the Graphics package repository. Read the exact file
-          # from the already-pinned 6000.3.26f1 Editor image; no Editor process
-          # or Unity license is needed to copy this compiler header.
-          docker pull "$GAMECI_IMAGE"
+          # not stored in the Graphics package repository. Pull the exact
+          # official built-in shader archive for Unity 6000.3.26f1 changeset
+          # de8167e7440c and extract only SpeedTreeWind.cginc.
+          curl --fail --location --retry 3 \
+            https://download.unity3d.com/download_unity/de8167e7440c/builtin_shaders-6000.3.26f1.zip \
+            -o /tmp/aaris-unity-builtin-shaders.zip
           rm -rf /tmp/aaris-unity-cgincludes
           mkdir -p /tmp/aaris-unity-cgincludes
-          docker run --rm \
-            -v /tmp/aaris-unity-cgincludes:/out \
-            "$GAMECI_IMAGE" bash -lc '
+          BUILTIN_PATH="$(unzip -Z1 /tmp/aaris-unity-builtin-shaders.zip | grep -E '(^|/)SpeedTreeWind\.cginc
+
+      - name: Compile representative Fast and Fastest foliage variants for mobile Vulkan
+        run: |
+          set -euo pipefail
+          python3 Tools/Validation/check_foliage_shader_compile.py \
+            --dxc /tmp/aaris-dxc/bin/dxc \
+            --graphics /tmp/aaris-unity-graphics \
+            --cgincludes /tmp/aaris-unity-cgincludes
+
+  foliage-unity-compile:
+    name: Unity 6000.3.26f1 foliage compile/render gate
+    needs: [foliage-static-contract, foliage-hlsl-dxc]
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      GAMECI_IMAGE: unityci/editor:ubuntu-6000.3.26f1-base-3
+      FOLIAGE_RUN: /tmp/aaris-foliage-unity
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Require repository Unity license without exposing it
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$UNITY_LICENSE" || "$UNITY_LICENSE" != *"<"* ]]; then
+            echo '::error::UNITY_LICENSE is not configured for the native foliage compile gate.'
+            exit 2
+          fi
+          echo 'UNITY_LICENSE_PRESENT'
+
+      - name: Free runner storage and hydrate native Unity assets
+        run: |
+          set -euo pipefail
+          bash Tools/CI/runner_storage.sh cleanup || true
+          git lfs install --local
+          git lfs pull --include='Assets/**' --exclude=''
+          if head -c 100 Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity | grep -q 'git-lfs.github.com/spec'; then
+            echo '::error::Native terrain scene is still an LFS pointer.'
+            exit 3
+          fi
+          rm -rf "$FOLIAGE_RUN"
+          mkdir -p "$FOLIAGE_RUN"
+
+      - name: Import project and render native foliage with pinned Unity
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          set -euo pipefail
+          docker pull "$GAMECI_IMAGE"
+          docker run --rm --shm-size=1g \
+            -e UNITY_LICENSE \
+            -e LIBGL_ALWAYS_SOFTWARE=1 -e GALLIUM_DRIVER=llvmpipe \
+            -v "$PWD:/project" \
+            -v "$FOLIAGE_RUN:/tmp/aaris-codespaces/scene-probe" \
+            -w /project "$GAMECI_IMAGE" bash -lc '
               set -euo pipefail
-              p="$(find /opt/unity/Editor/Data -name SpeedTreeWind.cginc -type f -print -quit)"
-              test -n "$p" && test -s "$p"
-              cp "$p" /out/SpeedTreeWind.cginc
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends xvfb libgl1-mesa-dri libglu1-mesa
+              mkdir -p /root/.local/share/unity3d/Unity
+              printf "%s" "$UNITY_LICENSE" > /root/.local/share/unity3d/Unity/Unity_lic.ulf
+              chmod 600 /root/.local/share/unity3d/Unity/Unity_lic.ulf
+              xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX" \
+                unity-editor -projectPath /project -batchmode -force-glcore \
+                -job-worker-count 2 \
+                -executeMethod Aaris.MapReview.Editor.AarisCodespaceSceneProbe.DiagnoseFoliage \
+                -quit -logFile /tmp/aaris-codespaces/scene-probe/unity-editor.log
             '
+
+      - name: Require zero C-sharp/shader errors and real foliage evidence
+        run: |
+          set -euo pipefail
+          test -s "$FOLIAGE_RUN/unity-editor.log"
+          test -s "$FOLIAGE_RUN/foliage-report.json"
+          if grep -Eqi 'error CS[0-9]{4}:|Shader error in|Shader compiler error|failed to compile' "$FOLIAGE_RUN/unity-editor.log"; then
+            echo '::error::Unity log contains a C# or shader compile error.'
+            grep -Ei 'error CS[0-9]{4}:|Shader error in|Shader compiler error|failed to compile' "$FOLIAGE_RUN/unity-editor.log" | head -n 40
+            exit 4
+          fi
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('/tmp/aaris-foliage-unity')
+          report = json.loads((root / 'foliage-report.json').read_text())
+          assert report.get('status') == 'passed', report
+          assert report.get('reason') == 'REAL_SPEEDTREE_LOD_AND_LIGHTING_COMPARISON', report
+          assert report.get('unityVersion') == '6000.3.26f1', report
+          assert int(report.get('terrainTiles', 0)) == 4, report
+          assert int(report.get('foliageRenderers', 0)) > 0, report
+          assert int(report.get('customFoliageMaterials', 0)) > 0, report
+          images = report.get('images') or []
+          assert len(images) == 5, report
+          for name in images:
+              p = root / name
+              assert p.is_file() and p.stat().st_size > 8192, (name, p.stat().st_size if p.exists() else 0)
+          log = (root / 'unity-editor.log').read_text(errors='replace')
+          assert 'AARIS_NATIVE_FOLIAGE_DIAG_PASSED' in log
+          print('AARIS_NATIVE_FOLIAGE_UNITY_COMPILE_RENDER_PASS')
+          print(json.dumps({
+              'unityVersion': report['unityVersion'],
+              'graphicsDevice': report.get('graphicsDevice'),
+              'terrainTiles': report['terrainTiles'],
+              'foliageRenderers': report['foliageRenderers'],
+              'customFoliageMaterials': report['customFoliageMaterials'],
+          }, sort_keys=True))
+          PY
+
+      - name: Upload bounded native foliage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaris-foliage-native-${{ github.run_id }}
+          path: |
+            /tmp/aaris-foliage-unity/foliage-report.json
+            /tmp/aaris-foliage-unity/foliage-*.png
+            /tmp/aaris-foliage-unity/unity-editor.log
+          retention-days: 3
+          if-no-files-found: warn
+ | head -n 1)"
+          test -n "$BUILTIN_PATH"
+          unzip -p /tmp/aaris-unity-builtin-shaders.zip "$BUILTIN_PATH" \
+            > /tmp/aaris-unity-cgincludes/SpeedTreeWind.cginc
           test -s /tmp/aaris-unity-cgincludes/SpeedTreeWind.cginc
+          grep -q 'SPEEDTREE_WIND_INCLUDED' /tmp/aaris-unity-cgincludes/SpeedTreeWind.cginc
 
       - name: Compile representative Fast and Fastest foliage variants for mobile Vulkan
         run: |
