@@ -562,10 +562,22 @@ half3 AarisLeafSun(InputData inputData, Light light, half occlusion)
 {
     half ndl = dot(inputData.normalWS, light.direction);
     half back = saturate(0.5h - 0.5h * ndl);
-    half rim = 1.0h - saturate(abs(ndl));
-    rim *= rim;
-    half towardSun = saturate(-dot(inputData.viewDirectionWS, light.direction));
-    half transmit = 0.38h * back * back + rim * (0.035h + 0.115h * towardSun * towardSun);
+    half back2 = back * back;
+
+    // Fastest is the distant 3D leaf material. Compile out the view-dependent
+    // rim there; near/Fast leaves retain the richer golden edge cue.
+    #if !defined(_WINDQUALITY_NONE) && !defined(_WINDQUALITY_FAST) && \
+        !defined(_WINDQUALITY_BETTER) && !defined(_WINDQUALITY_BEST) && \
+        !defined(_WINDQUALITY_PALM)
+        half transmit = 0.34h * back2;
+    #else
+        half rim = 1.0h - saturate(abs(ndl));
+        rim *= rim;
+        half towardSun = saturate(-dot(inputData.viewDirectionWS, light.direction));
+        half sunEdge = rim * (0.32h + 0.68h * back);
+        half transmit = 0.36h * back2 + sunEdge *
+            (0.035h + 0.115h * towardSun * towardSun);
+    #endif
     half visibility = saturate(light.distanceAttenuation) * light.shadowAttenuation;
     half3 warmSunTint = half3(1.04h, 1.0h, 0.86h);
     return light.color * warmSunTint * (transmit * visibility * (0.6h + 0.4h * occlusion));
@@ -574,8 +586,12 @@ half3 AarisLeafSun(InputData inputData, Light light, half occlusion)
 half3 AarisLeafSky(InputData inputData, half occlusion)
 {
     half up = saturate(inputData.normalWS.y * 0.5h + 0.5h);
-    half3 skyTint = lerp(half3(1.0h, 1.0h, 1.0h), half3(0.94h, 1.0h, 1.06h), up);
-    return inputData.bakedGI * skyTint * (_SubsurfaceIndirect * 0.24h * occlusion);
+    // Upward leaves catch cool sky; downward surfaces keep weak warm ground bounce.
+    half3 hemiTint = lerp(half3(1.035h, 0.99h, 0.92h),
+                          half3(0.93h, 1.0h, 1.07h), up);
+    half hemiStrength = 0.17h + 0.07h * up;
+    return inputData.bakedGI * hemiTint *
+        (_SubsurfaceIndirect * hemiStrength * occlusion);
 }
 
 #if !defined(GBUFFER)
@@ -753,6 +769,7 @@ half4 SpeedTree8Frag(SpeedTreeFragmentInput input) : SV_Target
         // Warm, earthy bark at the ground interface; preserves original bark texture.
         albedo *= lerp(half3(1.0h, 1.0h, 1.0h), half3(0.84h, 0.80h, 0.73h), rootContact);
         occlusion *= 1.0h - 0.20h * rootContact;
+        smoothness *= 1.0h - 0.16h * rootContact; // Soil contact reads dry, not varnished.
     #endif
     #if defined(EFFECT_SUBSURFACE) && !defined(EFFECT_BILLBOARD)
         // Leaves are dielectric. Keep wet/waxy highlights bounded by the
