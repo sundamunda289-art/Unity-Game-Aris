@@ -137,8 +137,10 @@ void AarisFastLeafWind(inout SpeedTreeVertexInput input, inout float3 positionOS
     float rippleAmplitude = leafTwo ? _ST_WindLeaf2Ripple.y : _ST_WindLeaf1Ripple.y;
     // Reuse the already-computed landscape phase for stable per-tree
     // variation. Identical cloned meshes no longer flutter in lockstep.
-    float leafPhase = timeSeconds * 0.95 + dot(anchorOS, float3(0.31, 0.57, 0.41))
-        + fieldPhase * 1.618 + (leafTwo ? 0.37 : 0.0);
+    // Use the existing gust to gently vary the flutter speed, without another
+    // wave, texture read or time state. The derivative stays bounded even at 30fps.
+    float leafPhase = timeSeconds * 0.72 + dot(anchorOS, float3(0.31, 0.57, 0.41))
+        + fieldPhase * 1.618 + (leafTwo ? 0.37 : 0.0) + 0.16 * gust;
     float flutter = 2.0 * AarisSmoothWindWave(leafPhase) - 1.0;
     float bend = min(abs(rippleAmplitude) * 5.0, 0.18) * saturate(input.texcoord3.x) * fade;
     float angle = bend * gust * (0.23 + 0.77 * flutter);
