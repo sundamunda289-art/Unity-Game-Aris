@@ -82,6 +82,11 @@ def compile_foliage(dxc, graphics_root, cgincludes):
         ("fastest", ()),
     )
 
+    platform_variants = (
+        ("vulkan", "SHADER_API_VULKAN"),
+        ("gles3", "SHADER_API_GLES3"),
+    )
+
     with tempfile.TemporaryDirectory(prefix="aaris-foliage-hlsl-") as workdir:
         work = Path(workdir)
         for pass_name in MOBILE_PASSES:
@@ -101,56 +106,58 @@ def compile_foliage(dxc, graphics_root, cgincludes):
                         "_SHADOWS_SOFT_MEDIUM",
                     ]
 
-                for stage, entry, profile in (
-                    ("vertex", vertex, "vs_6_0"),
-                    ("fragment", fragment, "ps_6_0"),
-                ):
-                    output = work / f"{pass_name}-{wind_name}-{stage}.spv"
-                    defines = [
-                        "SHADER_API_VULKAN",
-                        "SHADER_API_MOBILE",
-                        "UNITY_COMPILER_HLSL",
-                        "UNITY_VERSION=600030",
-                        "SHADER_TARGET=35",
-                        "UNITY_HARDWARE_TIER3",
-                        f"SHADER_STAGE_{stage.upper()}",
-                        *feature_defines,
-                    ]
-                    cmd = [
-                        str(dxc),
-                        "-E", entry,
-                        "-T", profile,
-                        "-HV", "2018",
-                        "-I", str(graphics_root),
-                        "-I", str(SHADER_DIR),
-                        "-I", str(cgincludes),
-                        "-spirv",
-                        "-fspv-target-env=vulkan1.1",
-                        "-fvk-use-dx-layout",
-                        "-Fo", str(output),
-                    ]
-                    for define in defines:
-                        cmd += ["-D", define]
-                    done = subprocess.run(
-                        [*cmd, str(src)],
-                        capture_output=True,
-                        text=True,
-                    )
-                    if done.returncode != 0:
-                        raise AssertionError(
-                            f"{pass_name} {wind_name} {stage}\n"
-                            f"stdout:\n{done.stdout}\nstderr:\n{done.stderr}"
+                for platform_name, platform_define in platform_variants:
+                    for stage, entry, profile in (
+                        ("vertex", vertex, "vs_6_0"),
+                        ("fragment", fragment, "ps_6_0"),
+                    ):
+                        output = work / f"{pass_name}-{wind_name}-{platform_name}-{stage}.spv"
+                        defines = [
+                            platform_define,
+                            "SHADER_API_MOBILE",
+                            "UNITY_COMPILER_HLSL",
+                            "UNITY_VERSION=600030",
+                            "SHADER_TARGET=35",
+                            "UNITY_HARDWARE_TIER3",
+                            f"SHADER_STAGE_{stage.upper()}",
+                            *feature_defines,
+                        ]
+                        cmd = [
+                            str(dxc),
+                            "-E", entry,
+                            "-T", profile,
+                            "-HV", "2018",
+                            "-I", str(graphics_root),
+                            "-I", str(SHADER_DIR),
+                            "-I", str(cgincludes),
+                            "-spirv",
+                            "-fspv-target-env=vulkan1.1",
+                            "-fvk-use-dx-layout",
+                            "-Fo", str(output),
+                        ]
+                        for define in defines:
+                            cmd += ["-D", define]
+                        done = subprocess.run(
+                            [*cmd, str(src)],
+                            capture_output=True,
+                            text=True,
                         )
-                    if not output.is_file() or output.stat().st_size == 0:
-                        raise AssertionError(f"empty compiler output: {output}")
-                    results.append(
-                        {
-                            "pass": pass_name,
-                            "wind": wind_name,
-                            "stage": stage,
-                            "status": "compiled",
-                        }
-                    )
+                        if done.returncode != 0:
+                            raise AssertionError(
+                                f"{pass_name} {wind_name} {platform_name} {stage}\n"
+                                f"stdout:\n{done.stdout}\nstderr:\n{done.stderr}"
+                            )
+                        if not output.is_file() or output.stat().st_size == 0:
+                            raise AssertionError(f"empty compiler output: {output}")
+                        results.append(
+                            {
+                                "pass": pass_name,
+                                "wind": wind_name,
+                                "platform_macro": platform_name,
+                                "stage": stage,
+                                "status": "compiled",
+                            }
+                        )
 
     # Shader Graph custom functions are compiled separately because Unity's
     # generated graph shader is Editor-owned. These wrappers exercise the real
@@ -202,44 +209,47 @@ half4 AarisShrubTransmissionProbe(float4 positionCS : SV_POSITION) : SV_Target
         custom_work = Path(custom_workdir)
         for probe_name, (profile, entry, source_text, stage_defines) in custom_sources.items():
             src = custom_work / f"{probe_name}.hlsl"
-            output = custom_work / f"{probe_name}.spv"
             src.write_text(source_text, encoding="utf-8")
-            cmd = [
-                str(dxc),
-                "-E", entry,
-                "-T", profile,
-                "-HV", "2018",
-                "-I", str(graphics_root),
-                "-I", str(repo_root),
-                "-spirv",
-                "-fspv-target-env=vulkan1.1",
-                "-fvk-use-dx-layout",
-                "-Fo", str(output),
-            ]
-            defines = [
-                "SHADER_API_VULKAN",
-                "SHADER_API_MOBILE",
-                "UNITY_COMPILER_HLSL",
-                "UNITY_VERSION=600030",
-                "SHADER_TARGET=35",
-                "UNITY_HARDWARE_TIER3",
-                *stage_defines,
-            ]
-            for define in defines:
-                cmd += ["-D", define]
-            done = subprocess.run([*cmd, str(src)], capture_output=True, text=True)
-            if done.returncode != 0:
-                raise AssertionError(
-                    f"{probe_name}\nstdout:\n{done.stdout}\nstderr:\n{done.stderr}"
-                )
-            if not output.is_file() or output.stat().st_size == 0:
-                raise AssertionError(f"empty compiler output: {output}")
-            results.append({
-                "pass": probe_name,
-                "wind": "n/a",
-                "stage": "vertex" if profile.startswith("vs_") else "fragment",
-                "status": "compiled",
-            })
+            for platform_name, platform_define in platform_variants:
+                output = custom_work / f"{probe_name}-{platform_name}.spv"
+                cmd = [
+                    str(dxc),
+                    "-E", entry,
+                    "-T", profile,
+                    "-HV", "2018",
+                    "-I", str(graphics_root),
+                    "-I", str(repo_root),
+                    "-spirv",
+                    "-fspv-target-env=vulkan1.1",
+                    "-fvk-use-dx-layout",
+                    "-Fo", str(output),
+                ]
+                defines = [
+                    platform_define,
+                    "SHADER_API_MOBILE",
+                    "UNITY_COMPILER_HLSL",
+                    "UNITY_VERSION=600030",
+                    "SHADER_TARGET=35",
+                    "UNITY_HARDWARE_TIER3",
+                    *stage_defines,
+                ]
+                for define in defines:
+                    cmd += ["-D", define]
+                done = subprocess.run([*cmd, str(src)], capture_output=True, text=True)
+                if done.returncode != 0:
+                    raise AssertionError(
+                        f"{probe_name} {platform_name}\n"
+                        f"stdout:\n{done.stdout}\nstderr:\n{done.stderr}"
+                    )
+                if not output.is_file() or output.stat().st_size == 0:
+                    raise AssertionError(f"empty compiler output: {output}")
+                results.append({
+                    "pass": probe_name,
+                    "wind": "n/a",
+                    "platform_macro": platform_name,
+                    "stage": "vertex" if profile.startswith("vs_") else "fragment",
+                    "status": "compiled",
+                })
 
     report = {
         "status": "dxc_foliage_hlsl_checks_passed",
@@ -251,7 +261,8 @@ half4 AarisShrubTransmissionProbe(float4 positionCS : SV_POSITION) : SV_Target
         "legacy_speedtree_wind_required": False,
         "compiler_version": subprocess.check_output([str(dxc), "--version"], text=True).strip(),
         "hlsl_language_version": 2018,
-        "platform": "vulkan_mobile",
+        "platform_macro_paths": [name for name, _ in platform_variants],
+        "spirv_parser_backend": "vulkan1.1",
         "compilations_passed": len(results),
         "variants": results,
         "unity_shaderlab_import_tested": False,
