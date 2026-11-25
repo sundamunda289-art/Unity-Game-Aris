@@ -168,8 +168,13 @@ void AarisFastLeafWind(inout SpeedTreeVertexInput input, inout float3 positionOS
     // Small-angle hinge rotation: pin the anchor, and move the lighting
     // basis with the leaf. The 0.18 radian cap limits stretch.
     positionOS += cross(rotation, positionOS - anchorOS);
-    input.normal += cross(rotation, input.normal);
-    #if defined(EFFECT_BUMP)
+    // SceneSelection and DepthOnly never consume the lighting basis. Keep
+    // their silhouette identical but skip dead normal/tangent rotations.
+    // ShadowCaster still needs the deformed normal for ApplyShadowBias.
+    #if !defined(DEPTH_ONLY) || defined(SHADOW_CASTER)
+        input.normal += cross(rotation, input.normal);
+    #endif
+    #if defined(EFFECT_BUMP) && !defined(DEPTH_ONLY)
         input.tangent.xyz += cross(rotation, input.tangent.xyz);
     #endif
 }
