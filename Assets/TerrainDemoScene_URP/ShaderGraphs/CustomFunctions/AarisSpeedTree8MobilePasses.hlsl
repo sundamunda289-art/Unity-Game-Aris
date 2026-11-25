@@ -149,9 +149,12 @@ void AarisFastLeafWind(inout SpeedTreeVertexInput input, inout float3 positionOS
     float bend = min(abs(rippleAmplitude) * 5.0, 0.18) * saturate(input.texcoord3.x) * fade;
     float angle = bend * gust * (0.23 + 0.77 * flutter);
     float3 rotation = float3(windOS.z, 0.0, -windOS.x) * angle;
+    // Tiny signed torsion reuses the same wave: no second trig/noise sample.
+    float twist = angle * (leafTwo ? -0.11 : 0.11);
+    rotation += windOS * twist;
 
     // Small-angle hinge rotation: pin the anchor, and move the lighting
-    // basis with the leaf. The 0.18 radian cap limits stretch.
+    // basis with the leaf. The bounded bend plus tiny torsion limits stretch.
     positionOS += cross(rotation, positionOS - anchorOS);
     input.normal += cross(rotation, input.normal);
     #if defined(EFFECT_BUMP)
@@ -563,14 +566,17 @@ void InitializeInputData(SpeedTreeFragmentInput input, half3 normalTS, out Input
 #if defined(EFFECT_SUBSURFACE)
 // One bounded sun-angle lobe for every leaf LOD. Wind quality is vertex-only,
 // so fragment lighting must not branch on it. Reuse N.L for the golden edge.
-half3 AarisLeafSun(half3 normalWS, Light light, half occlusion)
+half3 AarisLeafSun(half3 normalWS, half3 viewDirectionWS, Light light, half occlusion)
 {
     half ndl = dot(normalWS, light.direction);
     half back = saturate(0.5h - 0.5h * ndl);
     half back2 = back * back;
     half rim = 1.0h - saturate(abs(ndl));
     rim *= rim;
-    half transmit = 0.34h * back2 + 0.06h * rim * (0.35h + 0.65h * back);
+    // Gate fake thin-leaf glow by sun-behind-view using the existing view vector.
+    half viewBack = saturate(-dot(viewDirectionWS, light.direction));
+    half viewLobe = 0.78h + 0.22h * viewBack * viewBack;
+    half transmit = 0.34h * back2 * viewLobe + 0.06h * rim * (0.35h + 0.65h * back);
     half visibility = saturate(light.distanceAttenuation) * light.shadowAttenuation;
     half3 warmSunTint = half3(1.04h, 1.0h, 0.86h);
     return light.color * warmSunTint * (transmit * visibility * (0.6h + 0.4h * occlusion));
@@ -625,7 +631,7 @@ half4 AarisForwardLeafPBR(InputData inputData, SurfaceData surfaceData)
     {
         lighting.mainLightColor = LightingPhysicallyBased(brdfData, clearCoat, mainLight,
             inputData.normalWS, inputData.viewDirectionWS, surfaceData.clearCoatMask, specularHighlightsOff);
-        lighting.mainLightColor += leafColor * AarisLeafSun(inputData.normalWS, mainLight, surfaceData.occlusion);
+        lighting.mainLightColor += leafColor * AarisLeafSun(inputData.normalWS, inputData.viewDirectionWS, mainLight, surfaceData.occlusion);
     }
 
     #if defined(_ADDITIONAL_LIGHTS)
@@ -789,7 +795,7 @@ half4 SpeedTree8Frag(SpeedTreeFragmentInput input) : SV_Target
     MixRealtimeAndBakedGI(mainLight, inputData.normalWS, inputData.bakedGI, inputData.shadowMask);
     #if defined(EFFECT_SUBSURFACE)
         emission = albedo * _SubsurfaceColor.rgb *
-            (AarisLeafSun(inputData.normalWS, mainLight, occlusion) + AarisLeafSky(inputData.normalWS, inputData.bakedGI, occlusion));
+            (AarisLeafSun(inputData.normalWS, inputData.viewDirectionWS, mainLight, occlusion) + AarisLeafSky(inputData.normalWS, inputData.bakedGI, occlusion));
     #endif
     half3 color = GlobalIllumination(brdfData, (BRDFData)0, 0, inputData.bakedGI, occlusion, inputData.positionWS,
                                      inputData.normalWS, inputData.viewDirectionWS, inputData.normalizedScreenSpaceUV);

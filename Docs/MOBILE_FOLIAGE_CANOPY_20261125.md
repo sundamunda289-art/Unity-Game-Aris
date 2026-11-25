@@ -180,3 +180,12 @@ GLES3x/Android shader-data gate compiled 10 selected TerrainGrass requests and
 28 selected AarisSpeedTree8Mobile requests: 38 total, zero failed variants and
 zero shader compiler errors. This is compiler/source evidence, not a measured
 Snapdragon 680 frame-time, thermal, battery or Android-player benchmark.
+
+
+## 2026-11-26 view-aware transmission + zero-wave torsion
+
+- SpeedTree leaf transmission reuses the existing view direction so the strongest golden-green fake translucency appears when the sun is truly behind a leaf from the camera. This adds one dot product and a few half-precision ALU only; no texture, varying, pass, material, shadow lookup, or draw call.
+- Fast leaf wind keeps its single smoothed triangle wave. A tiny signed torsion is derived from the same bend angle, with opposite sign for the two authored leaf groups; no new trig, noise sample, physics, collider, or per-leaf C# update.
+- Existing distance exits, instancing, root AO/ground blend, world-position macro colour, bark normal relief, and hemispherical sky-bounce paths remain intact.
+
+Validation for this continuation on the live Codespace: `git diff --check` passed; the foliage contract reported all 15 source/math groups passing, alongside 3 mobile-shadow tests and 10 tree/proportion tests. The disposable Unity 6000.3.26f1 GLES3x gate compiled 10 TerrainGrass plus 28 SpeedTree requests (38 total) with zero failed variants and zero shader errors. A separate disposable `/tmp` C# project completed Unity batchmode successfully with no `error CS...` diagnostics. This is compiler/source evidence, not a measured Adreno 610 FPS, thermal or battery benchmark.

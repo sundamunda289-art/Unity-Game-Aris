@@ -340,7 +340,7 @@ def check_custom_speedtree_shader():
     assert "half3 hemiTint" in source and "half transmit" in source
     assert "Light mainLight = GetMainLight(inputData, shadowMask, aoFactor);" in source
     assert "light.shadowAttenuation" in source
-    assert "AarisLeafSun(inputData.normalWS, mainLight, surfaceData.occlusion)" in source
+    assert "AarisLeafSun(inputData.normalWS, inputData.viewDirectionWS, mainLight, surfaceData.occlusion)" in source
     assert "AarisLeafSky(inputData.normalWS, inputData.bakedGI, aoFactor.indirectAmbientOcclusion)" in source
     assert "MainLightRealtimeShadow(" not in source
     assert "SampleNormal" in source and source.count("normalTs.xy *= 1.20h - 0.12h * rootContact") == 2
@@ -350,7 +350,9 @@ def check_custom_speedtree_shader():
     assert "half3(0.84h, 0.80h, 0.73h)" in source
     assert "half3 warmSunTint" in source
     assert "half back2 = back * back;" in source
-    assert "half transmit = 0.34h * back2 + 0.06h * rim * (0.35h + 0.65h * back);" in source
+    assert "half viewBack = saturate(-dot(viewDirectionWS, light.direction));" in source
+    assert "half viewLobe = 0.78h + 0.22h * viewBack * viewBack;" in source
+    assert "half transmit = 0.34h * back2 * viewLobe" in source
     assert "towardSun" not in source
     assert "rim *= rim;" in source
     assert "saturate(occlusion)" in source
@@ -477,6 +479,9 @@ def check_mobile_leaf_wind():
     assert "float3 windOS" in wind and "dot(anchorOS," in wind
     assert "timeSeconds * 0.72" in wind and "fieldPhase * 1.618" in wind
     assert "+ 0.16 * gust" in wind
+    assert "float twist = angle * (leafTwo ? -0.11 : 0.11);" in wind
+    assert "rotation += windOS * twist;" in wind
+    assert wind.count("AarisSmoothWindWave") == 1
     assert "_ST_WindLeaf1Ripple.x" not in wind and "_ST_WindLeaf2Ripple.x" not in wind
     assert "cross(rotation, positionOS - anchorOS)" in wind
     assert "cross(rotation, input.normal)" in wind and "cross(rotation, input.tangent.xyz)" in wind
