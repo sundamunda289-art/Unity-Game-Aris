@@ -352,7 +352,11 @@ def check_custom_speedtree_shader():
     assert "half back2 = back * back;" in source
     assert "half viewBack = saturate(-dot(viewDirectionWS, light.direction));" in source
     assert "half viewLobe = 0.78h + 0.22h * viewBack * viewBack;" in source
-    assert "half transmit = 0.34h * back2 * viewLobe" in source
+    assert "half viewRim = 1.0h - saturate(abs(dot(normalWS, viewDirectionWS)));" in source
+    assert "viewRim *= viewRim;" in source
+    assert "half transmit = 0.31h * back2 * viewLobe" in source
+    assert "+ 0.055h * rim * (0.35h + 0.65h * back)" in source
+    assert "+ 0.035h * viewRim * back * (0.65h + 0.35h * viewBack);" in source
     assert "towardSun" not in source
     assert "rim *= rim;" in source
     assert "saturate(occlusion)" in source
@@ -372,6 +376,32 @@ def check_custom_speedtree_shader():
     assert "half leafDetail = input.interpolated.color.b - 0.5h" in source
     assert source.count("#if defined(EFFECT_SUBSURFACE) && !defined(EFFECT_BILLBOARD)") >= 2
     assert not any(term in source for term in ("Raycast(", "Physics.", "ComputeBuffer", "MaterialPropertyBlock"))
+
+
+def check_speedtree_view_edge_lobe_math():
+    """Camera-edge translucency stays bounded by the previous 0.40 peak."""
+    for i in range(-100, 101):
+        ndl = i * 0.01
+        back = max(0.0, min(1.0, 0.5 - 0.5 * ndl))
+        back2 = back * back
+        rim = (1.0 - min(1.0, abs(ndl))) ** 2
+        for j in range(-100, 101, 5):
+            ndv = j * 0.01
+            view_rim = (1.0 - min(1.0, abs(ndv))) ** 2
+            for view_back in (0.0, 0.25, 0.5, 0.75, 1.0):
+                view_lobe = 0.78 + 0.22 * view_back * view_back
+                transmit = (0.31 * back2 * view_lobe
+                            + 0.055 * rim * (0.35 + 0.65 * back)
+                            + 0.035 * view_rim * back * (0.65 + 0.35 * view_back))
+                assert 0.0 <= transmit <= 0.4000001
+    # At equal backlighting, a grazing card must receive more fake edge light
+    # than a camera-facing card, but never exceed the old peak energy budget.
+    back = 1.0
+    view_back = 1.0
+    frontal = 0.31 * back * view_back + 0.055 * 0.0 + 0.035 * 0.0
+    grazing = 0.31 * back * view_back + 0.055 * 0.0 + 0.035 * 1.0
+    assert grazing > frontal
+    assert grazing <= 0.40 + 1e-9
 
 
 def check_forest_macro_tone_math():
@@ -808,6 +838,7 @@ if __name__ == "__main__":
     check_speedtree_materials()
     check_tree_graph_illusions()
     check_custom_speedtree_shader()
+    check_speedtree_view_edge_lobe_math()
     check_forest_macro_tone_math()
     check_hue_variation_finite()
     check_mobile_leaf_wind()
@@ -815,4 +846,4 @@ if __name__ == "__main__":
     check_canopy_asset_bindings()
     check_canopy_math()
     print("AARIS_MOBILE_FOLIAGE_CONTRACT_PASS")
-    print("15 foliage source/math groups checked")
+    print("16 foliage source/math groups checked")
