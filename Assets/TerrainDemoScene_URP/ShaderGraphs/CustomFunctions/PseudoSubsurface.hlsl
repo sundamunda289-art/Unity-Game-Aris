@@ -59,13 +59,16 @@ void PseudoSubsurface_half(float3 WorldPosition, half3 WorldNormal, half3 SSRadi
     half wrapped = back * back * (3.0h - 2.0h * back);
     half edge = 1.0h - saturate(abs(ndl));
     half rim = edge * edge;
-    half skyFill = 0.055h * saturate(n.y * 0.5h + 0.5h);
+    half up = saturate(n.y * 0.5h + 0.5h);
+    // Hemisphere-only fill costs no extra light/shadow lookup.
+    half skyFill = 0.035h + 0.020h * up;
+    half3 hemiFill = lerp(half3(1.035h, 0.99h, 0.92h),
+                          half3(0.94h, 1.0h, 1.06h), up);
     half transmission = (0.14h + 0.23h * radius) * wrapped + 0.10h * rim;
     half3 warmSun = half3(1.04h, 1.0h, 0.86h);
-    half3 coolFill = half3(0.94h, 1.0h, 1.06h);
     half response = 1.0h - 0.20h * saturate(ShadowResponse);
     ssAmount = max(0.0h, color * response * transmission * warmSun
-        + ambient * skyFill * coolFill);
+        + ambient * skyFill * hemiFill);
 }
 
 #endif
