@@ -58,7 +58,9 @@ void PseudoSubsurface_half(float3 WorldPosition, half3 WorldNormal, half3 SSRadi
     half back = saturate((radius - ndl) / (1.0h + radius));
     half wrapped = back * back * (3.0h - 2.0h * back);
     half edge = 1.0h - saturate(abs(ndl));
-    half rim = edge * edge;
+    // Prevent a flat bright outline when the shrub is front-lit. The rim is
+    // transmission, so it should appear only as the light wraps behind leaves.
+    half rim = edge * edge * back;
     half skyFill = 0.055h * saturate(n.y * 0.5h + 0.5h);
     half transmission = (0.14h + 0.23h * radius) * wrapped + 0.10h * rim;
     half3 warmSun = half3(1.04h, 1.0h, 0.86h);
