@@ -72,6 +72,8 @@ def check_interaction():
     assert "float4 _AarisGrassInteractor;" in shader
     assert "float inverseRadiusSq = _AarisGrassInteractor.w;" in shader
     assert "float radial = d2 * inverseRadiusSq;" in shader
+    assert "float3 pivot = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);" in shader
+    assert "TransformObjectToWorld(float3(0.0, 0.0, 0.0))" not in shader
     assert "TransformWorldToObjectDir" in shader
     assert "saturate(BasePositionOS.y)" in shader
     assert "falloff * falloff * vertical * 0.45" in shader
@@ -114,6 +116,7 @@ def check_mobile_transmission():
     assert "contact * contact * (3.0h - 2.0h * contact)" in shader
     assert "unity_SHAr.w, unity_SHAg.w, unity_SHAb.w" in shader
     assert "ambient * skyFill * coolFill" in shader
+    assert "half rim = edge * edge * back;" in shader
 
 
 def check_ground_detail_mips():
@@ -235,7 +238,7 @@ def check_custom_speedtree_shader():
     assert "output.color.b = contact * contact * (3.0h - 2.0h * contact)" in source
     assert "half3(0.84h, 0.80h, 0.73h)" in source
     assert "half3 warmSunTint" in source
-    assert "rim *= rim;" in source
+    assert "rim *= rim * back;" in source
     assert "saturate(occlusion)" in source
     assert "normalTs.xy *= 1.15h" in source
     assert "leafDetail * 0.085h" in source
@@ -322,6 +325,11 @@ def check_mobile_leaf_wind():
     assert "float3 windOS" in wind and "dot(anchorOS," in wind
     assert "timeSeconds * 0.72" in wind and "fieldPhase * 1.618" in wind
     assert "+ 0.16 * gust" in wind
+    assert "microFlutterDistanceSq = 28.0 * 28.0" in wind
+    assert "distanceSq < microFlutterDistanceSq" in wind
+    assert "float microPhase = leafPhase * 1.73" in wind
+    assert "flutter = 0.82 * flutter + 0.18 * microFlutter" in wind
+    assert wind.count("AarisSmoothWindWave(") == 2
     assert "_ST_WindLeaf1Ripple.x" not in wind and "_ST_WindLeaf2Ripple.x" not in wind
     assert "cross(rotation, positionOS - anchorOS)" in wind
     assert "cross(rotation, input.normal)" in wind and "cross(rotation, input.tangent.xyz)" in wind
@@ -402,7 +410,12 @@ def check_continuous_wind_math():
                 for i in range(fps * 3):
                     t = fp32(elapsed + i / fps)
                     gust = 0.40 + 0.60 * field(x, z, t)
-                    flutter = 2.0 * wave(fp32(t * 0.72 + 0.173 + (x * .011 + z * .035) * 1.618 + 0.16 * gust)) - 1.0
+                    leaf_phase = fp32(t * 0.72 + 0.173 + (x * .011 + z * .035) * 1.618 + 0.16 * gust)
+                    flutter = 2.0 * wave(leaf_phase) - 1.0
+                    # Near-field second band is a convex blend of two bounded
+                    # waves, so it cannot exceed the original angular cap.
+                    micro = 2.0 * wave(fp32(leaf_phase * 1.73 + 0.2 * .91 + .29)) - 1.0
+                    flutter = .82 * flutter + .18 * micro
                     ang.append(0.18 * gust * (0.23 + 0.77 * flutter))
                 assert all(isfinite(a) and abs(a) <= 0.18 for a in ang)
                 assert len(set(ang)) > fps
@@ -633,7 +646,7 @@ def check_canopy_math():
             ndl=i*.01
             back=max(0,min(1,(radius-ndl)/(1+radius)))
             wrapped=back*back*(3-2*back)
-            rim=(1-abs(ndl))**2
+            rim=(1-abs(ndl))**2*back
             transmit=(.14+.23*radius)*wrapped+.10*rim
             assert 0 <= transmit <= .47 + 1e-9
 
