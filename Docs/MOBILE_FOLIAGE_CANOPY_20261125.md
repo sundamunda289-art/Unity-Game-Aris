@@ -158,3 +158,25 @@ Android build target: 38 requests, zero failed variants, zero shader compiler
 errors and zero C# errors. The installed Editor does not include the Android
 playback module, so this is a direct GLES3x shader-compiler gate rather than an
 APK build or measured Snapdragon/Adreno device benchmark.
+
+
+## 2026-11-26 neutral-profile fragment fast path
+
+The dense ordinary-grass draw uses the neutral canopy profile (`Profile.x == 0`),
+so its old shrub color-variation expression always evaluated to zero. The
+ground-detail fragment helper now uses one material-uniform `UNITY_BRANCH` to
+skip that shrub-only chroma ALU for the neutral profile. Positive shrub
+profiles execute the exact previous expression, including the same seed,
+saturation and RGB coefficients; non-positive profiles remain algebraically
+identical to the old zero-variation result. This adds no shader keyword,
+material, texture sample, shadow lookup, render pass, physics query or C# update.
+
+Validation on the connected Unity 6000.3.26f1 Codespace used only disposable
+`/tmp` projects/overlays and restored the live target files byte-for-byte.
+The foliage contract now has 14 source/math groups and passed together with the
+3 native mobile-shadow tests and 10 tree/proportion tests. The native C# source
+sandbox compiled 104 game scripts with Editor exit 0 and zero C# errors. The
+GLES3x/Android shader-data gate compiled 10 selected TerrainGrass requests and
+28 selected AarisSpeedTree8Mobile requests: 38 total, zero failed variants and
+zero shader compiler errors. This is compiler/source evidence, not a measured
+Snapdragon 680 frame-time, thermal, battery or Android-player benchmark.
