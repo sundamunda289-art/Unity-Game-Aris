@@ -184,7 +184,7 @@ def check_mobile_transmission():
     shader = (FOLIAGE / "CustomFunctions/PseudoSubsurface.hlsl").read_text()
     assert "void PseudoSubsurface_half" in shader
     assert "GetMainLight()" in shader
-    assert "skyFill" in shader and "rim" in shader
+    assert "skyFill" in shader and "rim" in shader and "hemiFill" in shader
     assert "acos(" not in shader and "pow(" not in shader
     assert "TransformWorldToShadowCoord" not in shader
     assert "void AarisDetailGround_half" in shader
@@ -196,7 +196,8 @@ def check_mobile_transmission():
     assert "Out = FrontFace || Profile.x > 0.001h" in shader
     assert "contact * contact * (3.0h - 2.0h * contact)" in shader
     assert "unity_SHAr.w, unity_SHAg.w, unity_SHAb.w" in shader
-    assert "ambient * skyFill * coolFill" in shader
+    assert "ambient * skyFill * hemiFill" in shader
+    assert "0.035h + 0.020h * up" in shader
 
 
 def check_ground_detail_mips():
@@ -306,7 +307,7 @@ def check_custom_speedtree_shader():
     assert "UNITY_SETUP_INSTANCE_ID" in source
     assert "float3 treePos" in source and "hueVariationAmount" in source
     assert "half rootContact" in source and "occlusion *= 1.0h - 0.20h * rootContact" in source
-    assert "half3 skyTint" in source and "half transmit" in source
+    assert "half3 hemiTint" in source and "half transmit" in source
     assert "Light mainLight = GetMainLight(inputData, shadowMask, aoFactor);" in source
     assert "light.shadowAttenuation" in source
     assert "AarisLeafSun(inputData, mainLight, surfaceData.occlusion)" in source
@@ -318,8 +319,13 @@ def check_custom_speedtree_shader():
     assert "output.color.b = contact * contact * (3.0h - 2.0h * contact)" in source
     assert "half3(0.84h, 0.80h, 0.73h)" in source
     assert "half3 warmSunTint" in source
+    assert "half back2 = back * back;" in source
+    assert "half transmit = 0.34h * back2;" in source
+    assert "half sunEdge = rim * (0.32h + 0.68h * back);" in source
     assert "rim *= rim;" in source
     assert "saturate(occlusion)" in source
+    assert "smoothness *= 1.0h - 0.16h * rootContact" in source
+    assert "half hemiStrength = 0.17h + 0.07h * up;" in source
     assert "normalTs.xy *= 1.15h" in source
     assert "leafDetail * 0.085h" in source
     assert "output.color.b = (half)frac(leafSeed * (leafSeed + 17.17))" in source
