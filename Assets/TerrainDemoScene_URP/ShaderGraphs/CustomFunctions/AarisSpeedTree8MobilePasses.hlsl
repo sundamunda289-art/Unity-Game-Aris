@@ -13,6 +13,12 @@
     #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/LODCrossFade.hlsl"
 #endif
 
+#if defined(EFFECT_SUBSURFACE)
+// SpeedTree8 serializes this existing material property but URP 17.3 does not declare it.
+// Use one coherent per-draw uniform so distant Fastest leaves skip camera-view ALU.
+half _WindQuality;
+#endif
+
 struct SpeedTreeVertexInput
 {
     float4 vertex       : POSITION;
@@ -587,17 +593,26 @@ half3 AarisLeafSun(half3 normalWS, half3 viewDirectionWS, Light light, half occl
     half back2 = back * back;
     half rim = 1.0h - saturate(abs(ndl));
     rim *= rim;
-    // Gate fake thin-leaf glow by sun-behind-view using the existing view vector.
-    half viewBack = saturate(-dot(viewDirectionWS, light.direction));
-    half viewLobe = 0.78h + 0.22h * viewBack * viewBack;
-    // Reuse that same interpolated view direction for a true card-edge lobe.
-    // The three coefficients still sum to the previous 0.40 peak budget:
-    // richer golden-green edges without increasing the maximum fake energy.
-    half viewRim = 1.0h - saturate(abs(dot(normalWS, viewDirectionWS)));
-    viewRim *= viewRim;
-    half transmit = 0.31h * back2 * viewLobe
-        + 0.055h * rim * (0.35h + 0.65h * back)
-        + 0.035h * viewRim * back * (0.65h + 0.35h * viewBack);
+    half transmit;
+    UNITY_BRANCH if (_WindQuality < 1.5h)
+    {
+        // Distant Fastest leaves use the average near-view lobe with N.L only.
+        // No extra sample, varying, keyword, material or pass is introduced.
+        transmit = 0.253h * back2
+            + 0.055h * rim * (0.35h + 0.65h * back)
+            + 0.008h * back;
+    }
+    else
+    {
+        // Near Fast leaves keep the full camera-aware golden edge exactly.
+        half viewBack = saturate(-dot(viewDirectionWS, light.direction));
+        half viewLobe = 0.78h + 0.22h * viewBack * viewBack;
+        half viewRim = 1.0h - saturate(abs(dot(normalWS, viewDirectionWS)));
+        viewRim *= viewRim;
+        transmit = 0.31h * back2 * viewLobe
+            + 0.055h * rim * (0.35h + 0.65h * back)
+            + 0.035h * viewRim * back * (0.65h + 0.35h * viewBack);
+    }
     half visibility = saturate(light.distanceAttenuation) * light.shadowAttenuation;
     half3 warmSunTint = half3(1.04h, 1.0h, 0.86h);
     return light.color * warmSunTint * (transmit * visibility * (0.6h + 0.4h * occlusion));
