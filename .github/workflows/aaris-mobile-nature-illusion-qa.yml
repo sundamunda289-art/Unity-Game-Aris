@@ -81,29 +81,19 @@ jobs:
           git -C /tmp/aaris-unity-graphics fetch --filter=blob:none --depth=1 origin 4064d5bb6a1e3748a7cdddc244b89934ad1c3145
           GIT_LFS_SKIP_SMUDGE=1 git -C /tmp/aaris-unity-graphics checkout --detach FETCH_HEAD
 
-          # SpeedTree8Input references a Unity Editor built-in include which is
-          # not stored in the Graphics package repository. Pull the exact
-          # official built-in shader archive for Unity 6000.3.26f1 changeset
-          # de8167e7440c and extract only SpeedTreeWind.cginc.
-          curl --fail --location --retry 3 \
-            https://download.unity3d.com/download_unity/de8167e7440c/builtin_shaders-6000.3.26f1.zip \
-            -o /tmp/aaris-unity-builtin-shaders.zip
+          # Fast/Fastest are our custom mobile wind paths. They must never
+          # call Unity's legacy GlobalWind/LeafWind implementation. Provide an
+          # intentionally empty include guard: any accidental legacy call then
+          # becomes a hard DXC error instead of silently passing.
           rm -rf /tmp/aaris-unity-cgincludes
           mkdir -p /tmp/aaris-unity-cgincludes
-          python3 - <<'PY'
-          from pathlib import Path
-          from zipfile import ZipFile
-          archive = Path('/tmp/aaris-unity-builtin-shaders.zip')
-          out = Path('/tmp/aaris-unity-cgincludes/SpeedTreeWind.cginc')
-          with ZipFile(archive) as z:
-              matches = [n for n in z.namelist() if n == 'SpeedTreeWind.cginc' or n.endswith('/SpeedTreeWind.cginc')]
-              assert len(matches) == 1, matches
-              data = z.read(matches[0])
-          assert len(data) > 1000
-          out.write_bytes(data)
-          PY
-          test -s /tmp/aaris-unity-cgincludes/SpeedTreeWind.cginc
-          grep -q 'SPEEDTREE_WIND_INCLUDED' /tmp/aaris-unity-cgincludes/SpeedTreeWind.cginc
+          cat > /tmp/aaris-unity-cgincludes/SpeedTreeWind.cginc <<'EOF'
+          #ifndef SPEEDTREE_WIND_INCLUDED
+          #define SPEEDTREE_WIND_INCLUDED
+          // AARIS_FAST_PATH_SPEEDTREE_STUB
+          #endif
+          EOF
+          grep -q 'AARIS_FAST_PATH_SPEEDTREE_STUB' /tmp/aaris-unity-cgincludes/SpeedTreeWind.cginc
 
       - name: Compile representative Fast and Fastest foliage variants for mobile Vulkan
         run: |
