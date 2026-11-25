@@ -290,6 +290,26 @@ def check_custom_speedtree_shader():
     assert "float2 leafAnchorXZ = input.texcoord1.zw +" not in source
     assert "half leafDetail = input.interpolated.color.b - 0.5h" in source
     assert source.count("#if defined(EFFECT_SUBSURFACE) && !defined(EFFECT_BILLBOARD)") >= 2
+
+    # Shadow/depth/scene-selection and DepthNormals do not consume view
+    # direction. Keep those mobile passes free of a per-vertex normalize and
+    # unused interpolator channels; ForwardLit still carries its real view dir.
+    depth_struct = source[source.index("struct SpeedTreeVertexDepthOutput"):
+                          source.index("struct SpeedTreeVertexDepthNormalOutput")]
+    depth_normal_struct = source[source.index("struct SpeedTreeVertexDepthNormalOutput"):
+                                 source.index("struct SpeedTreeDepthNormalFragmentInput")]
+    depth_vert = source[source.index("SpeedTreeVertexDepthOutput SpeedTree8VertDepth"):
+                        source.index("void InitializeInputData")]
+    dn_vert = source[source.index("SpeedTreeVertexDepthNormalOutput SpeedTree8VertDepthNormal"):
+                     source.index("half4 SpeedTree8FragDepthNormal")]
+    assert "viewDirWS" not in depth_struct
+    assert "viewDirWS" not in depth_normal_struct
+    assert "GetWorldSpaceNormalizeViewDir" not in depth_vert
+    assert "GetWorldSpaceNormalizeViewDir" not in dn_vert
+    assert "half3 normalWS" in depth_normal_struct
+    assert "half3 tangentWS" in depth_normal_struct
+    assert "half3 bitangentWS" in depth_normal_struct
+
     assert not any(term in source for term in ("Raycast(", "Physics.", "ComputeBuffer", "MaterialPropertyBlock"))
 
 
