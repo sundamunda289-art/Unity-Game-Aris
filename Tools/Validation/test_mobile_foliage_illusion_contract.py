@@ -401,7 +401,8 @@ def check_custom_speedtree_shader():
     assert "half viewLobe = 0.78h + 0.22h * viewBack * viewBack;" in source
     assert "half viewRim = 1.0h - saturate(abs(dot(normalWS, viewDirectionWS)));" in source
     assert "viewRim *= viewRim;" in source
-    assert "half transmit = 0.31h * back2 * viewLobe" in source
+    assert "half transmit;" in source
+    assert "transmit = 0.31h * back2 * viewLobe" in source
     assert "+ 0.055h * rim * (0.35h + 0.65h * back)" in source
     assert "+ 0.035h * viewRim * back * (0.65h + 0.35h * viewBack);" in source
     assert "towardSun" not in source
@@ -449,6 +450,48 @@ def check_speedtree_view_edge_lobe_math():
     grazing = 0.31 * back * view_back + 0.055 * 0.0 + 0.035 * 1.0
     assert grazing > frontal
     assert grazing <= 0.40 + 1e-9
+
+
+def check_fastest_leaf_lighting_budget():
+    """Distant leaves skip view ALU while staying inside the near visual envelope."""
+    shader = (FOLIAGE / "AarisSpeedTree8Mobile.shader").read_text()
+    source = (FOLIAGE / "CustomFunctions/AarisSpeedTree8MobilePasses.hlsl").read_text()
+    for term in ("half _WindQuality;", "UNITY_BRANCH if (_WindQuality < 1.5h)",
+                 "transmit = 0.253h * back2", "+ 0.008h * back;"):
+        assert term in source
+    assert "#pragma shader_feature_local_vertex _WINDQUALITY_NONE" in shader
+    assert "#pragma shader_feature_local_fragment _WINDQUALITY_FASTEST" not in shader
+
+    pairs = (
+        ("Pines/Pine_A/Materials/Pine_A.mat", "Pines/Pine_A/Materials/Pine_A_Distant.mat"),
+        ("Pines/Pine_B/Materials/Pine_B.mat", "Pines/Pine_B/Materials/Pine_B_Distant.mat"),
+        ("Pines/Pine_C/Materials/Pine_C.mat", "Pines/Pine_C/Materials/Pine_C_Distant.mat"),
+        ("Pines/Pine_D/Materials/Pine_D.mat", "Pines/Pine_D/Materials/Pine_D_Distant.mat"),
+        ("Conifer/Materials/Conifer_Branches.mat", "Conifer/Materials/Conifer_Branches_Distant.mat"),
+        ("Cypress/Materials/Cypress_Forest_Desktop.mat", "Cypress/Materials/Cypress_Forest_Desktop_Distant.mat"),
+    )
+    for near_name, far_name in pairs:
+        near, far = (TREE / near_name).read_text(), (TREE / far_name).read_text()
+        assert re.search(r"(?m)^    - _WindQuality: 2$", near), near_name
+        assert re.search(r"(?m)^    - _WindQuality: 1$", far), far_name
+        assert "- EFFECT_SUBSURFACE" in near and "- EFFECT_SUBSURFACE" in far
+        assert "m_EnableInstancingVariants: 1" in near and "m_EnableInstancingVariants: 1" in far
+
+    for i in range(-100, 101):
+        ndl = i * .01
+        back = max(0., min(1., .5 - .5 * ndl))
+        rim = (1. - min(1., abs(ndl))) ** 2
+        far = .253 * back * back + .055 * rim * (.35 + .65 * back) + .008 * back
+        near_values = []
+        for ndv in (-1., -.5, 0., .5, 1.):
+            view_rim = (1. - abs(ndv)) ** 2
+            for view_back in (0., .25, .5, .75, 1.):
+                view_lobe = .78 + .22 * view_back * view_back
+                near_values.append(.31 * back * back * view_lobe
+                    + .055 * rim * (.35 + .65 * back)
+                    + .035 * view_rim * back * (.65 + .35 * view_back))
+        assert min(near_values) - 1e-9 <= far <= max(near_values) + 1e-9
+        assert 0. <= far <= .4000001
 
 
 def check_forest_macro_tone_math():
@@ -929,6 +972,7 @@ if __name__ == "__main__":
     check_tree_graph_illusions()
     check_custom_speedtree_shader()
     check_speedtree_view_edge_lobe_math()
+    check_fastest_leaf_lighting_budget()
     check_forest_macro_tone_math()
     check_hue_variation_finite()
     check_mobile_leaf_wind()
@@ -937,4 +981,4 @@ if __name__ == "__main__":
     check_canopy_math()
     check_vertical_canopy_exposure_math()
     print("AARIS_MOBILE_FOLIAGE_CONTRACT_PASS")
-    print("19 foliage source/math groups checked")
+    print("20 foliage source/math groups checked")
