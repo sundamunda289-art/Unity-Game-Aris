@@ -17,8 +17,10 @@ void AarisGrassInteraction_float(float3 WindPositionOS, float3 BasePositionOS,
     float inverseRadiusSq = _AarisGrassInteractor.w;
     if (inverseRadiusSq > 0.0)
     {
-        // The Terrain detail mesh pivot is positioned by its instanced object matrix.
-        float3 pivot = TransformObjectToWorld(float3(0.0, 0.0, 0.0));
+        // The Terrain detail pivot is exactly the translation column of the
+        // current instanced object matrix. Reading it directly avoids a full
+        // object-to-world matrix multiply for every grass/bush vertex.
+        float3 pivot = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
         float2 delta = pivot.xz - _AarisGrassInteractor.xz;
         // The large red shrub is wider than the player's contact radius.
         // Local leaf positions make its outer canopy rustle, not only its pivot.
