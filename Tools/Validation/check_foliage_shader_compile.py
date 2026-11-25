@@ -38,8 +38,12 @@ def prepare_program(program: str):
     return vertex.group(1), fragment.group(1), program
 
 
-def compile_foliage(dxc, graphics_root):
+def compile_foliage(dxc, graphics_root, cgincludes):
     graphics_root = Path(graphics_root)
+    cgincludes = Path(cgincludes)
+    speedtree_wind = cgincludes / "SpeedTreeWind.cginc"
+    if not speedtree_wind.is_file() or speedtree_wind.stat().st_size < 1000:
+        raise AssertionError(f"missing pinned Unity built-in include: {speedtree_wind}")
     universal = graphics_root / "Packages/com.unity.render-pipelines.universal/package.json"
     shadergraph = graphics_root / "Packages/com.unity.shadergraph/package.json"
     package = json.loads(universal.read_text())
@@ -105,6 +109,7 @@ def compile_foliage(dxc, graphics_root):
                         "-HV", "2018",
                         "-I", str(graphics_root),
                         "-I", str(SHADER_DIR),
+                        "-I", str(cgincludes),
                         "-spirv",
                         "-fspv-target-env=vulkan1.1",
                         "-fvk-use-dx-layout",
@@ -155,5 +160,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dxc", required=True)
     parser.add_argument("--graphics", required=True)
+    parser.add_argument("--cgincludes", required=True)
     args = parser.parse_args()
-    compile_foliage(args.dxc, args.graphics)
+    compile_foliage(args.dxc, args.graphics, args.cgincludes)
