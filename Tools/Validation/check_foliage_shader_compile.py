@@ -71,6 +71,21 @@ def compile_foliage(dxc, graphics_root, cgincludes):
     if source_commit != URP_COMMIT:
         raise AssertionError(source_commit)
 
+    # Unity's GLES3 API header intentionally places a #error directive inside
+    # a function-like macro. Unity's own shader front-end accepts this pattern;
+    # stock DXC's preprocessor rejects it before parsing any project HLSL.
+    # Patch only the disposable pinned Graphics checkout used by this CI probe.
+    gles3_header = graphics_root / "Packages/com.unity.render-pipelines.core/ShaderLibrary/API/GLES3.hlsl"
+    gles3_text = gles3_header.read_text(encoding="utf-8")
+    unsupported_macro = "#define ERROR_ON_UNSUPPORTED_FUNCTION(funcName) #error #funcName is not supported on GLES 3.0"
+    if gles3_text.count(unsupported_macro) != 1:
+        raise AssertionError("unexpected pinned GLES3 unsupported-function macro")
+    gles3_header_sha256 = hashlib.sha256(gles3_text.encode("utf-8")).hexdigest()
+    gles3_header.write_text(
+        gles3_text.replace(unsupported_macro, "#define ERROR_ON_UNSUPPORTED_FUNCTION(funcName)"),
+        encoding="utf-8",
+    )
+
     source = SHADER.read_text(encoding="utf-8")
     programs = extract_programs(source)
     results = []
@@ -263,6 +278,8 @@ half4 AarisShrubTransmissionProbe(float4 positionCS : SV_POSITION) : SV_Target
         "hlsl_language_version": 2018,
         "platform_macro_paths": [name for name, _ in platform_variants],
         "spirv_parser_backend": "vulkan1.1",
+        "gles3_header_original_sha256": gles3_header_sha256,
+        "gles3_dxc_preprocessor_compat_shim": True,
         "compilations_passed": len(results),
         "variants": results,
         "unity_shaderlab_import_tested": False,
