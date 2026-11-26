@@ -33,3 +33,4 @@ https://creativecommons.org/licenses/by/3.0/
 https://github.com/keijiro/InfiniteScan/tree/150b6c46ebb6a011b93ed2e0fee9b612df78281b/Assets/InfiniteScan
 Aaris modified the geometry and atlas, including original scalp and iris edits.
 - removed the original cap to expose the scalp and avoid overlap
+- reduced the protective pads and pouch geometry for the mobile draw budget
