@@ -22,6 +22,7 @@ namespace Aaris.MapReview
             new ProfilerMarker("Aaris.Startup.CharacterRigInstantiate");
 #endif
         private const string PrimaryModel = "AarisCharacters/Primary/TacticalSoldier/TacticalSoldier";
+        private const string PrimaryAvatar = "AarisCharacters/Primary/TacticalSoldier/AarisHeroAvatar";
         private const string PreviousPrimaryModel = "AarisCharacters/Primary/RealisticSoldier/RealisticSoldier";
         private const string LegacyPrimaryModel = "AarisCharacters/Primary/Player";
         private const string FallbackModel = "AarisCharacters/Kenney/characterMedium";
@@ -416,6 +417,15 @@ namespace Aaris.MapReview
             if (animator == null)
                 animator = visual.AddComponent<Animator>();
 
+            if (resourcePath == PrimaryModel)
+            {
+                // The normalized rig's authored pose also works with older
+                // serialized Humanoid settings on existing checkouts.
+                Avatar normalizedAvatar = Resources.Load<Avatar>(PrimaryAvatar);
+                if (normalizedAvatar != null && normalizedAvatar.isValid && normalizedAvatar.isHuman)
+                    animator.avatar = normalizedAvatar;
+            }
+
             if (animator.avatar == null || !animator.avatar.isValid || !animator.avatar.isHuman)
             {
                 Avatar[] avatars = Resources.LoadAll<Avatar>(resourcePath);
@@ -665,6 +675,8 @@ namespace Aaris.MapReview
             bool hasAuthoredBase = baseMap != null && baseMap != Texture2D.whiteTexture;
             // Preserve imported maps and keywords on opaque local-player finishes.
             Shader subject = AarisShaderCache.Find("Aaris/Mobile Subject Lit");
+            if (tacticalSoldierLoaded && subject != null && subject.isSupported && source.shader == subject)
+                return source;
             if (hasAuthoredBase && source.shader == shader)
             {
                 // One cached local tactical material per authored slot.
@@ -2117,7 +2129,7 @@ namespace Aaris.MapReview
             // Real 6000.3.26f1 PlayMode measurement: standing soldier shoes
             // floated 0.75m while capsule bottom was only 0.035m above the
             // terrain. The static import fit cannot calibrate animated poses.
-            // Both validated soldier rigs get this one-time runtime scale fit.
+            // The normalized tactical rig fits once during Humanoid setup.
             // A native four-frame get-up capture found the lower shoe
             // 0.41/0.66/0.70m above terrain while the prone weight decayed.
             // The one-foot whole-rig ground recovery was disabled until BOTH
@@ -2143,7 +2155,7 @@ namespace Aaris.MapReview
             // Vertical shoe grounding below is safe while moving because it
             // samples the lower (stance) foot against the actual world floor.
             bool stableSoldier = uprightGroundedSoldier && planar < 0.15f;
-            if (!groundedRigCalibrated && stableSoldier && bodySkin != null &&
+            if (!tacticalSoldierLoaded && !groundedRigCalibrated && stableSoldier && bodySkin != null &&
                 proneHeadBone != null && leftFootBone != null &&
                 rightFootBone != null)
             {
@@ -2803,6 +2815,14 @@ namespace Aaris.MapReview
                     balanceSpineBone.rotation =
                         Quaternion.AngleAxis(-smoothedOrientationWarpYaw * 0.78f,
                             transform.up) * balanceSpineBone.rotation;
+                // The standing idle already animates. Add one small chest
+                // expansion cue, masked out by movement, weapon aim and stance.
+                if (tacticalSoldierLoaded && planar < .24f &&
+                    (actions == null || !actions.IsArmed))
+                {
+                    float stillness = 1f - Mathf.InverseLerp(.035f, .24f, planar);
+                    bodyPitch += Mathf.Sin(Time.time * 1.85f) * .34f * standingShare * stillness;
+                }
                 balanceSpineBone.localRotation *= Quaternion.Euler(bodyPitch, 0f, bodyRoll);
             }
 
