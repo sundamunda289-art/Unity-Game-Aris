@@ -659,13 +659,12 @@ namespace Aaris.MapReview
             Texture emissionMap = source.HasProperty("_EmissionMap")
                 ? source.GetTexture("_EmissionMap") : null;
             bool hasAuthoredBase = baseMap != null && baseMap != Texture2D.whiteTexture;
-            // The model importer already remaps these slots to saved URP materials.
-            // Use their original shader keywords and pass state in the Android player.
+            // Preserve imported maps and keywords on opaque local-player finishes.
+            Shader subject = AarisShaderCache.Find("Aaris/Mobile Subject Lit");
             if (hasAuthoredBase && source.shader == shader)
             {
                 // One cached local tactical material per authored slot.
-                Shader subject = AarisShaderCache.Find("Aaris/Mobile Subject Lit");
-                if (!tacticalSoldierLoaded || subject == null || !subject.isSupported ||
+                if (subject == null || !subject.isSupported ||
                     source.GetFloat("_Surface") > .5f) return source;
                 var finish = new Material(source) { name = "Aaris Hero " + source.name };
                 finish.shader = subject;
@@ -717,6 +716,9 @@ namespace Aaris.MapReview
                 Mathf.Min(sourceColor.g, sourceColor.b)) > .72f)
             { colour = new Color(.14f,.15f,.13f,sourceColor.a); metallic = .03f; smoothness = .24f; }
 
+            // The backup rig uses material colours for cloth, armour and boots.
+            // Keep its separate transparent visor on the authored URP surface path.
+            if (!glass && subject != null && subject.isSupported) shader = subject;
             var result = new Material(shader)
             {
                 name = "Aaris Soldier PBR " + source.name,

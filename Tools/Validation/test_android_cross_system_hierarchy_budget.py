@@ -73,7 +73,7 @@ class HierarchyAdmission(unittest.TestCase):
 
     def test_medical_uses_gate_only_after_physics_and_pool_reuse(self):
         body = MEDICAL.split("private bool TrySpawnMedicalCase(", 1)[1].split(
-            "private static void HelmetPart(", 1)[0]
+            "private static GameObject CreateMedicalVisual(", 1)[0]
         self.assertIn("out bool deferredByBudget", MEDICAL)
         self.assertIn("deferredByBudget = false;", body)
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", body)
@@ -86,8 +86,8 @@ class HierarchyAdmission(unittest.TestCase):
         self.assertLess(helmet_pool, helmet_gate)
         self.assertLess(med_pool, med_gate)
         self.assertLess(body.index("Physics.OverlapBoxNonAlloc"), helmet_gate)
-        self.assertLess(helmet_gate, body.index('new GameObject("Aaris Streamed Helmet")'))
-        self.assertLess(med_gate, body.index('new GameObject("Aaris Streamed Medkit")'))
+        self.assertLess(helmet_gate, body.index('CreateMedicalVisual(true)'))
+        self.assertLess(med_gate, body.index('CreateMedicalVisual(false)'))
 
     def test_denied_medical_admission_does_not_set_invalid_spot_cooldown(self):
         scan = MEDICAL.split("private void StreamMedicalSites()", 1)[1].split(

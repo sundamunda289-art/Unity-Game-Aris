@@ -348,7 +348,10 @@ namespace Aaris.MapReview.Editor
             var point = WorldFloor(new Vector3(160f, 26f, -464f));
             var capsule = player.GetComponent<CharacterController>();
             capsule.enabled = false;
-            player.transform.SetPositionAndRotation(point + Vector3.up * .14f, Quaternion.Euler(0f, 70f, 0f));
+            Vector3 daylight = RenderSettings.sun != null
+                ? -RenderSettings.sun.transform.forward : new Vector3(.7f, 0f, .3f);
+            var heading = Quaternion.LookRotation(Vector3.ProjectOnPlane(daylight, Vector3.up).normalized);
+            player.transform.SetPositionAndRotation(point + Vector3.up * .14f, heading);
             capsule.enabled = true;
             player.ResumeFromAerialDrop();
             player.CancelAutoSprint();
@@ -373,6 +376,14 @@ namespace Aaris.MapReview.Editor
             var playerTransform = player.transform;
             var rig = player.GetComponentInChildren<Animator>();
             var hips = rig.GetBoneTransform(HumanBodyBones.Hips);
+            var finishes = new HashSet<string>();
+            foreach (var skin in rig.GetComponentsInChildren<SkinnedMeshRenderer>(false))
+                foreach (var material in skin.sharedMaterials)
+                    if (material != null && material.shader.name == "Aaris/Mobile Subject Lit")
+                        finishes.Add(material.name);
+            if (finishes.Count == 0)
+                throw new InvalidOperationException("Live player's opaque materials missed the subject pass");
+            File.WriteAllLines(Path.Combine(directory, "live-finishes.txt"), finishes);
             var forward = Vector3.ProjectOnPlane(playerTransform.forward, Vector3.up).normalized;
             var side = Vector3.Cross(Vector3.up, forward);
             var focus = hips.position + Vector3.up * .12f;
@@ -393,6 +404,25 @@ namespace Aaris.MapReview.Editor
             Vector3 angle = (side * .9f - forward * .35f + Vector3.up * .50f).normalized;
             WriteWorldPhoto(observer, subject + angle * 2.5f, subject, directory, "terrain_loot_2m5");
             WriteWorldPhoto(observer, subject + angle * 9f, subject, directory, "terrain_loot_9m");
+            var vehicles = Object.FindObjectsByType<AarisVehicleMotor>(FindObjectsSortMode.None);
+            AarisVehicleMotor nearest = null;
+            float nearestDistance = float.PositiveInfinity;
+            foreach (var vehicle in vehicles)
+            {
+                float distance = (vehicle.transform.position - playerTransform.position).sqrMagnitude;
+                if (distance < nearestDistance)
+                {
+                    nearest = vehicle;
+                    nearestDistance = distance;
+                }
+            }
+            if (nearest != null)
+            {
+                var car = nearest.transform;
+                Vector3 target = car.position + Vector3.up * .38f;
+                Vector3 eye = target + car.forward * 5.6f + car.right * 4.8f + Vector3.up * 2.4f;
+                WriteWorldPhoto(observer, eye, target, directory, "streamed_vehicle");
+            }
             Object.Destroy(rifle);
             Object.Destroy(kit);
             Object.Destroy(observer.gameObject);

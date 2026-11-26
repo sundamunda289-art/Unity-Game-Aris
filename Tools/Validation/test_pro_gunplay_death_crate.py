@@ -425,10 +425,14 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
 
     def test_death_crate_visuals_share_beveled_mesh_without_colliders(self):
         geometry = read("AarisSupplyGeometry.cs")
-        crate = geometry.split("internal static Mesh Crate", 1)[1].split("internal static Mesh Helmet", 1)[0]
+        baker = (ROOT / "Assets/AarisWorld/Editor/AarisSupplyMeshBaker.cs").read_text()
+        crate = baker.split("private static Mesh Crate", 1)[1].split("private static Mesh Helmet", 1)[0]
+        self.assertIn('Shared(ref crate, "AarisLootAmmoCrate")', geometry)
+        self.assertIn("Resources.Load<Mesh>(resource)", geometry)
+        self.assertNotIn("new Mesh", geometry)
         self.assertIn("if (crate != null) return crate;", crate)
         self.assertIn("new Builder(2)", crate)
-        self.assertIn("mesh.RecalculateNormals();", geometry)
+        self.assertIn("mesh.RecalculateNormals();", baker)
         self.assertIn("mesh.UploadMeshData(true);", geometry)
         visual = CRATE.split("private GameObject CreateVisual()", 1)[1].split("private void OnDestroy()", 1)[0]
         self.assertIn("sharedMesh = AarisSupplyGeometry.Crate;", visual)
