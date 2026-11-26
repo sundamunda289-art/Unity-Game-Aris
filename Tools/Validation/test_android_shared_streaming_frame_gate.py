@@ -115,7 +115,7 @@ class SharedStreamingAdmission(unittest.TestCase):
         )[1].split("private void OnEnable()", 1)[0]
         self.assertEqual(palette.count(CLAIM), 3)
         self.assertLess(palette.index(CLAIM),
-                        palette.index('Shader shader = Shader.Find("Universal Render Pipeline/Lit");'))
+                        palette.index('Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");'))
         self.assertIn("bikeMaterialsBuild == null", body)
         self.assertLess(body.index("bikeMaterialsBuild == null"),
                         body.index("if (!bikeMaterialsReady) return;"))
