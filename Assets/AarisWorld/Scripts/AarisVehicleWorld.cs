@@ -670,7 +670,7 @@ namespace Aaris.MapReview
                 Debug.LogWarning("Aaris vehicles: " + validModels + "/" +
                     vehicleTypes.Length + " local vehicle types available.");
             Texture2D palette = Resources.Load<Texture2D>("AarisVehicles/Models/colormap");
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
             if (shader == null || palette == null)
             {
                 Debug.LogError("Aaris vehicles: verified URP palette/shader missing, refusing white or pink placeholder cars.");
@@ -715,7 +715,7 @@ namespace Aaris.MapReview
             skidMarkMaterial = CreateSkidMarkMaterial(shader);
             // Optional visual feature: absent particle shader must NEVER
             // abort otherwise valid drivable cars or cause pink materials.
-            Shader smokeShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            Shader smokeShader = AarisShaderCache.Find("Universal Render Pipeline/Particles/Unlit");
             if (smokeShader != null)
                 exhaustMaterial = CreateExhaustMaterial(smokeShader);
 
@@ -1120,7 +1120,7 @@ namespace Aaris.MapReview
                 authoredMaterialCache[source] = polished;
                 return polished;
             }
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
             if (shader == null) return paletteMaterial;
             var result = new Material(shader)
             {
