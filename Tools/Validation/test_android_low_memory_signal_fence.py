@@ -55,13 +55,20 @@ class MemoryNotificationFence(unittest.TestCase):
         self.assertIn("lowMemoryNotificationFrame = -1;", GATE.split(
             "private static void Reset()", 1
         )[1])
-        for marker in (
-            "internal static bool TryClaimOptionalModelBuild()",
-            "internal static ResourceRequest TryStartOptionalLoadAsync",
-            "internal static bool TryClaimNonessentialDiagnosticFrame()",
-        ):
-            section = GATE.split(marker, 1)[1]
-            self.assertIn("IsAssetCleanupPending()", section[:1600])
+        optional = GATE.split(
+            "private static bool TryClaimOptionalModelBuild(bool urgentScene)", 1
+        )[1].split("internal static ResourceRequest TryStartOptionalLoadAsync", 1)[0]
+        self.assertIn("IsAssetCleanupPending()", optional)
+
+        load = GATE.split(
+            "internal static ResourceRequest TryStartOptionalLoadAsync", 1
+        )[1]
+        self.assertIn("IsAssetCleanupPending()", load[:2400])
+
+        diagnostic = GATE.split(
+            "internal static bool TryClaimNonessentialDiagnosticFrame()", 1
+        )[1].split("internal static bool TryClaimUnusedAssetCleanupFrame()", 1)[0]
+        self.assertIn("IsAssetCleanupPending()", diagnostic)
 
     def test_no_unnatural_delay_or_visual_regression(self):
         for signal in (-1, 0, 31, 200):

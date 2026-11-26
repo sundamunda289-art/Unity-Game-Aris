@@ -101,6 +101,11 @@ namespace Aaris.MapReview
             new System.Collections.Generic.List<AsyncOperation>(2);
         private static int additiveIntegrationFrame = -1;
         internal static int AdditiveSceneDeferredAttempts { get; private set; }
+        // Successful owned-scene retirements leave regular assets eligible for
+        // later reclamation. Keep this signal in the frame gate so the additive
+        // streamer does not depend on the higher-level runtime manager.
+        private static int retiredAdditiveScenes;
+        private static float lastAdditiveSceneRetirementAt = -1f;
         // Unity's critical-memory asset cleanup can run for many rendered
         // frames. Starting optional imports/hierarchies while it is still
         // unloading competes for native memory and the same main-thread time.
@@ -480,6 +485,8 @@ namespace Aaris.MapReview
             additiveSceneOperations.Clear();
             additiveIntegrationFrame = -1;
             AdditiveSceneDeferredAttempts = 0;
+            retiredAdditiveScenes = 0;
+            lastAdditiveSceneRetirementAt = -1f;
             unusedAssetCleanup = null;
             lowMemoryNotificationFrame = -1;
             cleanupCompletionFrame = -1;
@@ -495,6 +502,46 @@ namespace Aaris.MapReview
             if (operation == null || !IsConstrainedDevice()) return;
             additiveSceneOperations.Add(operation);
             claimedFrame = Time.frameCount;
+#endif
+        }
+
+        internal static void NotifyAdditiveSceneRetired()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (retiredAdditiveScenes < 32) retiredAdditiveScenes++;
+            lastAdditiveSceneRetirementAt = Time.unscaledTime;
+#endif
+        }
+
+        internal static int RetiredAdditiveSceneCount
+        {
+            get
+            {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                return retiredAdditiveScenes;
+#else
+                return 0;
+#endif
+            }
+        }
+
+        internal static float LastAdditiveSceneRetirementAt
+        {
+            get
+            {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                return lastAdditiveSceneRetirementAt;
+#else
+                return -1f;
+#endif
+            }
+        }
+
+        internal static void ClearRetiredAdditiveSceneSignals()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            retiredAdditiveScenes = 0;
+            lastAdditiveSceneRetirementAt = -1f;
 #endif
         }
 
@@ -669,6 +716,19 @@ namespace Aaris.MapReview
             claimedFrame = frame;
 #endif
             return true;
+        }
+
+        // Proactive unused-asset reclamation is nonessential native work.
+        // Admit it through the same one-work-per-frame fences as diagnostics so
+        // it cannot begin beside additive scene integration, essential imports,
+        // physics catch-up, teardown settling, or another optional hierarchy.
+        internal static bool TryClaimUnusedAssetCleanupFrame()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return TryClaimNonessentialDiagnosticFrame();
+#else
+            return true;
+#endif
         }
 
         internal static bool TryClaimOptionalModelBuild()

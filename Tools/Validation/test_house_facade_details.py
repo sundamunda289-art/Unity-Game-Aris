@@ -62,7 +62,8 @@ class HouseFacadeDetails(unittest.TestCase):
         self.assertIn("Vector3.Cross(b - a, d - a).normalized;", FACADE)
         self.assertEqual(FACADE.count("AddFace(v,n,uv,tris,center,"), 6)
         self.assertIn("enableInstancing = true", FACADE)
-        self.assertIn('Shader.Find("Universal Render Pipeline/Lit")', FACADE)
+        self.assertIn(
+            'AarisShaderCache.Find("Universal Render Pipeline/Lit")', FACADE)
         self.assertIn("materialUsers++;", FACADE)
         self.assertIn("materialUsers = Mathf.Max(0, materialUsers - 1);", FACADE)
         self.assertIn("Destroy(ownedMesh);", FACADE)

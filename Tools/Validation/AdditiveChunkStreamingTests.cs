@@ -129,6 +129,7 @@ namespace Aaris.MapReview
     internal static class AarisMobileStreamingFrameGate
     {
         internal static int physicsClaims, teardownClaims, trackedSceneLoads;
+        internal static int retiredSceneNotifications;
         internal static bool allowOptionalBuild = true;
         internal static bool allowRequiredLoad = true, allowRetirement = true;
         internal static void TrackAdditiveSceneOperation(AsyncOperation operation)
@@ -139,6 +140,8 @@ namespace Aaris.MapReview
         internal static bool TryClaimSceneRetirement() { return allowRetirement; }
         internal static void ReservePhysicsStreamingFrame() { physicsClaims++; }
         internal static void ReserveNativeTeardownFrame() { teardownClaims++; }
+        internal static void NotifyAdditiveSceneRetired()
+        { retiredSceneNotifications++; }
     }
 }
 
@@ -198,6 +201,7 @@ internal static class AdditiveChunkStreamingTests
         AarisMobileStreamingFrameGate.physicsClaims = 0;
         AarisMobileStreamingFrameGate.teardownClaims = 0;
         AarisMobileStreamingFrameGate.trackedSceneLoads = 0;
+        AarisMobileStreamingFrameGate.retiredSceneNotifications = 0;
         AarisMobileStreamingFrameGate.allowOptionalBuild = true;
         AarisMobileStreamingFrameGate.allowRequiredLoad = true;
         AarisMobileStreamingFrameGate.allowRetirement = true;
@@ -492,6 +496,8 @@ internal static class AdditiveChunkStreamingTests
 #if UNITY_ANDROID && !UNITY_EDITOR
         Check(AarisMobileStreamingFrameGate.teardownClaims == 2,
             "native scene unload reserves start and completion frames");
+        Check(AarisMobileStreamingFrameGate.retiredSceneNotifications == 1,
+            "owned scene retirement must publish one reclamation signal");
 #endif
         Check(SceneManager.loadCount == 1, "distant scene should remain unloaded");
 
