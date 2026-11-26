@@ -443,11 +443,11 @@ namespace Aaris.MapReview
             string name, bool transparent)
         {
             if (cached != null) return cached;
-            Shader shader = Shader.Find(transparent
+            Shader shader = AarisShaderCache.Find(transparent
                 ? "Universal Render Pipeline/Particles/Unlit"
                 : "Universal Render Pipeline/Lit");
-            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null) shader = Shader.Find("Unlit/Color");
+            if (shader == null) shader = AarisShaderCache.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = AarisShaderCache.Find("Unlit/Color");
             if (shader == null) return null;
             cached = new Material(shader) { name = name, enableInstancing = true };
             if (cached.HasProperty("_BaseColor")) cached.SetColor("_BaseColor", color);
