@@ -54,7 +54,7 @@ class VehicleDamageExhaust(unittest.TestCase):
         self.assertIn("Mathf.Clamp(savedDamage, 0f, .85f)", restore)
 
     def test_particle_shader_optional_and_shared(self):
-        self.assertIn('Shader.Find("Universal Render Pipeline/Particles/Unlit")', WORLD)
+        self.assertIn('AarisShaderCache.Find("Universal Render Pipeline/Particles/Unlit")', WORLD)
         self.assertIn("if (smokeShader != null)", WORLD)
         self.assertIn("exhaustMaterial = CreateExhaustMaterial(smokeShader);", WORLD)
         self.assertIn("if (exhaustMaterial != null) Destroy(exhaustMaterial);", WORLD)
@@ -66,7 +66,8 @@ class VehicleDamageExhaust(unittest.TestCase):
         self.assertIn("main.playOnAwake = false;", constructor)
         self.assertIn("main.simulationSpace = ParticleSystemSimulationSpace.World;", constructor)
         self.assertIn("renderer.sharedMaterial = sharedExhaustMaterial;", constructor)
-        self.assertIn("ParticleSystemStopBehavior.StopEmittingAndClear", constructor)
+        self.assertLess(constructor.index("ParticleSystemStopBehavior.StopEmittingAndClear"),
+                        constructor.index("main.duration ="))
         self.assertIn("ParticleSystemRenderMode.Billboard", constructor)
         self.assertNotIn("AddComponent<Collider>", constructor)
         boarding = MOTOR.split("public bool TryTakeDriver(", 1)[1].split(

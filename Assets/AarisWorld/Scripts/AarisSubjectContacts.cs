@@ -68,6 +68,8 @@ namespace Aaris.MapReview
             paint=new Material(template) { name="Aaris shared subject contact",enableInstancing=true,
                 hideFlags=HideFlags.HideAndDontSave };
             paint.SetFloat("_Opacity",.28f);
+            // Road meshes sit up to 0.12 m above the TerrainCollider.
+            paint.SetFloat("_ReceiverDepthBias", .13f);
             quad=new Mesh { name="Aaris shared subject contact quad",hideFlags=HideFlags.HideAndDontSave };
             quad.vertices=new[] {new Vector3(-.5f,0,-.5f),new Vector3(-.5f,0,.5f),
                 new Vector3(.5f,0,.5f),new Vector3(.5f,0,-.5f)};

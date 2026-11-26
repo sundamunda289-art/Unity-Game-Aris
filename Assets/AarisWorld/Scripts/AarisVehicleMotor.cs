@@ -1289,6 +1289,10 @@ namespace Aaris.MapReview
             nozzle.transform.localPosition = exhaustAnchor;
             nozzle.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             exhaustParticles = nozzle.AddComponent<ParticleSystem>();
+            // AddComponent can auto-start the default emitter on an active
+            // object. Stop it before applying the authored duration.
+            exhaustParticles.Stop(true,
+                ParticleSystemStopBehavior.StopEmittingAndClear);
             var main = exhaustParticles.main;
             main.playOnAwake = false;
             main.loop = true;
@@ -1309,8 +1313,6 @@ namespace Aaris.MapReview
             renderer.shadowCastingMode =
                 UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
-            exhaustParticles.Stop(true,
-                ParticleSystemStopBehavior.StopEmittingAndClear);
         }
 
         private void StopExhaust(bool clear)
