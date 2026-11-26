@@ -189,7 +189,7 @@ namespace Aaris.MapReview
                     // Notify the memory governor only after a scene this
                     // streamer actually owned has completed retirement.
                     if (retiredOwnedScene)
-                        AarisMobileRuntime.NotifyAdditiveSceneRetired();
+                        AarisMobileStreamingFrameGate.NotifyAdditiveSceneRetired();
 #endif
                 }
 #if UNITY_ANDROID && !UNITY_EDITOR
