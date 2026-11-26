@@ -43,7 +43,7 @@ class BikeMaterialPacingContract(unittest.TestCase):
     def test_first_pair_waits_for_a_new_admitted_frame(self):
         setup = BIKE.split("private System.Collections.IEnumerator BuildMaterialsAcrossFrames(bool stagger)", 1)[1]
         self.assertLess(setup.index("if (stagger)"),
-                        setup.index('Shader shader = Shader.Find("Universal Render Pipeline/Lit");'))
+                        setup.index('Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");'))
         first_gate = setup.split("if (stagger)", 1)[1].split("Shader shader", 1)[0]
         self.assertIn("yield return null;", first_gate)
         self.assertIn("AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild()", first_gate)
