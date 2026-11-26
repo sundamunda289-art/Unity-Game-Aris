@@ -20,6 +20,9 @@ namespace Aaris.MapReview.Editor
         private static GameObject ramp;
         private static Vector3 supportPoint;
         private static Camera captureCamera;
+        private static AarisVehicleMotor roadReviewCar;
+        private static AarisVehicleSession roadReviewSession;
+        private static float roadReviewLiftedAt;
         private static readonly List<Pose> poses = new List<Pose>();
         private static readonly List<string> fixtureLog = new List<string>();
         private static readonly float[] Slopes = { 0f, 12f, -12f, 24f, 12f, 0f, 12f };
@@ -143,8 +146,57 @@ namespace Aaris.MapReview.Editor
                     }
                     else if (phase == 6 && Time.unscaledTime - phaseStarted > .5f)
                     {
-                        AarisMobileSubjectVisualQA.CaptureLandedSubjects(player, artDirectory);
-                        Finish(runtimeErrors == 0 ? "passed" : "failed", runtimeErrors == 0 ? "" : "Map capture errors");
+                        roadReviewCar = AarisMobileSubjectVisualQA.CaptureLandedSubjects(player, artDirectory);
+                        if (Environment.GetEnvironmentVariable("AARIS_CONTACT_REVIEW") != "1")
+                        {
+                            Finish(runtimeErrors == 0 ? "passed" : "failed",
+                                runtimeErrors == 0 ? "" : "Map capture errors");
+                            return;
+                        }
+                        roadReviewSession = player.GetComponent<AarisVehicleSession>();
+                        if (roadReviewCar == null || roadReviewSession == null)
+                            throw new InvalidOperationException("Original scene has no car or session for contact review");
+                        AarisMobileSubjectVisualQA.PlaceRoadContactFixture(roadReviewCar, player);
+                        phase = 7;
+                        phaseStarted = Time.unscaledTime;
+                    }
+                    else if (phase == 7 && Time.unscaledTime - phaseStarted > .65f)
+                    {
+                        if (!roadReviewCar.IsSafeToExit)
+                        {
+                            if (Time.unscaledTime - phaseStarted > 5f)
+                                throw new InvalidOperationException("Review wheels did not settle on the runway");
+                            return;
+                        }
+                        if (!roadReviewCar.TryTakeDriver(roadReviewSession))
+                            throw new InvalidOperationException("Production motor rejected the review driver");
+                        roadReviewCar.SetInput(1f, 0f);
+                        phase = 8;
+                        phaseStarted = Time.unscaledTime;
+                    }
+                    else if (phase == 8 && Time.unscaledTime - phaseStarted > .40f)
+                    {
+                        if (roadReviewCar.TotalSpeedMetresPerSecond < 4f)
+                        {
+                            if (Time.unscaledTime - phaseStarted > 5f)
+                                throw new InvalidOperationException("Review car did not reach 4 m/s");
+                            return;
+                        }
+                        AarisMobileSubjectVisualQA.CaptureRoadContacts(roadReviewCar, artDirectory, true);
+                        roadReviewCar.SetInput(0f, 0f);
+                        var body = roadReviewCar.GetComponent<Rigidbody>();
+                        body.position += Vector3.up * 2f;
+                        body.linearVelocity = body.angularVelocity = Vector3.zero;
+                        Physics.SyncTransforms();
+                        roadReviewLiftedAt = Time.fixedTime;
+                        phase = 9;
+                    }
+                    else if (phase == 9 && Time.fixedTime - roadReviewLiftedAt > .05f)
+                    {
+                        AarisMobileSubjectVisualQA.CaptureRoadContacts(roadReviewCar, artDirectory, false);
+                        roadReviewCar.ReleaseDriver(roadReviewSession);
+                        Finish(runtimeErrors == 0 ? "passed" : "failed",
+                            runtimeErrors == 0 ? "" : "Contact capture errors");
                     }
                     return;
                 }

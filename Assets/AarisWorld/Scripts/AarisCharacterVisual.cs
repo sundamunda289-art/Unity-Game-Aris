@@ -351,6 +351,10 @@ namespace Aaris.MapReview
             rightThigh = animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
             rightShin = animator.GetBoneTransform(HumanBodyBones.RightLowerLeg);
             rightFootBone = animator.GetBoneTransform(HumanBodyBones.RightFoot);
+            if (tacticalSoldierLoaded || realisticSoldierLoaded)
+                AarisSubjectContacts.Register(transform, new Vector2(.85f, .75f),
+                    .20f, 18f, controller, visual.transform,
+                    leftFoot: leftFootBone, rightFoot: rightFootBone);
             proneChestBone = animator.GetBoneTransform(HumanBodyBones.Chest);
             proneHeadBone = animator.GetBoneTransform(HumanBodyBones.Head);
             proneLeftHandBone = animator.GetBoneTransform(HumanBodyBones.LeftHand);
@@ -700,9 +704,9 @@ namespace Aaris.MapReview
             else if (!hasAuthoredBase && label.IndexOf("Armor", StringComparison.OrdinalIgnoreCase) >= 0)
             { colour = new Color(.242f,.268f,.254f,sourceColor.a); metallic = .13f; smoothness = .47f; }
             else if (!hasAuthoredBase && label.IndexOf("Elements", StringComparison.OrdinalIgnoreCase) >= 0)
-            { colour = new Color(.128f,.145f,.125f,sourceColor.a); metallic = .04f; smoothness = .27f; }
+            { colour = new Color(.163f,.175f,.155f,sourceColor.a); metallic = .04f; smoothness = .27f; }
             else if (!hasAuthoredBase && label.IndexOf("Iron", StringComparison.OrdinalIgnoreCase) >= 0)
-            { colour = new Color(.16f,.17f,.16f,sourceColor.a); metallic = .80f; smoothness = .50f; }
+            { colour = new Color(.177f,.204f,.205f,sourceColor.a); metallic = .62f; smoothness = .48f; }
             else if (!hasAuthoredBase && label.IndexOf("Metal", StringComparison.OrdinalIgnoreCase) >= 0)
             { colour = new Color(.24f,.25f,.24f,sourceColor.a); metallic = .75f; smoothness = .55f; }
             else if (!hasAuthoredBase && label.IndexOf("Flesh", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -814,8 +818,6 @@ namespace Aaris.MapReview
             if (tacticalSoldierLoaded || realisticSoldierLoaded)
             {
                 ApplyRealisticSoldierMaterials();
-                AarisSubjectContacts.Register(transform,new Vector2(.85f,.75f),.20f,
-                    18f,controller,visual.transform);
                 return;
             }
             if (primaryLoaded)

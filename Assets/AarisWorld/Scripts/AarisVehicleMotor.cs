@@ -207,6 +207,8 @@ namespace Aaris.MapReview
         // axles: two front tyres at a crest are not two supported axles.
         // Bit 0 = front, bit 1 = rear. Reuse the SAME four WheelHit queries.
         private int groundedAxleMask;
+        private Vector3 wheelShadowPoints, wheelShadowNormals;
+        private float wheelShadowSampleTime = float.NegativeInfinity;
         private float nextTelemetryAt;
         // A short impact pulse communicates a meaningful collision without
         // creating sparks/particles on phones or changing the drive authority.
@@ -249,6 +251,22 @@ namespace Aaris.MapReview
         // inferring skid from chassis velocity, with no additional ray/query.
         public float TyreSlip => tyreSlip;
         public bool IsOccupied => driver != null;
+
+        internal bool TryGetWheelShadowPlane(out Vector3 point, out Vector3 normal)
+        {
+            point = default;
+            normal = default;
+            if (!isActiveAndEnabled || !IsOccupied || groundedAxleMask != 3 ||
+                groundedWheelCount < 2 ||
+                Time.fixedTime - wheelShadowSampleTime > Mathf.Max(.12f, 3f * Time.fixedDeltaTime))
+                return false;
+
+            normal = wheelShadowNormals.normalized;
+            if (normal.y < .72f) return false;
+            point = wheelShadowPoints / groundedWheelCount;
+            return true;
+        }
+
         public bool CanPark => !IsOccupied && body != null &&
             body.linearVelocity.sqrMagnitude < .20f &&
             body.angularVelocity.sqrMagnitude < .16f;
@@ -1385,6 +1403,7 @@ namespace Aaris.MapReview
 
         private void OnEnable()
         {
+            wheelShadowSampleTime = float.NegativeInfinity;
             RegisterPhysicsResident();
             sleepingWheelPoseCurrent = false;
             appliedDriveTorque = appliedBrakeTorque = appliedSteeringAngle = float.NaN;
@@ -1408,6 +1427,7 @@ namespace Aaris.MapReview
                 !isActiveAndEnabled || IsOccupied || body == null ||
                 !IsSafeToExit) return false;
             driver = session;
+            wheelShadowSampleTime = float.NegativeInfinity;
             // A streamed parked car may have been asleep for minutes.
             // PhysX is not guaranteed to wake just because we replaced the
             // brake torque. Guarantee the first player throttle reacts.
@@ -1611,6 +1631,13 @@ namespace Aaris.MapReview
             groundedWheelCount = 0;
             groundedAxleMask = 0;
             rearContactsGrounded[0] = rearContactsGrounded[1] = false;
+            if (driver != null)
+            {
+                // Only the occupied car needs a fresh plane for its contact
+                // shadow. ApplyAntiRoll collects its existing WheelHit samples.
+                wheelShadowPoints = wheelShadowNormals = Vector3.zero;
+                wheelShadowSampleTime = Time.fixedTime;
+            }
             ApplyAntiRoll(0, 1);
             ApplyAntiRoll(2, 3);
             SampleBodyDynamics();
@@ -1738,6 +1765,11 @@ namespace Aaris.MapReview
                     Mathf.Abs(leftHit.forwardSlip) * .78f);
                 tyreSlip = Mathf.Max(tyreSlip, leftSlip);
                 CacheRearTyreContact(leftIndex, leftHit, leftSlip);
+                if (driver != null)
+                {
+                    wheelShadowPoints += leftHit.point;
+                    wheelShadowNormals += leftHit.normal;
+                }
             }
             if (rightGrounded)
             {
@@ -1750,6 +1782,11 @@ namespace Aaris.MapReview
                     Mathf.Abs(rightHit.forwardSlip) * .78f);
                 tyreSlip = Mathf.Max(tyreSlip, rightSlip);
                 CacheRearTyreContact(rightIndex, rightHit, rightSlip);
+                if (driver != null)
+                {
+                    wheelShadowPoints += rightHit.point;
+                    wheelShadowNormals += rightHit.normal;
+                }
             }
             // A lifted wheel has no suspension contact. The legacy
             // leftTravel/rightTravel default of 1 would push upward on the

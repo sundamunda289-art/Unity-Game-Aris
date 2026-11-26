@@ -2388,7 +2388,7 @@ namespace Aaris.MapReview
             // Suspension places the chassis pivot about 0.71 m above the road.
             AarisSubjectContacts.Register(motor.transform,
                 new Vector2(bounds.size.x * .95f, bounds.size.z * .92f),
-                .42f, 36f, anchorOffset: -.61f);
+                .42f, 36f, anchorOffset: -.61f, vehicle: motor);
             record.visible = motor;
             record.builtBody = source;
             record.builtWheels = wheelSource;

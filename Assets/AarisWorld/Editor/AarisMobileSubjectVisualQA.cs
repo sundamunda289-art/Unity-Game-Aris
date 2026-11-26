@@ -321,6 +321,22 @@ namespace Aaris.MapReview.Editor
             var probes=type.GetProperty("LastProbeCount",Priv);
             Require((int)draw.GetValue(contacts)==1 && (int)probes.GetValue(contacts)<=2,
                 "native floor contact accepted within bounded probe count");
+            var leftFoot = new GameObject("QA left ankle").transform;
+            var rightFoot = new GameObject("QA right ankle").transform;
+            leftFoot.SetParent(root.transform, false);
+            rightFoot.SetParent(root.transform, false);
+            leftFoot.localPosition = new Vector3(-.16f, .06f, 0f);
+            rightFoot.localPosition = new Vector3(.16f, .06f, 0f);
+            e = entries.GetValue(0);
+            et.GetField("leftFoot", Priv).SetValue(e, leftFoot);
+            et.GetField("rightFoot", Priv).SetValue(e, rightFoot);
+            entries.SetValue(e, 0);
+            update();
+            Require((int)draw.GetValue(contacts) == 2, "two planted ankles produce two contacts");
+            leftFoot.localPosition += Vector3.up * .40f;
+            update();
+            Require((int)draw.GetValue(contacts) == 1, "lifted foot no longer draws a ground contact");
+            leftFoot.localPosition -= Vector3.up * .40f;
             for(int i=0;i<64;i++)update();
             long before=GC.GetAllocatedBytesForCurrentThread();
             for(int i=0;i<256;i++)update();
@@ -412,9 +428,8 @@ namespace Aaris.MapReview.Editor
                 throw new InvalidOperationException("Production terrain pickup could not initialize");
         }
 
-        internal static void CaptureLandedSubjects(AarisThirdPersonPlayer player, string directory)
+        private static Camera CreateAirfieldObserver()
         {
-            Directory.CreateDirectory(directory);
             var observer = new GameObject("QA landed subject camera").AddComponent<Camera>();
             observer.enabled = false;
             observer.clearFlags = CameraClearFlags.Skybox;
@@ -425,6 +440,13 @@ namespace Aaris.MapReview.Editor
             observer.farClipPlane = 420f;
             observer.allowHDR = false;
             observer.allowMSAA = false;
+            return observer;
+        }
+
+        internal static AarisVehicleMotor CaptureLandedSubjects(AarisThirdPersonPlayer player, string directory)
+        {
+            Directory.CreateDirectory(directory);
+            var observer = CreateAirfieldObserver();
             var playerTransform = player.transform;
             var rig = player.GetComponentInChildren<Animator>();
             var hips = rig.GetBoneTransform(HumanBodyBones.Hips);
@@ -449,6 +471,17 @@ namespace Aaris.MapReview.Editor
                 focus, directory, "soldier_front");
             WriteWorldPhoto(observer, focus - forward * 3.8f + side * .6f + Vector3.up * .8f,
                 focus, directory, "soldier_back");
+            if (Environment.GetEnvironmentVariable("AARIS_CONTACT_REVIEW") == "1")
+            {
+                var left = rig.GetBoneTransform(HumanBodyBones.LeftFoot);
+                var right = rig.GetBoneTransform(HumanBodyBones.RightFoot);
+                Vector3 ankles = (left.position + right.position) * .5f;
+                Vector3 feetEye = ankles - forward * 1.9f + side * .72f + Vector3.up * .54f;
+                WriteWorldPhoto(observer, feetEye, ankles, directory, "feet_control");
+                WriteWorldPhoto(observer, feetEye, ankles, directory, "feet_contact",
+                    camera => QueueReviewContacts(camera, playerTransform, 2, false,
+                        directory, "standing"));
+            }
             var marker = landedPickup.GetComponentInChildren<LineRenderer>();
             if (marker == null || !marker.enabled)
                 throw new InvalidOperationException("Nearby gameplay pickup did not enable the production marker");
@@ -487,6 +520,72 @@ namespace Aaris.MapReview.Editor
             Object.Destroy(landedPickup.gameObject);
             Object.Destroy(landedKit);
             Object.Destroy(observer.gameObject);
+            return nearest;
+        }
+
+        internal static void PlaceRoadContactFixture(AarisVehicleMotor motor, AarisThirdPersonPlayer player)
+        {
+            // Move the real streamed car onto the clear runway in Play Mode.
+            // The existing WheelColliders settle before the driving sample.
+            var body = motor.GetComponent<Rigidbody>();
+            Vector3 start = WorldFloor(player.transform.position + Vector3.forward * 7f);
+            body.position = start + Vector3.up * .67f;
+            body.rotation = Quaternion.identity;
+            body.linearVelocity = body.angularVelocity = Vector3.zero;
+            body.WakeUp();
+            Physics.SyncTransforms();
+        }
+
+        internal static void CaptureRoadContacts(AarisVehicleMotor motor, string directory, bool grounded)
+        {
+            var observer = CreateAirfieldObserver();
+            Transform car = motor.transform;
+            Vector3 target = car.position - Vector3.up * .08f;
+            Vector3 eye = target - car.forward * 5.6f + car.right * 4.2f + Vector3.up * 1.05f;
+            if (grounded)
+                WriteWorldPhoto(observer, eye, target, directory, "driving_control");
+            string label = grounded ? "driving_contact" : "airborne_contact";
+            WriteWorldPhoto(observer, eye, target, directory, label,
+                camera => QueueReviewContacts(camera, car, grounded ? 1 : 0, true, directory, label));
+            File.AppendAllText(Path.Combine(directory, "contact-review.txt"),
+                label + " speed_mps=" + motor.TotalSpeedMetresPerSecond.ToString("F2",
+                    System.Globalization.CultureInfo.InvariantCulture) + Environment.NewLine);
+            Object.Destroy(observer.gameObject);
+        }
+
+        private static void QueueReviewContacts(Camera camera, Transform root, int expectedDraws,
+            bool wheelPlane, string directory, string label)
+        {
+            // Invoke the production camera batch for the observer, with only
+            // the pictured subject selected. Restore the live registrations.
+            Type type = typeof(AarisWeaponPickup).Assembly.GetType("Aaris.MapReview.AarisSubjectContacts");
+            var contacts = (Component)type.GetField("instance", Priv).GetValue(null);
+            if (contacts == null) throw new InvalidOperationException("No live subject contact renderer");
+            var entries = (Array)type.GetField("entries", Priv).GetValue(contacts);
+            Type entryType = entries.GetType().GetElementType();
+            var rootField = entryType.GetField("root", Priv);
+            object selected = null;
+            foreach (var entry in entries)
+                if ((Transform)rootField.GetValue(entry) == root) { selected = entry; break; }
+            if (selected == null) throw new InvalidOperationException("Subject contact was not registered");
+            entryType.GetField("nextProbe", Priv).SetValue(selected, 0f);
+            var saved = (Array)entries.Clone();
+            try
+            {
+                Array.Clear(entries, 0, entries.Length);
+                entries.SetValue(selected, 0);
+                type.GetMethod("DrawContacts", Priv).Invoke(contacts, new object[] { camera });
+                int draws = (int)type.GetProperty("LastDrawCount", Priv).GetValue(contacts);
+                int probes = (int)type.GetProperty("LastProbeCount", Priv).GetValue(contacts);
+                bool fromWheels = (bool)entryType.GetField("wheelPlane", Priv).GetValue(entries.GetValue(0));
+                if (draws != expectedDraws || fromWheels != wheelPlane || probes > (wheelPlane ? 0 : 1))
+                    throw new InvalidOperationException(label + " unexpected contact draws=" + draws +
+                        " rays=" + probes + " wheels=" + fromWheels);
+                File.AppendAllText(Path.Combine(directory, "contact-review.txt"),
+                    label + " instances=" + draws + " rays=" + probes +
+                    " wheels=" + fromWheels + Environment.NewLine);
+            }
+            finally { Array.Copy(saved, entries, entries.Length); }
         }
 
         // Photograph the same mesh and pose with the held gun's shared
@@ -520,7 +619,7 @@ namespace Aaris.MapReview.Editor
         }
 
         private static void WriteWorldPhoto(Camera observer, Vector3 eye, Vector3 target,
-            string directory, string label)
+            string directory, string label, Action<Camera> beforeRender = null)
         {
             observer.transform.position = eye;
             observer.transform.LookAt(target);
@@ -531,6 +630,7 @@ namespace Aaris.MapReview.Editor
             {
                 observer.targetTexture = frame;
                 observer.aspect = (float)frame.width / frame.height;
+                beforeRender?.Invoke(observer);
                 observer.Render();
                 RenderTexture.active = frame;
                 pixels.ReadPixels(new Rect(0, 0, frame.width, frame.height), 0, 0);

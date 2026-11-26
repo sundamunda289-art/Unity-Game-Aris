@@ -5,21 +5,24 @@ namespace Aaris.MapReview
 {
     // A single shared visual-only contact batch. The original gameplay
     // colliders, grounding and shadows remain authoritative.
+    [DefaultExecutionOrder(360)]
     internal sealed class AarisSubjectContacts : MonoBehaviour
     {
         private struct Entry
         {
-            internal Transform root, visual;
+            internal Transform root, visual, leftFoot, rightFoot;
             internal CharacterController capsule;
+            internal AarisVehicleMotor vehicle;
             internal Vector2 size;
             internal float range, clearance, anchorOffset, nextProbe;
             internal Vector3 sample, normal;
-            internal bool valid, candidate;
+            internal bool valid, candidate, wheelPlane;
         }
         private const int Capacity=96;
         private static AarisSubjectContacts instance;
         private readonly Entry[] entries=new Entry[Capacity];
-        private readonly Matrix4x4[] matrices=new Matrix4x4[Capacity];
+        // One or two quads per subject, all submitted in a single batch.
+        private readonly Matrix4x4[] matrices = new Matrix4x4[Capacity * 2];
         private readonly RaycastHit[] hits=new RaycastHit[16];
         private readonly Plane[] frustum=new Plane[6];
         private Camera cameraCache;
@@ -33,7 +36,9 @@ namespace Aaris.MapReview
         private static void ResetStatics() { instance=null; }
 
         internal static void Register(Transform root, Vector2 size, float clearance,
-            float range, CharacterController capsule=null, Transform visual=null, float anchorOffset=0f)
+            float range, CharacterController capsule = null, Transform visual = null,
+            float anchorOffset = 0f, Transform leftFoot = null, Transform rightFoot = null,
+            AarisVehicleMotor vehicle = null)
         {
             if (!Application.isPlaying || !SystemInfo.supportsInstancing || root==null) return;
             if (instance==null)
@@ -50,7 +55,9 @@ namespace Aaris.MapReview
             }
             if (free<0) return;
             instance.entries[free]=new Entry {
-                root=root,visual=visual,capsule=capsule,size=size,range=range,clearance=clearance,anchorOffset=anchorOffset
+                root = root, visual = visual, capsule = capsule, size = size,
+                range = range, clearance = clearance, anchorOffset = anchorOffset,
+                leftFoot = leftFoot, rightFoot = rightFoot, vehicle = vehicle
             };
         }
 
@@ -109,8 +116,15 @@ namespace Aaris.MapReview
                 cameraCache=Camera.main;
             }
             if (cameraCache==null || !cameraCache.isActiveAndEnabled) return;
-            Vector3 eye=cameraCache.transform.position;
-            GeometryUtility.CalculateFrustumPlanes(cameraCache,frustum);
+            DrawContacts(cameraCache);
+        }
+
+        private void DrawContacts(Camera camera)
+        {
+            LastProbeCount = LastDrawCount = 0;
+            float now = Time.unscaledTime;
+            Vector3 eye = camera.transform.position;
+            GeometryUtility.CalculateFrustumPlanes(camera, frustum);
             for (int i=0;i<Capacity;i++)
             {
                 ref Entry e=ref entries[i];
@@ -123,7 +137,18 @@ namespace Aaris.MapReview
                 if ((eye-p).sqrMagnitude>e.range*e.range ||
                     !GeometryUtility.TestPlanesAABB(frustum,new Bounds(p,
                         new Vector3(e.size.x,2f,e.size.y)))) {e.valid=false;continue;}
-                e.candidate=true;
+                e.candidate = true;
+                bool useWheelPlane = e.vehicle != null && e.vehicle.IsOccupied;
+                if (useWheelPlane != e.wheelPlane)
+                {
+                    e.wheelPlane = useWheelPlane;
+                    e.valid = false;
+                    e.nextProbe = 0f;
+                }
+                // An occupied car already samples both axles in FixedUpdate.
+                // In the air, skip its shadow and leave ray slots for other subjects.
+                if (e.wheelPlane)
+                    e.valid = e.vehicle.TryGetWheelShadowPlane(out e.sample, out e.normal);
             }
             // Fair oldest-deadline selection: at most TWO native ground probes
             // per frame, at most four Hz per subject. No allocating queries.
@@ -131,8 +156,8 @@ namespace Aaris.MapReview
             {
                 int selected=-1; float oldest=float.PositiveInfinity;
                 for (int i=0;i<Capacity;i++)
-                    if (entries[i].candidate && entries[i].nextProbe<=now &&
-                        entries[i].nextProbe<oldest)
+                    if (entries[i].candidate && !entries[i].wheelPlane &&
+                        entries[i].nextProbe <= now && entries[i].nextProbe < oldest)
                     {selected=i;oldest=entries[i].nextProbe;}
                 if (selected<0) break;
                 entries[selected].nextProbe=now+.25f;
@@ -142,22 +167,62 @@ namespace Aaris.MapReview
             {
                 ref Entry e=ref entries[i];
                 if (!e.candidate || !e.valid) continue;
-                Vector3 p=Anchor(ref e), n=e.normal, s=e.sample;
-                float dx=p.x-s.x,dz=p.z-s.z;
-                if (dx*dx+dz*dz>.65f*.65f) {e.valid=false;continue;}
-                float y=s.y-(n.x*dx+n.z*dz)/n.y;
-                if (Mathf.Abs(p.y-y)>e.clearance) {e.valid=false;continue;}
-                float fade=Mathf.Clamp01((e.range-(eye-p).magnitude)/(e.range*.3f));
-                Vector3 forward=Vector3.ProjectOnPlane(e.root.forward,n);
-                if (forward.sqrMagnitude<.01f) continue;
-                float length=e.capsule!=null && e.capsule.height<.85f ? 1.5f : e.size.y;
-                matrices[LastDrawCount++]=Matrix4x4.TRS(new Vector3(p.x,y+.018f,p.z),
-                    Quaternion.LookRotation(forward,n),new Vector3(e.size.x*fade,1f,length*fade));
+                Vector3 p = Anchor(ref e), n = e.normal, s = e.sample;
+                float dx = p.x - s.x, dz = p.z - s.z;
+                // A wheel plane can be off-centre if one side is unloaded.
+                float maxOffset = e.wheelPlane ? 2.5f : .65f;
+                if (dx * dx + dz * dz > maxOffset * maxOffset) { e.valid = false; continue; }
+                float y = PlaneHeight(s, n, p);
+                if (Mathf.Abs(p.y - y) > e.clearance) { e.valid = false; continue; }
+                float fade = Mathf.Clamp01((e.range - (eye - p).magnitude) / (e.range * .3f));
+                if (fade <= 0f) continue;
+                Vector3 forward = Vector3.ProjectOnPlane(e.root.forward, n);
+                if (forward.sqrMagnitude < .01f) continue;
+
+                Quaternion rotation = Quaternion.LookRotation(forward, n);
+                bool prone = e.capsule != null && e.capsule.height < .85f;
+                if (!prone && e.leftFoot != null && e.rightFoot != null)
+                {
+                    PlaceFootContact(ref e, e.leftFoot.position, rotation, fade);
+                    PlaceFootContact(ref e, e.rightFoot.position, rotation, fade);
+                }
+                else
+                {
+                    AddContact(new Vector3(p.x, y, p.z), n, rotation,
+                        e.size.x * fade, (prone ? 1.5f : e.size.y) * fade);
+                }
             }
             if (LastDrawCount>0)
                 Graphics.DrawMeshInstanced(quad,0,paint,matrices,LastDrawCount,null,
-                    ShadowCastingMode.Off,false,0,cameraCache,LightProbeUsage.Off);
+                    ShadowCastingMode.Off, false, 0, camera, LightProbeUsage.Off);
         }
+
+        private static float PlaneHeight(Vector3 point, Vector3 normal, Vector3 position)
+        {
+            return point.y - (normal.x * (position.x - point.x) +
+                normal.z * (position.z - point.z)) / normal.y;
+        }
+
+        private void PlaceFootContact(ref Entry e, Vector3 foot, Quaternion rotation, float fade)
+        {
+            float floor = PlaneHeight(e.sample, e.normal, foot);
+            float height = foot.y - floor;
+            if (height < -.10f) return;
+            // Ankle height above its shared support plane shrinks the shoe
+            // contact during the swing phase without another raycast.
+            float scale = fade * Mathf.Clamp01((.31f - height) / .14f);
+            if (scale <= .02f) return;
+            AddContact(new Vector3(foot.x, floor, foot.z), e.normal, rotation,
+                .30f * scale, .43f * scale);
+        }
+
+        private void AddContact(Vector3 position, Vector3 normal, Quaternion rotation,
+            float width, float length)
+        {
+            matrices[LastDrawCount++] = Matrix4x4.TRS(position + normal * .018f,
+                rotation, new Vector3(width, 1f, length));
+        }
+
         private void OnDestroy()
         {
             if (instance==this) instance=null;
