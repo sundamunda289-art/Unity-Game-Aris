@@ -501,11 +501,11 @@ namespace Aaris.MapReview
         {
             if (ghost && preview != null) return preview;
             if (!ghost && solid != null) return solid;
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Simple Lit");
-            if (shader == null) shader = Shader.Find("Standard");
-            if (shader == null) shader = Shader.Find("Sprites/Default");
-            if (shader == null) shader = Shader.Find("Hidden/InternalErrorShader");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = AarisShaderCache.Find("Universal Render Pipeline/Simple Lit");
+            if (shader == null) shader = AarisShaderCache.Find("Standard");
+            if (shader == null) shader = AarisShaderCache.Find("Sprites/Default");
+            if (shader == null) shader = AarisShaderCache.Find("Hidden/InternalErrorShader");
             if (shader == null)
                 throw new System.InvalidOperationException("AARIS_OFFLINE_URP_SHADER_UNAVAILABLE");
             var mat = new Material(shader) { name = ghost ? "GlooPreviewLocal" : "GlooCoverLocal" };
