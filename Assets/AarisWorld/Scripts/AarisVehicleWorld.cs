@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading;
 using UnityEngine;
 using Unity.Profiling;
 
@@ -243,6 +244,21 @@ namespace Aaris.MapReview
         // low-RAM phones never stack six vehicle bodies in one memory spike.
         private int maxConcurrentAuthoredLoads = 2;
 
+        // Unity 6 can prepare one immutable vehicle body away from the actual
+        // 105 m visibility transition. The clone stays under an inactive root,
+        // so this changes neither visible car count nor physics. Full parked-car
+        // reuse still wins; this only removes the cold hierarchy clone from the
+        // common pool-miss spawn frame on constrained Android devices.
+        private const float PreparedBodyLifetimeSeconds = 12f;
+        private const float AsyncVehicleIntegrationBudgetMs = 1f;
+        private AsyncInstantiateOperation<GameObject> preparedBodyOperation;
+        private GameObject preparedBodyClone, preparedBodySource;
+        private GameObject preparedBodyStagingRoot;
+        private float preparedBodyExpiresAt;
+        private float previousAsyncInstantiateIntegrationMs;
+        private bool asyncInstantiateBudgetOverridden;
+        internal int AsyncPreparedBodyStarts { get; private set; }
+        internal int AsyncPreparedBodyConsumes { get; private set; }
 
         // Bounds in VEHICLE-LOCAL coordinates, not Unity Renderer.bounds (which
         // rotates with road heading). A 90-degree parked sedan must not be
@@ -437,6 +453,10 @@ namespace Aaris.MapReview
         {
             if (ActiveWorld == this) ActiveWorld = null;
             Application.lowMemory -= OnLowMemory;
+            // A disabled world cannot pump an operation deliberately waiting
+            // for main-thread integration. Cancel it rather than retaining
+            // hidden native work or a global integration-budget override.
+            ReleasePreparedBodyPreparation(false);
         }
 
         private void OnLowMemory() { lowMemoryPending = true; }
