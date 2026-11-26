@@ -48,6 +48,7 @@ class AndroidVehicleAsyncBodyPrepareTests(unittest.TestCase):
         starter = SOURCE[SOURCE.index("private bool StartPreparedBodyClone"):
                          SOURCE.index("private void PumpPreparedBodyClone")]
         self.assertIn("if (now < parkedCacheAllowedAt ||", starter)
+        self.assertIn("AarisAndroidThermalGovernor.SuspendSpeculativePrefetch", starter)
 
     def test_visual_and_gameplay_streaming_contracts_are_unchanged(self):
         self.assertIn("private const float LoadRadius = 105f;", SOURCE)
