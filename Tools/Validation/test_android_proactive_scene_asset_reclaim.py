@@ -24,14 +24,14 @@ class AndroidProactiveSceneAssetReclaimTests(unittest.TestCase):
                          STREAMER.index("BuildSpatialIndexSlice();")]
         self.assertIn("bool retiredOwnedScene = states[finished].loadedByThisStreamer;", block)
         self.assertIn("if (retiredOwnedScene)", block)
-        self.assertIn("AarisMobileRuntime.NotifyAdditiveSceneRetired();", block)
+        self.assertIn("AarisMobileStreamingFrameGate.NotifyAdditiveSceneRetired();", block)
         self.assertLess(block.index("if (!inFlight.isDone) return;"),
                         block.index("NotifyAdditiveSceneRetired"))
 
     def test_reclaim_requires_pressure_dead_scene_calm_frame_and_gate(self):
-        self.assertIn("pendingRetiredAdditiveScenes > 0", RUNTIME)
+        self.assertIn("AarisMobileStreamingFrameGate.RetiredAdditiveSceneCount > 0", RUNTIME)
         self.assertIn("AarisAndroidMemoryPressure.TrySample(out bool memoryPressure)", RUNTIME)
-        self.assertIn("memoryPressure && pendingRetiredAdditiveScenes > 0", RUNTIME)
+        self.assertIn("memoryPressure && AarisMobileStreamingFrameGate.RetiredAdditiveSceneCount > 0", RUNTIME)
         self.assertIn("SceneRetirementCalmSeconds = 2f", RUNTIME)
         self.assertIn("ProactiveAssetCleanupCooldownSeconds = 30f", RUNTIME)
         self.assertIn("Time.smoothDeltaTime <=", RUNTIME)
@@ -39,6 +39,15 @@ class AndroidProactiveSceneAssetReclaimTests(unittest.TestCase):
         self.assertIn("TryClaimUnusedAssetCleanupFrame()", RUNTIME)
         self.assertIn("unloading = Resources.UnloadUnusedAssets();", RUNTIME)
         self.assertIn("DeferOptionalWorkDuringAssetCleanup(unloading);", RUNTIME)
+
+    def test_retirement_signal_state_is_owned_by_the_frame_gate(self):
+        self.assertIn("private static int retiredAdditiveScenes;", GATE)
+        self.assertIn("private static float lastAdditiveSceneRetirementAt = -1f;", GATE)
+        self.assertIn("internal static void NotifyAdditiveSceneRetired()", GATE)
+        self.assertIn("internal static int RetiredAdditiveSceneCount", GATE)
+        self.assertIn("internal static float LastAdditiveSceneRetirementAt", GATE)
+        self.assertIn("internal static void ClearRetiredAdditiveSceneSignals()", GATE)
+        self.assertNotIn("NotifyAdditiveSceneRetired()", RUNTIME)
 
     def test_cleanup_admission_reuses_existing_native_work_fences(self):
         method = GATE[GATE.index("internal static bool TryClaimUnusedAssetCleanupFrame()"):
@@ -59,7 +68,9 @@ class AndroidProactiveSceneAssetReclaimTests(unittest.TestCase):
         low = RUNTIME[RUNTIME.index("if (lowMemoryPending)"):
                       RUNTIME.index("// SceneManager.UnloadSceneAsync destroys scene objects")]
         self.assertIn("Resources.UnloadUnusedAssets();", low)
-        self.assertIn("pendingRetiredAdditiveScenes = 0;", low)
+        self.assertIn(
+            "AarisMobileStreamingFrameGate.ClearRetiredAdditiveSceneSignals();",
+            low)
         self.assertIn("proactiveAssetCleanupPending = false;", low)
         self.assertNotIn("GC.Collect", low)
 
