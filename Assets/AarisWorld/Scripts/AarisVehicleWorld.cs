@@ -2110,7 +2110,9 @@ namespace Aaris.MapReview
             var root = new GameObject("Aaris Vehicle " + record.type.id + " " + record.point.id);
             root.transform.SetParent(transform, false);
             root.transform.SetPositionAndRotation(pos, record.rotation);
-            var mesh = Instantiate(source, root.transform, false);
+            GameObject mesh;
+            if (!TryConsumePreparedBody(source, root.transform, out mesh))
+                mesh = Instantiate(source, root.transform, false);
             mesh.name = record.type.preserveAuthoredUrpMaterials ||
                 record.type.useEmbeddedAuthoredWheels ||
                 record.type.convertAuthoredBodyMaterials
@@ -2421,7 +2423,15 @@ namespace Aaris.MapReview
             {
                 parkedCacheAllowedAt = now + 60f;
                 lowMemoryPending = false;
+                // Critical memory beats speculative smoothness. Remove/cancel
+                // only the one hidden prepared body; visible cars and original
+                // source assets are untouched.
+                ReleasePreparedBodyPreparation(true);
+                return;
             }
+            // Constant-time operation-state check: final clone integration can
+            // use the first clean rendered frame instead of waiting 300 ms.
+            PumpPreparedBodyClone(now);
             if (parkedCache.Count > 0 && (now < parkedCacheAllowedAt ||
                 parkedCache[0].expiresAt <= now))
             {
@@ -2546,6 +2556,15 @@ namespace Aaris.MapReview
             }
 #endif
             if (closestType >= 0) StartAuthoredBodyPrewarm(closestType);
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (AarisMobileStreamingFrameGate.IsConstrainedDevice())
+            {
+                int preparedType = FindPreparedBodyType(
+                    playerPosition, predictedPrewarmPosition, now);
+                if (preparedType >= 0)
+                    StartPreparedBodyClone(preparedType, now);
+            }
+#endif
 
             // The catalog is in match plan order, NOT player distance order.
             // On a low-end phone with a two-build budget, always give the
@@ -2684,6 +2703,7 @@ namespace Aaris.MapReview
 
         private void OnDestroy()
         {
+            ReleasePreparedBodyPreparation(false);
             if (paletteMaterial != null) Destroy(paletteMaterial);
             if (wheelPaletteMaterial != null) Destroy(wheelPaletteMaterial);
             if (headlampGlassMaterial != null) Destroy(headlampGlassMaterial);
