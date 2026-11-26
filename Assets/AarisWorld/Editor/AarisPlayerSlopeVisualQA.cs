@@ -20,6 +20,10 @@ namespace Aaris.MapReview.Editor
         private static GameObject ramp;
         private static Vector3 supportPoint;
         private static Camera captureCamera;
+        private static AarisVehicleMotor roadReviewCar;
+        private static AarisVehicleSession roadReviewSession;
+        private static float roadReviewLiftedAt;
+        private static AarisMobileSubjectVisualQA.ContactPhoto contactPhoto;
         private static readonly List<Pose> poses = new List<Pose>();
         private static readonly List<string> fixtureLog = new List<string>();
         private static readonly float[] Slopes = { 0f, 12f, -12f, 24f, 12f, 0f, 12f };
@@ -128,11 +132,26 @@ namespace Aaris.MapReview.Editor
                 string artDirectory = Environment.GetEnvironmentVariable("AARIS_LANDED_ART_DIR");
                 if (!string.IsNullOrEmpty(artDirectory))
                 {
+                    bool reviewContacts = Environment.GetEnvironmentVariable("AARIS_CONTACT_REVIEW") == "1";
                     if (phase < 5)
                     {
                         AarisMobileSubjectVisualQA.PrepareAirfieldPortrait(player);
                         phase = 5;
-                        phaseStarted = Time.unscaledTime;
+                        phaseStarted = reviewContacts ? Time.time : Time.unscaledTime;
+                    }
+                    else if (phase == 5 && reviewContacts)
+                    {
+                        // Editor software renders can advance wall time well
+                        // ahead of the landing animation's simulation time.
+                        float settledFor = Time.time - phaseStarted;
+                        if (settledFor < 1f || !AarisMobileSubjectVisualQA.HasPlantedBoots(player))
+                        {
+                            if (settledFor > 8f)
+                                throw new InvalidOperationException("Player never settled into a planted pose");
+                            return;
+                        }
+                        contactPhoto = AarisMobileSubjectVisualQA.ReviewFootContacts(player, artDirectory);
+                        phase = 7;
                     }
                     else if (phase == 5 && Time.unscaledTime - phaseStarted > 2f &&
                         player.GetComponent<CharacterController>().isGrounded)
@@ -144,7 +163,73 @@ namespace Aaris.MapReview.Editor
                     else if (phase == 6 && Time.unscaledTime - phaseStarted > .5f)
                     {
                         AarisMobileSubjectVisualQA.CaptureLandedSubjects(player, artDirectory);
-                        Finish(runtimeErrors == 0 ? "passed" : "failed", runtimeErrors == 0 ? "" : "Map capture errors");
+                        Finish(runtimeErrors == 0 ? "passed" : "failed",
+                            runtimeErrors == 0 ? "" : "Map capture errors");
+                    }
+                    else if (phase == 7 && ReadContactPhoto())
+                    {
+                        roadReviewCar = AarisMobileSubjectVisualQA.CaptureLandedSubjects(player, artDirectory,
+                            portraitsOnly: true);
+                        roadReviewSession = player.GetComponent<AarisVehicleSession>();
+                        if (roadReviewCar == null || roadReviewSession == null)
+                            throw new InvalidOperationException("Original scene has no car or session for contact review");
+                        AarisMobileSubjectVisualQA.PlaceRoadContactFixture(roadReviewCar, player);
+                        phase = 8;
+                        phaseStarted = Time.fixedTime;
+                    }
+                    else if (phase == 8 && Time.fixedTime - phaseStarted > .65f)
+                    {
+                        if (!roadReviewCar.IsSafeToExit)
+                        {
+                            if (Time.fixedTime - phaseStarted > 5f)
+                                throw new InvalidOperationException("Review wheels did not settle on the runway");
+                            return;
+                        }
+                        if (!roadReviewCar.TryTakeDriver(roadReviewSession))
+                            throw new InvalidOperationException("Production motor rejected the review driver");
+                        roadReviewCar.SetInput(1f, 0f);
+                        phase = 9;
+                        phaseStarted = Time.fixedTime;
+                    }
+                    else if (phase == 9 && Time.fixedTime - phaseStarted > .40f)
+                    {
+                        if (roadReviewCar.TotalSpeedMetresPerSecond < 4f ||
+                            !AarisMobileSubjectVisualQA.HasRoadContact(roadReviewCar))
+                        {
+                            if (Time.fixedTime - phaseStarted > 5f)
+                                throw new InvalidOperationException("Review car did not reach 4 m/s with support on both axles");
+                            return;
+                        }
+                        contactPhoto = AarisMobileSubjectVisualQA.ReviewRoadContacts(roadReviewCar, artDirectory, true);
+                        phase = 10;
+                    }
+                    else if (phase == 10 && ReadContactPhoto())
+                    {
+                        roadReviewCar.SetInput(0f, 0f);
+                        var body = roadReviewCar.GetComponent<Rigidbody>();
+                        // A controlled hop leaves the real WheelColliders
+                        // running and gives the paired camera time to sample.
+                        body.angularVelocity = Vector3.zero;
+                        body.linearVelocity = Vector3.up * 7f;
+                        roadReviewLiftedAt = Time.fixedTime;
+                        phase = 11;
+                    }
+                    else if (phase == 11 && Time.fixedTime - roadReviewLiftedAt > .05f)
+                    {
+                        if (AarisMobileSubjectVisualQA.HasRoadContact(roadReviewCar))
+                        {
+                            if (Time.fixedTime - roadReviewLiftedAt > 1f)
+                                throw new InvalidOperationException("Review car did not lose wheel support during its hop");
+                            return;
+                        }
+                        contactPhoto = AarisMobileSubjectVisualQA.ReviewRoadContacts(roadReviewCar, artDirectory, false);
+                        phase = 12;
+                    }
+                    else if (phase == 12 && ReadContactPhoto())
+                    {
+                        roadReviewCar.ReleaseDriver(roadReviewSession);
+                        Finish(runtimeErrors == 0 ? "passed" : "failed",
+                            runtimeErrors == 0 ? "" : "Contact capture errors");
                     }
                     return;
                 }
@@ -186,6 +271,14 @@ namespace Aaris.MapReview.Editor
                 }
             }
             catch (Exception error) { Finish("failed", error.Message); }
+        }
+
+        private static bool ReadContactPhoto()
+        {
+            if (!contactPhoto.ReadWhenReady()) return false;
+            contactPhoto.Dispose();
+            contactPhoto = null;
+            return true;
         }
 
         private static void SetupRamp(AarisThirdPersonPlayer player, AarisBattleActions battle)
@@ -390,6 +483,8 @@ namespace Aaris.MapReview.Editor
 
         private static void Finish(string status, string failure)
         {
+            contactPhoto?.Dispose();
+            contactPhoto = null;
             Application.logMessageReceived -= OnLog;
             Directory.CreateDirectory(OutputDirectory);
             File.WriteAllText(Path.Combine(OutputDirectory, "player-slope-visual.json"),

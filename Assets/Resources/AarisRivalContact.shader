@@ -1,6 +1,10 @@
 Shader "Aaris/Rival Soft Contact"
 {
-    Properties { _Opacity("Contact opacity", Range(0,0.4)) = 0.20 }
+    Properties
+    {
+        _Opacity("Contact opacity", Range(0,0.4)) = 0.20
+        _ReceiverDepthBias("Raised ground overlay tolerance (m)", Range(0,0.16)) = 0
+    }
     SubShader
     {
         Tags { "RenderPipeline"="UniversalPipeline" "Queue"="Transparent-5" "RenderType"="Transparent" }
@@ -20,6 +24,7 @@ Shader "Aaris/Rival Soft Contact"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             CBUFFER_START(UnityPerMaterial)
                 half _Opacity;
+                float _ReceiverDepthBias;
             CBUFFER_END
             struct Attributes { float4 positionOS : POSITION; float2 uv : TEXCOORD0; UNITY_VERTEX_INPUT_INSTANCE_ID };
             struct Varyings { float4 positionCS : SV_POSITION; half2 uv : TEXCOORD0; half fog : TEXCOORD1; UNITY_VERTEX_OUTPUT_STEREO };
@@ -28,7 +33,18 @@ Shader "Aaris/Rival Soft Contact"
                 Varyings output;
                 UNITY_SETUP_INSTANCE_ID(input);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
-                output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
+                float3 positionWS = TransformObjectToWorld(input.positionOS.xyz);
+                output.positionCS = TransformWorldToHClip(positionWS);
+                if (_ReceiverDepthBias > 0.0 && unity_OrthoParams.w < 0.5)
+                {
+                    // Evaluate depth at a slightly raised receiver plane along
+                    // the same eye ray. Preserve the actual ground projection.
+                    float3 toEye = GetCameraPositionWS() - positionWS;
+                    float3 normalWS = TransformObjectToWorldNormal(float3(0, 1, 0));
+                    float fraction = _ReceiverDepthBias / max(dot(normalWS, toEye), 0.5);
+                    float4 biasedCS = TransformWorldToHClip(positionWS + toEye * fraction);
+                    output.positionCS.z = biasedCS.z * (output.positionCS.w / biasedCS.w);
+                }
                 output.uv = input.uv * 2.0h - 1.0h;
                 output.fog = ComputeFogFactor(output.positionCS.z);
                 return output;
