@@ -2014,8 +2014,8 @@ namespace Aaris.MapReview
 
         private void CreateBoundary()
         {
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null) shader = Shader.Find("Sprites/Default");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = AarisShaderCache.Find("Sprites/Default");
             if (shader == null) return;
             boundaryMaterial = new Material(shader) { name = "Aaris Offline Zone Edge" };
             if (boundaryMaterial.HasProperty("_BaseColor"))
@@ -2079,7 +2079,7 @@ namespace Aaris.MapReview
                 "Universal Render Pipeline/", StringComparison.Ordinal)) return source;
             if (rivalMaterialCache.TryGetValue(source, out Material cached))
                 return cached;
-            Shader lit = Shader.Find("Universal Render Pipeline/Lit");
+            Shader lit = AarisShaderCache.Find("Universal Render Pipeline/Lit");
             if (lit == null) return source;
             var result = new Material(lit) { name = "Aaris rival URP " + source.name };
             Color color = source.HasProperty("_BaseColor") ? source.GetColor("_BaseColor") :
@@ -2678,8 +2678,8 @@ namespace Aaris.MapReview
         private static Material DistantRivalMaterial()
         {
             if (sharedFarVisualMaterial != null) return sharedFarVisualMaterial;
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null) shader = Shader.Find("Unlit/Color");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = AarisShaderCache.Find("Unlit/Color");
             if (shader == null) return null;
             var material = new Material(shader)
             {
