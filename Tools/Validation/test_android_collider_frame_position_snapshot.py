@@ -30,7 +30,8 @@ class ColliderFrameSnapshot(unittest.TestCase):
         self.assertLess(body.index("yield return null;", first_loop), refresh)
         self.assertNotIn("target.position", body[first_loop:refresh])
         self.assertIn("if (target == null)", body)
-        self.assertIn("if (dx * dx + dz * dz > safeDistanceSquared)", body)
+        self.assertIn("if (dx * dx + dz * dz > safeDistanceSquared &&", body)
+        self.assertIn("!IsVehicleSupportPinned(i)", body)
         self.assertIn("AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();", body)
 
     def test_movement_release_refreshes_position_after_each_yield(self):
@@ -46,7 +47,8 @@ class ColliderFrameSnapshot(unittest.TestCase):
         self.assertLess(body.index("yield return null;", loop), refresh)
         self.assertNotIn("target.position", body[loop:refresh])
         self.assertIn("wanted[i] != query", body)
-        self.assertIn("if (dx * dx + dz * dz > retainSquared)", body)
+        self.assertIn("if (dx * dx + dz * dz > retainSquared &&", body)
+        self.assertIn("!IsVehicleSupportPinned(i)", body)
         self.assertIn("if (!reservedReleaseFrame)", body)
         self.assertLess(
             body.index("AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();"),

@@ -30,10 +30,13 @@ def admission_for_queued_release(changed):
 class ColliderReleaseNoopAdmission(unittest.TestCase):
     def test_admission_is_inside_real_disable_branch_and_before_toggle(self):
         self.assertEqual(BODY.count(RESERVE), 1)
-        condition = "if (dx * dx + dz * dz > retainSquared)"
+        condition = "if (dx * dx + dz * dz > retainSquared &&"
         self.assertIn(condition, BODY)
+        self.assertIn("!IsVehicleSupportPinned(i))", BODY)
         self.assertIn("if (!reservedReleaseFrame)", BODY)
         self.assertLess(BODY.index(condition), BODY.index("if (!reservedReleaseFrame)"))
+        self.assertLess(BODY.index("!IsVehicleSupportPinned(i))"),
+                        BODY.index("if (!reservedReleaseFrame)"))
         self.assertLess(BODY.index("if (!reservedReleaseFrame)"), BODY.index(RESERVE))
         self.assertLess(BODY.index(RESERVE), BODY.index("collider.enabled = false;"))
         self.assertIn("reservedReleaseFrame = true;", BODY)

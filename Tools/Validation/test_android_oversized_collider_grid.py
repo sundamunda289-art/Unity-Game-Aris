@@ -71,7 +71,8 @@ class OversizedColliderGrid(unittest.TestCase):
         self.assertIn("nextActive.Add(i);", refresh)
         self.assertIn("if (visited[i] == query) continue;", refresh)
         self.assertIn("worldBounds[i].Intersects(probe)", probe)
-        self.assertIn("streamed[i] && c != null && !c.enabled", probe)
+        self.assertIn("streamed[i] && c != null && (includeActive", probe)
+        self.assertIn(": !c.enabled)", probe)
         self.assertIn("probeVisited[i] = probeStamp;", probe)
         self.assertIn("if (forcePhysicsSync) Physics.SyncTransforms();", refresh)
 

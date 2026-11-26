@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using Unity.Profiling;
+using Unity.Profiling.LowLevel;
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.SceneManagement;
@@ -136,7 +137,7 @@ namespace Aaris.MapReview
             for (int i = 0; i < frameCount; i++) sum += recentFramesMs[i];
             float fps = sum > 0f ? 1000f * frameCount / sum : 0f;
             double cpuMs = mainThreadRecorder.Valid ? mainThreadRecorder.LastValue / 1000000.0 : -1.0;
-            long gcBytes = gcAllocRecorder.Valid ? gcAllocRecorder.LastValue : -1L;
+            long gcBytes = ReadGcAllocatedBytes(gcAllocRecorder);
             double monoMiB = Profiler.GetMonoUsedSizeLong() / BytesPerMiB;
             double unityReservedMiB = Profiler.GetTotalReservedMemoryLong() / BytesPerMiB;
             if (capturing && now >= captureStartsAt && capturePausedAt < 0f)
@@ -377,7 +378,9 @@ namespace Aaris.MapReview
             }
             if (needed && !gcAllocRecorder.Valid)
             {
-                try { gcAllocRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC.Alloc"); }
+                // GC.Alloc is an allocation marker, not the whole-frame byte
+                // counter. Never label a marker duration/count as memory.
+                try { gcAllocRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame"); }
                 catch (Exception) { /* No fabricated zero when unavailable. */ }
             }
             if (!needed)
@@ -385,6 +388,17 @@ namespace Aaris.MapReview
                 if (mainThreadRecorder.Valid) mainThreadRecorder.Dispose();
                 if (gcAllocRecorder.Valid) gcAllocRecorder.Dispose();
             }
+        }
+
+        internal static long ReadGcAllocatedBytes(ProfilerRecorder recorder)
+        {
+            // Release players can omit this counter, and a newly started
+            // recorder has no completed frame yet. Both are unavailable, not
+            // evidence of zero allocations. Verify units before reading data.
+            if (!recorder.Valid || recorder.UnitType != ProfilerMarkerDataUnit.Bytes ||
+                recorder.Count == 0) return -1L;
+            long value = recorder.LastValue;
+            return value >= 0L ? value : -1L;
         }
 
         private void TryFlushCsv()

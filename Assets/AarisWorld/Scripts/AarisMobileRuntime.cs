@@ -1019,7 +1019,12 @@ namespace Aaris.MapReview
             // explicitly retains regular assets. Only sample Android memory
             // pressure at low frequency, and only queue a reclaim when at least
             // one owned additive scene has actually retired.
-            if (AarisMobileStreamingFrameGate.IsConstrainedDevice() &&
+            // With no retired scene there is no proactive reclamation work.
+            // Do not make Android JNI/binder memory queries at cold start or
+            // during stationary play just to discard their result. Critical
+            // Application.lowMemory handling above remains unconditional.
+            if (AarisMobileStreamingFrameGate.RetiredAdditiveSceneCount > 0 &&
+                AarisMobileStreamingFrameGate.IsConstrainedDevice() &&
                 AarisAndroidMemoryPressure.TrySample(out bool memoryPressure))
             {
                 proactiveAssetCleanupPending =

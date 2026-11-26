@@ -56,6 +56,14 @@ namespace Aaris.MapReview
         private float nextCheck;
         private AarisOfflineDrop drop;
         private float nextDropRefresh;
+        // Player-only collider residency is insufficient: a real car can
+        // remain alive to 160m while the player has already left a bridge's
+        // 61m release range. Pin only small live-vehicle support/obstacle
+        // footprints, not a second full player-sized physics radius.
+        private readonly List<Bounds> vehiclePhysicsPins = new List<Bounds>(44);
+        internal int VehicleSupportPinCount => vehiclePhysicsPins.Count;
+        internal int VehicleSupportRefreshCount { get; private set; }
+        internal int VehiclePinnedColliderCount { get; private set; }
         // Keep an already-live collider for a few extra metres so tiny player
         // movements at the activation boundary do not churn physics broadphase.
         // Never use this margin to enable a previously unloaded collider early.
@@ -260,7 +268,8 @@ namespace Aaris.MapReview
                     Vector3 nearest = worldBounds[i].ClosestPoint(framePosition);
                     float dx = nearest.x - framePosition.x;
                     float dz = nearest.z - framePosition.z;
-                    if (dx * dx + dz * dz > safeDistanceSquared)
+                    if (dx * dx + dz * dz > safeDistanceSquared &&
+                        !IsVehicleSupportPinned(i))
                     {
                         disabledByStreaming[i] = true;
                         c.enabled = false;
@@ -327,6 +336,84 @@ namespace Aaris.MapReview
             if (dx * dx + dz * dz >= RefreshTravelSquared ||
                 Time.unscaledTime >= nextCheck) RefreshNow(false);
         }
+
+        private void FixedUpdate()
+        {
+            if (!indexReady || target == null ||
+                (AarisVehicleMotor.TrackedPhysicsResidentCount == 0 &&
+                 vehiclePhysicsPins.Count == 0)) return;
+            // Execution order -250 runs before the vehicle motor (-40) and
+            // PhysX. A moving/reenabled car acquires its floor before its next
+            // simulation step, even when the player has not moved at all.
+            if (!AarisVehicleMotor.CollectPhysicsResidencyBounds(vehiclePhysicsPins))
+                return;
+            VehicleSupportRefreshCount++;
+            RefreshNow(false);
+        }
+
+        private bool IsVehicleSupportPinned(int index)
+        {
+            Bounds bounds = worldBounds[index];
+            for (int i = 0; i < vehiclePhysicsPins.Count; i++)
+                if (bounds.Intersects(vehiclePhysicsPins[i])) return true;
+            return false;
+        }
+
+        private void IncludeVehicleSupport()
+        {
+            VehiclePinnedColliderCount = 0;
+            for (int p = 0; p < vehiclePhysicsPins.Count; p++)
+            {
+                Bounds pin = vehiclePhysicsPins[p];
+                Vector3 min = pin.min, max = pin.max;
+                if (!Finite(min) || !Finite(max)) continue;
+                int firstX = Cell(min.x), lastX = Cell(max.x);
+                int firstZ = Cell(min.z), lastZ = Cell(max.z);
+                long width = (long)lastX - firstX + 1;
+                long depth = (long)lastZ - firstZ + 1;
+                if (width <= 0 || depth <= 0 || width > MaxCellsPerProbe ||
+                    depth > MaxCellsPerProbe || width * depth > MaxCellsPerProbe)
+                {
+                    // Only an invalid/extreme externally supplied velocity
+                    // can take this bounded fallback. Normal car footprints
+                    // visit one to four existing grid cells.
+                    for (int i = 0; i < obstacles.Length; i++)
+                        IncludeVehicleSupportCollider(i, pin);
+                    continue;
+                }
+                for (long x = firstX; x <= lastX; x++)
+                    for (long z = firstZ; z <= lastZ; z++)
+                    {
+                        if (!cells.TryGetValue(Key((int)x, (int)z),
+                            out List<int> entries)) continue;
+                        foreach (int i in entries)
+                            IncludeVehicleSupportCollider(i, pin);
+                    }
+                foreach (int i in oversizedIndices)
+                    IncludeVehicleSupportCollider(i, pin);
+            }
+        }
+
+        private void IncludeVehicleSupportCollider(int i, Bounds pin)
+        {
+            // A collider rejected by the player's radius may already have
+            // visited==query. Use wanted for deduplication, so the car can
+            // still keep that exact floor/obstacle in the shared active set.
+            if (!streamed[i] || wanted[i] == query ||
+                !worldBounds[i].Intersects(pin)) return;
+            Collider collider = obstacles[i];
+            if (collider == null || (!collider.enabled && !disabledByStreaming[i]))
+                return; // Never resurrect an intentionally disabled solid.
+            wanted[i] = query;
+            if (!collider.enabled)
+            {
+                AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();
+                collider.enabled = true;
+                disabledByStreaming[i] = false;
+            }
+            nextActive.Add(i);
+            VehiclePinnedColliderCount++;
+        }
         // Explicit teleport and startup calls still synchronize immediately.
         // Periodic polls avoid a global physics sync if no collider changed.
         public void RefreshNow()
@@ -342,6 +429,7 @@ namespace Aaris.MapReview
         private void RefreshNow(bool forcePhysicsSync)
         {
             if (!indexReady || target == null || worldBounds == null) return;
+            AarisVehicleMotor.CollectPhysicsResidencyBounds(vehiclePhysicsPins);
             // Forced startup/teleport refreshes can invoke Physics.SyncTransforms:
             // keep their original native-frame reservation. Routine movement
             // refreshes reserve only if a collider is actually re-enabled;
@@ -417,10 +505,12 @@ namespace Aaris.MapReview
                 }
                 nextActive.Add(i);
             }
+            IncludeVehicleSupport();
             bool androidMovementRefresh = !forcePhysicsSync &&
                 Application.platform == RuntimePlatform.Android;
             foreach (int i in active)
-                if (wanted[i] != query && obstacles[i] != null && obstacles[i].enabled)
+                if (wanted[i] != query && obstacles[i] != null && obstacles[i].enabled &&
+                    !IsVehicleSupportPinned(i))
                 {
                     if (androidMovementRefresh)
                     {
@@ -468,7 +558,8 @@ namespace Aaris.MapReview
                 int i = pendingColliderRelease[n];
                 colliderReleaseQueued[i] = false;
                 // A collider reacquired by the latest spatial refresh is live.
-                if (wanted[i] != query && obstacles[i] != null && obstacles[i].enabled)
+                if (wanted[i] != query && obstacles[i] != null && obstacles[i].enabled &&
+                    !IsVehicleSupportPinned(i))
                 {
                     disabledByStreaming[i] = true;
                     obstacles[i].enabled = false;
@@ -506,7 +597,8 @@ namespace Aaris.MapReview
                     Vector3 closest = worldBounds[i].ClosestPoint(framePosition);
                     float dx = closest.x - framePosition.x;
                     float dz = closest.z - framePosition.z;
-                    if (dx * dx + dz * dz > retainSquared)
+                    if (dx * dx + dz * dz > retainSquared &&
+                        !IsVehicleSupportPinned(i))
                     {
                         if (!reservedReleaseFrame)
                         {
@@ -543,11 +635,19 @@ namespace Aaris.MapReview
         // cannot see the disabled geometry. Reject such candidate locations using
         // cached world bounds until the real collider enters the active radius.
         // This check does NOT toggle a collider or allocate per probe.
+        // Physical movers keep the inactive-only default and let PhysX resolve
+        // live geometry exactly. Virtual movers have no native sweep, so their
+        // explicit includeActive mode must also see live authored solids.
         internal bool HasPotentialInactiveObstacle(Vector3 center,
-            Vector3 halfExtents, Quaternion rotation)
+            Vector3 halfExtents, Quaternion rotation, bool includeActive = false)
         {
+            // While Android builds the index, physical movers still have the
+            // original colliders. Math-only actors must wait for complete cover
+            // rather than interpret a partial index as an empty world.
+            if (includeActive && !indexReady && obstacles != null && obstacles.Length > 0)
+                return true;
             if (!indexReady) return false;
-            if (!isActiveAndEnabled || obstacles == null || streamed == null ||
+            if ((!includeActive && !isActiveAndEnabled) || obstacles == null || streamed == null ||
                 worldBounds == null) return false;
             Vector3 extents;
             // AI cover, player pickups and many spawn probes use EXACT
@@ -590,7 +690,10 @@ namespace Aaris.MapReview
                     if (!streamed[i] || !worldBounds[i].Intersects(probe))
                         continue;
                     Collider candidate = obstacles[i];
-                    if (candidate != null && !candidate.enabled)
+                    if (candidate != null && (includeActive
+                        ? !candidate.isTrigger && candidate.gameObject.activeInHierarchy &&
+                          (candidate.enabled || disabledByStreaming[i])
+                        : !candidate.enabled))
                         return true;
                 }
                 return false;
@@ -613,7 +716,10 @@ namespace Aaris.MapReview
                         probeVisited[i] = probeStamp;
                         Collider c = obstacles[i];
                         if (worldBounds[i].Intersects(probe) &&
-                            streamed[i] && c != null && !c.enabled)
+                            streamed[i] && c != null && (includeActive
+                                ? !c.isTrigger && c.gameObject.activeInHierarchy &&
+                                  (c.enabled || disabledByStreaming[i])
+                                : !c.enabled))
                             return true;
                     }
                 }
@@ -625,7 +731,10 @@ namespace Aaris.MapReview
                 probeVisited[i] = probeStamp;
                 Collider c = obstacles[i];
                 if (worldBounds[i].Intersects(probe) &&
-                    streamed[i] && c != null && !c.enabled)
+                    streamed[i] && c != null && (includeActive
+                        ? !c.isTrigger && c.gameObject.activeInHierarchy &&
+                          (c.enabled || disabledByStreaming[i])
+                        : !c.enabled))
                     return true;
             }
             return false;

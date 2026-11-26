@@ -8,6 +8,7 @@ on:
       - 'Assets/TerrainDemoScene_URP/Prefabs/Details/Materials/**'
       - 'Assets/AarisWorld/Scripts/AarisVehicleSession.cs'
       - 'Tools/Validation/test_mobile_foliage_illusion_contract.py'
+      - 'Tools/Validation/test_speedtree_wind_variant_guards.py'
       - '.github/workflows/aaris-mobile-nature-illusion-qa.yml'
   push:
     branches: [main]
@@ -18,6 +19,7 @@ on:
       - 'Assets/TerrainDemoScene_URP/Prefabs/Details/Materials/**'
       - 'Assets/AarisWorld/Scripts/AarisVehicleSession.cs'
       - 'Tools/Validation/test_mobile_foliage_illusion_contract.py'
+      - 'Tools/Validation/test_speedtree_wind_variant_guards.py'
       - '.github/workflows/aaris-mobile-nature-illusion-qa.yml'
 
 permissions:
@@ -38,6 +40,10 @@ jobs:
       - name: Check mobile vegetation Shader Graph bindings and math
         run: |
           python3 Tools/Validation/test_mobile_foliage_illusion_contract.py
+      - name: Check every wind-buffer preprocessor branch
+        run: |
+          command -v cpp
+          python3 Tools/Validation/test_speedtree_wind_variant_guards.py
       - name: Validate original tree LODs and reduced shadow workload
         run: |
           python3 Tools/Validation/test_mobile_tree_shadows.py

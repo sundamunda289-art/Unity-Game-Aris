@@ -243,7 +243,9 @@ def test():
     assert world.index("nearbyColliders.HasPotentialInactiveObstacle") < world.index("Physics.OverlapBoxNonAlloc")
     assert "internal bool HasPotentialInactiveObstacle(" in nearby
     assert "cells.TryGetValue(Key(xCell, zCell)" in nearby
-    assert "streamed[i] && c != null && !c.enabled" in nearby
+    assert "bool includeActive = false" in nearby
+    assert "streamed[i] && c != null && (includeActive" in nearby
+    assert ": !c.enabled))" in nearby
     assert "worldBounds[i].Intersects(probe)" in nearby
     assert "new Bounds(center, 2f * extents)" in nearby
     assert "Physics.OverlapBoxNonAlloc" in world
