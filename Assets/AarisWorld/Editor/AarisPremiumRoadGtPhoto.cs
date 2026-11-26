@@ -96,8 +96,11 @@ namespace Aaris.MapReview.Editor
                     if (!any) { bounds = renderer.bounds; any = true; }
                     else bounds.Encapsulate(renderer.bounds);
                     foreach (Material mat in renderer.sharedMaterials)
-                        if (mat != null && mat.shader != null &&
-                            mat.shader.name == "Universal Render Pipeline/Lit") urp++;
+                        if (mat != null && mat.shader != null && mat.shader.isSupported &&
+                            (mat.shader.name == "Universal Render Pipeline/Lit" ||
+                             (mat.name == "AarisRoadGT_Tyre" &&
+                              mat.shader.name == "Aaris/Mobile Subject Lit" &&
+                              mat.IsKeywordEnabled("_AARIS_GT_TREAD")))) urp++;
                         else throw new InvalidOperationException("Non-URP material in rendered GT.");
                 }
                 if (!any || triangles < 50000 || triangles > 80000 || urp < 12)

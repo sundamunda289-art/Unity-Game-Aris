@@ -51,7 +51,8 @@ class OriginalBuggyTests(unittest.TestCase):
         source=(R/"Assets/AarisWorld/Scripts/AarisVehicleWorld.cs").read_text()
         for label in ('case "Buggy"','label.Contains("seat")',
                       'label.Contains("aarispaint")',
-                      'result.EnableKeyword("_CLEARCOAT");',
+                      'Shader shader = paint ? AarisShaderCache.Find("Aaris/Mobile Subject Lit") : null;',
+                      'result.SetFloat("_ClearCoatMask", .34f);',
                       'if (material.HasProperty("_ClearCoatMask"))'):
             self.assertIn(label,source)
         mat=(ART/"AarisCivilianSurface.mat").read_text()

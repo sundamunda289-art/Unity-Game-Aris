@@ -115,9 +115,9 @@ class VehicleBodyDynamics(unittest.TestCase):
             self.assertIn(term, cfg)
         lamp = MOTOR.split("private void EnsureRoadHeadlight()", 1)[1].split(
             "private void RefreshExteriorLights()", 1)[0]
-        self.assertIn("Transform mount = frontLamps[0].transform.parent;", lamp)
+        self.assertIn("Transform mount = lampDetailRoot.transform;", lamp)
         self.assertIn("beamObject.transform.SetParent(mount, false);", lamp)
-        self.assertIn("frontLamps[0].transform.localPosition", lamp)
+        self.assertIn("roadHeadlightAnchor + Vector3.forward", lamp)
         exhaust = MOTOR.split("private void EnsureExhaustEmitter()", 1)[1].split(
             "private void StopExhaust(", 1)[0]
         self.assertIn(

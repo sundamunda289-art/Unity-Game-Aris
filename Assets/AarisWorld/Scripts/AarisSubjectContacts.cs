@@ -21,8 +21,9 @@ namespace Aaris.MapReview
         private const int Capacity=96;
         private static AarisSubjectContacts instance;
         private readonly Entry[] entries=new Entry[Capacity];
-        // One or two quads per subject, all submitted in a single batch.
-        private readonly Matrix4x4[] matrices = new Matrix4x4[Capacity * 2];
+        // A car uses an underbody quad and at most four tyre footprints.
+        // 480 total instances fit one instanced batch with nonuniform scales.
+        private readonly Matrix4x4[] matrices = new Matrix4x4[Capacity * 5];
         private readonly RaycastHit[] hits=new RaycastHit[16];
         private readonly Plane[] frustum=new Plane[6];
         private Camera cameraCache;
@@ -168,15 +169,19 @@ namespace Aaris.MapReview
             for (int i=0;i<Capacity;i++)
             {
                 ref Entry e=ref entries[i];
-                if (!e.candidate || !e.valid) continue;
+                if (!e.candidate) continue;
                 Vector3 p = Anchor(ref e), n = e.normal, s = e.sample;
+                float distance = (eye - p).magnitude;
+                if (e.vehicle != null && distance < 16f)
+                    PlaceTyreContacts(e.vehicle, Mathf.Clamp01((16f - distance) / 5f));
+                if (!e.valid) continue;
                 float dx = p.x - s.x, dz = p.z - s.z;
                 // A wheel plane can be off-centre if one side is unloaded.
                 float maxOffset = e.wheelPlane ? 2.5f : .65f;
                 if (dx * dx + dz * dz > maxOffset * maxOffset) { e.valid = false; continue; }
                 float y = PlaneHeight(s, n, p);
                 if (Mathf.Abs(p.y - y) > e.clearance) { e.valid = false; continue; }
-                float fade = Mathf.Clamp01((e.range - (eye - p).magnitude) / (e.range * .3f));
+                float fade = Mathf.Clamp01((e.range - distance) / (e.range * .3f));
                 if (fade <= 0f) continue;
                 Vector3 forward = Vector3.ProjectOnPlane(e.root.forward, n);
                 if (forward.sqrMagnitude < .01f) continue;
@@ -207,6 +212,19 @@ namespace Aaris.MapReview
             Graphics.RenderMeshInstanced(render, quad, 0, matrices, LastDrawCount);
         }
 
+        private void PlaceTyreContacts(AarisVehicleMotor vehicle, float fade)
+        {
+            int mask = vehicle.GetWheelShadowMask();
+            for (int i = 0; i < 4; i++)
+            {
+                if ((mask & (1 << i)) == 0 || !vehicle.TryGetTyreShadow(i,
+                    out Vector3 point, out Vector3 normal, out Quaternion rotation,
+                    out Vector2 size, out bool terrainReceiver)) continue;
+                AddContact(point, normal, rotation, size.x * fade, size.y * fade,
+                    terrainReceiver ? -2f : -1f);
+            }
+        }
+
         private static float PlaneHeight(Vector3 point, Vector3 normal, Vector3 position)
         {
             return point.y - (normal.x * (position.x - point.x) +
@@ -227,10 +245,12 @@ namespace Aaris.MapReview
         }
 
         private void AddContact(Vector3 position, Vector3 normal, Quaternion rotation,
-            float width, float length)
+            float width, float length, float receiverMode = 1f)
         {
+            // The quad lies in XZ. Y scale encodes a body/foot quad (1),
+            // an exact tyre receiver (-1) or terrain under a raised road (-2).
             matrices[LastDrawCount++] = Matrix4x4.TRS(position + normal * .018f,
-                rotation, new Vector3(width, 1f, length));
+                rotation, new Vector3(width, receiverMode, length));
         }
 
         private void OnDestroy()

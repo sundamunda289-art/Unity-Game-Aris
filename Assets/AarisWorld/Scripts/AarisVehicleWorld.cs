@@ -157,6 +157,7 @@ namespace Aaris.MapReview
         internal int ReusedVehicleBuilds { get; private set; }
         internal int ParkedCacheCount => parkedCache.Count;
         private readonly List<AarisVehicleRecord> plans = new List<AarisVehicleRecord>(TargetVehicles);
+        private readonly List<Material> buildMaterials = new List<Material>(12);
         private readonly RaycastHit[] rayHits = new RaycastHit[24];
         private readonly Collider[] collisionHits = new Collider[40];
         private Transform player;
@@ -1053,6 +1054,8 @@ namespace Aaris.MapReview
         private Material AuthoredUrpMaterial(Material source)
         {
             if (source == null) return paletteMaterial;
+            if (source.shader != null && source.shader.isSupported &&
+                source.shader.name == "Aaris/Mobile Subject Lit") return source;
             if (authoredMaterialCache.TryGetValue(source, out Material cached) &&
                 cached != null) return cached;
             // Most vendor FBXs already import valid URP Lit PBR textures.
@@ -1070,7 +1073,9 @@ namespace Aaris.MapReview
                     sourceLabel.Contains("window") ||
                     sourceLabel.Contains("_glass") ||
                     sourceLabel.EndsWith("glass", StringComparison.Ordinal);
-                if (!dedicatedPaint && !mixedBodyAtlas && !separateGlass)
+                bool gtLens = sourceLabel == "aarisroadgt_clearlens" ||
+                    sourceLabel == "aarisroadgt_redlens";
+                if (!dedicatedPaint && !mixedBodyAtlas && !separateGlass && !gtLens)
                     return source;
                 var polished = new Material(source)
                 {
@@ -1078,32 +1083,39 @@ namespace Aaris.MapReview
                     enableInstancing = true
                 };
                 Shader subject = AarisShaderCache.Find("Aaris/Mobile Subject Lit");
-                if (subject != null && subject.isSupported &&
+                if (!mixedBodyAtlas && !gtLens && subject != null && subject.isSupported &&
                     polished.HasProperty("_Surface") && polished.GetFloat("_Surface") < .5f)
                 {
                     polished.shader = subject;
                     polished.shaderKeywords = source.shaderKeywords;
                 }
-                if (mixedBodyAtlas && polished.HasProperty("_Smoothness"))
+                if (gtLens)
+                {
+                    // The importer's URP material upgrade can normalize local
+                    // keywords. Bind the authored submesh independently and
+                    // ensure the scene-owned material supports its emission.
+                    polished.EnableKeyword("_EMISSION");
+                    polished.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+                }
+                else if (mixedBodyAtlas && polished.HasProperty("_Smoothness"))
                 {
                     // An opaque baked body texture also contains lights and
                     // windows. Capping its overly mirror-like smoothness
                     // avoids a chrome/toy look without repainting those UVs.
                     polished.SetFloat("_Smoothness", Mathf.Clamp(
-                        source.GetFloat("_Smoothness"), .46f, .68f));
+                        source.GetFloat("_Smoothness"), .38f, .60f));
                 }
                 else if (dedicatedPaint)
                 {
                     if (polished.HasProperty("_Metallic"))
-                        polished.SetFloat("_Metallic", .36f);
+                        polished.SetFloat("_Metallic", .40f);
                     if (polished.HasProperty("_Smoothness"))
-                        polished.SetFloat("_Smoothness", .66f);
+                        polished.SetFloat("_Smoothness", .62f);
                     if (polished.HasProperty("_ClearCoatMask"))
                     {
                         polished.SetFloat("_ClearCoatMask", .42f);
                         if (polished.HasProperty("_ClearCoatSmoothness"))
-                            polished.SetFloat("_ClearCoatSmoothness", .76f);
-                        polished.EnableKeyword("_CLEARCOAT");
+                            polished.SetFloat("_ClearCoatSmoothness", .82f);
                     }
                 }
                 else if (separateGlass)
@@ -1115,9 +1127,9 @@ namespace Aaris.MapReview
                     if (polished.HasProperty("_BaseColor"))
                     {
                         Color original = source.GetColor("_BaseColor");
-                        Color tint = new Color(.10f, .16f, .22f, original.a);
+                        Color tint = new Color(.055f, .083f, .115f, original.a);
                         polished.SetColor("_BaseColor",
-                            Color.Lerp(original, tint, .34f));
+                            Color.Lerp(original, tint, .46f));
                     }
                     if (polished.HasProperty("_Metallic"))
                         polished.SetFloat("_Metallic", .05f);
@@ -1127,14 +1139,18 @@ namespace Aaris.MapReview
                     // alongside the tint, in the existing opaque pass.
                     if (polished.shader == subject)
                     {
-                        polished.SetFloat("_ClearCoatMask", .20f);
+                        polished.SetFloat("_ClearCoatMask", .26f);
                         polished.SetFloat("_ClearCoatSmoothness", .92f);
                     }
                 }
                 authoredMaterialCache[source] = polished;
                 return polished;
             }
-            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
+            string label = source.name.ToLowerInvariant();
+            bool paint = label.Contains("aarispaint");
+            Shader shader = paint ? AarisShaderCache.Find("Aaris/Mobile Subject Lit") : null;
+            if (shader == null || !shader.isSupported)
+                shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
             if (shader == null) return paletteMaterial;
             var result = new Material(shader)
             {
@@ -1179,7 +1195,6 @@ namespace Aaris.MapReview
             if (result.HasProperty("_Smoothness"))
                 result.SetFloat("_Smoothness", Mathf.Clamp01(smoothness));
 
-            string label = source.name.ToLowerInvariant();
             bool glass = label.Contains("glass") || label.Contains("window");
             bool darkTrim = label.Contains("dark") || label.Contains("black") ||
                 label.Contains("grey") || label.Contains("tire") ||
@@ -1248,13 +1263,11 @@ namespace Aaris.MapReview
                 if (result.HasProperty("_Smoothness")) result.SetFloat("_Smoothness", .58f);
                 // Clear coat only on single-purpose painted panels;
                 // never on shared atlases, tyres, lamps or glass.
-                if (label.Contains("aarispaint") &&
-                    result.HasProperty("_ClearCoatMask"))
+                if (paint && result.HasProperty("_ClearCoatMask"))
                 {
                     result.SetFloat("_ClearCoatMask", .34f);
                     if (result.HasProperty("_ClearCoatSmoothness"))
                         result.SetFloat("_ClearCoatSmoothness", .74f);
-                    result.EnableKeyword("_CLEARCOAT");
                 }
             }
             authoredMaterialCache[source] = result;
@@ -1263,16 +1276,61 @@ namespace Aaris.MapReview
 
         private void ApplyAuthoredMaterials(IReadOnlyList<Renderer> renderers)
         {
-            for (int r = 0; r < renderers.Count; r++)
+            try
             {
-                Renderer renderer = renderers[r];
-                if (renderer == null) continue;
-                Material[] source = renderer.sharedMaterials;
-                if (source == null || source.Length == 0) continue;
-                Material[] converted = new Material[source.Length];
-                for (int i = 0; i < source.Length; i++)
-                    converted[i] = AuthoredUrpMaterial(source[i]);
-                renderer.sharedMaterials = converted;
+                for (int r = 0; r < renderers.Count; r++)
+                {
+                    Renderer renderer = renderers[r];
+                    if (renderer == null) continue;
+                    buildMaterials.Clear();
+                    renderer.GetSharedMaterials(buildMaterials);
+                    bool changed = false;
+                    for (int i = 0; i < buildMaterials.Count; i++)
+                    {
+                        Material source = buildMaterials[i];
+                        Material converted = AuthoredUrpMaterial(source);
+                        if (converted == source) continue;
+                        buildMaterials[i] = converted;
+                        changed = true;
+                    }
+                    if (changed) renderer.SetSharedMaterials(buildMaterials);
+                }
+            }
+            finally
+            {
+                buildMaterials.Clear();
+            }
+        }
+
+        private void ConfigureGtLampSlots(AarisVehicleMotor motor, GameObject model)
+        {
+            try
+            {
+                model.GetComponentsInChildren<Renderer>(false, buildRenderers);
+                foreach (var renderer in buildRenderers)
+                {
+                    if (renderer == null || !renderer.enabled) continue;
+                    buildMaterials.Clear();
+                    renderer.GetSharedMaterials(buildMaterials);
+                    int head = -1, tail = -1;
+                    for (int slot = 0; slot < buildMaterials.Count; slot++)
+                    {
+                        Material material = buildMaterials[slot];
+                        if (material == null || !material.HasProperty("_EmissionColor")) continue;
+                        if (material.name.EndsWith("AarisRoadGT_ClearLens",
+                            StringComparison.OrdinalIgnoreCase)) head = slot;
+                        else if (material.name.EndsWith("AarisRoadGT_RedLens",
+                            StringComparison.OrdinalIgnoreCase)) tail = slot;
+                    }
+                    if (head < 0 || tail < 0) continue;
+                    motor.ConfigureNativeLampSlots(renderer, head, tail);
+                    return;
+                }
+            }
+            finally
+            {
+                buildRenderers.Clear();
+                buildMaterials.Clear();
             }
         }
 
@@ -1563,6 +1621,12 @@ namespace Aaris.MapReview
             return FindTerrain(terrainCache, x, z);
         }
 
+        // The spawned road and bridge receivers are static. A vehicle roof,
+        // physics prop or Water surface cannot support a parked car or exit.
+        internal static bool IsStaticDriveSupport(Collider receiver) =>
+            receiver != null && receiver.gameObject.layer != 4 &&
+            receiver.attachedRigidbody == null;
+
         private bool HasSupport(Vector3 center, float expected, out float y)
         {
             y = 0f;
@@ -1587,7 +1651,7 @@ namespace Aaris.MapReview
             for (int i = 0; i < hits; i++)
             {
                 var h = supportHits[i];
-                if (h.collider == null || h.normal.y < .9781f) continue; // <=12 deg
+                if (h.normal.y < .9781f || !IsStaticDriveSupport(h.collider)) continue; // <=12 deg
                 if (player != null && h.collider.transform.IsChildOf(player)) continue;
                 float error = Mathf.Abs(expected - h.point.y);
                 if (error >= bestError || h.point.y < SeaLevel + 1.0f) continue;
@@ -1794,8 +1858,8 @@ namespace Aaris.MapReview
                     targetMetallic = .40f; targetSmoothness = .69f;
                     paintClearCoat = .42f; break;
                 case "GT":
-                    targetMetallic = .41f; targetSmoothness = .70f;
-                    paintClearCoat = .45f; break;
+                    targetMetallic = .45f; targetSmoothness = .63f;
+                    paintClearCoat = .43f; break;
                 case "Hatchback": targetMetallic = .29f; targetSmoothness = .59f; break;
                 case "Van": targetMetallic = .21f; targetSmoothness = .49f; break;
                 case "Utility": targetMetallic = .21f; targetSmoothness = .50f; break;
@@ -2337,11 +2401,12 @@ namespace Aaris.MapReview
                 TryGetAuthoredLampBodyBounds(root.transform, mesh.transform,
                     lampBounds, out Bounds bodyOnly))
                 lampBounds = bodyOnly;
+            if (record.type.id == "GT") ConfigureGtLampSlots(motor, mesh);
             motor.ConfigureExteriorLights(lampBounds,
                 headlampGlassMaterial, headlampOnMaterial,
                 taillampGlassMaterial, brakeLampMaterial,
                 reverseLampMaterial, sharedLampLensMesh, lampBezelMaterial,
-                player);
+                player, importedCar);
             motor.ConfigureRearTyreTraces(skidMarkMaterial);
             motor.ConfigureExhaust(exhaustMaterial, bounds);
             motor.RestoreStreamedDamage(record.damage01);

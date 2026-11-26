@@ -465,7 +465,8 @@ def test():
     assert "motor.AttachEmbeddedWheelModels(mesh.transform)" in build
     assert "authoredMaterialCache" in world and "AuthoredUrpMaterial(" in world
     assert 'label.Contains("glass") || label.Contains("window")' in world
-    assert "renderer.sharedMaterials = converted;" in world
+    assert "renderer.GetSharedMaterials(buildMaterials);" in world
+    assert "if (changed) renderer.SetSharedMaterials(buildMaterials);" in world
     # Palette replacement must never deserialize imported source materials just
     # to count slots; a corrupt/stale material reference can native-crash Unity.
     assert "internal static int VisualSubmeshCount(Renderer renderer)" in world
@@ -527,7 +528,8 @@ def test():
     for guard in ("TotalSpeedMetresPerSecond >= 1.1f",
                   "body.angularVelocity.magnitude >= .5f",
                   "Vector3.Dot(transform.up, Vector3.up) < .72f",
-                  "return grounded >= 2"):
+                  "(HasGroundedWheel(wheels[0]) || HasGroundedWheel(wheels[1])) &&",
+                  "(HasGroundedWheel(wheels[2]) || HasGroundedWheel(wheels[3]))"):
         assert guard in exit_gate, "Missing safe-boarding guard: " + guard
 
     # Close-contact camera sweep must not interpolate past a detected wall.
