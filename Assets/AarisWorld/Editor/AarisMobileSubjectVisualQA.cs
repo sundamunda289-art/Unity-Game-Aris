@@ -65,6 +65,9 @@ namespace Aaris.MapReview.Editor
                 var background=tex.GetPixels32();
                 root.SetActive(true);
                 camera.Render();
+                // The shader is synchronous and the first draw prefills
+                // material bindings and streamed texture data after activation.
+                camera.Render();
                 RenderTexture.active=rt;
                 tex.ReadPixels(new Rect(0,0,900,540),0,0);
                 tex.Apply();
@@ -393,7 +396,11 @@ namespace Aaris.MapReview.Editor
             observer.clearFlags = CameraClearFlags.Skybox;
             observer.fieldOfView = 47f;
             observer.nearClipPlane = .04f;
-            observer.farClipPlane = 1400f;
+            // This QA observer only needs the surrounding airfield. Limit
+            // distant terrain work on headless software OpenGL.
+            observer.farClipPlane = 420f;
+            observer.allowHDR = false;
+            observer.allowMSAA = false;
             var playerTransform = player.transform;
             var rig = player.GetComponentInChildren<Animator>();
             var hips = rig.GetBoneTransform(HumanBodyBones.Hips);
@@ -469,7 +476,7 @@ namespace Aaris.MapReview.Editor
         {
             observer.transform.position = eye;
             observer.transform.LookAt(target);
-            var frame = RenderTexture.GetTemporary(1280, 800, 24, RenderTextureFormat.ARGB32);
+            var frame = RenderTexture.GetTemporary(960, 600, 24, RenderTextureFormat.ARGB32);
             var pixels = new Texture2D(frame.width, frame.height, TextureFormat.RGB24, false);
             var previous = RenderTexture.active;
             try
