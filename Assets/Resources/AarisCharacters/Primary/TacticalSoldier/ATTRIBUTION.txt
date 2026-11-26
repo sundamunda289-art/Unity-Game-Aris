@@ -17,3 +17,19 @@ Modified for Aaris:
 - capped embedded texture dimensions at 1024 for low-memory Android targets
 
 Attribution must be retained.
+
+Aaris hero revision:
+- rebuilt the original tactical bind pose in metres and grouped matching
+  materials into five skinned renderers
+- converted the authored pouch roughness and metal channels to a 256px mask
+- adapted the head scan with a fitted neck, opened eye sockets, tactical iris
+  texture, existing head/neck skinning, and 512px skin and normal atlases
+
+Head geometry and skin source: Infinite, 3D Head Scan by Lee Perry-Smith /
+Infinite-Realities (based on www.triplegangers.com).
+Converted by Morgan McGuire and Guedis Cardenas, with Unity import changes
+by Keijiro Takahashi. Used under Creative Commons Attribution 3.0 Unported.
+https://creativecommons.org/licenses/by/3.0/
+https://github.com/keijiro/InfiniteScan/tree/150b6c46ebb6a011b93ed2e0fee9b612df78281b/Assets/InfiniteScan
+Aaris modified the geometry and atlas, including original scalp and iris edits.
+- removed the original cap to expose the scalp and avoid overlap

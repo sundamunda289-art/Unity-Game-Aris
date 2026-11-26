@@ -4,6 +4,9 @@
 // URP 17.3 stock Lit fragment flow; only the subject BRDF contribution differs.
 #ifndef AARIS_SUBJECT_FORWARD_INCLUDED
 #define AARIS_SUBJECT_FORWARD_INCLUDED
+#if defined(_AARIS_HERO_FACE) || defined(_AARIS_HERO_GEAR)
+#include "AarisHeroSurface.hlsl"
+#endif
 void AarisLitPassFragment(
     Varyings input
     , out half4 outColor : SV_Target0
@@ -27,6 +30,14 @@ void AarisLitPassFragment(
 
     SurfaceData surfaceData;
     InitializeStandardLitSurfaceData(input.uv, surfaceData);
+
+#if defined(_AARIS_HERO_FACE)
+    float2 atlasUV = UNDO_TRANSFORM_TEX(input.uv, _BaseMap);
+    half3 heroMasks = AarisHeroFaceMasks(atlasUV, surfaceData.albedo);
+    AarisHeroFaceSurface(heroMasks, surfaceData);
+#elif defined(_AARIS_HERO_GEAR)
+    AarisHeroGearSurface(input.uv, surfaceData);
+#endif
 
 #ifdef LOD_FADE_CROSSFADE
     LODFadeCrossFade(input.positionCS);
@@ -88,7 +99,13 @@ void AarisLitPassFragment(
     surfaceData.emission = _EmissionColor.rgb * (1.0h - max(0.28h * belly, 0.82h * painted));
 #endif
 
+#if defined(_AARIS_HERO_FACE)
+    half4 color = AarisHeroPBR(inputData, surfaceData, heroMasks);
+#elif defined(_AARIS_HERO_GEAR)
+    half4 color = AarisHeroPBR(inputData, surfaceData, half3(0.0h, 0.0h, 0.0h));
+#else
     half4 color = AarisSubjectPBR(inputData, surfaceData);
+#endif
     color.rgb = MixFog(color.rgb, inputData.fogCoord);
     color.a = OutputAlpha(color.a, IsSurfaceTypeTransparent(_Surface));
 
