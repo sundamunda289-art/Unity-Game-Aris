@@ -88,7 +88,7 @@ namespace Aaris.MapReview
                     }
             }
             if (shader == null)
-                shader = Shader.Find("Universal Render Pipeline/Lit");
+                shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
             if (shader == null) return false;
             if (wall == null)
             {
