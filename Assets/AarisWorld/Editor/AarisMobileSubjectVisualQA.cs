@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using UnityEditor;
 using UnityEditor.Rendering;
@@ -142,6 +143,29 @@ namespace Aaris.MapReview.Editor
                 r.sharedMaterials=copy;
             }
             Require(custom,"production weapon uses subject finish");
+            // The satin pickup is a single cached copy of the authored gun
+            // material. Both instances retain all existing texture inputs.
+            Material ground = originals.SelectMany(slots => slots)
+                .First(mat => mat != null && mat.name.EndsWith(" Ground", StringComparison.Ordinal));
+            var inventory = typeof(AarisWeaponInventory);
+            var authored = (Material)inventory.GetMethod("AuthoredPbrFinish", Priv)
+                .Invoke(null, new object[] { pickup.Spec, ground });
+            var groundFinish = (Func<Material, Material>)Delegate.CreateDelegate(
+                typeof(Func<Material, Material>), inventory.GetMethod("GroundPickupFinish", Priv));
+            Require(ground != authored && ReferenceEquals(ground, groundFinish(authored)),
+                "native floor finish is reused across pickups and separate from the held finish");
+            for (int i = 0; i < 16; i++) groundFinish(authored);
+            long beforeGroundCache = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 256; i++) groundFinish(authored);
+            long groundBytes = GC.GetAllocatedBytesForCurrentThread() - beforeGroundCache;
+            Require(groundBytes == 0, "256 warmed floor material lookups allocate " + groundBytes + " managed bytes");
+            Require(ground.GetTexture("_BaseMap") == authored.GetTexture("_BaseMap") &&
+                ground.GetTexture("_BumpMap") == authored.GetTexture("_BumpMap") &&
+                ground.GetTexture("_MetallicGlossMap") == authored.GetTexture("_MetallicGlossMap"),
+                "floor and held gun use the exact same authored PBR maps");
+            Require(ground.GetFloat("_Smoothness") < authored.GetFloat("_Smoothness") &&
+                ground.GetColor("_BaseColor").r > authored.GetColor("_BaseColor").r,
+                "ground finish raises midtones and restrains specular gloss");
             var line=go.GetComponentInChildren<LineRenderer>(true);
             Require(line != null, "production pickup has one range-gated marker");
             line.enabled = false;
@@ -436,7 +460,9 @@ namespace Aaris.MapReview.Editor
             marker.enabled = false;
             landedPickup.transform.Find("Loot centered rotation pivot").localRotation = Quaternion.identity;
             WriteWorldPhoto(observer, subject + angle * 2.5f, subject, directory, "terrain_loot_2m5");
-            WriteWorldPhoto(observer, subject + angle * 9f, subject, directory, "terrain_loot_9m");
+            Vector3 distantEye = subject + angle * 9f;
+            WriteWorldPhoto(observer, distantEye, subject, directory, "terrain_loot_9m");
+            CaptureHeldFinishControl(observer, distantEye, subject, directory);
             marker.enabled = true;
             WriteWorldPhoto(observer, subject + angle * 9f, subject, directory, "terrain_loot_9m_marker");
             var vehicles = Object.FindObjectsByType<AarisVehicleMotor>(FindObjectsSortMode.None);
@@ -461,6 +487,28 @@ namespace Aaris.MapReview.Editor
             Object.Destroy(landedPickup.gameObject);
             Object.Destroy(landedKit);
             Object.Destroy(observer.gameObject);
+        }
+
+        // Photograph the same mesh and pose with the held gun's shared
+        // settings, so marker visibility and framing cannot affect the comparison.
+        private static void CaptureHeldFinishControl(Camera observer, Vector3 eye,
+            Vector3 focus, string directory)
+        {
+            var renderers = landedPickup.GetComponentsInChildren<MeshRenderer>();
+            Material[][] groundSlots = new Material[renderers.Length][];
+            for (int i = 0; i < renderers.Length; i++)
+                groundSlots[i] = renderers[i].sharedMaterials;
+            try
+            {
+                typeof(AarisWeaponInventory).GetMethod("ApplyTextureAwareWeaponFinish", Priv)
+                    .Invoke(null, new object[] { landedPickup.Spec, renderers, false });
+                WriteWorldPhoto(observer, eye, focus, directory, "terrain_loot_9m_control");
+            }
+            finally
+            {
+                for (int i = 0; i < renderers.Length; i++)
+                    renderers[i].sharedMaterials = groundSlots[i];
+            }
         }
 
         private static Vector3 WorldFloor(Vector3 point)

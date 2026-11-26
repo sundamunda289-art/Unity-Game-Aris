@@ -348,27 +348,32 @@ namespace Aaris.MapReview.Editor
                 renderer.sharedMaterial = rotorCopy;
                 Quaternion beforeRotation = rotor.localRotation;
                 Vector3 beforePosition = rotor.localPosition;
-                rotorCopy.SetFloat("_TimeOffset", 0f);
+                Color32[] cruise = WritePng(camera, "rotor-cruise-exposure.png");
+                // The flight-speed disc deliberately has little sector contrast.
+                // Test angular motion at a readable shutter speed on a temporary
+                // material, and keep the original disc for the exposure comparison.
+                const float phaseRpm = 120f;
+                const float bladePeriod = 60f / (phaseRpm * 3f);
+                rotorCopy.SetFloat("_RPM", phaseRpm);
+                rotorCopy.SetFloat("_TimeOffset", -Time.realtimeSinceStartup);
                 Color32[] first = WritePng(camera, "rotor-gpu-time-a.png");
-                rotorCopy.SetFloat("_TimeOffset", .012f);
-                Color32[] second = WritePng(camera, "rotor-gpu-time-b.png");
-                int changed = ChangedPixels(first, second);
-                // A single pair can alias the same blade phase while the
-                // software renderer advances Unity's clock between readbacks.
-                // Sample two more phases of the same native shader and mesh.
-                foreach (float offset in new[] { .023f, .041f })
+                int changed = 0;
+                for (int phaseIndex = 1; phaseIndex <= 2; phaseIndex++)
                 {
-                    rotorCopy.SetFloat("_TimeOffset", offset);
-                    Color32[] phase = WritePng(camera, "rotor-phase-" +
-                        Mathf.RoundToInt(offset * 1000f) + ".png");
-                    changed = Mathf.Max(changed, ChangedPixels(first, phase), ChangedPixels(second, phase));
+                    // URP feeds realtime to its edit-mode camera. Subtract it
+                    // to remove the elapsed work between readbacks.
+                    float phaseTime = bladePeriod * phaseIndex / 3f;
+                    rotorCopy.SetFloat("_TimeOffset", phaseTime - Time.realtimeSinceStartup);
+                    Color32[] phase = WritePng(camera, "rotor-gpu-phase-" + phaseIndex + ".png");
+                    changed = Mathf.Max(changed, ChangedPixels(first, phase));
                 }
-                Check(changed > 100, "GPU exposure changes " + changed + " pixels with no CPU rotor movement");
+                Check(changed > 100, "GPU blade phase changes " + changed + " pixels with no CPU rotor movement");
                 Check(rotor.localRotation == beforeRotation && rotor.localPosition == beforePosition,
                     "native GPU animation retains static rotor local transform");
                 rotorCopy.SetFloat("_RPM", 0f);
+                rotorCopy.SetFloat("_TimeOffset", 0f);
                 Color32[] stopped = WritePng(camera, "rotor-stopped-blades.png");
-                Check(ChangedPixels(second, stopped) > 100,
+                Check(ChangedPixels(cruise, stopped) > 100,
                     "native stopped blades differ from the running exposure disc");
                 report.AppendLine("Render source: actual imported CC0 aircraft with existing scene lighting; no scene/material saved.");
             }

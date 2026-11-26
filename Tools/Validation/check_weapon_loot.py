@@ -379,7 +379,6 @@ def run():
     assert 'sourceName.IndexOf("Optic"' in inventory
     assert '"Sniper_Optic" : "Sniper_Finish"' in inventory
     assert 'string cacheKey = resourceFolder + "/" + stem;' in inventory
-    assert "Material authoredPbr = AuthoredPbrFinish(spec, source[i]);" in inventory
     assert "mesh.localRotation = ImportedModelRotation(incoming.Spec);" in inventory
     assert "Quaternion.Euler(0f, 0f, -75f) *" in pickup_cs
     assert "AarisWeaponInventory.ImportedModelRotation(state.Spec)" in pickup_cs
@@ -610,7 +609,10 @@ def run():
     assert 'pbrFinishCache[cacheKey] = material;' in inventory
     assert 'EnableKeyword("_NORMALMAP")' in inventory
     assert 'EnableKeyword("_METALLICSPECGLOSSMAP")' in inventory
-    assert 'Material authoredPbr = AuthoredPbrFinish(spec, source[i]);' in inventory
+    assert 'Material finish = AuthoredPbrFinish(spec, source[i]) ??' in inventory
+    assert 'ConvertedWeaponFinish(spec, source[i]);' in inventory
+    assert 'if (groundPickup) finish = GroundPickupFinish(finish);' in inventory
+    assert 'state.Spec, modelRenderers, groundPickup: true);' in pickup_cs
     assert 'internal static void ApplyTextureAwareWeaponFinish' in inventory
     assert "AarisWeaponInventory.ApplyTextureAwareWeaponFinish(" in pickup_cs
     # Gun models do not all have the same length; a fixed long-barrel
