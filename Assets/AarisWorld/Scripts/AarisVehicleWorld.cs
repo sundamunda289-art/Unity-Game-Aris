@@ -1100,7 +1100,7 @@ namespace Aaris.MapReview
                         polished.SetFloat("_Smoothness", .66f);
                     if (polished.HasProperty("_ClearCoatMask"))
                     {
-                        polished.SetFloat("_ClearCoatMask", .32f);
+                        polished.SetFloat("_ClearCoatMask", .42f);
                         if (polished.HasProperty("_ClearCoatSmoothness"))
                             polished.SetFloat("_ClearCoatSmoothness", .76f);
                         polished.EnableKeyword("_CLEARCOAT");
@@ -1115,9 +1115,9 @@ namespace Aaris.MapReview
                     if (polished.HasProperty("_BaseColor"))
                     {
                         Color original = source.GetColor("_BaseColor");
-                        Color tint = new Color(.20f, .29f, .38f, original.a);
+                        Color tint = new Color(.10f, .16f, .22f, original.a);
                         polished.SetColor("_BaseColor",
-                            Color.Lerp(original, tint, .24f));
+                            Color.Lerp(original, tint, .34f));
                     }
                     if (polished.HasProperty("_Metallic"))
                         polished.SetFloat("_Metallic", .05f);
@@ -1784,11 +1784,11 @@ namespace Aaris.MapReview
                     targetMetallic = .23f; targetSmoothness = .47f;
                     paintClearCoat = .08f; break;
                 case "Sports":
-                    targetMetallic = .40f; targetSmoothness = .68f;
-                    paintClearCoat = .36f; break;
+                    targetMetallic = .40f; targetSmoothness = .69f;
+                    paintClearCoat = .42f; break;
                 case "GT":
-                    targetMetallic = .41f; targetSmoothness = .69f;
-                    paintClearCoat = .41f; break;
+                    targetMetallic = .41f; targetSmoothness = .70f;
+                    paintClearCoat = .45f; break;
                 case "Hatchback": targetMetallic = .29f; targetSmoothness = .59f; break;
                 case "Van": targetMetallic = .21f; targetSmoothness = .49f; break;
                 case "Utility": targetMetallic = .21f; targetSmoothness = .50f; break;

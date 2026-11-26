@@ -134,7 +134,14 @@ namespace Aaris.MapReview.Editor
                         phase = 5;
                         phaseStarted = Time.unscaledTime;
                     }
-                    else if (Time.unscaledTime - phaseStarted > 2f && player.GetComponent<CharacterController>().isGrounded)
+                    else if (phase == 5 && Time.unscaledTime - phaseStarted > 2f &&
+                        player.GetComponent<CharacterController>().isGrounded)
+                    {
+                        AarisMobileSubjectVisualQA.PlaceLandedLoot(player);
+                        phase = 6;
+                        phaseStarted = Time.unscaledTime;
+                    }
+                    else if (phase == 6 && Time.unscaledTime - phaseStarted > .5f)
                     {
                         AarisMobileSubjectVisualQA.CaptureLandedSubjects(player, artDirectory);
                         Finish(runtimeErrors == 0 ? "passed" : "failed", runtimeErrors == 0 ? "" : "Map capture errors");

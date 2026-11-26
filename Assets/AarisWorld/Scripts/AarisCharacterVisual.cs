@@ -689,15 +689,18 @@ namespace Aaris.MapReview
                 : source.HasProperty("_Glossiness")
                     ? source.GetFloat("_Glossiness") : 0.18f;
             bool glass = false;
+            bool fallbackCloth = !hasAuthoredBase &&
+                (label.IndexOf("Clothes", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 label.IndexOf("Fabric", StringComparison.OrdinalIgnoreCase) >= 0);
 
             if (!hasAuthoredBase && label.IndexOf("Clothes", StringComparison.OrdinalIgnoreCase) >= 0)
-            { colour = new Color(.13f,.16f,.12f,sourceColor.a); metallic = 0f; smoothness = .14f; }
+            { colour = new Color(.16f,.205f,.165f,sourceColor.a); metallic = 0f; smoothness = .14f; }
             else if (!hasAuthoredBase && label.IndexOf("Fabric", StringComparison.OrdinalIgnoreCase) >= 0)
-            { colour = new Color(.28f,.23f,.15f,sourceColor.a); metallic = 0f; smoothness = .10f; }
+            { colour = new Color(.32f,.27f,.19f,sourceColor.a); metallic = 0f; smoothness = .10f; }
             else if (!hasAuthoredBase && label.IndexOf("Armor", StringComparison.OrdinalIgnoreCase) >= 0)
-            { colour = new Color(.18f,.17f,.11f,sourceColor.a); metallic = .04f; smoothness = .32f; }
+            { colour = new Color(.24f,.235f,.17f,sourceColor.a); metallic = .04f; smoothness = .39f; }
             else if (!hasAuthoredBase && label.IndexOf("Elements", StringComparison.OrdinalIgnoreCase) >= 0)
-            { colour = new Color(.06f,.07f,.06f,sourceColor.a); metallic = .06f; smoothness = .35f; }
+            { colour = new Color(.095f,.10f,.095f,sourceColor.a); metallic = .06f; smoothness = .35f; }
             else if (!hasAuthoredBase && label.IndexOf("Iron", StringComparison.OrdinalIgnoreCase) >= 0)
             { colour = new Color(.16f,.17f,.16f,sourceColor.a); metallic = .80f; smoothness = .50f; }
             else if (!hasAuthoredBase && label.IndexOf("Metal", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -707,7 +710,7 @@ namespace Aaris.MapReview
             else if (!hasAuthoredBase && label.IndexOf("Shoes", StringComparison.OrdinalIgnoreCase) >= 0)
             { colour = new Color(.05f,.045f,.04f,sourceColor.a); metallic = 0f; smoothness = .18f; }
             else if (!hasAuthoredBase && label.IndexOf("Boots", StringComparison.OrdinalIgnoreCase) >= 0)
-            { colour = new Color(.06f,.05f,.04f,sourceColor.a); metallic = 0f; smoothness = .20f; }
+            { colour = new Color(.085f,.073f,.059f,sourceColor.a); metallic = 0f; smoothness = .20f; }
             else if (!hasAuthoredBase && label.IndexOf("Glass", StringComparison.OrdinalIgnoreCase) >= 0)
             { colour = new Color(.02f,.03f,.035f,.52f); metallic = .12f; smoothness = .88f; glass = true; }
             else if (!hasAuthoredBase && label.IndexOf("Skin", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -724,8 +727,17 @@ namespace Aaris.MapReview
                 name = "Aaris Soldier PBR " + source.name,
                 enableInstancing = true
             };
-            if (result.HasProperty("_BaseColor")) result.SetColor("_BaseColor", colour);
-            if (baseMap != null && result.HasProperty("_BaseMap"))
+            // A small shared weave replaces the white albedo on the
+            // untextured fallback cloth. Lit already samples this slot.
+            Texture2D weave = fallbackCloth ? Resources.Load<Texture2D>(
+                "AarisCharacters/Primary/Textures/AarisFallbackWovenCloth") : null;
+            if (weave != null && result.HasProperty("_BaseMap"))
+            {
+                result.SetTexture("_BaseMap", weave);
+                result.SetTextureScale("_BaseMap", new Vector2(2f, 2f));
+                colour = new Color(colour.r * 1.09f, colour.g * 1.09f, colour.b * 1.09f, colour.a);
+            }
+            else if (baseMap != null && result.HasProperty("_BaseMap"))
             {
                 result.SetTexture("_BaseMap", baseMap);
                 string sourceMapProperty = source.HasProperty("_BaseMap")
@@ -733,6 +745,7 @@ namespace Aaris.MapReview
                 result.SetTextureScale("_BaseMap", source.GetTextureScale(sourceMapProperty));
                 result.SetTextureOffset("_BaseMap", source.GetTextureOffset(sourceMapProperty));
             }
+            if (result.HasProperty("_BaseColor")) result.SetColor("_BaseColor", colour);
             if (normal != null && result.HasProperty("_BumpMap"))
             {
                 result.SetTexture("_BumpMap", normal);

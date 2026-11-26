@@ -202,12 +202,12 @@ namespace Aaris.MapReview
                 beacon.useWorldSpace = false;
                 beacon.sharedMaterial = beaconPaint;
                 beacon.positionCount = 2;
-                beacon.SetPosition(0, new Vector3(0f, 0.12f, 0f));
-                beacon.SetPosition(1, new Vector3(0f, 1.22f, 0f));
-                beacon.startWidth = 0.052f;
-                beacon.endWidth = 0.004f;
-                beacon.startColor = new Color(0.48f, 0.92f, 1f, 0.56f);
-                beacon.endColor = new Color(0.35f, 0.9f, 1f, 0.04f);
+                beacon.SetPosition(0, new Vector3(0f, 0.09f, 0f));
+                beacon.SetPosition(1, new Vector3(0f, 0.90f, 0f));
+                beacon.startWidth = 0.076f;
+                beacon.endWidth = 0.008f;
+                beacon.startColor = new Color(0.65f, 0.90f, 1f, 0.73f);
+                beacon.endColor = new Color(0.38f, 0.76f, 0.90f, 0f);
                 beacon.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 beacon.receiveShadows = false;
                 beacon.alignment = LineAlignment.View;

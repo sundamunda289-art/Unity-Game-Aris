@@ -68,16 +68,19 @@ namespace Aaris.MapReview.Editor
                 RenderTexture.active=rt;
                 tex.ReadPixels(new Rect(0,0,900,540),0,0);
                 tex.Apply();
-                var px=tex.GetPixels32();int magenta=0,foreground=0;
+                var px=tex.GetPixels32();int magenta=0,foreground=0,crushedPaint=0;
                 for(int i=0;i<px.Length;i++)
                 {
                     var c=px[i];var bg=background[i];
                     if(c.r>220 && c.b>220 && c.g<50)magenta++;
+                    if(c.r<=3 && c.g<=3 && c.b<=3)crushedPaint++;
                     if(Math.Abs(c.r-bg.r)+Math.Abs(c.g-bg.g)+Math.Abs(c.b-bg.b)>24)foreground++;
                 }
                 Require(foreground>px.Length/400,name+" visible native subject pixels="+foreground);
                 Require(magenta<20,name+" no error-magenta pixels");
                 File.WriteAllBytes(Path.Combine(dir,name+".png"),tex.EncodeToPNG());
+                if (name == "gt_upgraded")
+                    Require(crushedPaint < 60, name + " no crushed paint in daylight: " + crushedPaint);
             }
             finally
             {
@@ -137,15 +140,13 @@ namespace Aaris.MapReview.Editor
             }
             Require(custom,"production weapon uses subject finish");
             var line=go.GetComponentInChildren<LineRenderer>(true);
-            if(line!=null){line.enabled=true;line.SetPosition(1,new Vector3(0,1.65f,0));line.startWidth=.035f;
-                line.startColor=new Color(.35f,.9f,1f,.5f);}
-            if(line!=null)line.enabled=false;
+            Require(line != null, "production pickup has one range-gated marker");
+            line.enabled = false;
             Photo(go,"loot_stock_closeup",new Vector3(-1,.9f,-1.7f),.65f);
-            if(line!=null)line.enabled=true;
+            line.enabled = true;
             Photo(go,"loot_stock_control",new Vector3(-1,1.05f,-1.7f),.75f);
             for(int i=0;i<renderers.Length;i++)renderers[i].sharedMaterials=originals[i];
-            if(line!=null){line.SetPosition(1,new Vector3(0,1.22f,0));line.startWidth=.052f;
-                line.startColor=new Color(.48f,.92f,1f,.56f);line.enabled=false;}
+            line.enabled = false;
             Photo(go,"loot_upgraded_closeup",new Vector3(-1,.9f,-1.7f),.65f);
             if(line!=null)line.enabled=true;
             Photo(go,"loot_upgraded",new Vector3(-1,1.05f,-1.7f),.75f);
@@ -364,6 +365,26 @@ namespace Aaris.MapReview.Editor
             capsule.Move(Vector3.down * .25f);
         }
 
+        private static GameObject landedKit;
+        private static AarisWeaponPickup landedPickup;
+
+        internal static void PlaceLandedLoot(AarisThirdPersonPlayer player)
+        {
+            var transform = player.transform;
+            var forward = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
+            var side = Vector3.Cross(Vector3.up, forward);
+            var centre = transform.position + forward * 5f;
+            landedKit = (GameObject)typeof(AarisOfflineTacticalHUD).GetMethod("CreateMedicalVisual", Priv)
+                .Invoke(null, new object[] { false });
+            landedKit.transform.position = WorldFloor(centre + side * .57f);
+
+            var rifle = new GameObject("QA production floor pickup");
+            rifle.transform.position = WorldFloor(centre - side * .43f);
+            landedPickup = rifle.AddComponent<AarisWeaponPickup>();
+            if (!landedPickup.Initialize(new AarisWeaponState(AarisWeaponCatalog.Get("AssaultRifle"), 207u), 17))
+                throw new InvalidOperationException("Production terrain pickup could not initialize");
+        }
+
         internal static void CaptureLandedSubjects(AarisThirdPersonPlayer player, string directory)
         {
             Directory.CreateDirectory(directory);
@@ -380,7 +401,13 @@ namespace Aaris.MapReview.Editor
             foreach (var skin in rig.GetComponentsInChildren<SkinnedMeshRenderer>(false))
                 foreach (var material in skin.sharedMaterials)
                     if (material != null && material.shader.name == "Aaris/Mobile Subject Lit")
-                        finishes.Add(material.name);
+                    {
+                        var albedo = material.GetTexture("_BaseMap");
+                        string meshUv = skin.sharedMesh != null &&
+                            skin.sharedMesh.HasVertexAttribute(VertexAttribute.TexCoord0) ? "UV0" : "no UV0";
+                        finishes.Add(material.name + " | " + (albedo == null ? "default albedo" : albedo.name)
+                            + " | " + meshUv);
+                    }
             if (finishes.Count == 0)
                 throw new InvalidOperationException("Live player's opaque materials missed the subject pass");
             File.WriteAllLines(Path.Combine(directory, "live-finishes.txt"), finishes);
@@ -391,19 +418,20 @@ namespace Aaris.MapReview.Editor
                 focus, directory, "soldier_front");
             WriteWorldPhoto(observer, focus - forward * 3.8f + side * .6f + Vector3.up * .8f,
                 focus, directory, "soldier_back");
-            var kit = (GameObject)typeof(AarisOfflineTacticalHUD).GetMethod("CreateMedicalVisual", Priv)
-                .Invoke(null, new object[] { false });
-            var rifle = new GameObject("QA production floor pickup");
-            var pickup = rifle.AddComponent<AarisWeaponPickup>();
-            if (!pickup.Initialize(new AarisWeaponState(AarisWeaponCatalog.Get("AssaultRifle"), 207u), 17))
-                throw new InvalidOperationException("Production terrain pickup could not initialize");
-            Vector3 centre = playerTransform.position + forward * 5f;
-            kit.transform.position = WorldFloor(centre + side * .57f);
-            rifle.transform.position = WorldFloor(centre - side * .43f);
-            Vector3 subject = (kit.transform.position + rifle.transform.position) * .5f + Vector3.up * .13f;
+            var marker = landedPickup.GetComponentInChildren<LineRenderer>();
+            if (marker == null || !marker.enabled)
+                throw new InvalidOperationException("Nearby gameplay pickup did not enable the production marker");
+            Vector3 subject = (landedKit.transform.position + landedPickup.transform.position) * .5f
+                + Vector3.up * .13f;
             Vector3 angle = (side * .9f - forward * .35f + Vector3.up * .50f).normalized;
+            // This observer never drives
+            // production visibility. The actual main camera enabled the marker.
+            marker.enabled = false;
+            landedPickup.transform.Find("Loot centered rotation pivot").localRotation = Quaternion.identity;
             WriteWorldPhoto(observer, subject + angle * 2.5f, subject, directory, "terrain_loot_2m5");
             WriteWorldPhoto(observer, subject + angle * 9f, subject, directory, "terrain_loot_9m");
+            marker.enabled = true;
+            WriteWorldPhoto(observer, subject + angle * 9f, subject, directory, "terrain_loot_9m_marker");
             var vehicles = Object.FindObjectsByType<AarisVehicleMotor>(FindObjectsSortMode.None);
             AarisVehicleMotor nearest = null;
             float nearestDistance = float.PositiveInfinity;
@@ -423,8 +451,8 @@ namespace Aaris.MapReview.Editor
                 Vector3 eye = target + car.forward * 5.6f + car.right * 4.8f + Vector3.up * 2.4f;
                 WriteWorldPhoto(observer, eye, target, directory, "streamed_vehicle");
             }
-            Object.Destroy(rifle);
-            Object.Destroy(kit);
+            Object.Destroy(landedPickup.gameObject);
+            Object.Destroy(landedKit);
             Object.Destroy(observer.gameObject);
         }
 
@@ -468,6 +496,10 @@ namespace Aaris.MapReview.Editor
             dir=Environment.GetEnvironmentVariable("AARIS_ART_QA_DIR")??"/tmp/aaris-visual-qa";
             Directory.CreateDirectory(dir);
             report.Clear();
+            bool deferredShaders = ShaderUtil.allowAsyncCompilation;
+            // A cold async shader can render a placeholder during the very
+            // frame readback. Native art evidence needs the compiled passes.
+            ShaderUtil.allowAsyncCompilation = false;
             try
             {
                 Require(SystemInfo.graphicsDeviceType!=GraphicsDeviceType.Null,"real native graphics device");
@@ -483,6 +515,10 @@ namespace Aaris.MapReview.Editor
             {
                 report.Add(e.ToString());File.WriteAllLines(Path.Combine(dir,"report.txt"),report);
                 Debug.LogException(e);EditorApplication.Exit(1);
+            }
+            finally
+            {
+                ShaderUtil.allowAsyncCompilation = deferredShaders;
             }
         }
     }

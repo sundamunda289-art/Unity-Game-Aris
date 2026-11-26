@@ -140,7 +140,7 @@ namespace Aaris.MapReview
                 material.SetTexture("_BaseMap", baseColor);
             else material.mainTexture = baseColor;
             if (material.HasProperty("_BaseColor"))
-                material.SetColor("_BaseColor", new Color(1.25f, 1.25f, 1.25f, 1f));
+                material.SetColor("_BaseColor", new Color(1.32f, 1.32f, 1.32f, 1f));
             if (material.HasProperty("_BumpMap"))
             {
                 material.SetTexture("_BumpMap", normal);

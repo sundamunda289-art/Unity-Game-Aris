@@ -3,6 +3,7 @@
 
 Source-level regression only: not a Unity/Android allocation profiler.
 """
+import re
 import unittest
 from pathlib import Path
 
@@ -51,15 +52,21 @@ class PickupOneTimeNativeCost(unittest.TestCase):
         init=section("public bool Initialize(", "private void Update()")
         for token in (
             "beacon.sharedMaterial = beaconPaint;",
-            "beacon.SetPosition(0, new Vector3(0f, 0.12f, 0f));",
-            "beacon.SetPosition(1, new Vector3(0f, 1.22f, 0f));",
-            "beacon.startWidth = 0.052f;",
-            "beacon.endWidth = 0.004f;",
-            "beacon.startColor = new Color(0.48f, 0.92f, 1f, 0.56f);",
-            "beacon.endColor = new Color(0.35f, 0.9f, 1f, 0.04f);",
             "beacon.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;",
             "beacon.receiveShadows = false;"):
             self.assertIn(token,init)
+        positions = re.findall(r"beacon\.SetPosition\([01], new Vector3\(0f, ([0-9.]+)f, 0f\)\);", init)
+        lower, upper = map(float, positions)
+        width = float(re.search(r"beacon\.startWidth = ([0-9.]+)f;", init)[1])
+        tip = float(re.search(r"beacon\.endWidth = ([0-9.]+)f;", init)[1])
+        self.assertLessEqual(0.05, lower)
+        self.assertLessEqual(lower, 0.15)
+        self.assertLessEqual(0.75, upper)
+        self.assertLessEqual(upper, 1.30)
+        self.assertLessEqual(0.035, width)
+        self.assertLessEqual(width, 0.09)
+        self.assertLess(tip, width / 4)
+        self.assertRegex(init, r"beacon\.endColor = new Color\([^,]+, [^,]+, [^,]+, (?:0f|0\.0[1-5]f)\);")
         self.assertIn("beaconObserver = FindBeaconCamera();",init)
         self.assertIn("activePickups.Add(this);",init)
     def test_shared_refs_cleared_when_unity_subsystem_resets(self):

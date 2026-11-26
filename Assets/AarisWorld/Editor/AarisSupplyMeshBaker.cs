@@ -117,12 +117,22 @@ namespace Aaris.MapReview.Editor
                 if (medical != null) return medical;
                 var b = new Builder(3);
                 b.Box(new Vector3(0,.091f,0),new Vector3(.51f,.164f,.37f),.018f,0);
-                b.Box(new Vector3(0,.191f,0),new Vector3(.52f,.060f,.38f),.016f,0);
+                b.Box(new Vector3(0,.191f,0),new Vector3(.52f,.060f,.38f),.012f,0);
                 b.Box(new Vector3(0,.168f,0),new Vector3(.509f,.015f,.369f),.003f,2);
-                // Two recessed-looking latches and a compact molded handle.
-                b.Box(new Vector3(-.145f,.151f,-.19f),new Vector3(.055f,.063f,.023f),.006f,2);
-                b.Box(new Vector3(.145f,.151f,-.19f),new Vector3(.055f,.063f,.023f),.006f,2);
-                b.Box(new Vector3(0,.105f,-.199f),new Vector3(.155f,.035f,.028f),.006f,2);
+                // Molded corner bumpers, hinge covers and an open handle.
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    b.Box(new Vector3(side * .219f, .029f, 0f),
+                        new Vector3(.046f, .037f, .374f), .008f, 2);
+                    b.Box(new Vector3(side * .145f, .151f, -.190f),
+                        new Vector3(.055f, .060f, .025f), .006f, 2);
+                    b.Box(new Vector3(side * .129f, .170f, .188f),
+                        new Vector3(.070f, .027f, .022f), .005f, 2);
+                    b.Box(new Vector3(side * .067f, .116f, -.199f),
+                        new Vector3(.027f, .023f, .041f), .005f, 2);
+                }
+                b.Box(new Vector3(0f, .116f, -.221f),
+                    new Vector3(.159f, .023f, .019f), .005f, 2);
                 // Non-overlapping cross segments share a single red submesh.
                 b.Box(new Vector3(0,.222f,0),new Vector3(.067f,.008f,.23f),.003f,1);
                 b.Box(new Vector3(-.082f,.222f,0),new Vector3(.092f,.008f,.067f),.003f,1);
@@ -146,6 +156,8 @@ namespace Aaris.MapReview.Editor
                     b.Box(new Vector3(x, .383f, -.244f), new Vector3(.049f, .114f, .027f), .007f, 1);
                     b.Box(new Vector3(x, .333f, -.250f), new Vector3(.064f, .025f, .027f), .005f, 0);
                     b.Box(new Vector3(0, .154f, side * .236f), new Vector3(.49f, .032f, .025f), .008f, 0);
+                    b.Box(new Vector3(0, .102f, side * .236f), new Vector3(.52f, .024f, .020f), .006f, 0);
+                    b.Box(new Vector3(side * .332f, .234f, 0f), new Vector3(.030f, .19f, .30f), .012f, 0);
                 }
                 b.Box(new Vector3(0, .276f, -.249f), new Vector3(.17f, .032f, .027f), .008f, 1);
                 crate = b.Finish("Aaris shared ammunition crate");
@@ -163,11 +175,14 @@ namespace Aaris.MapReview.Editor
                 b.HelmetRing(.077f,.105f,.265f,.247f,.292f,.272f,1);
                 b.Box(new Vector3(0,.127f,-.241f),new Vector3(.36f,.045f,.105f),.016f,0);
                 // Forehead mounting plate and paired accessory rails share the trim submesh.
-                b.Box(new Vector3(0,.216f,-.248f),new Vector3(.103f,.067f,.025f),.009f,1);
+                b.Box(new Vector3(0,.208f,-.265f),new Vector3(.112f,.062f,.028f),.009f,1);
+                b.Box(new Vector3(0,.218f,-.281f),new Vector3(.060f,.028f,.012f),.004f,0);
                 for (int side = -1; side <= 1; side += 2)
                 {
-                    b.Box(new Vector3(side*.275f,.167f,0),new Vector3(.027f,.045f,.16f),.009f,1);
-                    b.Box(new Vector3(side*.282f,.179f,0),new Vector3(.026f,.014f,.11f),.005f,0);
+                    b.Box(new Vector3(side*.275f,.167f,0),new Vector3(.031f,.052f,.19f),.009f,1);
+                    for (int lug = -1; lug <= 1; lug++)
+                        b.Box(new Vector3(side * .290f, .179f, lug * .044f),
+                            new Vector3(.022f, .014f, .023f), .004f, 0);
                 }
                 helmet=b.Finish("Aaris shared tactical helmet");
                 return helmet;
