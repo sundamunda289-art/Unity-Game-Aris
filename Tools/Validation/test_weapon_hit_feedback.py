@@ -68,7 +68,7 @@ class WeaponFeedbackContract(unittest.TestCase):
             self.assertNotIn(token, trigger)
 
     def test_visibility_and_alpha_fade(self):
-        self.assertIn('Shader.Find("Universal Render Pipeline/Particles/Unlit")', LOOT)
+        self.assertIn('AarisShaderCache.Find("Universal Render Pipeline/Particles/Unlit")', LOOT)
         self.assertIn("shared.EnableKeyword(\"_SURFACE_TYPE_TRANSPARENT\");", LOOT)
         self.assertIn("RenderQueue.Transparent", LOOT)
         self.assertIn("beacon.enabled = false;", LOOT)
