@@ -103,6 +103,7 @@ namespace Aaris.MapReview.Editor
                 VerifyStreamedOutBotLineOfSight(report);
                 VerifyStreamedGroundLootPickup(report);
                 VerifyVirtualCombat(report);
+                VerifyVirtualMovementCover(report);
                 VerifyVirtualTerrainSeam(report);
                 VerifyVirtualTerrainShotCover(report);
                 VerifyRivalCameraWake(report);
@@ -157,6 +158,179 @@ namespace Aaris.MapReview.Editor
                 Directory.CreateDirectory(directory);
                 File.WriteAllText(Path.Combine(directory, "result.txt"), report.ToString());
                 Debug.Log(report.ToString());
+            }
+        }
+
+        // Executes the actual virtual combat movement on native TerrainData.
+        // No scene assets are saved, and the virtual rival has no PhysX body.
+        public static void RunVirtualMovementCoverQA()
+        {
+            var report = new StringBuilder("Unity " + Application.unityVersion + "\n");
+            try
+            {
+                VerifyVirtualMovementCover(report);
+                report.AppendLine("RESULT=PASS");
+            }
+            catch (Exception ex)
+            {
+                report.AppendLine("RESULT=FAIL " + ex);
+                throw;
+            }
+            finally
+            {
+                string directory = Path.Combine(Path.GetTempPath(), "aaris-virtual-movement-cover-qa");
+                Directory.CreateDirectory(directory);
+                File.WriteAllText(Path.Combine(directory, "result.txt"), report.ToString());
+                Debug.Log(report.ToString());
+            }
+        }
+
+        private static void VerifyVirtualMovementCover(StringBuilder report)
+        {
+            var previous = Field(typeof(AarisOfflineBRDirector), "activeDirector", Static);
+            object original = previous.GetValue(null);
+            var root = new GameObject("Temporary virtual movement cover QA");
+            var data = new TerrainData {
+                heightmapResolution = 33, size = new Vector3(60f, 10f, 60f)
+            };
+            try
+            {
+                var tile = Terrain.CreateTerrainGameObject(data);
+                tile.transform.SetParent(root.transform);
+                tile.transform.position = Origin + new Vector3(-30f, 0f, -10f);
+                var director = root.AddComponent<AarisOfflineBRDirector>();
+                director.enabled = false;
+                Set(director, "terrains", new[] { tile.GetComponent<Terrain>() });
+                Call(director, "CacheTerrainProbeMetadata");
+                Set(director, "center", new Vector2(Origin.x, Origin.z));
+                Set(director, "radius", 100000f);
+
+                var actor = new GameObject("Math-only movement actor");
+                actor.transform.SetParent(root.transform, false);
+                var bot = actor.AddComponent(BotType);
+                Set(bot, "owner", director);
+                Set(bot, "health", Health(actor));
+                Set(bot, "virtualBody", true);
+                Set(bot, "avoidanceHandedness", 1f);
+                Set(bot, "nextThink", 100000f);
+                Set(bot, "nextAttack", 100000f);
+
+                var wall = new GameObject("Thin wall shared by physical and virtual movers");
+                wall.transform.SetParent(root.transform, false);
+                wall.transform.position = Origin + new Vector3(0f, 1f, .70f);
+                var box = wall.AddComponent<BoxCollider>();
+                box.size = new Vector3(20f, 2f, .15f);
+                var cover = root.AddComponent<AarisNearbyColliders>();
+                Set(cover, "obstacles", new Collider[] { box });
+                Set(cover, "worldBounds", new Bounds[1]);
+                Set(cover, "localBoxBounds", new Bounds[1]);
+                Set(cover, "worldToBox", new Matrix4x4[1]);
+                Set(cover, "streamed", new bool[1]);
+                Set(cover, "disabledByStreaming", new bool[1]);
+                Set(cover, "probeVisited", new int[1]);
+                Call(cover, "IndexCollider", 0);
+                Set(cover, "indexReady", true);
+                Set(director, "nearbyColliders", cover);
+                Vector3 start = Origin + Vector3.up * .08f;
+                Vector3 step = Vector3.forward * 4f;
+                Vector3 half = new Vector3(.36f, .90f, .36f);
+
+                Check(!(bool)Call(director, "WouldCrossInactiveCover", start, step, false),
+                    "Physical movement still delegates active walls to its native capsule", report);
+                for (int mode = 0; mode < 2; mode++)
+                {
+                    box.enabled = mode == 0;
+                    ((bool[])Get(cover, "disabledByStreaming"))[0] = mode == 1;
+                    actor.transform.SetPositionAndRotation(start, Quaternion.identity);
+                    Check((bool)Call(director, "WouldCrossInactiveCover", start, step, true),
+                        "Four-metre virtual sweep cannot tunnel through " +
+                        (mode == 0 ? "active" : "streamed-out") + " thin cover", report);
+                    Call(bot, "TickVirtualCombat", 20f + mode, .35f,
+                        Origin + Vector3.right * 1000f);
+                    Vector3 travel = actor.transform.position - start;
+                    Check(travel.z < .26f && travel.sqrMagnitude > .01f &&
+                        actor.GetComponent<CharacterController>() == null &&
+                        box.enabled == (mode == 0),
+                        "Virtual actor flanks " + (mode == 0 ? "active" : "streamed-out") +
+                        " cover without a PhysX receiver or collider toggles", report);
+                }
+
+                // The old short-step guard only tested a box .72m ahead.
+                // A 2cm wall immediately beyond the real .31m capsule radius
+                // was missed at both .35m and .70m movement distances.
+                box.enabled = true;
+                ((bool[])Get(cover, "disabledByStreaming"))[0] = false;
+                wall.transform.position = Origin + new Vector3(0f, 1f, .325f);
+                box.size = new Vector3(20f, 2f, .02f);
+                ((System.Collections.IDictionary)Get(cover, "cells")).Clear();
+                Call(cover, "IndexCollider", 0);
+                foreach (float travelLength in new[] { .35f, .70f })
+                {
+                    Check((bool)Call(director, "WouldCrossInactiveCover", start,
+                        Vector3.forward * travelLength, true),
+                        "Continuous virtual sweep catches near-start thin wall at step " +
+                        travelLength, report);
+                    actor.transform.SetPositionAndRotation(start, Quaternion.identity);
+                    Call(bot, "TickVirtualCombat", 22f, travelLength / 2.85f,
+                        Origin + Vector3.right * 1000f);
+                    Vector3 travel = actor.transform.position - start;
+                    Check(travel.z < .02f && travel.sqrMagnitude > .001f,
+                        "Near-wall virtual actor takes a clear tangent without padding trap at step " +
+                        travelLength, report);
+                }
+                wall.transform.position = Origin + new Vector3(.40f, 1f, .05f);
+                box.size = new Vector3(.02f, 2f, .02f);
+                ((System.Collections.IDictionary)Get(cover, "cells")).Clear();
+                Call(cover, "IndexCollider", 0);
+                Check((bool)Call(director, "WouldCrossInactiveCover", start,
+                    new Vector3(.5f, 0f, .5f), true),
+                    "Continuous virtual sweep covers diagonal intermediate footprint", report);
+
+                wall.transform.position = Origin + new Vector3(0f, 1f, .70f);
+                box.size = new Vector3(20f, 2f, .15f);
+                ((System.Collections.IDictionary)Get(cover, "cells")).Clear();
+                Call(cover, "IndexCollider", 0);
+
+                box.enabled = false;
+                ((bool[])Get(cover, "disabledByStreaming"))[0] = false;
+                Check(!(bool)Call(director, "WouldCrossInactiveCover", start, step, true),
+                    "Externally disabled wall is not revived as virtual cover", report);
+                box.enabled = true;
+                box.isTrigger = true;
+                Check(!(bool)Call(director, "WouldCrossInactiveCover", start, step, true),
+                    "Trigger volumes do not trap virtual fighters", report);
+                box.isTrigger = false;
+                wall.SetActive(false);
+                actor.transform.SetPositionAndRotation(start, Quaternion.identity);
+                Call(bot, "TickVirtualCombat", 23f, .35f, Origin + Vector3.right * 1000f);
+                Check(actor.transform.position.z > Origin.z + .90f,
+                    "Removed cover restores forward movement instead of freezing the bot", report);
+                wall.SetActive(true);
+
+                // Rebuild this fixture's same authored bounds as an oversized
+                // wall. This bypasses the normal grid buckets in production.
+                ((System.Collections.IDictionary)Get(cover, "cells")).Clear();
+                box.size = new Vector3(40000f, 2f, .15f);
+                Call(cover, "IndexCollider", 0);
+                Check((bool)Call(director, "WouldCrossInactiveCover",
+                    start + Vector3.right * 3000f, step, true),
+                    "Oversized active cover participates in virtual sweeps", report);
+                Check((bool)Call(cover, "HasPotentialInactiveObstacle", start,
+                    new Vector3(3200000f, 2f, 3200000f), Quaternion.identity, true),
+                    "Bounded exhaustive fallback includes active cover for giant probes", report);
+
+                Set(cover, "indexReady", false);
+                Check((bool)Call(cover, "HasPotentialInactiveObstacle", start, half,
+                    Quaternion.identity, true) &&
+                    !(bool)Call(cover, "HasPotentialInactiveObstacle", start, half,
+                    Quaternion.identity, false),
+                    "Incomplete index holds virtual movement while physical movers keep live collision", report);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(data);
+                previous.SetValue(null, original);
             }
         }
 

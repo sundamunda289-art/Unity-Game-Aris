@@ -25,11 +25,14 @@ def fixture_source():
     if not match:
         raise ValueError("missing bounded probe budget")
     body = braced(code, "internal bool HasPotentialInactiveObstacle(")
+    director = (ROOT / "Assets/AarisWorld/Scripts/AarisOfflineBRDirector.cs").read_text(encoding="utf-8")
+    sweep = braced(director, "internal bool WouldCrossInactiveCover(")
     finite = braced(code, "private static bool Finite(Vector3 value)")
-    for marker in ("/* PROBE_BODY */", "/* FINITE_BODY */", "/* PROBE_CAP */"):
+    for marker in ("/* PROBE_BODY */", "/* FINITE_BODY */", "/* PROBE_CAP */", "/* SWEEP_BODY */"):
         if tests.count(marker) != 1:
             raise ValueError(f"fixture marker mismatch: {marker}")
     return (tests.replace("/* PROBE_BODY */", body)
+                 .replace("/* SWEEP_BODY */", sweep)
                  .replace("/* FINITE_BODY */", finite)
                  .replace("/* PROBE_CAP */", match.group(1)))
 

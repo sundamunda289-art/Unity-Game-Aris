@@ -94,6 +94,92 @@ namespace Aaris.MapReview
         // once at attachment; WheelCollider wheel centres stay authoritative.
         private readonly Vector3[] visualWheelCenterOffsets = new Vector3[4];
         private Rigidbody body;
+        // Native physics remains live when just this MonoBehaviour is disabled.
+        // Keep bounded configured-rig records until destruction; inactive pools
+        // emit no support pins. A disabled MonoBehaviour receives no OnEnable
+        // when its GameObject resumes, but its native Rigidbody resumes anyway.
+        // Retaining that small record closes this callback gap without a second
+        // component, scene search or per-frame list allocation.
+        private static readonly List<AarisVehicleMotor> physicsResidents =
+            new List<AarisVehicleMotor>(44);
+        private Bounds physicsResidencyBounds;
+        private bool hasPhysicsResidencyBounds;
+        internal static int TrackedPhysicsResidentCount => physicsResidents.Count;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetPhysicsResidents() => physicsResidents.Clear();
+
+        private void RegisterPhysicsResident()
+        {
+            hasPhysicsResidencyBounds = false;
+            if (body != null && !physicsResidents.Contains(this)) physicsResidents.Add(this);
+        }
+
+        private void UnregisterPhysicsResident()
+        {
+            physicsResidents.Remove(this);
+            hasPhysicsResidencyBounds = false;
+        }
+
+        // The small conservative envelope covers all catalog chassis/wheels,
+        // including a rolled car, plus a short velocity lead. The extra metre
+        // is residency hysteresis: a stationary/sleeping car or tiny suspension
+        // movement does not repeatedly rescan the static collider grid.
+        private Bounds PhysicsResidencyBounds()
+        {
+            Vector3 position = body.position;
+            Vector3 velocity = body.IsSleeping() ? Vector3.zero : body.linearVelocity;
+            float leadSeconds = Mathf.Max(.12f, Time.fixedDeltaTime * 2f);
+            Vector3 lead = velocity * leadSeconds;
+            Vector3 extent = Vector3.one * 4.25f;
+            Vector3 minimum = position - extent + Vector3.Min(lead, Vector3.zero);
+            Vector3 maximum = position + extent + Vector3.Max(lead, Vector3.zero);
+            if (hasPhysicsResidencyBounds &&
+                physicsResidencyBounds.Contains(minimum) &&
+                physicsResidencyBounds.Contains(maximum)) return physicsResidencyBounds;
+            physicsResidencyBounds = new Bounds((minimum + maximum) * .5f,
+                maximum - minimum + Vector3.one * 2f);
+            hasPhysicsResidencyBounds = true;
+            return physicsResidencyBounds;
+        }
+
+        internal static bool CollectPhysicsResidencyBounds(List<Bounds> destination)
+        {
+            bool changed = false;
+            int written = 0;
+            for (int i = 0; i < physicsResidents.Count; i++)
+            {
+                AarisVehicleMotor motor = physicsResidents[i];
+                if (motor == null || motor.body == null)
+                {
+                    physicsResidents.RemoveAt(i--);
+                    continue;
+                }
+                if (!motor.gameObject.activeInHierarchy)
+                {
+                    motor.hasPhysicsResidencyBounds = false;
+                    continue;
+                }
+                Bounds bounds = motor.PhysicsResidencyBounds();
+                if (written >= destination.Count)
+                {
+                    destination.Add(bounds);
+                    changed = true;
+                }
+                else if (destination[written] != bounds)
+                {
+                    destination[written] = bounds;
+                    changed = true;
+                }
+                written++;
+            }
+            if (destination.Count > written)
+            {
+                destination.RemoveRange(written, destination.Count - written);
+                changed = true;
+            }
+            return changed;
+        }
         private AarisVehicleSession driver;
         private float forward, steering, smoothSteer;
         private float topSpeed, tyreSlip;
@@ -274,6 +360,7 @@ namespace Aaris.MapReview
             // parked cars remain asleep, so the mobile cost stays bounded.
             if (wheels[0] != null)
                 wheels[0].ConfigureVehicleSubsteps(12f, 3, 2);
+            RegisterPhysicsResident();
         }
 
         private static float SafeHandlingScale(float value, float minimum, float maximum)
@@ -1298,6 +1385,7 @@ namespace Aaris.MapReview
 
         private void OnEnable()
         {
+            RegisterPhysicsResident();
             sleepingWheelPoseCurrent = false;
             appliedDriveTorque = appliedBrakeTorque = appliedSteeringAngle = float.NaN;
             appliedServiceBrakeDirection = 0;
@@ -1681,6 +1769,10 @@ namespace Aaris.MapReview
 
         private void OnDisable()
         {
+            // Component-only suspension leaves the actual Rigidbody active.
+            // Inactive pools release pins in the central pre-physics pass, but
+            // retain their record so a still-disabled component can resume.
+            if (!gameObject.activeInHierarchy) hasPhysicsResidencyBounds = false;
             forward = steering = 0f;
             if (driver != null) driver.OnVehicleSuspended(this);
             ApplyWheelForces(0f, ParkingBrakeTorque);
@@ -1696,5 +1788,7 @@ namespace Aaris.MapReview
             impactFlashUntil = 0f;
             RefreshExteriorLights();
         }
+
+        private void OnDestroy() => UnregisterPhysicsResident();
     }
 }

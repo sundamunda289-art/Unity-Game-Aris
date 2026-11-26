@@ -96,7 +96,9 @@ def test():
         exit_path.index("Physics.OverlapCapsuleNonAlloc(")]
     nearby_source = source("AarisNearbyColliders.cs")
     assert "internal bool HasPotentialInactiveObstacle(Vector3 center," in nearby_source
-    assert "streamed[i] && c != null && !c.enabled" in nearby_source
+    assert "bool includeActive = false" in nearby_source
+    assert "streamed[i] && c != null && (includeActive" in nearby_source
+    assert ": !c.enabled))" in nearby_source
     for lower, upper, radius in ((0.2, 1.7, 0.22), (-3.0, -1.7, 0.31)):
         center = (lower + upper) * .5
         extent = abs(upper - lower) * .5 + radius

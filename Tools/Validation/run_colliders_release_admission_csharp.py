@@ -68,6 +68,7 @@ namespace Aaris.MapReview
         private readonly List<int> pendingColliderRelease = new List<int>();
         private readonly bool[] colliderReleaseQueued;
         private readonly bool[] disabledByStreaming;
+        private readonly bool[] vehicleSupportPinned;
         private readonly Collider[] obstacles;
         private readonly int[] wanted;
         private readonly Bounds[] worldBounds;
@@ -85,6 +86,7 @@ namespace Aaris.MapReview
         {
             colliderReleaseQueued = new bool[n];
             disabledByStreaming = new bool[n];
+            vehicleSupportPinned = new bool[n];
             obstacles = new Collider[n];
             wanted = new int[n];
             worldBounds = new Bounds[n];
@@ -97,6 +99,10 @@ namespace Aaris.MapReview
                 worldBounds[i] = new Bounds { cached = new Vector3(300f,0f,0f) };
             }
         }
+        // Controlled ownership input only: real bounds, execution order and
+        // native wheel/bridge contact are covered by the Unity residency QA.
+        private bool IsVehicleSupportPinned(int index) => vehicleSupportPinned[index];
+
         __PRODUCTION_METHOD__
 
         private int DisabledCount()
@@ -157,11 +163,56 @@ namespace Aaris.MapReview
             Assert(!work.MoveNext(), "extra work after queue drained");
             Assert(AarisMobileStreamingFrameGate.claims==1, "extra no-op claimed frame");
         }
+        private static void CheckVehicleSupportSurvivesStaleQueue()
+        {
+            var fixture = new ReleaseFixture(1, 1);
+            fixture.vehicleSupportPinned[0] = true;
+            var work = fixture.ReleaseDistantAcrossFrames();
+            AarisMobileStreamingFrameGate.claims = 0;
+            Assert(work.MoveNext(), "initial pinned release yield missing");
+            Assert(!work.MoveNext(), "single pinned queue should drain");
+            Assert(fixture.DisabledCount() == 0 &&
+                   AarisMobileStreamingFrameGate.claims == 0,
+                   "live vehicle support must survive a stale release without claiming a frame");
+            Assert(fixture.pendingColliderRelease.Count == 0 &&
+                   !fixture.colliderReleaseQueued[0],
+                   "skipped pin must not leave a stale queue ownership bit");
+
+            // A later spatial refresh requeues the no-longer-pinned solid.
+            // Do not expect a drained stale coroutine to invent new work.
+            fixture.vehicleSupportPinned[0] = false;
+            fixture.pendingColliderRelease.Add(0);
+            fixture.colliderReleaseQueued[0] = true;
+            work = fixture.ReleaseDistantAcrossFrames();
+            Assert(work.MoveNext(), "released pin must use normal retirement pacing");
+            Assert(!work.MoveNext(), "released pin queue should drain");
+            Assert(fixture.DisabledCount() == 1 &&
+                   AarisMobileStreamingFrameGate.claims == 1,
+                   "released vehicle support must retire once and reserve its native frame");
+        }
+        private static void CheckPinAcquiredBetweenReleaseBatches()
+        {
+            var fixture = new ReleaseFixture(20, 20);
+            var work = fixture.ReleaseDistantAcrossFrames();
+            AarisMobileStreamingFrameGate.claims = 0;
+            Assert(work.MoveNext(), "initial multi-batch yield missing");
+            Assert(work.MoveNext(), "first retirement batch yield missing");
+            Assert(fixture.DisabledCount() == 12 &&
+                   AarisMobileStreamingFrameGate.claims == 1,
+                   "first ordinary batch must retire normally before pin acquisition");
+            for (int i = 12; i < 20; i++) fixture.vehicleSupportPinned[i] = true;
+            Assert(!work.MoveNext(), "second pinned batch should drain");
+            Assert(fixture.DisabledCount() == 12 &&
+                   AarisMobileStreamingFrameGate.claims == 1,
+                   "new support ownership must be rechecked after coroutine yield");
+        }
         public static void Main()
         {
             CheckReacquiredQueueNoClaims();
             CheckRealTwoFrames();
             CheckMixedNoopAndReal();
+            CheckVehicleSupportSurvivesStaleQueue();
+            CheckPinAcquiredBetweenReleaseBatches();
             Console.WriteLine("AARIS_COLLIDER_RELEASE_PRODUCTION_CSHARP_PASS");
         }
     }

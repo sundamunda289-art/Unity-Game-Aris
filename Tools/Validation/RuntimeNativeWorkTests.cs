@@ -34,8 +34,11 @@ namespace UnityEngine
             Math.Abs(center.y-b.center.y) <= extents.y+b.extents.y &&
             Math.Abs(center.z-b.center.z) <= extents.z+b.extents.z;
     }
+    public sealed class GameObject { public bool activeInHierarchy = true; }
     public sealed class Collider
     {
+        public bool isTrigger;
+        public readonly GameObject gameObject = new GameObject();
         public bool state, destroyed;
         public int gets, sets;
         public bool enabled { get { gets++; if(destroyed) throw new Exception("Destroyed collider read"); return state; }
@@ -91,6 +94,7 @@ internal sealed class ColliderFixture
     internal bool Probe(Collider c, Bounds probe)
     {
         int i=0;
+        bool includeActive=false;
         return /* PROBE_EXPRESSION */ false;
     }
 }

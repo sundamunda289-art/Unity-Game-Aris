@@ -385,9 +385,11 @@ class LootGridRegression(unittest.TestCase):
         self.assertLess(spawn.index(guard), spawn.index("Physics.OverlapBoxNonAlloc("))
         self.assertIn("if (site.isHelmet)", spawn)
         self.assertIn("var root = new GameObject(\"Aaris Streamed Medkit\")", spawn)
-        self.assertIn("if (!isActiveAndEnabled || obstacles == null", obstacles)
+        self.assertIn("if ((!includeActive && !isActiveAndEnabled) || obstacles == null", obstacles)
         self.assertIn("if (worldBounds[i].Intersects(probe) &&", obstacles)
-        self.assertIn("streamed[i] && c != null && !c.enabled)", obstacles)
+        self.assertIn("bool includeActive = false", obstacles)
+        self.assertIn("streamed[i] && c != null && (includeActive", obstacles)
+        self.assertIn(": !c.enabled))", obstacles)
         self.assertNotIn("Physics.SyncTransforms()", spawn)
 
     def test_open_ground_gun_coverage_at_50m_sample_sites(self):

@@ -5,6 +5,10 @@ on:
     paths:
       - 'Assets/AarisWorld/Scripts/AarisMobilePerfOverlay.cs'
       - 'Assets/AarisWorld/Scripts/AarisMobilePerfOverlay.cs.meta'
+      - 'Assets/AarisWorld/Scripts/AarisMobileRuntime.cs'
+      - 'Tools/Validation/MobileDiagnosticsTests.cs'
+      - 'Tools/Validation/run_mobile_diagnostics_csharp.py'
+      - 'Tools/Validation/run_runtime_native_work_csharp.py'
       - 'Tools/Validation/test_android_perf_overlay.py'
       - 'Docs/ANDROID_PERF_OVERLAY_CSV_20261120.md'
       - '.github/workflows/aaris-mobile-perf-telemetry-qa.yml'
@@ -13,6 +17,10 @@ on:
     paths:
       - 'Assets/AarisWorld/Scripts/AarisMobilePerfOverlay.cs'
       - 'Assets/AarisWorld/Scripts/AarisMobilePerfOverlay.cs.meta'
+      - 'Assets/AarisWorld/Scripts/AarisMobileRuntime.cs'
+      - 'Tools/Validation/MobileDiagnosticsTests.cs'
+      - 'Tools/Validation/run_mobile_diagnostics_csharp.py'
+      - 'Tools/Validation/run_runtime_native_work_csharp.py'
       - 'Tools/Validation/test_android_perf_overlay.py'
       - '.github/workflows/aaris-mobile-perf-telemetry-qa.yml'
 
@@ -22,7 +30,7 @@ permissions:
 jobs:
   isolated-perf-telemetry:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,6 +41,11 @@ jobs:
           python-version: '3.11'
       - name: Verify opt-in and bounded telemetry contracts
         run: python Tools/Validation/test_android_perf_overlay.py
+      - name: Compile and execute 15 controlled diagnostics assertions
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends mono-mcs
+          python3 Tools/Validation/run_mobile_diagnostics_csharp.py
       - name: Parse Unity C# syntax and verify added sources are whitespace-clean
         run: |
           python -m pip install --disable-pip-version-check 'tree-sitter>=0.23,<0.26' tree-sitter-c-sharp

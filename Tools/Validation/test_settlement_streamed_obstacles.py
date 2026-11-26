@@ -34,7 +34,9 @@ class StreamedSettlementSafety(unittest.TestCase):
     def test_streamer_preserves_authored_streaming_contract(self):
         probe = STREAMER[STREAMER.index("internal bool HasPotentialInactiveObstacle("):
                          STREAMER.index("private void OnEnable()")]
-        self.assertIn("streamed[i] && c != null && !c.enabled", probe)
+        self.assertIn("streamed[i] && c != null && (includeActive", probe)
+        self.assertIn(": !c.enabled)", probe)
+        self.assertIn("bool includeActive = false", probe)
         self.assertIn("worldBounds[i].Intersects(probe)", probe)
         self.assertIn("if (probeVisited[i] == probeStamp) continue;", probe)
         self.assertNotIn(".enabled = true", probe)

@@ -1004,7 +1004,8 @@ namespace Aaris.MapReview
             return TryGetGround(x, z, out height, margin: 0f);
         }
 
-        internal bool WouldCrossInactiveCover(Vector3 from, Vector3 displacement)
+        internal bool WouldCrossInactiveCover(Vector3 from, Vector3 displacement,
+            bool includeActive = false)
         {
             if (nearbyColliders == null || displacement.sqrMagnitude < 0.000001f)
                 return false;
@@ -1017,8 +1018,27 @@ namespace Aaris.MapReview
             Vector3 lookAhead = heading * Mathf.Max(distance, 0.72f);
             Vector3 half = new Vector3(0.36f, 0.90f, 0.36f);
             Vector3 chest = Vector3.up * 0.9f;
+            if (includeActive)
+            {
+                // A .72m look-ahead box alone misses thin walls immediately
+                // beyond the starting capsule on a short time-sliced step.
+                // Cover the whole ACTUAL movement volume before retaining the
+                // original padded steering probes below. Match the physical
+                // receiver's .31m radius: using the extra .05m steering padding
+                // at the start would trap an otherwise clear capsule beside a
+                // wall, including when its chosen tangent moves away from it.
+                if (distance > 17f * 0.36f) return true;
+                Vector3 halfTravel = displacement * 0.5f;
+                Vector3 sweptHalf = new Vector3(
+                    0.31f + Mathf.Abs(halfTravel.x),
+                    0.90f + Mathf.Abs(halfTravel.y),
+                    0.31f + Mathf.Abs(halfTravel.z));
+                if (nearbyColliders.HasPotentialInactiveObstacle(
+                    from + halfTravel + chest, sweptHalf, Quaternion.identity,
+                    includeActive: true)) return true;
+            }
             if (nearbyColliders.HasPotentialInactiveObstacle(from + lookAhead + chest,
-                half, Quaternion.identity)) return true;
+                half, Quaternion.identity, includeActive)) return true;
             // Long time-sliced steps must not tunnel through disabled thin cover.
             // Probe the indexed obstacle grid, never allocate or wake PhysX.
             if (distance <= 0.72f) return false;
@@ -1028,7 +1048,7 @@ namespace Aaris.MapReview
             for (int step = 1; step < steps; step++)
                 if (nearbyColliders.HasPotentialInactiveObstacle(
                     from + heading * (distance * step / steps) + chest,
-                    half, Quaternion.identity)) return true;
+                    half, Quaternion.identity, includeActive)) return true;
             return false;
         }
 
@@ -3346,7 +3366,11 @@ namespace Aaris.MapReview
                     Vector3 step = attempt == 0 ? movement :
                         Quaternion.Euler(0f, avoidanceHandedness *
                             (attempt == 1 ? 95f : -95f), 0f) * movement;
-                    if (owner.WouldCrossInactiveCover(selfPosition, step)) continue;
+                    // This actor moves by Transform, not CharacterController.
+                    // Live cover must participate too: a large wall may remain
+                    // active near the player while this rival is virtual.
+                    if (owner.WouldCrossInactiveCover(selfPosition, step,
+                        includeActive: true)) continue;
                     Vector3 next = selfPosition + step;
                     if (!owner.TryVirtualGround(next.x, next.z, out float ground)) continue;
                     next.y = ground + 0.08f;

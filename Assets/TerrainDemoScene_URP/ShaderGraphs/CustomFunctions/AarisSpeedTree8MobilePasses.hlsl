@@ -436,9 +436,13 @@ SpeedTreeVertexOutput SpeedTree8Vert(SpeedTreeVertexInput input)
             // Reuse SpeedTree's already-uploaded inverse mesh height to fake
             // crown exposure: upper cards lean subtly golden-green while lower
             // cards read deeper. One uniform vertex branch; no sample/varying.
-            float inverseHeight = _ST_WindGlobal.z;
-            UNITY_BRANCH if (inverseHeight > 0.00001)
-                crownExposure = saturate(leafAnchorOS.y * inverseHeight);
+            // URP does not declare STWind when wind is disabled. Keep the
+            // neutral exposure and stable leaf colour variation in that variant.
+            #if defined(ENABLE_WIND) && !defined(_WINDQUALITY_NONE)
+                float inverseHeight = _ST_WindGlobal.z;
+                UNITY_BRANCH if (inverseHeight > 0.00001)
+                    crownExposure = saturate(leafAnchorOS.y * inverseHeight);
+            #endif
         #endif
         leafSeed = frac(leafSeed);
         float leafTone = frac(leafSeed * (leafSeed + 17.17));
