@@ -16,13 +16,15 @@ namespace Aaris.MapReview
         private static readonly ProfilerMarker k_PlaneCreate =
             new ProfilerMarker("Aaris.Startup.PlaneCreate");
 #endif
-        private static Material hull, dark, wingPanels, engineDark, safetyAccent, rotorPaint,
-            propellerBlur, navRed, navGreen, navWhite,
+        private static Material hull, dark, wingPanels, engineDark, safetyAccent,
+            propellerBlur, wingtipCondensation, navRed, navGreen, navWhite,
             canopyBlue, canopyWhite, canopyOrange, rope;
         // Unity may normalize serialized _EMISSION keywords while importing materials.
         // One runtime-only copy per aircraft finish keeps the saved assets untouched.
         private static Material hullDaylightFinish, wingDaylightFinish;
-        private static Mesh cachedPropellerMesh, cachedPropellerBlurMesh;
+        private static Mesh cachedTwinPropellerMesh, cachedTransportPropellerMesh;
+        private static Mesh cachedTwinContrailMesh, cachedTransportContrailMesh;
+        private static readonly Mesh[] cachedPrimitiveMeshes = new Mesh[6];
         // Same Unity built-in cylinder mesh as CreatePrimitive, but cached
         // once so parachute ropes no longer manufacture throwaway colliders.
         private static Mesh cachedCanopyCordMesh;
@@ -229,16 +231,34 @@ namespace Aaris.MapReview
         private static GameObject Part(Transform parent, string name, PrimitiveType primitive,
             Vector3 position, Quaternion rotation, Vector3 scale, Material material)
         {
-            GameObject obj = GameObject.CreatePrimitive(primitive);
-            obj.name = name;
+            // Only the first inactive prototype owns a temporary collider.
+            // Every actual aircraft part is constructed render-only.
+            int slot = (int)primitive;
+            if (cachedPrimitiveMeshes[slot] == null)
+            {
+                GameObject prototype = GameObject.CreatePrimitive(primitive);
+                prototype.SetActive(false);
+                cachedPrimitiveMeshes[slot] = prototype.GetComponent<MeshFilter>().sharedMesh;
+                DisposeVisualObject(prototype);
+            }
+            GameObject obj = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
             obj.transform.SetParent(parent, false);
             obj.transform.localPosition = position;
             obj.transform.localRotation = rotation;
             obj.transform.localScale = scale;
-            Collider c = obj.GetComponent<Collider>();
-            if (c != null) UnityEngine.Object.Destroy(c);
+            obj.GetComponent<MeshFilter>().sharedMesh = cachedPrimitiveMeshes[slot];
             obj.GetComponent<Renderer>().sharedMaterial = material;
             return obj;
+        }
+
+        private static void DisposeVisualObject(UnityEngine.Object value)
+        {
+#if UNITY_EDITOR
+            if (!Application.isPlaying) UnityEngine.Object.DestroyImmediate(value);
+            else UnityEngine.Object.Destroy(value);
+#else
+            UnityEngine.Object.Destroy(value);
+#endif
         }
 
         private static Mesh EnsureCanopyCordMesh()
@@ -273,102 +293,150 @@ namespace Aaris.MapReview
             line.GetComponent<MeshRenderer>().sharedMaterial = material;
         }
 
-        // One lightweight three-blade rotor mesh is shared by all four propellers.
-        // Unlike 8 separate cube primitives it requires no generated colliders
-        // or per-blade GameObjects during a mobile match.
-        private static Mesh BuildPropellerMesh()
+        // A single static mesh draws all engines. Analytic blades, the high-RPM
+        // exposure disc and sun glint run in the retained GPU shader. There are
+        // no animated rotor Transforms and no duplicated back-face triangles.
+        private static Mesh BuildPropellerMesh(bool twin, float[] offsets,
+            float rotorY, float rotorZ, float scale)
         {
-            if (cachedPropellerMesh != null) return cachedPropellerMesh;
-            var vertices = new List<Vector3>(49);
-            var triangles = new List<int>(108);
-            for (int blade = 0; blade < 3; blade++)
+            Mesh cached = twin ? cachedTwinPropellerMesh : cachedTransportPropellerMesh;
+            if (cached != null) return cached;
+            const int segments = 24;
+            int stride = segments + 2;
+            var vertices = new Vector3[offsets.Length * stride];
+            var normals = new Vector3[vertices.Length];
+            var uv = new Vector2[vertices.Length];
+            var phase = new Vector2[vertices.Length];
+            var triangles = new int[offsets.Length * segments * 3];
+            for (int engine = 0; engine < offsets.Length; engine++)
             {
-                float theta = blade * (Mathf.PI * 2f / 3f);
-                Vector2 direction = new Vector2(Mathf.Cos(theta), Mathf.Sin(theta));
-                Vector2 side = new Vector2(-direction.y, direction.x);
-                float[] radii = { .24f, 1.02f, 1.66f };
-                float[] widths = { .22f, .19f, .055f };
-                int first = vertices.Count;
-                for (int row = 0; row < radii.Length; row++)
+                int first = engine * stride;
+                Vector3 center = new Vector3(offsets[engine], rotorY, rotorZ + .06f);
+                vertices[first] = center;
+                normals[first] = Vector3.forward;
+                phase[first] = new Vector2((engine & 1) == 0 ? 1f : -1f, engine * 1.73f);
+                for (int i = 0; i <= segments; i++)
                 {
-                    Vector2 middle = direction * radii[row];
-                    Vector2 left = middle - side * widths[row];
-                    Vector2 right = middle + side * widths[row];
-                    vertices.Add(new Vector3(left.x, left.y, .027f));
-                    vertices.Add(new Vector3(right.x, right.y, .027f));
-                }
-                // Duplicate the back-face vertices so opposite winding does not
-                // cancel the front-facing lighting normals during recalculation.
-                int back = vertices.Count;
-                for (int vertex = 0; vertex < radii.Length * 2; vertex++)
-                    vertices.Add(vertices[first + vertex]);
-                for (int row = 0; row < radii.Length - 1; row++)
-                {
-                    int a = first + row * 2;
-                    int b = a + 1;
-                    int c = a + 2;
-                    int d = c + 1;
-                    triangles.Add(a); triangles.Add(b); triangles.Add(c);
-                    triangles.Add(c); triangles.Add(b); triangles.Add(d);
-                    int offset = back - first;
-                    triangles.Add(a + offset); triangles.Add(c + offset); triangles.Add(b + offset);
-                    triangles.Add(c + offset); triangles.Add(d + offset); triangles.Add(b + offset);
+                    float angle = i * Mathf.PI * 2f / segments;
+                    Vector2 circle = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+                    int vertex = first + 1 + i;
+                    vertices[vertex] = center + new Vector3(circle.x, circle.y, 0f) * (1.66f * scale);
+                    uv[vertex] = circle;
+                    normals[vertex] = Vector3.forward;
+                    phase[vertex] = phase[first];
+                    if (i == segments) continue;
+                    int triangle = (engine * segments + i) * 3;
+                    triangles[triangle] = first;
+                    triangles[triangle + 1] = vertex;
+                    triangles[triangle + 2] = vertex + 1;
                 }
             }
-            // The rotor cap is part of the same mesh, not another draw call.
-            int cap = vertices.Count;
-            vertices.Add(new Vector3(0f, 0f, .075f));
-            for (int i = 0; i < 12; i++)
-            {
-                float angle = i * Mathf.PI / 6f;
-                vertices.Add(new Vector3(Mathf.Cos(angle) * .27f,
-                    Mathf.Sin(angle) * .27f, .06f));
-            }
-            for (int i = 0; i < 12; i++)
-            {
-                triangles.Add(cap);
-                triangles.Add(cap + 1 + i);
-                triangles.Add(cap + 1 + (i + 1) % 12);
-            }
-            cachedPropellerMesh = new Mesh { name = "AarisSharedTriBladeRotor" };
-            cachedPropellerMesh.SetVertices(vertices);
-            cachedPropellerMesh.SetTriangles(triangles, 0);
-            cachedPropellerMesh.RecalculateNormals();
-            cachedPropellerMesh.RecalculateBounds();
-            return cachedPropellerMesh;
+            var mesh = new Mesh { name = twin ? "AarisTwinGpuPropellers" : "AarisTransportGpuPropellers" };
+            mesh.vertices = vertices;
+            mesh.normals = normals;
+            mesh.uv = uv;
+            mesh.uv2 = phase;
+            mesh.triangles = triangles;
+            mesh.RecalculateBounds();
+            if (twin) cachedTwinPropellerMesh = mesh;
+            else cachedTransportPropellerMesh = mesh;
+            return mesh;
         }
 
-        // Shared translucent annulus: at flight RPM individual blades visually
-        // integrate into a disc. This adds no collider, texture sample, particle
-        // system or per-frame allocation and is reused by all four engines.
-        private static Mesh BuildPropellerBlurMesh()
+        private static Material AircraftEffect(ref Material cached, string resource, string label)
         {
-            if (cachedPropellerBlurMesh != null) return cachedPropellerBlurMesh;
-            const int segments = 24;
-            const float inner = .29f, outer = 1.62f, z = .032f;
-            var vertices = new Vector3[(segments + 1) * 2];
-            var triangles = new int[segments * 12];
-            for (int i = 0; i <= segments; i++)
+            if (cached != null) return cached;
+            // Resources retention is essential: Shader.Find alone can succeed
+            // in the Editor while the Android build strips an unreferenced shader.
+            Shader shader = Resources.Load<Shader>(resource);
+            if (shader == null || !shader.isSupported)
+                throw new InvalidOperationException("AARIS_AIRCRAFT_EFFECT_SHADER_UNAVAILABLE " + resource);
+            cached = new Material(shader) { name = label, enableInstancing = true };
+            return cached;
+        }
+
+        private static void ConfigureAircraftEffectRenderer(MeshRenderer renderer)
+        {
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            renderer.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+            renderer.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+            renderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
+        }
+
+        // Two crossed, tapered ribbons per wingtip: sixteen triangles TOTAL.
+        // A short aerodynamic condensation wake follows the airframe without
+        // particle simulation, TrailRenderer history or per-frame mesh writes.
+        private static Mesh BuildWingtipCondensationMesh(bool twin)
+        {
+            Mesh cached = twin ? cachedTwinContrailMesh : cachedTransportContrailMesh;
+            if (cached != null) return cached;
+            var vertices = new Vector3[24];
+            var uv = new Vector2[24];
+            var triangles = new int[48];
+            float span = twin ? 12.29f : 18.8f;
+            float height = twin ? .54f : 2.68f;
+            float trailingEdge = twin ? .36f : -2.41f;
+            int index = 0;
+            for (int side = 0; side < 2; side++)
+            for (int ribbon = 0; ribbon < 2; ribbon++)
             {
-                float angle = i * Mathf.PI * 2f / segments;
-                float x = Mathf.Cos(angle), y = Mathf.Sin(angle);
-                vertices[i * 2] = new Vector3(x * inner, y * inner, z);
-                vertices[i * 2 + 1] = new Vector3(x * outer, y * outer, z);
+                int first = (side * 2 + ribbon) * 6;
+                Vector3 axis = ribbon == 0 ? Vector3.right : Vector3.up;
+                for (int row = 0; row < 3; row++)
+                {
+                    float along = row == 0 ? 0f : row == 1 ? .3f : 1f;
+                    Vector3 center = new Vector3((side == 0 ? -1f : 1f) * span,
+                        height - along * .18f, trailingEdge - along * 18f);
+                    float width = Mathf.Lerp(.035f, .24f, along);
+                    vertices[first + row * 2] = center - axis * width;
+                    vertices[first + row * 2 + 1] = center + axis * width;
+                    uv[first + row * 2] = new Vector2(-1f, along);
+                    uv[first + row * 2 + 1] = new Vector2(1f, along);
+                    if (row == 2) continue;
+                    int a = first + row * 2;
+                    triangles[index++] = a; triangles[index++] = a + 1; triangles[index++] = a + 2;
+                    triangles[index++] = a + 2; triangles[index++] = a + 1; triangles[index++] = a + 3;
+                }
             }
-            int t = 0;
-            for (int i = 0; i < segments; i++)
+            var mesh = new Mesh { name = twin ? "AarisTwinWingtipWake" : "AarisTransportWingtipWake" };
+            mesh.vertices = vertices;
+            mesh.uv = uv;
+            mesh.triangles = triangles;
+            mesh.RecalculateBounds();
+            if (twin) cachedTwinContrailMesh = mesh;
+            else cachedTransportContrailMesh = mesh;
+            return mesh;
+        }
+
+        private static void AddWingtipCondensation(Transform root, bool twin)
+        {
+            var wake = new GameObject("WingtipCondensation", typeof(MeshFilter), typeof(MeshRenderer));
+            wake.transform.SetParent(root, false);
+            wake.GetComponent<MeshFilter>().sharedMesh = BuildWingtipCondensationMesh(twin);
+            var renderer = wake.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = AircraftEffect(ref wingtipCondensation,
+                "AarisWingtipCondensation", "Aaris shared wingtip condensation");
+            ConfigureAircraftEffectRenderer(renderer);
+        }
+
+        private static void EnforceRenderOnlyAircraft(GameObject root)
+        {
+            // Imported OBJ assets currently contain neither component. Keep
+            // future prefab replacements from silently enrolling a flying
+            // visual in PhysX. Disable immediately before deferred destruction.
+            foreach (Collider collider in root.GetComponentsInChildren<Collider>(true))
             {
-                int a = i * 2, b = a + 1, c = a + 2, d = a + 3;
-                triangles[t++] = a; triangles[t++] = b; triangles[t++] = c;
-                triangles[t++] = c; triangles[t++] = b; triangles[t++] = d;
-                triangles[t++] = a; triangles[t++] = c; triangles[t++] = b;
-                triangles[t++] = c; triangles[t++] = d; triangles[t++] = b;
+                collider.enabled = false;
+                DisposeVisualObject(collider);
             }
-            cachedPropellerBlurMesh = new Mesh { name = "AarisSharedPropellerBlur" };
-            cachedPropellerBlurMesh.vertices = vertices;
-            cachedPropellerBlurMesh.triangles = triangles;
-            cachedPropellerBlurMesh.RecalculateBounds();
-            return cachedPropellerBlurMesh;
+            foreach (Rigidbody body in root.GetComponentsInChildren<Rigidbody>(true))
+            {
+                body.detectCollisions = false;
+                body.useGravity = false;
+                body.isKinematic = true;
+                DisposeVisualObject(body);
+            }
         }
 
         private static void AddAircraftMarkerLights(Transform root)
@@ -515,40 +583,27 @@ namespace Aaris.MapReview
                 }
             }
 
-            // The three-blade propeller disk sits FORWARD of each engine/wing.
-            // A shared mesh and four pivots replace eight rectangular cube blades.
+            // Preserve the authored engine locations and rotor diameter.
             float[] offsets = highDetailTwin
                 ? new float[] { -4f, 4f }
                 : new float[] { -8.65f, -4.55f, 4.55f, 8.65f };
             float rotorY = highDetailTwin ? .085f : .46f;
             float rotorZ = highDetailTwin ? 3.73f : 4.37f;
             float rotorScale = highDetailTwin ? 1.17f : 1f;
-            propellers = new Transform[offsets.Length];
-            // Propeller blades are not cockpit glass; give them an independent
-            // cached satin finish even when the aircraft uses fallback materials.
-            Material bladeMaterial = Paint(ref rotorPaint, new Color(.055f, .08f, .085f));
-            SetAircraftFinish(bladeMaterial, .30f, .24f);
-            Mesh rotor = BuildPropellerMesh();
-            Mesh blur = BuildPropellerBlurMesh();
-            Material blurMaterial = Unlit(ref propellerBlur,
-                new Color(.60f, .68f, .70f, .13f), true);
-            for (int i = 0; i < offsets.Length; i++)
-            {
-                GameObject hub = new GameObject("PropellerPivot" + i,
-                    typeof(MeshFilter), typeof(MeshRenderer));
-                hub.transform.SetParent(root.transform, false);
-                hub.transform.localPosition = new Vector3(offsets[i], rotorY, rotorZ);
-                hub.transform.localScale = Vector3.one * rotorScale;
-                hub.GetComponent<MeshFilter>().sharedMesh = rotor;
-                hub.GetComponent<MeshRenderer>().sharedMaterial = bladeMaterial;
-                GameObject blurDisc = new GameObject("HighRpmBlur",
-                    typeof(MeshFilter), typeof(MeshRenderer));
-                blurDisc.transform.SetParent(hub.transform, false);
-                blurDisc.GetComponent<MeshFilter>().sharedMesh = blur;
-                blurDisc.GetComponent<MeshRenderer>().sharedMaterial = blurMaterial;
-                propellers[i] = hub.transform;
-            }
+            GameObject rotors = new GameObject("GpuPropellerDiscs", typeof(MeshFilter), typeof(MeshRenderer));
+            rotors.transform.SetParent(root.transform, false);
+            rotors.GetComponent<MeshFilter>().sharedMesh = BuildPropellerMesh(
+                highDetailTwin, offsets, rotorY, rotorZ, rotorScale);
+            var rotorRenderer = rotors.GetComponent<MeshRenderer>();
+            rotorRenderer.sharedMaterial = AircraftEffect(ref propellerBlur,
+                "AarisAircraftPropeller", "Aaris shared GPU propeller exposure");
+            ConfigureAircraftEffectRenderer(rotorRenderer);
+            // Retain the creation API for drop startup. This is one static
+            // combined renderer transform, never a CPU rotor-animation list.
+            propellers = new[] { rotors.transform };
+            AddWingtipCondensation(root.transform, highDetailTwin);
             AddAircraftMarkerLights(root.transform);
+            EnforceRenderOnlyAircraft(root);
             root.name = "Aaris_CargoPlane";
             PlaneTotalCreationMs = (float)((Time.realtimeSinceStartupAsDouble -
                 totalStartedAt) * 1000d);

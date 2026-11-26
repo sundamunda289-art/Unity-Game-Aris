@@ -141,6 +141,9 @@ namespace Aaris.MapReview
         public float JogSpeedMetresPerSecond => walkSpeed;
         public float UnarmedSprintSpeedMetresPerSecond => unarmedSprintSpeed;
         public float ArmedSprintSpeedMetresPerSecond => armedSprintSpeed;
+        public float HorizontalAccelerationMetresPerSecondSquared => horizontalAcceleration;
+        public float HorizontalBrakingMetresPerSecondSquared => horizontalBraking;
+        public float CombatMoveSpeedMetresPerSecond => combatMoveSpeed;
 
         // The original lightweight placeholder has articulated arm/leg pivots.
         // If an Android build cannot initialize the optional Humanoid rig,
@@ -196,7 +199,7 @@ namespace Aaris.MapReview
             if (battle != null && battle.Stance != AarisBattleActions.PlayerStance.Standing)
             {
                 bool groundedBeforeStand = controller != null && controller.isGrounded;
-                if (!battle.TryStand()) return; // Closed ceilings still block.
+                if (!battle.TryStandForJump()) return; // Closed ceilings still block.
                 if (groundedBeforeStand) lastGrounded = Time.unscaledTime;
             }
             // Buffered jump survives a short resize/landing transition.
@@ -512,7 +515,7 @@ namespace Aaris.MapReview
             bool launchJump = now <= jumpUntil && now - lastGrounded <= 0.15f;
             // A prone/crouched capsule must not jump through walls or ceilings.
             // Stand only when clearance permits; keep a single motor authority.
-            if (launchJump && battle != null && !battle.TryStand())
+            if (launchJump && battle != null && !battle.TryStandForJump())
             {
                 launchJump = false;
                 jumpUntil = -10f;
@@ -556,7 +559,7 @@ namespace Aaris.MapReview
             // Holding Shift while crouched/prone must not silently force
             // a stand transition or apply sprint speed under low ceilings.
             if (sprinting && battle != null &&
-                battle.Stance != AarisBattleActions.PlayerStance.Standing)
+                battle.MovementStance != AarisBattleActions.PlayerStance.Standing)
                 sprinting = false;
             Vector2 intent = moveInput;
             if (running && intent.sqrMagnitude < 0.04f) intent = Vector2.up;
@@ -575,8 +578,8 @@ namespace Aaris.MapReview
                 : walkSpeed;
             if (battle != null && !sprinting)
             {
-                if (battle.Stance == AarisBattleActions.PlayerStance.Crouching) speed = crouchMoveSpeed;
-                else if (battle.Stance == AarisBattleActions.PlayerStance.Prone) speed = proneMoveSpeed;
+                if (battle.MovementStance == AarisBattleActions.PlayerStance.Crouching) speed = crouchMoveSpeed;
+                else if (battle.MovementStance == AarisBattleActions.PlayerStance.Prone) speed = proneMoveSpeed;
                 else if (battle.FireHeld) speed = combatMoveSpeed;
             }
             // ADS is deliberate combat movement, not a sprint. Crouch and
@@ -614,7 +617,7 @@ namespace Aaris.MapReview
                 desiredVelocity, response * dt);
             // On a stance change, do not let sprint inertia carry a prone or
             // crouched capsule faster than its authored movement ceiling.
-            if (battle != null && battle.Stance != AarisBattleActions.PlayerStance.Standing)
+            if (battle != null && battle.MovementStance != AarisBattleActions.PlayerStance.Standing)
                 horizontalVelocity = Vector3.ClampMagnitude(horizontalVelocity, speed);
             Vector3 candidate = transform.position + horizontalVelocity * dt;
             // Original 2km map bounds and shoreline/bridge checks survive.
@@ -921,6 +924,13 @@ namespace Aaris.MapReview
                     // made stance camera transitions take twice as long at 10 FPS,
                     // leaving the view above the crouched/prone player's head.
                     Mathf.Infinity, Mathf.Clamp(Time.deltaTime, 0f, 0.15f));
+            }
+            // A downward camera spring must not leave its pivot above the
+            // real shrinking capsule while the player enters low cover.
+            if (battle != null && smoothedEyeHeight > battle.MaximumCameraEyeHeight)
+            {
+                smoothedEyeHeight = battle.MaximumCameraEyeHeight;
+                eyeHeightVelocity = Mathf.Min(0f, eyeHeightVelocity);
             }
             Vector3 pivot = transform.position + Vector3.up * smoothedEyeHeight;
             // Give real landings a tiny sense of body weight without adding

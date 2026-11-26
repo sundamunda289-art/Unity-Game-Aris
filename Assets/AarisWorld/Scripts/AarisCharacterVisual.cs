@@ -122,6 +122,7 @@ namespace Aaris.MapReview
         private Transform leftThigh, leftShin, leftFootBone;
         private Transform rightThigh, rightShin, rightFootBone;
         private Transform proneChestBone, proneHeadBone;
+        private Transform proneLeftHandBone, proneRightHandBone;
         private Transform balanceSpineBone, locomotionHipsBone;
         private const float ProneChestCorrectionMaxDegrees = 24f;
         private const float ProneHeadColliderInset = 0.10f;
@@ -130,6 +131,7 @@ namespace Aaris.MapReview
         private SkinnedMeshRenderer bodySkin;
         private bool groundedRigCalibrated;
         private float standingShoeOffset;
+        private float smoothedProneSupportDrop;
         private RaycastHit[] ankleSupportHits = new RaycastHit[12];
         // Stance-foot world locks remove visible contact-foot skating while
         // preserving authored swing motion and CharacterController authority.
@@ -161,6 +163,7 @@ namespace Aaris.MapReview
         private Vector3 restingLocalPosition;
         private Quaternion restingLocalRotation;
         private float crouchBlend, proneBlend;
+        private Quaternion proneGroundRotation = Quaternion.identity;
         // ALS-Unity uses independent crouch-idle and moving states with a
         // 0.25s stance crossfade and smooth direction weights.
         private float alsCrouchMovingWeight;
@@ -350,6 +353,8 @@ namespace Aaris.MapReview
             rightFootBone = animator.GetBoneTransform(HumanBodyBones.RightFoot);
             proneChestBone = animator.GetBoneTransform(HumanBodyBones.Chest);
             proneHeadBone = animator.GetBoneTransform(HumanBodyBones.Head);
+            proneLeftHandBone = animator.GetBoneTransform(HumanBodyBones.LeftHand);
+            proneRightHandBone = animator.GetBoneTransform(HumanBodyBones.RightHand);
             balanceSpineBone = animator.GetBoneTransform(HumanBodyBones.Spine);
             locomotionHipsBone = animator.GetBoneTransform(HumanBodyBones.Hips);
             // Hide the saved player only after a candidate has a usable
@@ -1844,6 +1849,8 @@ namespace Aaris.MapReview
             {
                 presentationPaused = paused;
                 motionHistoryReady = false;
+                proneGroundRotation = Quaternion.identity;
+                smoothedProneSupportDrop = 0f;
                 // World-space shoe locks cannot survive a vehicle/flight hand-off.
                 leftUprightPlantLocked = false;
                 rightUprightPlantLocked = false;
@@ -1973,6 +1980,8 @@ namespace Aaris.MapReview
                 // lateral strafe lean. Otherwise the new stationary pose can
                 // remain banked for several frames despite zero local motion.
                 smoothedStrafeBank = 0f;
+                proneGroundRotation = Quaternion.identity;
+                smoothedProneSupportDrop = 0f;
             }
             float currentYaw = transform.eulerAngles.y;
             float forwardAcceleration = 0f;
@@ -2027,10 +2036,20 @@ namespace Aaris.MapReview
             smoothedOrientationWarpYaw = Mathf.Lerp(
                 smoothedOrientationWarpYaw, orientationWarpTarget,
                 1f - Mathf.Exp(-dt / 0.085f));
-            // Keep the grounded mesh root upright. Pitching the entire rig
-            // pivots the feet away from the terrain, especially on slopes.
-            // The standing balance lean is applied to the humanoid spine below.
-            Quaternion desiredRotation = restingLocalRotation;
+            // Standing/crouch retain their upright root and analytic foot IK.
+            // An authored prone body follows the SAME bounded support plane
+            // that admitted its head/feet footprint, with no additional ray.
+            Quaternion groundTarget = !visuallyAirborne && authoredProne &&
+                actions != null && (aerialDrop == null || aerialDrop.HasLanded)
+                ? Quaternion.Slerp(Quaternion.identity,
+                    Quaternion.FromToRotation(Vector3.up, actions.ProneGroundNormal),
+                    Mathf.Clamp01(effectiveProneBlend))
+                : Quaternion.identity;
+            proneGroundRotation = Quaternion.Slerp(proneGroundRotation,
+                groundTarget, 1f - Mathf.Exp(-dt / 0.12f));
+            Quaternion localGroundRotation = Quaternion.Inverse(transform.rotation) *
+                proneGroundRotation * transform.rotation;
+            Quaternion desiredRotation = localGroundRotation * restingLocalRotation;
             // Visual-only skydiving pose; never tilt the physical CharacterController.
             // Choose the final rotation before touching the hierarchy: the
             // aerial override previously caused two native Transform writes.
@@ -2138,6 +2157,9 @@ namespace Aaris.MapReview
             Vector3 desiredPosition = restingLocalPosition +
                 new Vector3(0f, -landingDip - crouchLowering -
                     proneLowering + standingShoeOffset, 0f);
+            // Rotate the calibrated origin around the capsule's foot, not
+            // around an arbitrary FBX origin above/below the terrain.
+            desiredPosition = localGroundRotation * desiredPosition;
             if (visualRoot.localPosition != desiredPosition)
                 visualRoot.localPosition = desiredPosition;
             // The CC0 crawl supplies its own spine, knee and ankle motion.
@@ -2188,6 +2210,9 @@ namespace Aaris.MapReview
             {
                 float capsuleTop = transform.TransformPoint(controller.center +
                     Vector3.up * controller.height * 0.5f).y;
+                if (actions != null)
+                    capsuleTop += actions.ProneGroundHeightOffset(proneHeadBone.position) *
+                        effectiveProneBlend;
                 float headInset = Mathf.Lerp(0.10f, 0.20f,
                     Mathf.Clamp01(effectiveProneBlend));
                 float excess = proneHeadBone.position.y -
@@ -2231,6 +2256,13 @@ namespace Aaris.MapReview
                     Vector3.up * (controller.height * 0.5f)).y;
                 float capsuleCeiling = transform.TransformPoint(controller.center +
                     Vector3.up * (controller.height * 0.5f)).y;
+                if (actions != null)
+                {
+                    capsuleFloor += actions.ProneGroundHeightOffset(locomotionHipsBone.position) *
+                        effectiveProneBlend;
+                    capsuleCeiling += actions.ProneGroundHeightOffset(proneHeadBone.position) *
+                        effectiveProneBlend;
+                }
                 float pelvisShortfall = capsuleFloor + 0.16f -
                     locomotionHipsBone.position.y;
                 float helmetRoom = capsuleCeiling - 0.20f -
@@ -2271,6 +2303,61 @@ namespace Aaris.MapReview
                             Mathf.InverseLerp(0.03f, 0.35f,
                                 effectiveProneBlend));
             }
+            // A rotated CC0 prone pose can retain an upright rig's terrain
+            // calibration and hover while its boots alone are replanted.
+            // Bound only excess settled pelvis clearance against the ACTUAL
+            // cached support hit, not the capsule's skin-expanded floor.
+            // Hip width supplies a conservative body-thickness envelope;
+            // head/chest and free hands independently limit every downwards
+            // correction. The final weapon solver owns armed hand contact.
+            Vector3 proneSupportPoint = Vector3.zero, proneSupportNormal = Vector3.up;
+            bool hasProneBodySupport = cc0CrawlLoaded && !visuallyAirborne &&
+                graphReady && groundedNow && actions != null &&
+                locomotionHipsBone != null && proneHeadBone != null &&
+                actions.TryGetProneSupportPlane(out proneSupportPoint, out proneSupportNormal);
+            float supportDropTarget = 0f, safeSupportDrop = 0f;
+            if (hasProneBodySupport)
+            {
+                float pelvisGap = Vector3.Dot(locomotionHipsBone.position -
+                    proneSupportPoint, proneSupportNormal);
+                float headGap = Vector3.Dot(proneHeadBone.position -
+                    proneSupportPoint, proneSupportNormal);
+                safeSupportDrop = Mathf.Max(0f, Mathf.Min(pelvisGap - 0.085f, headGap - 0.14f));
+                if (proneChestBone != null)
+                    safeSupportDrop = Mathf.Min(safeSupportDrop, Mathf.Max(0f,
+                        Vector3.Dot(proneChestBone.position - proneSupportPoint,
+                            proneSupportNormal) - 0.095f));
+                if (!actions.IsArmed)
+                {
+                    if (proneLeftHandBone != null)
+                        safeSupportDrop = Mathf.Min(safeSupportDrop, Mathf.Max(0f,
+                            Vector3.Dot(proneLeftHandBone.position - proneSupportPoint,
+                                proneSupportNormal) - 0.02f));
+                    if (proneRightHandBone != null)
+                        safeSupportDrop = Mathf.Min(safeSupportDrop, Mathf.Max(0f,
+                            Vector3.Dot(proneRightHandBone.position - proneSupportPoint,
+                                proneSupportNormal) - 0.02f));
+                }
+                if (cc0SettledProne && leftThigh != null && rightThigh != null)
+                {
+                    float hipWidth = Vector3.Distance(leftThigh.position, rightThigh.position);
+                    float pelvisEnvelope = Mathf.Clamp(hipWidth * 0.42f, 0.13f, 0.17f);
+                    float settle = Mathf.SmoothStep(0f, 1f,
+                        Mathf.InverseLerp(0.90f, 0.995f, effectiveProneBlend));
+                    supportDropTarget = Mathf.Min(safeSupportDrop,
+                        Mathf.Clamp(pelvisGap - pelvisEnvelope, 0f, 0.16f)) * settle;
+                }
+            }
+            // Recompute from the uncorrected animated root every frame, so
+            // the correction cannot accumulate. Ease it out as stance/motion
+            // resumes; the existing foot solver still runs afterwards.
+            smoothedProneSupportDrop = Mathf.Lerp(smoothedProneSupportDrop,
+                supportDropTarget, 1f - Mathf.Exp(-dt / 0.12f));
+            float supportDrop = Mathf.Min(smoothedProneSupportDrop, safeSupportDrop) *
+                Mathf.Clamp01(effectiveProneBlend);
+            if (hasProneBodySupport && supportDrop > 0.0001f)
+                visualRoot.position -= proneSupportNormal * supportDrop;
+
             // Rotate the lower-body parent before terrain planting. The
             // existing analytic leg solve then restores exact shoe contact on
             // slopes/steps, so orientation compensation cannot introduce float.
@@ -2614,6 +2701,8 @@ namespace Aaris.MapReview
                             leftGoal, Vector3.up, 1f,
                             leftGround + safeKneeInset, 1f,
                             hipSide, allowedSide, 85f);
+                        AlignFootToSupport(leftFootBone, leftGroundNormal,
+                            1f, 28f, 0.72f);
                     }
                     if (!float.IsNaN(rightGround))
                     {
@@ -2622,6 +2711,8 @@ namespace Aaris.MapReview
                             rightGoal, Vector3.up, 1f,
                             rightGround + safeKneeInset, 1f,
                             hipSide, allowedSide, 85f);
+                        AlignFootToSupport(rightFootBone, rightGroundNormal,
+                            1f, 28f, 0.72f);
                     }
                 }
             }
@@ -2641,6 +2732,9 @@ namespace Aaris.MapReview
                 {
                     float capTop = transform.TransformPoint(controller.center +
                         Vector3.up * controller.height * 0.5f).y;
+                    if (actions != null)
+                        capTop += actions.ProneGroundHeightOffset(proneHeadBone.position) *
+                            effectiveProneBlend;
                     float desiredHeadY = capTop - ProneHeadColliderInset;
                     float desiredDeltaY = Mathf.Min(headFromChest.y,
                         desiredHeadY - proneChestBone.position.y);

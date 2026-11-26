@@ -58,7 +58,7 @@ class FarRivalBudget(unittest.TestCase):
         self.assertLess(guard, update.index("capsule.Move("))
         self.assertIn("now - lastSimulationTime", update)
         self.assertIn("Mathf.Min(Time.deltaTime, 0.12f)", update)
-        self.assertIn("(target.position - transform.position).sqrMagnitude < 42f * 42f && HasSight()", update)
+        self.assertIn("(target.position - transform.position).sqrMagnitude < SightRange * SightRange && HasSight()", update)
         self.assertIn("IsPostMoveShotInRangeAndFacing(afterMove, transform.forward,", update)
         self.assertIn("owner.WouldCrossInactiveCover", update)
 

@@ -17,10 +17,10 @@ def select(bots, origin, fast):
     for i,bot in enumerate(bots):
         if not bot["alive"] or bot["blocked"]:continue
         if fast and bot["registered"] and bot["dormant_hidden"] and (
-                ds(bot["cached"],origin)>=48.**2):
+                ds(bot["cached"],origin)>=92.**2):
             continue
         d=ds(bot["actual"],origin)
-        if d>=42.**2:continue
+        if d>=86.**2:continue
         nearby.append((d,i))
     nearby.sort()
     # Same six-nearest candidate budget and first unobstructed LOS.
@@ -32,7 +32,7 @@ class AlternativeRivalDormantPrefilter(unittest.TestCase):
     def test_native_transform_and_physical_los_stay_authoritative(self):
         for s in ("rivalSpatialRegistered[i] && bot.IsDormantAimInvisible",
                   "(rivalSpatialPositions[i] - origin).sqrMagnitude >=",
-                  "48f * 48f", "float sqr = (bot.transform.position - origin).sqrMagnitude",
+                  "AarisOfflineRival.PlayerThreatBroadphaseRange", "float sqr = (bot.transform.position - origin).sqrMagnitude",
                   "if (sqr >= maxSqr) continue;", "if (slot >= AlternativeBudget) continue;",
                   "if (used < AlternativeBudget) used++;",
                   "!hunter.HasSightToRival(bot.transform)"):
@@ -69,7 +69,7 @@ class AlternativeRivalDormantPrefilter(unittest.TestCase):
                        dormant_hidden=hidden,los=True)]
             self.assertEqual(select(bots,origin,False),0)
             self.assertEqual(select(bots,origin,True),0)
-        bot=dict(actual=(41.999,0.,0.),cached=(47.2,0.,0.),
+        bot=dict(actual=(85.999,0.,0.),cached=(91.2,0.,0.),
                  alive=True,blocked=False,registered=True,
                  dormant_hidden=True,los=True)
         self.assertEqual(select([bot],origin,True),0)

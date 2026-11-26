@@ -40,6 +40,13 @@ namespace Aaris.MapReview
         // Reuse one component list for damage-receiver lookup on rare melee attacks.
         private readonly List<Component> punchComponents = new List<Component>(8);
         private PlayerStance stance;
+        private PlayerStance movementStance, transitionFromStance;
+        private float stanceStartHeight, stanceTargetHeight, stanceElapsed, stanceDuration;
+        private bool stanceTransitioning;
+        private readonly RaycastHit[] proneSupportHits = new RaycastHit[32];
+        private Vector3 proneGroundNormal = Vector3.up, proneSupportPosition, proneGroundPoint;
+        private bool proneSupportValid;
+        private float nextProneSupportSample;
         private bool fireHeld;
         private bool semiShotQueued;
         // Short trigger edges survive a cooldown / slow Android input frame,
@@ -54,6 +61,10 @@ namespace Aaris.MapReview
         private float lastShootTime = -10f;
 
         public PlayerStance Stance => stance;
+        // During a rise, retain the lower gait until the real capsule has
+        // clearance and reaches its target. A short capsule cannot sprint.
+        public PlayerStance MovementStance => movementStance;
+        public bool IsStanceTransitioning => stanceTransitioning;
         public bool FireHeld => fireHeld;
         public bool IsArmed => equippedGun != null &&
             equippedGun.isActiveAndEnabled && equippedGun.Configured;
@@ -62,8 +73,58 @@ namespace Aaris.MapReview
         private bool AcceptsCombatInput =>
             isActiveAndEnabled && Time.timeScale > 0f &&
             motor != null && motor.isActiveAndEnabled;
-        public float CameraEyeHeight => stance == PlayerStance.Prone ? 0.54f
-            : stance == PlayerStance.Crouching ? 0.94f : 1.45f;
+        public float CameraEyeHeight
+        {
+            get
+            {
+                if (capsule == null) return 1.45f;
+                float crouch = StanceHeight(PlayerStance.Crouching);
+                float height = capsule.height;
+                float eye = height >= crouch
+                    ? Mathf.Lerp(0.94f, 1.45f,
+                        Mathf.InverseLerp(crouch, standingHeight, height))
+                    : Mathf.Lerp(0.54f, 0.94f,
+                        Mathf.InverseLerp(StanceHeight(PlayerStance.Prone), crouch, height));
+                return Mathf.Min(eye, MaximumCameraEyeHeight);
+            }
+        }
+        public float MaximumCameraEyeHeight => capsule != null
+            ? standingCenter.y - standingHeight * 0.5f + capsule.height - 0.08f
+            : 1.45f;
+        internal Vector3 ProneGroundNormal => proneSupportValid ? proneGroundNormal : Vector3.up;
+        internal bool TryGetProneSupportPlane(out Vector3 point, out Vector3 normal)
+        {
+            point = proneGroundPoint;
+            normal = proneGroundNormal;
+            return proneSupportValid;
+        }
+        internal float ProneGroundHeightOffset(Vector3 worldPosition)
+        {
+            if (!proneSupportValid || proneGroundNormal.y < 0.5f) return 0f;
+            Vector3 delta = worldPosition - transform.position;
+            return -(proneGroundNormal.x * delta.x + proneGroundNormal.z * delta.z) /
+                proneGroundNormal.y;
+        }
+        public float WeaponRecoilMultiplier => StanceStability(0.82f, 0.62f);
+        public float WeaponSpreadMultiplier => StanceStability(0.78f, 0.55f);
+
+        private float StanceStability(float crouch, float prone)
+        {
+            if (capsule == null || !capsule.enabled || !capsule.isGrounded ||
+                motor == null || !motor.isActiveAndEnabled) return 1f;
+            float crouchHeightNow = StanceHeight(PlayerStance.Crouching);
+            float multiplier = capsule.height >= crouchHeightNow
+                ? Mathf.Lerp(1f, crouch, Mathf.InverseLerp(
+                    standingHeight, crouchHeightNow, capsule.height))
+                : Mathf.Lerp(crouch, prone, Mathf.InverseLerp(
+                    crouchHeightNow, StanceHeight(PlayerStance.Prone), capsule.height));
+            Vector3 velocity = capsule.velocity;
+            float planarSquared = velocity.x * velocity.x + velocity.z * velocity.z;
+            // Braced stationary fire earns the full benefit. Crawling or
+            // moving crouched progressively releases it, without new probes.
+            return Mathf.Lerp(multiplier, 1f,
+                Mathf.InverseLerp(0.01f, 2.25f, planarSquared));
+        }
         public int AttackSequence => attackSequence;
         public float LastPunchTime => lastPunchTime;
         public float LastShootTime => lastShootTime;
@@ -72,9 +133,9 @@ namespace Aaris.MapReview
         // prone auto-stepping to 7.5 cm. Higher steps visibly float the chest
         // above the ground and allow crawling over low cover without a vault.
         // This is independent from the temporary stepOffset=0 in the air.
-        public float GroundStepOffset => stance == PlayerStance.Standing
+        public float GroundStepOffset => movementStance == PlayerStance.Standing
             ? standingStepOffset : Mathf.Min(standingStepOffset,
-                stance == PlayerStance.Crouching ? 0.18f : 0.075f);
+                movementStance == PlayerStance.Crouching ? 0.18f : 0.075f);
 
         private void Awake()
         {
@@ -84,6 +145,8 @@ namespace Aaris.MapReview
             standingHeight = capsule.height;
             standingStepOffset = capsule.stepOffset;
             stance = PlayerStance.Standing;
+            movementStance = transitionFromStance = stance;
+            stanceStartHeight = stanceTargetHeight = standingHeight;
         }
 
         public void Equip(AarisEquippedGun gun)
@@ -143,27 +206,54 @@ namespace Aaris.MapReview
 
         public bool TryStand() => TrySetStance(PlayerStance.Standing);
 
+        // Jump must launch from a fully checked standing capsule in the same
+        // input action. Ordinary stance changes retain their smooth timing.
+        internal bool TryStandForJump()
+        {
+            if (!TrySetStance(PlayerStance.Standing)) return false;
+            if (capsule.height < standingHeight && !HasRoomAbove(standingHeight)) return false;
+            ApplyStanceHeight(standingHeight);
+            stanceTransitioning = false;
+            movementStance = stance = PlayerStance.Standing;
+            capsule.stepOffset = GroundStepOffset;
+            return true;
+        }
+
+        private float StanceHeight(PlayerStance target)
+        {
+            float height = target == PlayerStance.Standing ? standingHeight :
+                target == PlayerStance.Crouching ? crouchHeight : proneHeight;
+            return Mathf.Max(height, capsule.radius * 2f + 0.015f);
+        }
+
         public bool TrySetStance(PlayerStance target)
         {
+            if ((int)target < (int)PlayerStance.Standing || (int)target > (int)PlayerStance.Prone ||
+                capsule == null || !capsule.enabled || !isActiveAndEnabled) return false;
             if (target == stance) return true;
             // Going fully prone during a jump/fall instantaneously shrinks the
             // capsule and lets the visual head/feet pass through geometry.
             // Crouch remains permitted in the air; prone needs real ground
             // contact from the motor's most recent CharacterController.Move.
             if (target == PlayerStance.Prone && !capsule.isGrounded) return false;
-            float height = target == PlayerStance.Standing ? standingHeight :
-                target == PlayerStance.Crouching ? crouchHeight : proneHeight;
-            // CharacterController cannot be shorter than its diameter.
-            height = Mathf.Max(height, capsule.radius * 2f + 0.015f);
+            float height = StanceHeight(target);
             if (height > capsule.height && !HasRoomAbove(height)) return false;
-            if (target == PlayerStance.Prone &&
-                !HasProneClearance(transform.position, transform.forward))
-                return false;
+            if (target == PlayerStance.Prone)
+            {
+                nextProneSupportSample = -1f;
+                if (!HasProneClearance(transform.position, transform.forward)) return false;
+            }
 
-            float floorRelative = standingCenter.y - standingHeight * 0.5f;
-            capsule.height = height;
-            capsule.center = new Vector3(standingCenter.x, floorRelative + height * 0.5f, standingCenter.z);
+            transitionFromStance = movementStance;
+            stanceStartHeight = capsule.height;
+            stanceTargetHeight = height;
+            stanceElapsed = 0f;
+            stanceDuration = target == PlayerStance.Prone || movementStance == PlayerStance.Prone
+                ? 0.38f : 0.24f;
+            stanceTransitioning = Mathf.Abs(height - capsule.height) > 0.0001f;
             stance = target;
+            if ((int)target > (int)movementStance || !stanceTransitioning)
+                movementStance = target;
             // A stance can also be selected by editor automation or other gameplay
             // scripts, not only the HUD. Stop latent auto-run AFTER a successful
             // low stance switch, or zero-stick input would keep crawling forward.
@@ -172,6 +262,80 @@ namespace Aaris.MapReview
                 motor.CancelAutoSprint();
             capsule.stepOffset = GroundStepOffset;
             return true;
+        }
+
+        private void ApplyStanceHeight(float height)
+        {
+            float floorRelative = standingCenter.y - standingHeight * 0.5f;
+            Vector3 center = new Vector3(standingCenter.x,
+                floorRelative + height * 0.5f, standingCenter.z);
+            if (!Mathf.Approximately(capsule.height, height)) capsule.height = height;
+            if (capsule.center != center) capsule.center = center;
+        }
+
+        private void AdvanceStanceTransition(float deltaTime)
+        {
+            if (capsule == null || !capsule.enabled) return;
+            if (stance == PlayerStance.Prone && capsule.isGrounded)
+                TrySampleProneSupport(transform.position);
+            if (!stanceTransitioning || deltaTime <= 0f) return;
+            stanceElapsed = Mathf.Min(stanceElapsed + Mathf.Min(deltaTime, 0.15f), stanceDuration);
+            float t = Mathf.SmoothStep(0f, 1f, stanceElapsed / stanceDuration);
+            float height = Mathf.Lerp(stanceStartHeight, stanceTargetHeight, t);
+            if (height > capsule.height + 0.0001f && !HasRoomAbove(height))
+            {
+                // A new roof/vehicle can arrive after the initial request.
+                // Return to the original safe low stance without an upwards
+                // capsule/camera step or a stuck Standing intent.
+                stance = movementStance = transitionFromStance;
+                stanceStartHeight = capsule.height;
+                stanceTargetHeight = StanceHeight(stance);
+                stanceElapsed = 0f;
+                stanceDuration = 0.18f;
+                return;
+            }
+            ApplyStanceHeight(height);
+            if (stanceElapsed >= stanceDuration)
+            {
+                stanceTransitioning = false;
+                movementStance = stance;
+                capsule.stepOffset = GroundStepOffset;
+            }
+        }
+
+        private bool TrySampleProneSupport(Vector3 position)
+        {
+            // One local player's small support ray, cached for 80 ms/10 cm.
+            // It serves clearance AND presentation; no per-bone ray fanout.
+            if (Time.unscaledTime < nextProneSupportSample &&
+                (position - proneSupportPosition).sqrMagnitude < 0.01f)
+                return proneSupportValid;
+            proneSupportPosition = position;
+            nextProneSupportSample = Time.unscaledTime + 0.08f;
+            proneSupportValid = false;
+            proneGroundNormal = Vector3.up;
+            int count = Physics.RaycastNonAlloc(position + Vector3.up * 0.65f,
+                Vector3.down, proneSupportHits, 1.25f,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            // A saturated unordered buffer cannot establish support safely.
+            // Fail closed without allocating or claiming a fictitious plane.
+            if (count >= proneSupportHits.Length) return false;
+            float nearest = float.PositiveInfinity;
+            for (int i = 0; i < count; i++)
+            {
+                RaycastHit hit = proneSupportHits[i];
+                if (hit.collider == null || hit.collider.transform.IsChildOf(transform) ||
+                    hit.distance >= nearest) continue;
+                nearest = hit.distance;
+                proneGroundNormal = hit.normal;
+                proneGroundPoint = hit.point;
+            }
+            // A horizontal human body cannot safely lie along a cliff face.
+            float maxSlope = Mathf.Min(28f, capsule.slopeLimit);
+            proneSupportValid = nearest < float.PositiveInfinity &&
+                proneGroundNormal.y >= Mathf.Cos(maxSlope * Mathf.Deg2Rad);
+            if (!proneSupportValid) proneGroundNormal = Vector3.up;
+            return proneSupportValid;
         }
 
         private bool HasRoomAbove(float proposedHeight)
@@ -184,8 +348,12 @@ namespace Aaris.MapReview
             float currentTop = floor + capsule.height;
             float targetTop = floor + proposedHeight;
             float radius = Mathf.Max(0.05f, capsule.radius - capsule.skinWidth);
-            float from = Mathf.Max(floor + radius, currentTop - radius * 0.35f);
-            float to = Mathf.Max(from, targetTop - radius);
+            // A tiny smooth-resize step still uses a sphere of full radius.
+            // Clamp its lower centre to its upper centre so that sphere can
+            // NEVER protrude above the proposed top and invent a low ceiling.
+            float to = Mathf.Max(floor + radius, targetTop - radius);
+            float from = Mathf.Min(to,
+                Mathf.Max(floor + radius, currentTop - radius * 0.35f));
             Vector3 low = transform.TransformPoint(
                 new Vector3(standingCenter.x, from, standingCenter.z));
             Vector3 high = transform.TransformPoint(
@@ -225,7 +393,7 @@ namespace Aaris.MapReview
         // Perform this check only for actual prone-facing changes.
         public bool CanFaceProne(Vector3 forward)
         {
-            return stance != PlayerStance.Prone ||
+            return movementStance != PlayerStance.Prone ||
                 HasProneClearance(transform.position, forward);
         }
 
@@ -234,9 +402,9 @@ namespace Aaris.MapReview
         // the last clear heading along the arc, including on long frames.
         public Quaternion LimitStanceTurn(Quaternion requested, float deltaTime)
         {
-            if (stance == PlayerStance.Standing) return requested;
+            if (movementStance == PlayerStance.Standing) return requested;
             Quaternion current = transform.rotation;
-            if (stance == PlayerStance.Crouching)
+            if (movementStance == PlayerStance.Crouching)
                 return capsule.isGrounded
                     ? Quaternion.RotateTowards(current, requested, 240f * deltaTime)
                     : requested;
@@ -262,7 +430,7 @@ namespace Aaris.MapReview
 
         public bool CanAdvanceProne(Vector3 worldPosition, Vector3 travelDirection)
         {
-            if (stance != PlayerStance.Prone) return true;
+            if (movementStance != PlayerStance.Prone) return true;
             // The horizontal footprint belongs to the actual facing body,
             // not the travel vector: armed prone strafing can move sideways.
             // Keep travelDirection in the public signature for existing callers.
@@ -275,7 +443,8 @@ namespace Aaris.MapReview
             // height alone would let the visual body's head pass through
             // house walls. Check an approximate *horizontal* body footprint
             // before lying down and before each prone movement.
-            Vector3 fwd = new Vector3(forward.x, 0f, forward.z).normalized;
+            if (!TrySampleProneSupport(position)) return false;
+            Vector3 fwd = Vector3.ProjectOnPlane(forward, proneGroundNormal).normalized;
             if (fwd.sqrMagnitude < 0.9f) fwd = transform.forward;
             Vector3 center = position + Vector3.up * 0.31f;
             Vector3 head = center + fwd * 0.55f;
@@ -326,7 +495,7 @@ namespace Aaris.MapReview
                         if (!terrain.Raycast(
                                 new Ray(sample + Vector3.up * 1.2f, Vector3.down),
                                 out RaycastHit sampleHit, 2.5f) ||
-                            sampleHit.point.y > center.y - 0.10f ||
+                            sampleHit.point.y > sample.y - 0.10f ||
                             sampleHit.normal.y < minWalkableNormal)
                             return false;
                     }
@@ -343,7 +512,7 @@ namespace Aaris.MapReview
                     Vector3 sample = end == 0 ? head : legs;
                     Ray floorProbe = new Ray(sample + Vector3.up * 0.45f, Vector3.down);
                     if (!obstacle.Raycast(floorProbe, out RaycastHit floorHit, 1.1f) ||
-                        floorHit.point.y > center.y - 0.11f ||
+                        floorHit.point.y > sample.y - 0.11f ||
                         floorHit.normal.y < minMeshNormal)
                     {
                         walkableAlongBody = false;
@@ -363,6 +532,7 @@ namespace Aaris.MapReview
                 CancelPendingCombatInput();
                 return;
             }
+            AdvanceStanceTransition(Time.deltaTime);
             if (punchContactTime >= 0f && Time.time >= punchContactTime)
             {
                 punchContactTime = -1f;
