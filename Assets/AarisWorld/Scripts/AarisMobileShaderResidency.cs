@@ -54,12 +54,16 @@ namespace Aaris.MapReview
             "Sprites/Default"
         };
 
+#if UNITY_ANDROID && !UNITY_EDITOR
         private static bool booted;
+#endif
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void Reset()
         {
+#if UNITY_ANDROID && !UNITY_EDITOR
             booted = false;
+#endif
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSplashScreen)]
