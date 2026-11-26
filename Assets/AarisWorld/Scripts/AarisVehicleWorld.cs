@@ -1077,13 +1077,20 @@ namespace Aaris.MapReview
                     name = "Aaris Automotive " + source.name,
                     enableInstancing = true
                 };
+                Shader subject = AarisShaderCache.Find("Aaris/Mobile Subject Lit");
+                if (subject != null && subject.isSupported &&
+                    polished.HasProperty("_Surface") && polished.GetFloat("_Surface") < .5f)
+                {
+                    polished.shader = subject;
+                    polished.shaderKeywords = source.shaderKeywords;
+                }
                 if (mixedBodyAtlas && polished.HasProperty("_Smoothness"))
                 {
                     // An opaque baked body texture also contains lights and
                     // windows. Capping its overly mirror-like smoothness
                     // avoids a chrome/toy look without repainting those UVs.
                     polished.SetFloat("_Smoothness", Mathf.Clamp(
-                        source.GetFloat("_Smoothness"), .50f, .71f));
+                        source.GetFloat("_Smoothness"), .46f, .68f));
                 }
                 else if (dedicatedPaint)
                 {
@@ -2371,6 +2378,10 @@ namespace Aaris.MapReview
         private static void BindVehicle(AarisVehicleRecord record, AarisVehicleMotor motor,
             GameObject source, GameObject wheelSource, Bounds bounds)
         {
+            // Suspension places the chassis pivot about 0.71 m above the road.
+            AarisSubjectContacts.Register(motor.transform,
+                new Vector2(bounds.size.x * .95f, bounds.size.z * .92f),
+                .42f, 36f, anchorOffset: -.61f);
             record.visible = motor;
             record.builtBody = source;
             record.builtWheels = wheelSource;

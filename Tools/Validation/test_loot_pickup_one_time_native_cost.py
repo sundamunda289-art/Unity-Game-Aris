@@ -47,15 +47,15 @@ class PickupOneTimeNativeCost(unittest.TestCase):
         self.assertNotIn("AarisShaderCache.Find(",init)
         self.assertNotIn("new Material(",init)
         self.assertEqual(init.count("AarisLootBeaconMaterial.Get();"),1)
-    def test_beacon_visual_settings_and_culling_unchanged(self):
+    def test_beacon_taper_and_existing_visibility_budget(self):
         init=section("public bool Initialize(", "private void Update()")
         for token in (
             "beacon.sharedMaterial = beaconPaint;",
             "beacon.SetPosition(0, new Vector3(0f, 0.12f, 0f));",
-            "beacon.SetPosition(1, new Vector3(0f, 1.65f, 0f));",
-            "beacon.startWidth = 0.035f;",
+            "beacon.SetPosition(1, new Vector3(0f, 1.22f, 0f));",
+            "beacon.startWidth = 0.052f;",
             "beacon.endWidth = 0.004f;",
-            "beacon.startColor = new Color(0.35f, 0.9f, 1f, 0.5f);",
+            "beacon.startColor = new Color(0.48f, 0.92f, 1f, 0.56f);",
             "beacon.endColor = new Color(0.35f, 0.9f, 1f, 0.04f);",
             "beacon.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;",
             "beacon.receiveShadows = false;"):

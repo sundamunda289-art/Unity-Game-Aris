@@ -125,6 +125,22 @@ namespace Aaris.MapReview.Editor
                 var visual = player.GetComponent<AarisCharacterVisual>();
                 var battle = player.GetComponent<AarisBattleActions>();
                 if (visual == null || !visual.HasWorkingHumanoid || battle == null) return;
+                string artDirectory = Environment.GetEnvironmentVariable("AARIS_LANDED_ART_DIR");
+                if (!string.IsNullOrEmpty(artDirectory))
+                {
+                    if (phase < 5)
+                    {
+                        AarisMobileSubjectVisualQA.PrepareAirfieldPortrait(player);
+                        phase = 5;
+                        phaseStarted = Time.unscaledTime;
+                    }
+                    else if (Time.unscaledTime - phaseStarted > 2f && player.GetComponent<CharacterController>().isGrounded)
+                    {
+                        AarisMobileSubjectVisualQA.CaptureLandedSubjects(player, artDirectory);
+                        Finish(runtimeErrors == 0 ? "passed" : "failed", runtimeErrors == 0 ? "" : "Map capture errors");
+                    }
+                    return;
+                }
                 if (phase <= 1)
                 {
                     SetupRamp(player, battle);

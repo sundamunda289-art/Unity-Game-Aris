@@ -64,7 +64,7 @@ namespace Aaris.MapReview
         private int shownHelmetDurability = -1;
         private bool healing;
         private float healEnd, healthAtHealStart, nextMedicalScan;
-        private static Material medcasePaint, medcrossPaint, helmetShellPaint, helmetTrimPaint;
+        private static Material medcasePaint, medcrossPaint, medtrimPaint, helmetShellPaint, helmetTrimPaint;
         private AarisThirdPersonPlayer motor;
         private AarisOfflineGlooWall gloo;
         private AarisGlooTouchButton wallTouch;
@@ -766,21 +766,9 @@ namespace Aaris.MapReview
                     return false;
                 }
 #endif
-                var helmetRoot = new GameObject("Aaris Streamed Helmet");
+                var helmetRoot = CreateMedicalVisual(true);
                 helmetRoot.transform.position = spot;
-                Material helmetShell = MedicalPaint(ref helmetShellPaint,
-                    new Color(0.18f, 0.23f, 0.20f), "Aaris Helmet Shell");
-                Material trim = MedicalPaint(ref helmetTrimPaint,
-                    new Color(0.10f, 0.12f, 0.12f), "Aaris Helmet Trim");
-                HelmetPart(helmetRoot.transform, "Helmet shell",
-                    new Vector3(0f, 0.24f, 0f),
-                    new Vector3(0.58f, 0.37f, 0.54f), helmetShell, PrimitiveType.Sphere);
-                HelmetPart(helmetRoot.transform, "Protective lower rim",
-                    new Vector3(0f, 0.11f, 0f),
-                    new Vector3(0.59f, 0.10f, 0.55f), trim, PrimitiveType.Cube);
-                HelmetPart(helmetRoot.transform, "Front visor lip",
-                    new Vector3(0f, 0.15f, -0.30f),
-                    new Vector3(0.40f, 0.06f, 0.16f), helmetShell, PrimitiveType.Cube);
+                AarisSubjectContacts.Register(helmetRoot.transform,new Vector2(.72f,.68f),.19f,22f);
                 site.visual = helmetRoot;
                 return true;
             }
@@ -805,36 +793,30 @@ namespace Aaris.MapReview
                 return false;
             }
 #endif
-            var root = new GameObject("Aaris Streamed Medkit");
+            var root = CreateMedicalVisual(false);
             root.transform.position = spot;
-            Material shell = MedicalPaint(ref medcasePaint,
-                new Color(0.24f, 0.29f, 0.25f), "Aaris Medkit Case");
-            Material red = MedicalPaint(ref medcrossPaint,
-                new Color(0.88f, 0.18f, 0.13f), "Aaris Medkit Cross");
-            MedicalCube(root.transform, "Case", new Vector3(0f, 0.11f, 0f),
-                new Vector3(0.52f, 0.21f, 0.38f), shell);
-            MedicalCube(root.transform, "Cross A", new Vector3(0f, 0.219f, 0f),
-                new Vector3(0.075f, 0.008f, 0.24f), red);
-            MedicalCube(root.transform, "Cross B", new Vector3(0f, 0.220f, 0f),
-                new Vector3(0.24f, 0.008f, 0.075f), red);
+            AarisSubjectContacts.Register(root.transform,new Vector2(.66f,.53f),.19f,22f);
             site.visual = root;
             return true;
         }
 
-        private static void HelmetPart(Transform parent, string name,
-            Vector3 position, Vector3 scale, Material material, PrimitiveType primitive)
+        private static GameObject CreateMedicalVisual(bool helmet)
         {
-            var part = GameObject.CreatePrimitive(primitive);
-            part.name = name;
-            part.transform.SetParent(parent, false);
-            part.transform.localPosition = position;
-            part.transform.localScale = scale;
-            var collider = part.GetComponent<Collider>();
-            if (collider != null) { collider.enabled = false; Destroy(collider); }
-            var renderer = part.GetComponent<Renderer>();
-            renderer.sharedMaterial = material;
-            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
+            if (helmet)
+            {
+                Material shell = MedicalPaint(ref helmetShellPaint,
+                    new Color(.23f,.29f,.22f), "Aaris Helmet Shell");
+                Material trim = MedicalPaint(ref helmetTrimPaint,
+                    new Color(.075f,.085f,.085f), "Aaris Helmet Trim");
+                return AarisSupplyGeometry.Create(true, new[] { shell, trim });
+            }
+            Material body = MedicalPaint(ref medcasePaint,
+                new Color(.74f,.77f,.70f), "Aaris Medkit Case");
+            Material cross = MedicalPaint(ref medcrossPaint,
+                new Color(.84f,.055f,.042f), "Aaris Medkit Cross");
+            Material seam = MedicalPaint(ref medtrimPaint,
+                new Color(.08f,.105f,.10f), "Aaris Medkit Trim");
+            return AarisSupplyGeometry.Create(false, new[] { body, cross, seam });
         }
 
         private static Material MedicalPaint(ref Material material, Color color, string name)
@@ -847,26 +829,12 @@ namespace Aaris.MapReview
             material = new Material(shader) { name = name };
             if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
             else material.color = color;
-            if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", 0.13f);
-            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.32f);
+            bool shell = name == "Aaris Helmet Shell";
+            bool medical = name == "Aaris Medkit Case";
+            if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", shell ? .08f : 0f);
+            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", shell ? .43f : medical ? .31f : .19f);
             material.enableInstancing = true;
             return material;
-        }
-
-        private static void MedicalCube(Transform parent, string name,
-            Vector3 position, Vector3 scale, Material material)
-        {
-            var part = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            part.name = name;
-            part.transform.SetParent(parent, false);
-            part.transform.localPosition = position;
-            part.transform.localScale = scale;
-            var collider = part.GetComponent<Collider>();
-            if (collider != null) { collider.enabled = false; Destroy(collider); }
-            var renderer = part.GetComponent<Renderer>();
-            renderer.sharedMaterial = material;
-            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
         }
 
         private void LateUpdate() => RefreshSafeArea();
@@ -897,6 +865,7 @@ namespace Aaris.MapReview
                 if (visual != null) Destroy(visual);
             }
             if (medcasePaint != null) Destroy(medcasePaint);
+            if (medtrimPaint != null) Destroy(medtrimPaint);
             if (medcrossPaint != null) Destroy(medcrossPaint);
             if (helmetShellPaint != null) Destroy(helmetShellPaint);
             if (helmetTrimPaint != null) Destroy(helmetTrimPaint);

@@ -125,7 +125,9 @@ namespace Aaris.MapReview
             if (baseColor == null || normal == null || metallicSmoothness == null)
                 return null;
 
-            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
+            Shader shader = AarisShaderCache.Find("Aaris/Mobile Subject Lit");
+            if (shader == null || !shader.isSupported)
+                shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
             if (shader == null) shader =
                 AarisShaderCache.Find("Universal Render Pipeline/Simple Lit");
             if (shader == null) return null;
@@ -138,7 +140,7 @@ namespace Aaris.MapReview
                 material.SetTexture("_BaseMap", baseColor);
             else material.mainTexture = baseColor;
             if (material.HasProperty("_BaseColor"))
-                material.SetColor("_BaseColor", Color.white);
+                material.SetColor("_BaseColor", new Color(1.25f, 1.25f, 1.25f, 1f));
             if (material.HasProperty("_BumpMap"))
             {
                 material.SetTexture("_BumpMap", normal);
@@ -311,7 +313,9 @@ namespace Aaris.MapReview
                 cached != null) return cached;
 
             Material fallback = WeaponFinish(spec);
-            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
+            Shader shader = AarisShaderCache.Find("Aaris/Mobile Subject Lit");
+            if (shader == null || !shader.isSupported)
+                shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
             if (shader == null) shader =
                 AarisShaderCache.Find("Universal Render Pipeline/Simple Lit");
             if (shader == null) return fallback;

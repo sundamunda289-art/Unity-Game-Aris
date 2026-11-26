@@ -24,7 +24,7 @@ class LiveGroundLootImport(unittest.TestCase):
 
     def test_all_live_model_files_exist_for_authored_loot(self):
         models = json.loads(CAT.read_text())['weapons']
-        # Five distinct meshes now back six playable gun variants (DMR shares BattleRifle).
+        # DMR and BattleRifle share a mesh. The compact sidearm uses a native prefab.
         self.assertGreaterEqual(len(models), 6)
         self.assertGreaterEqual(len({model['modelResource'] for model in models}), 5)
         self.assertEqual(len({model['id'] for model in models}), len(models))
@@ -32,6 +32,13 @@ class LiveGroundLootImport(unittest.TestCase):
         self.assertIn('DMR', {model['id'] for model in models})
         for model in models:
             p = ROOT / 'Assets/Resources' / model['modelResource']
+            if model['id'] == 'Pistol':
+                prefab = p.with_suffix('.prefab')
+                mesh = p.with_name('CompactPistolMesh.asset')
+                self.assertTrue(mesh.is_file())
+                guid = Path(str(mesh) + '.meta').read_text().split('guid: ')[1].splitlines()[0]
+                self.assertIn('guid: ' + guid, prefab.read_text())
+                continue
             self.assertTrue(p.with_suffix('.fbx').is_file()
                             or p.with_suffix('.obj').is_file(), str(p))
         data = json.loads(LOOT.read_text())

@@ -661,7 +661,25 @@ namespace Aaris.MapReview
             bool hasAuthoredBase = baseMap != null && baseMap != Texture2D.whiteTexture;
             // The model importer already remaps these slots to saved URP materials.
             // Use their original shader keywords and pass state in the Android player.
-            if (hasAuthoredBase && source.shader == shader) return source;
+            if (hasAuthoredBase && source.shader == shader)
+            {
+                // One cached local tactical material per authored slot.
+                Shader subject = AarisShaderCache.Find("Aaris/Mobile Subject Lit");
+                if (!tacticalSoldierLoaded || subject == null || !subject.isSupported ||
+                    source.GetFloat("_Surface") > .5f) return source;
+                var finish = new Material(source) { name = "Aaris Hero " + source.name };
+                finish.shader = subject;
+                finish.shaderKeywords = source.shaderKeywords;
+                string slot = source.name;
+                float smooth = slot.IndexOf("Plate", StringComparison.OrdinalIgnoreCase) >= 0 ? .46f :
+                    slot.IndexOf("Head", StringComparison.OrdinalIgnoreCase) >= 0 ? .40f :
+                    slot.IndexOf("Pads", StringComparison.OrdinalIgnoreCase) >= 0 ? .32f :
+                    slot.IndexOf("Puches", StringComparison.OrdinalIgnoreCase) >= 0 ? .24f : .18f;
+                finish.SetFloat("_Smoothness", smooth);
+                finish.SetFloat("_Metallic", 0f);
+                realisticSkinMaterials[source] = finish;
+                return finish;
+            }
 
             string label = source.name ?? string.Empty;
             Color colour = sourceColor;
@@ -781,6 +799,8 @@ namespace Aaris.MapReview
             if (tacticalSoldierLoaded || realisticSoldierLoaded)
             {
                 ApplyRealisticSoldierMaterials();
+                AarisSubjectContacts.Register(transform,new Vector2(.85f,.75f),.20f,
+                    18f,controller,visual.transform);
                 return;
             }
             if (primaryLoaded)

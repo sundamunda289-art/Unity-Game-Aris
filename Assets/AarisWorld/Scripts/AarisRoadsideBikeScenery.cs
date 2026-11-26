@@ -184,7 +184,9 @@ namespace Aaris.MapReview
                     if (!isActiveAndEnabled) yield break;
                 }
 #endif
-                surfaces[i] = new Material(shader)
+                Shader subject = (i == 0 || i == 2)
+                    ? AarisShaderCache.Find("Aaris/Mobile Subject Lit") : null;
+                surfaces[i] = new Material(subject != null && subject.isSupported ? subject : shader)
                 {
                     name = "Aaris Road Bike " + i,
                     enableInstancing = true
@@ -801,6 +803,8 @@ namespace Aaris.MapReview
             bikeVisuals.Add(root, new BikeVisualCache {
                 renderers = renderers, paintLayouts = layouts
             });
+            AarisSubjectContacts.Register(root.transform,
+                new Vector2(1.10f, 2.35f), .24f, 26f);
             return root;
         }
 

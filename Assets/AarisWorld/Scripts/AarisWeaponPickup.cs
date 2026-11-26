@@ -203,10 +203,10 @@ namespace Aaris.MapReview
                 beacon.sharedMaterial = beaconPaint;
                 beacon.positionCount = 2;
                 beacon.SetPosition(0, new Vector3(0f, 0.12f, 0f));
-                beacon.SetPosition(1, new Vector3(0f, 1.65f, 0f));
-                beacon.startWidth = 0.035f;
+                beacon.SetPosition(1, new Vector3(0f, 1.22f, 0f));
+                beacon.startWidth = 0.052f;
                 beacon.endWidth = 0.004f;
-                beacon.startColor = new Color(0.35f, 0.9f, 1f, 0.5f);
+                beacon.startColor = new Color(0.48f, 0.92f, 1f, 0.56f);
                 beacon.endColor = new Color(0.35f, 0.9f, 1f, 0.04f);
                 beacon.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 beacon.receiveShadows = false;
@@ -217,6 +217,9 @@ namespace Aaris.MapReview
             nextBeaconVisibilityCheck = Time.unscaledTime +
                 Mathf.Abs(index % 9) * 0.05f;
             activePickups.Add(this);
+            AarisSubjectContacts.Register(transform,
+                Vector2.one * Mathf.Clamp(state.Spec.presentationLengthMetres + .15f,.42f,1.25f),
+                .42f, 22f);
             return true;
         }
 
