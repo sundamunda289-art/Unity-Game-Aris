@@ -313,7 +313,7 @@ namespace Aaris.MapReview
                 terrains = Terrain.activeTerrains;
             auditedTiles = visibleHeightmaps = paintedTiles = alphamapCount =
                 invalidTerrainMaterials = 0;
-            Shader lit = Shader.Find("Universal Render Pipeline/Terrain/Lit");
+            Shader lit = AarisShaderCache.Find("Universal Render Pipeline/Terrain/Lit");
             terrainLitAvailable = lit != null && lit.isSupported;
             if (terrains != null)
             {
