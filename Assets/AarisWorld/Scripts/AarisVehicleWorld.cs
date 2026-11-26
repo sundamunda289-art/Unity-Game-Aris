@@ -1908,6 +1908,13 @@ namespace Aaris.MapReview
                 typeIndex < 0 || typeIndex >= vehicleTypes.Length ||
                 !authoredBodyResolved[typeIndex])
                 return false;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // This hidden clone is always optional. Under severe thermal
+            // pressure save CPU/native-memory headroom for the required visible
+            // spawn path instead of doing speculative hierarchy preparation.
+            if (AarisAndroidThermalGovernor.SuspendSpeculativePrefetch)
+                return false;
+#endif
 
             GameObject source = prefabs[typeIndex];
             GameObject wheels = wheelPrefabs[typeIndex];
