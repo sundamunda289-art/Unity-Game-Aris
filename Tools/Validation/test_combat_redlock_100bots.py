@@ -57,7 +57,15 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("ApplyDamage(float amount, GameObject attacker)", HP)
         self.assertIn("public void ApplyHitDamage", HP)
         self.assertIn("HealthChanged?.Invoke(this);", HP)
-        self.assertIn("Damaged?.Invoke(this, previous - current, attacker);", HP)
+        hit = HP.split("public void ApplyHitDamage(", 1)[1].split(
+            "public void RestoreHealth(", 1)[0]
+        self.assertIn("float actualLoss = previous - current;", hit)
+        self.assertIn("if (actualLoss > 0f) Damaged?.Invoke(this, actualLoss, attacker);", hit)
+        self.assertLess(hit.index("float actualLoss = previous - current;"),
+                        hit.index("HealthChanged?.Invoke(this);"))
+        self.assertLess(hit.index("if (fatal) dead = true;"),
+                        hit.index("HealthChanged?.Invoke(this);"))
+        self.assertLess(hit.index("if (!fatal) return;"), hit.index("Died?.Invoke(this);"))
         self.assertIn('healthText.text = "HP " + current + " / " + max;', HUD)
         self.assertIn("hitFadeUntil = Time.unscaledTime + .35f;", HUD)
         self.assertIn('"HIT RIGHT"', HUD)

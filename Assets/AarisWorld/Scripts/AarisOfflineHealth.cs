@@ -53,10 +53,15 @@ namespace Aaris.MapReview
             current = Mathf.Max(0f, current - (amount - absorbed));
             // Publish fatality before notifying HUD/AI health observers:
             // a zero-HP notification must already report IsDead = true.
-            if (current <= 0f) dead = true;
+            // Capture this hit's transition before notifying observers. A
+            // synchronous listener may apply another hit or heal the receiver.
+            // Nested changes must not alter the original loss or repeat Died.
+            bool fatal = current <= 0f;
+            float actualLoss = previous - current;
+            if (fatal) dead = true;
             HealthChanged?.Invoke(this);
-            if (previous > current) Damaged?.Invoke(this, previous - current, attacker);
-            if (!dead) return;
+            if (actualLoss > 0f) Damaged?.Invoke(this, actualLoss, attacker);
+            if (!fatal) return;
             Died?.Invoke(this);
             // Elimination logs should not capture stack traces for up to 100 bots
             // in a production Android match. Keep development diagnostics.
