@@ -23,6 +23,7 @@ class AndroidShaderResidencyTests(unittest.TestCase):
         self.assertIn("#if UNITY_ANDROID && !UNITY_EDITOR", RUNTIME)
         self.assertIn("AarisMobileRuntime.UseConstrainedGpuStreamingBudget()", RUNTIME)
         self.assertIn("Shader.maximumChunksOverride", RUNTIME)
+        self.assertIn("if (ramMB > 6144) return;", RUNTIME)
         self.assertIn("ramMB > 0 && ramMB <= 4096 ? 4 : 6", RUNTIME)
         for forbidden in (
             "Shader.globalMaximumLOD",
