@@ -74,6 +74,9 @@ namespace Aaris.MapReview
                 return;
 
             int ramMB = SystemInfo.systemMemorySize;
+            // This policy specifically targets the reported 4-6 GB class.
+            // Do not constrain higher-memory devices without measured evidence.
+            if (ramMB > 6144) return;
             int desiredChunkCount = ramMB > 0 && ramMB <= 4096 ? 4 : 6;
             int current = Shader.maximumChunksOverride;
 
