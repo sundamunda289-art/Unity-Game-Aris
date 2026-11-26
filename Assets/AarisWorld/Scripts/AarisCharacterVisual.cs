@@ -634,7 +634,7 @@ namespace Aaris.MapReview
             if (source == null) return null;
             if (realisticSkinMaterials.TryGetValue(source, out Material cached) &&
                 cached != null) return cached;
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
             if (shader == null) return source;
 
             Color sourceColor = Color.white;
@@ -825,8 +825,8 @@ namespace Aaris.MapReview
                 if (score > bestScore) { chosen = tex; bestScore = score; }
             }
             if (chosen == null || bestScore < 0) return;
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null) shader = Shader.Find("Standard");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = AarisShaderCache.Find("Standard");
             if (shader == null) return;
             runtimeSkin = new Material(shader) { name = "AarisKenneyRuntimeSkin" };
             if (runtimeSkin.HasProperty("_BaseMap")) runtimeSkin.SetTexture("_BaseMap", chosen);
