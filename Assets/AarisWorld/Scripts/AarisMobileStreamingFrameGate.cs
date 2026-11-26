@@ -671,6 +671,19 @@ namespace Aaris.MapReview
             return true;
         }
 
+        // Proactive unused-asset reclamation is nonessential native work.
+        // Admit it through the same one-work-per-frame fences as diagnostics so
+        // it cannot begin beside additive scene integration, essential imports,
+        // physics catch-up, teardown settling, or another optional hierarchy.
+        internal static bool TryClaimUnusedAssetCleanupFrame()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return TryClaimNonessentialDiagnosticFrame();
+#else
+            return true;
+#endif
+        }
+
         internal static bool TryClaimOptionalModelBuild()
         {
             return TryClaimOptionalModelBuild(false);
