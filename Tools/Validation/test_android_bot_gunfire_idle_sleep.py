@@ -20,7 +20,8 @@ class IdleBotGunfireTests(unittest.TestCase):
         self.assertIn("if (!anyLiveEffect) enabled = false;", UPDATE)
 
     def test_active_tracers_lights_grounded_and_delayed_casings_keep_driver_awake(self):
-        self.assertIn("slot.flash.enabled || slot.tracer.enabled || slot.burst.enabled", UPDATE)
+        self.assertIn("slot.flash.enabled || slot.tracer.enabled ||", UPDATE)
+        self.assertIn("(slot.burst != null && slot.burst.enabled)", UPDATE)
         self.assertIn("if (casing != null && casing.queued) anyLiveEffect = true;", UPDATE)
         self.assertIn("anyLiveEffect = true; // Keep grounded casings", UPDATE)
         self.assertLess(UPDATE.index("if (now >= casing.until)"),
