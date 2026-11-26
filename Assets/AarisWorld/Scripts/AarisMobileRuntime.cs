@@ -35,25 +35,6 @@ namespace Aaris.MapReview
 #if UNITY_ANDROID && !UNITY_EDITOR
         private const float SceneRetirementCalmSeconds = 2f;
         private const float ProactiveAssetCleanupCooldownSeconds = 30f;
-        private static int pendingRetiredAdditiveScenes;
-        private static float lastAdditiveSceneRetirementAt = -1f;
-
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetSceneRetirementCleanupState()
-        {
-            pendingRetiredAdditiveScenes = 0;
-            lastAdditiveSceneRetirementAt = -1f;
-        }
-
-        internal static void NotifyAdditiveSceneRetired()
-        {
-            // Called on Unity's main thread after an owned additive scene has
-            // completed retirement. Saturate the counter; only "some dead
-            // scene assets exist" matters to the memory-pressure scheduler.
-            pendingRetiredAdditiveScenes =
-                Math.Min(pendingRetiredAdditiveScenes + 1, 32);
-            lastAdditiveSceneRetirementAt = Time.unscaledTime;
-        }
 #endif
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -1016,7 +997,7 @@ namespace Aaris.MapReview
                     AarisMobileStreamingFrameGate.DeferOptionalWorkDuringAssetCleanup(unloading);
                     // This pass also covers every additive scene retired before
                     // it started, so do not schedule a redundant proactive scan.
-                    pendingRetiredAdditiveScenes = 0;
+                    AarisMobileStreamingFrameGate.ClearRetiredAdditiveSceneSignals();
                     proactiveAssetCleanupPending = false;
                     proactiveAssetCleanupAfter =
                         Time.unscaledTime + ProactiveAssetCleanupCooldownSeconds;
@@ -1042,13 +1023,13 @@ namespace Aaris.MapReview
                 AarisAndroidMemoryPressure.TrySample(out bool memoryPressure))
             {
                 proactiveAssetCleanupPending =
-                    memoryPressure && pendingRetiredAdditiveScenes > 0;
+                    memoryPressure && AarisMobileStreamingFrameGate.RetiredAdditiveSceneCount > 0;
             }
 
             if (proactiveAssetCleanupPending &&
-                pendingRetiredAdditiveScenes > 0 &&
-                lastAdditiveSceneRetirementAt >= 0f &&
-                Time.unscaledTime - lastAdditiveSceneRetirementAt >=
+                AarisMobileStreamingFrameGate.RetiredAdditiveSceneCount > 0 &&
+                AarisMobileStreamingFrameGate.LastAdditiveSceneRetirementAt >= 0f &&
+                Time.unscaledTime - AarisMobileStreamingFrameGate.LastAdditiveSceneRetirementAt >=
                     SceneRetirementCalmSeconds &&
                 Time.unscaledTime >= proactiveAssetCleanupAfter &&
                 (unloading == null || unloading.isDone) &&
@@ -1061,7 +1042,7 @@ namespace Aaris.MapReview
                 unloading = Resources.UnloadUnusedAssets();
                 AarisMobileStreamingFrameGate.DeferOptionalWorkDuringAssetCleanup(unloading);
                 assetUnloadStartedCount++;
-                pendingRetiredAdditiveScenes = 0;
+                AarisMobileStreamingFrameGate.ClearRetiredAdditiveSceneSignals();
                 proactiveAssetCleanupPending = false;
                 proactiveAssetCleanupAfter =
                     Time.unscaledTime + ProactiveAssetCleanupCooldownSeconds;
