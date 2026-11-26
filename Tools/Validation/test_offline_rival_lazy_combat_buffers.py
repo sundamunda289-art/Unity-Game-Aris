@@ -22,9 +22,10 @@ class DistantCombatMemory(unittest.TestCase):
   self.assertLess(update.index('TickVirtualCombat(now, dt, playerPosition);'),update.index('EnsurePhysicalCombatBuffers();'))
   self.assertLess(update.index('EnsurePhysicalCombatBuffers();'),update.index('if (now >= nextThink)'))
  def test_los_and_hit_callback_guards(self):
-  for signature in ('private bool TryGetSightHit(', 'private bool MuzzlePathClear(', 'private void OnDamaged('):
+  for signature in ('private bool TryGetSightHit(', 'private bool MuzzlePathClear(', 'private void TrySeekTacticalCover('):
    segment=RIVAL.split(signature,1)[1].split('private ',1)[0]
    self.assertIn('EnsurePhysicalCombatBuffers();',segment)
   self.assertIn('if (virtualBody || Time.time < nextCoverQuery) return;',RIVAL)
+  self.assertIn('TrySeekTacticalCover(attacker.transform.position, Time.time);',RIVAL)
 
 if __name__=='__main__':unittest.main()

@@ -279,7 +279,7 @@ for fps in (10, 30, 60, 120):
     for _ in range(round(0.3 * fps)):
         v = max(0.0, v - 19.0 * 0.18 / fps)
     assert 3.70 < v < 3.90, (fps, v)
-assert 'if (launchJump && battle != null && !battle.TryStand())' in motor
+assert 'if (launchJump && battle != null && !battle.TryStandForJump())' in motor
 assert 'GlooWall-ArcticBlue' in gloo and 'GlooWall-FrostHighlight' in gloo
 assert 'renderer.SetPropertyBlock(block, slot)' in gloo
 assert 'slots[i] = material;' in gloo and 'if (ghost)' in gloo
@@ -354,19 +354,22 @@ assert origin + prone_head_reach < wall_start
 assert resolved_position + prone_head_reach > wall_start
 # Prone head/feet must not tunnel into an uphill TerrainCollider. The
 # underlying terrain still supports the body if BOTH end samples have a
-# walkable normal and leave at least 10 cm below the chest center.
+# walkable normal and leave at least 10 cm below the slope-aligned endpoint.
 assert 'if (obstacle is TerrainCollider terrain)' in action
 assert 'new Ray(sample + Vector3.up * 1.2f, Vector3.down)' in action
-assert 'sampleHit.point.y > center.y - 0.10f' in action
+assert 'sampleHit.point.y > sample.y - 0.10f' in action
+assert 'Vector3.ProjectOnPlane(forward, proneGroundNormal)' in action
 assert 'sampleHit.normal.y < minWalkableNormal' in action
 assert 'if (obstacle is TerrainCollider) continue;' not in action
 import math
 for rise, angle, allowed in (
-    (0.00, 0, True), (0.20, 20, True),
-    (0.22, 20, False), (0.00, 55, False)
+    (0.00, 0, True), (0.22, 20, True),
+    (0.43, 20, False), (0.00, 55, False)
 ):
-    # center is 0.31 m above feet; terrain must stay <= 0.21 m.
-    got = rise <= (0.31 - 0.10) and math.cos(math.radians(angle)) >= math.cos(math.radians(45))
+    # Each head endpoint follows the admitted plane; an extra bank still blocks.
+    endpoint = 0.31 + 0.55 * math.sin(math.radians(angle))
+    got = (rise <= endpoint - 0.10 and abs(angle) <= 28
+           and math.cos(math.radians(angle)) >= math.cos(math.radians(45)))
     assert got == allowed, (rise, angle, got)
 # A MeshCollider bridge/ramp can be walkable below the chest while its
 # uphill end clips the prone head. A centre-only raycast misses that case.
@@ -377,18 +380,20 @@ assert 'float minMeshNormal = Mathf.Cos(capsule.slopeLimit * Mathf.Deg2Rad);' in
 assert mesh_clearance.count('for (int end = 0; end < 2; end++)') == 2
 assert mesh_clearance.count('Vector3 sample = end == 0 ? head : legs;') == 2
 assert 'new Ray(sample + Vector3.up * 0.45f, Vector3.down)' in mesh_clearance
-assert 'floorHit.point.y > center.y - 0.11f' in mesh_clearance
+assert 'floorHit.point.y > sample.y - 0.11f' in mesh_clearance
 assert 'floorHit.normal.y < minMeshNormal' in mesh_clearance
 assert 'if (walkableAlongBody) continue;' in mesh_clearance
 assert 'new Ray(center + Vector3.up * 0.45f, Vector3.down)' not in mesh_clearance
 
 def mesh_support_clear(head_rise, leg_rise, slope_degrees):
-    return (head_rise <= 0.31 - 0.11 and leg_rise <= 0.31 - 0.11
+    rise = 0.55 * math.sin(math.radians(slope_degrees))
+    return (head_rise <= 0.31 + rise - 0.11 and leg_rise <= 0.31 - rise - 0.11
+            and abs(slope_degrees) <= 28
             and math.cos(math.radians(slope_degrees)) >= math.cos(math.radians(46)))
 
 for head, legs, slope, permitted in (
-    (0.0, 0.0, 0, True), (0.20, 0.10, 20, True),
-    (0.22, 0.0, 20, False), (0.0, 0.22, 20, False),
+    (0.0, 0.0, 0, True), (0.20, -0.10, 20, True),
+    (0.42, 0.0, 20, False), (0.0, 0.22, 20, False),
     (0.10, 0.10, 55, False),
 ):
     assert mesh_support_clear(head, legs, slope) == permitted, (head, legs, slope)

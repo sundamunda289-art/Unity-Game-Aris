@@ -1124,6 +1124,8 @@ namespace Aaris.MapReview
                 spec.pellets > 1 ? spec.spreadDegrees * 0.65f :
                 Mathf.Min(spec.spreadDegrees * 0.30f,
                     14f / Mathf.Max(1f, spec.rangeMetres));
+            shotSpreadDegrees *= cachedActions != null
+                ? cachedActions.WeaponSpreadMultiplier : 1f;
             bool impactSoundEmitted = false;
             AarisNearbyColliders cover = cachedMotor != null ? cachedMotor.CombatCover : null;
             for (int pellet = 0; pellet < spec.pellets; pellet++)
@@ -1196,9 +1198,11 @@ namespace Aaris.MapReview
                         spec.headshotMultiplier);
                 }
             }
-            if (cachedMotor != null) cachedMotor.ApplyWeaponRecoil(spec.recoilPitchDegrees,
+            float recoilMultiplier = cachedActions != null
+                ? cachedActions.WeaponRecoilMultiplier : 1f;
+            if (cachedMotor != null) cachedMotor.ApplyWeaponRecoil(spec.recoilPitchDegrees * recoilMultiplier,
                 (AarisWeaponRandom.Next01(ref spreadSeed) - 0.5f) *
-                spec.recoilPitchDegrees * 0.4f);
+                spec.recoilPitchDegrees * 0.4f * recoilMultiplier);
             if (magazine == 0) BeginReload();
             return true;
         }

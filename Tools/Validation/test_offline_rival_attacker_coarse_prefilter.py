@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""42m player-attacker scan: conservative 48m spatial coarse reject.
+"""86m player-attacker scan: conservative 92m spatial coarse reject.
 
 Contract + deterministic 100-bot parity. Not a Unity/Android FPS benchmark.
 """
@@ -24,12 +24,12 @@ def select_two(bots, player, fast=False):
     for i, bot in enumerate(bots):
         if not bot["alive"]:
             continue
-        if fast and bot["registered"] and distance_sqr(bot["cached"], player) >= 48 ** 2:
+        if fast and bot["registered"] and distance_sqr(bot["cached"], player) >= 92 ** 2:
             continue
         if not bot["visible"]:
             continue
         actual = distance_sqr(bot["position"], player)
-        if actual >= 42 ** 2 or not bot["physical_los"]:
+        if actual >= 86 ** 2 or not bot["physical_los"]:
             continue
         # The C# selection has strict < ties and traverses roster slot order.
         candidates.append((actual, i))
@@ -40,7 +40,7 @@ class SpatialAttackerCoarseReject(unittest.TestCase):
     def test_every_distant_bot_is_rejected_before_native_transform_or_los(self):
         self.assertIn("rivalSpatialRegistered[i] &&", SCAN)
         self.assertIn("rivalSpatialPositions[i] - playerPosition", SCAN)
-        self.assertIn("48f * 48f) continue;", SCAN)
+        self.assertIn("AarisOfflineRival.PlayerThreatBroadphaseRange) continue;", SCAN)
         self.assertIn("if (!bot.HasVisibleBody) continue;", SCAN)
         self.assertIn(
             "float distance = (bot.transform.position - playerPosition).sqrMagnitude;",
@@ -75,7 +75,7 @@ class SpatialAttackerCoarseReject(unittest.TestCase):
                       rng.uniform(-900, 900))
             bots = []
             for i in range(100):
-                # Include dense threat bands, exact 42m boundary, distant
+                # Include dense threat bands, exact 86m boundary, distant
                 # remote squads, same-slot ties and negative grid coordinates.
                 if i < 30:
                     dx = rng.uniform(-50, 50)
@@ -83,13 +83,13 @@ class SpatialAttackerCoarseReject(unittest.TestCase):
                     pos = (player[0] + dx, player[1] + rng.uniform(-2, 2),
                            player[2] + dz)
                 elif i == 30:
-                    pos = (player[0] + 42.0, player[1], player[2])
+                    pos = (player[0] + 86.0, player[1], player[2])
                 else:
                     pos = (player[0] + rng.choice((-1, 1)) * rng.uniform(55, 1200),
                            player[1] + rng.uniform(-8, 8),
                            player[2] + rng.choice((-1, 1)) * rng.uniform(55, 1200))
                 # At most 3m cache error covers ordinary movement between
-                # position-tracking ticks and the 42-to-48m safety margin.
+                # position-tracking ticks and the 42-to-92m safety margin.
                 cached = (pos[0] + rng.uniform(-1.6, 1.6),
                           pos[1] + rng.uniform(-1.6, 1.6),
                           pos[2] + rng.uniform(-1.6, 1.6))
@@ -104,10 +104,10 @@ class SpatialAttackerCoarseReject(unittest.TestCase):
     def test_boundary_and_unregistered_entry_still_use_live_geometry(self):
         player = (0., 0., 0.)
         bots = [
-            dict(alive=True, registered=True, position=(41.99, 0., 0.),
-                 cached=(47.0, 0., 0.), visible=True, physical_los=True),
-            dict(alive=True, registered=True, position=(42., 0., 0.),
-                 cached=(40., 0., 0.), visible=True, physical_los=True),
+            dict(alive=True, registered=True, position=(85.99, 0., 0.),
+                 cached=(91.0, 0., 0.), visible=True, physical_los=True),
+            dict(alive=True, registered=True, position=(86., 0., 0.),
+                 cached=(84., 0., 0.), visible=True, physical_los=True),
             dict(alive=True, registered=False, position=(2., 0., 0.),
                  cached=(900., 0., 0.), visible=True, physical_los=True),
             dict(alive=True, registered=True, position=(10., 0., 0.),

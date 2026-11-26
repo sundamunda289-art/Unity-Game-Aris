@@ -11,7 +11,7 @@ class CoverNativePose(unittest.TestCase):
         for x in ("if (virtualBody || Time.time < nextCoverQuery) return;",
                   "Transform selfTransform = transform;",
                   "Vector3 selfPosition = selfTransform.position;",
-                  "Vector3 attackerPosition = attacker.transform.position;",
+                  "TrySeekTacticalCover(attacker.transform.position, Time.time);",
                   "Vector3 away = selfPosition - attackerPosition;",
                   "Vector3 coverSearchCenter = selfPosition + Vector3.up;",
                   "obstacle.transform.IsChildOf(selfTransform)",
@@ -28,7 +28,7 @@ class CoverNativePose(unittest.TestCase):
 
     def test_native_collision_cover_and_timing_unchanged(self):
         for x in ("nextHitReaction = Time.time + 0.22f;",
-                  "nextCoverQuery = Time.time + 1.5f;",
+                  "nextCoverQuery = now + 1.5f;",
                   "Physics.OverlapSphereNonAlloc(coverSearchCenter,",
                   "11f, coverCandidates, Physics.DefaultRaycastLayers",
                   "11f, crowdedCoverCandidates, Physics.DefaultRaycastLayers",
@@ -36,10 +36,11 @@ class CoverNativePose(unittest.TestCase):
                   "obstacle is CharacterController",
                   "bounds.size.y < .9f || bounds.size.y > 18f",
                   "if (coverAxis.sqrMagnitude < .01f) continue;",
-                  "if (cost < 2f || cost > 160f || cost >= best) continue;",
+                  "if (cost < 2f || cost > 160f || cost >= best ||",
+                  "!owner.IsRivalCoverAvailable(candidate, spatialSlot, now)) continue;",
                   "obstacle.Raycast(new Ray(coverFrom, coverRay / coverDistance)",
                   "coverDestination = candidate;",
-                  "coverUntil = Time.time + 2f;",
+                  "coverUntil = now + Mathf.Max(2f, carriedGun != null &&",
                   "if (away.sqrMagnitude < .01f) return;"):
             self.assertIn(x,C)
 

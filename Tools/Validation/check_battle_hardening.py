@@ -332,11 +332,13 @@ def audit() -> None:
 
     # A walkable bridge/mesh floor may overlap the prone footprint, but
     # only treat it as support when BOTH head and feet have safe clearance.
-    # An uphill ramp can be clear at the chest yet clip a prone head.
+    # Sample each end on the same bounded support plane used by the prone
+    # body, so a clear ramp is accepted but a protruding bank/head wall is not.
     assert "obstacle.Raycast(floorProbe" in state
     assert "float minMeshNormal = Mathf.Cos(capsule.slopeLimit * Mathf.Deg2Rad);" in state
     assert "bool walkableAlongBody = true;" in state
-    assert "floorHit.point.y > center.y - 0.11f" in state
+    assert "Vector3.ProjectOnPlane(forward, proneGroundNormal)" in state
+    assert "floorHit.point.y > sample.y - 0.11f" in state
     assert "floorHit.normal.y < minMeshNormal" in state
     assert "if (walkableAlongBody) continue;" in state
 

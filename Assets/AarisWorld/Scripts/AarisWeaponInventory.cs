@@ -838,7 +838,8 @@ namespace Aaris.MapReview
         // existing Humanoid bones form analytic shoulder/elbow/wrist chains.
         // Both wrists are solved AFTER the PlayableGraph (execution order +310).
         private static void ReachArm(Transform upper, Transform forearm,
-            Transform wrist, Vector3 desired, Vector3 fallbackPole)
+            Transform wrist, Vector3 desired, Vector3 fallbackPole,
+            Vector3 supportPoint, Vector3 supportNormal)
         {
             if (upper == null || forearm == null || wrist == null) return;
             Vector3 shoulder = upper.position;
@@ -862,8 +863,35 @@ namespace Aaris.MapReview
             if (pole.sqrMagnitude < 0.0001f)
                 pole = Vector3.ProjectOnPlane(fallbackPole, direction);
             if (pole.sqrMagnitude < 0.0001f) return;
-            Vector3 targetElbow = shoulder + direction * along +
-                pole.normalized * perpendicular;
+            pole.Normalize();
+            Vector3 elbowCenter = shoulder + direction * along;
+            if (supportNormal.sqrMagnitude > 0.5f && perpendicular > 0.0001f)
+            {
+                // Every exact-length elbow lies on this bend circle. Select
+                // the nearest bend direction whose normal height clears the
+                // real support plane; never move an elbow independently and
+                // stretch either segment or detach the wrist from its grip.
+                Vector3 circleUp = Vector3.ProjectOnPlane(supportNormal, direction);
+                float normalSpan = circleUp.magnitude;
+                if (normalSpan > 0.0001f)
+                {
+                    circleUp /= normalSpan;
+                    float centerGap = Vector3.Dot(elbowCenter - supportPoint, supportNormal);
+                    float requiredUp = Mathf.Clamp((0.035f - centerGap) /
+                        (perpendicular * normalSpan), -1f, 1f);
+                    float currentUp = Mathf.Clamp(Vector3.Dot(pole, circleUp), -1f, 1f);
+                    if (requiredUp > currentUp)
+                    {
+                        Vector3 tangent = pole - circleUp * currentUp;
+                        if (tangent.sqrMagnitude < 0.000001f)
+                            tangent = Vector3.Cross(direction, circleUp);
+                        tangent.Normalize();
+                        pole = circleUp * requiredUp + tangent *
+                            Mathf.Sqrt(Mathf.Max(0f, 1f - requiredUp * requiredUp));
+                    }
+                }
+            }
+            Vector3 targetElbow = elbowCenter + pole * perpendicular;
             Vector3 oldUpper = forearm.position - shoulder;
             Vector3 newUpper = targetElbow - shoulder;
             if (oldUpper.sqrMagnitude < 0.001f || newUpper.sqrMagnitude < 0.001f)
@@ -934,6 +962,52 @@ namespace Aaris.MapReview
                 minimumReachableZ > preferredZ) return preferredZ;
             return Mathf.Clamp(preferredZ,
                 Mathf.Max(minimumForegripZ, minimumReachableZ), maximumReachableZ);
+        }
+
+        // A prone rifle follows camera pitch after the body has finished its
+        // terrain pose. Its low foregrip can otherwise pull a correctly
+        // grounded hand through the floor in this final (+310) arm solve.
+        // Translate the whole grip frame, preserving aim and both handholds.
+        // Reuse the stance support plane; no new ground query or body lift.
+        private void KeepProneGripsAboveSupport(float foregrip)
+        {
+            if (combat == null || capsule == null || !capsule.enabled ||
+                !capsule.isGrounded || motor == null || !motor.isActiveAndEnabled ||
+                combat.MovementStance != AarisBattleActions.PlayerStance.Prone)
+                return;
+            Vector3 normal = combat.ProneGroundNormal;
+            Vector3 floor = transform.TransformPoint(capsule.center -
+                Vector3.up * (capsule.height * 0.5f));
+            Vector3 trigger = weaponRoot.TransformPoint(
+                new Vector3(0.015f, -0.045f, -0.045f));
+            Vector3 support = weaponRoot.TransformPoint(
+                new Vector3(-0.045f, -0.035f, foregrip));
+            float lowestGrip = Mathf.Min(Vector3.Dot(trigger - floor, normal),
+                Vector3.Dot(support - floor, normal));
+            float lift = Mathf.Clamp(0.035f - lowestGrip, 0f, 0.18f);
+            if (lift <= 0.0001f) return;
+            // The support translation must fit inside BOTH actual arm reach
+            // spheres. Their existing analytic IK remains the final authority;
+            // never stretch a chain or detach a palm to clear the ground.
+            lift = Mathf.Min(lift, AvailableArmSupportLift(rightUpperArm,
+                rightForearm, hand, trigger, normal));
+            lift = Mathf.Min(lift, AvailableArmSupportLift(leftUpperArm,
+                leftForearm, leftHand, support, normal));
+            if (lift > 0.0001f) weaponRoot.position += normal * lift;
+        }
+
+        private static float AvailableArmSupportLift(Transform upper,
+            Transform forearm, Transform wrist, Vector3 grip, Vector3 normal)
+        {
+            float reach = Vector3.Distance(upper.position, forearm.position) +
+                Vector3.Distance(forearm.position, wrist.position) - 0.025f;
+            if (reach <= 0.05f) return 0f;
+            Vector3 offset = grip - upper.position;
+            float along = Vector3.Dot(offset, normal);
+            float radialSquared = Mathf.Max(0f, offset.sqrMagnitude - along * along);
+            float chordSquared = reach * reach - radialSquared;
+            return chordSquared <= 0f ? 0f :
+                Mathf.Max(0f, Mathf.Sqrt(chordSquared) - along);
         }
 
         private void ApplyProceduralWeaponMotion()
@@ -1149,12 +1223,19 @@ namespace Aaris.MapReview
                 Mathf.Clamp(equipped.Spec.presentationLengthMetres * 0.40f, 0.22f, 0.48f);
             foregrip = ReachableSupportGripZ(
                 leftUpperArm, leftForearm, leftHand, weaponRoot, foregrip);
+            KeepProneGripsAboveSupport(foregrip);
+            Vector3 supportPoint = Vector3.zero, supportNormal = Vector3.zero;
+            bool supportedProne = combat != null && capsule != null && capsule.enabled &&
+                capsule.isGrounded && motor != null && motor.isActiveAndEnabled &&
+                combat.MovementStance == AarisBattleActions.PlayerStance.Prone &&
+                combat.TryGetProneSupportPlane(out supportPoint, out supportNormal);
+            if (!supportedProne) supportNormal = Vector3.zero;
             ReachArm(rightUpperArm, rightForearm, hand,
                 weaponRoot.TransformPoint(new Vector3(0.015f, -0.045f, -0.045f)),
-                transform.right);
+                transform.right, supportPoint, supportNormal);
             ReachArm(leftUpperArm, leftForearm, leftHand,
                 weaponRoot.TransformPoint(new Vector3(-0.045f, -0.035f, foregrip)),
-                -transform.right);
+                -transform.right, supportPoint, supportNormal);
             AlignSupportWristRotation();
 
             // Position-only IK can still leave the trigger palm visibly

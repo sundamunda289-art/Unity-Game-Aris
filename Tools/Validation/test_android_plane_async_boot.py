@@ -55,7 +55,14 @@ class AndroidPlaneStartupRegression(unittest.TestCase):
 
     def test_flight_cannot_run_until_model_ready(self):
         self.assertIn("private bool planeReady;", DROP)
-        self.assertIn("if (!planeReady || phase == DropPhase.Landed || view == null) return;", DROP)
+        self.assertIn("if (!planeReady || view == null) return;", DROP)
+        update = section(DROP, "private void Update()", "private void ApplyPlaneVisualInertia()")
+        retired = "if (phase == DropPhase.Landed && plane == null) return;"
+        self.assertIn(retired, update)
+        self.assertLess(update.index(retired), update.index("Time.deltaTime"))
+        landed = update.split("if (phase == DropPhase.Landed)", 1)[1].split("ReadLookInput();", 1)[0]
+        self.assertIn("AdvanceDepartingAircraft(dt);", landed)
+        self.assertIn("return;", landed)
         self.assertIn("if (!planeReady || view == null || phase == DropPhase.Landed) return;", DROP)
         finish = section(DROP, "private void CompleteFlightSetup()", "private void BuildFlightPath()")
         for preserved in ("capsule.enabled = false;", "HidePlayer();", "AarisOfflineDropHud.Create(this)",

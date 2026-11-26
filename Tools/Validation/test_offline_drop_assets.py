@@ -115,11 +115,11 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("Vector3 travelDirection = seekingCover ? coverHeading.normalized :", rival)
         self.assertIn("retreat ? retreatDirection : toward;", rival)
         self.assertIn("if (canSee && !retreat && !seekingCover && carriedGun != null)", rival)
-        self.assertIn("desired *= .23f; // Armed only", rival)
+        self.assertIn("desired = Vector3.ClampMagnitude(desired, owner.RivalCombatSpeed);", rival)
         self.assertIn("Vector3 beforeMove = transform.position;", rival)
         self.assertIn("Vector3 realTravel = afterMove - beforeMove;", rival)
         self.assertIn("realTravel.y = 0f;", rival)
-        self.assertIn("groundSpeed / 2.9f", rival)
+        self.assertIn("groundSpeed / owner.RivalJogSpeed", rival)
         self.assertNotIn("Mathf.Abs(moveSpeed) / 2.9f", rival)
 
         # Representative land/water candidates: scan towards a known
@@ -360,35 +360,17 @@ class OfflineCombatAssetChecks(unittest.TestCase):
                 self.assertRegex(source, rf"(?m)^    - _Metallic: {metallic:g}$")
                 self.assertRegex(source, rf"(?m)^    - _Smoothness: {smoothness:g}$")
 
-    def test_rotor_opposite_faces_have_independent_lighting_normals(self):
+    def test_gpu_rotor_is_two_sided_without_backface_geometry(self):
         source = (SCRIPTS / "AarisOfflineDropVisuals.cs").read_text("utf-8")
-        self.assertIn("vertices.Add(vertices[first + vertex]);", source)
-        self.assertIn("int offset = back - first;", source)
-        self.assertIn("triangles.Add(a + offset); triangles.Add(c + offset); triangles.Add(b + offset);", source)
-        self.assertIn("Paint(ref rotorPaint,", source)
-        self.assertIn("SetAircraftFinish(bladeMaterial, .30f, .24f);", source)
-        # Model the two planar faces and confirm all normals have opposite
-        # signs but never share a vertex. Triangle count stays unchanged.
-        for blade in range(3):
-            angle = blade * 2 * math.pi / 3
-            vertices = [(r * math.cos(angle) - w * math.sin(angle),
-                         r * math.sin(angle) + w * math.cos(angle))
-                        for r, width in ((.24, .22), (1.02, .19), (1.66, .055))
-                        for w in (width, -width)]
-            vertices += vertices[:]
-            front = [(0, 1, 2), (2, 1, 3), (2, 3, 4), (4, 3, 5)]
-            back = [(a + 6, c + 6, b + 6) for a, b, c in front]
-            normals = [0.0] * 12
-            for a, b, c in front + back:
-                x, y = vertices[a]
-                bx, by = vertices[b]
-                cx, cy = vertices[c]
-                cross = (bx-x)*(cy-y) - (by-y)*(cx-x)
-                for i in (a, b, c):
-                    normals[i] += cross
-            self.assertTrue(all(n > 0 for n in normals[:6]))
-            self.assertTrue(all(n < 0 for n in normals[6:]))
-            self.assertEqual(len(front + back), 8)
+        shader = (ASSETS / "AarisAircraftPropeller.shader").read_text("utf-8")
+        self.assertIn("Cull Off ZWrite Off", shader)
+        self.assertIn("normal *= dot(normal, view) < 0 ? -1.0h : 1.0h;", shader)
+        self.assertIn("GetMainLight()", shader)
+        self.assertIn("SampleSH(normal)", shader)
+        self.assertIn("normals[vertex] = Vector3.forward;", source)
+        self.assertNotIn("int offset = back - first;", source)
+        # Actual front/rear images and native shader variants are covered by
+        # AarisAircraftIllusionQA; source checks are not visual certification.
 
     def test_player_safe_footing_uses_same_world_space_ground_height(self):
         player = (SCRIPTS / "AarisThirdPersonPlayer.cs").read_text("utf-8")
@@ -518,7 +500,8 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         # silently reintroduce the clipping regression.
         self.assertIn("if (obstacle is TerrainCollider terrain)", prone)
         self.assertIn("if (!terrain.Raycast(", prone)
-        self.assertIn("sampleHit.point.y > center.y - 0.10f", prone)
+        self.assertIn("sampleHit.point.y > sample.y - 0.10f", prone)
+        self.assertIn("Vector3.ProjectOnPlane(forward, proneGroundNormal)", prone)
         self.assertIn("sampleHit.normal.y < minWalkableNormal", prone)
         self.assertNotIn("if (obstacle is TerrainCollider) continue;", prone)
         self.assertIn("floorHit.normal.y", prone)
@@ -537,7 +520,9 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("private float jumpHeight = 0.90f, gravity = 21.5f;", motor)
         self.assertIn("private float earlyJumpReleaseGravity = 1.65f;", motor)
         self.assertIn("private float minimumJumpAscentSeconds = 0.09f;", motor)
-        self.assertIn("stance == PlayerStance.Crouching ? 0.18f : 0.075f", stance)
+        self.assertIn("movementStance == PlayerStance.Crouching ? 0.18f : 0.075f", stance)
+        self.assertIn("battle.MovementStance != AarisBattleActions.PlayerStance.Standing", motor)
+        self.assertIn("battle.TryStandForJump()", motor)
         self.assertIn("if (height > capsule.height && !HasRoomAbove(height)) return false;", stance)
 
     def test_animation_stance_weights_remain_exclusive_and_prone_moves(self):
@@ -703,11 +688,16 @@ class OfflineCombatAssetChecks(unittest.TestCase):
                          "EngineDark", "SafetyAccent"}.issubset(materials))
         source = (SCRIPTS / "AarisOfflineDropVisuals.cs").read_text("utf-8")
         movement = (SCRIPTS / "AarisOfflineDrop.cs").read_text("utf-8")
-        self.assertIn("BuildPropellerMesh()", source)
+        self.assertIn("BuildPropellerMesh(bool twin", source)
         self.assertIn("else if (slots.Length == 5)", source)
         self.assertIn("AARIS_CARGO_PLANE_MODEL_NOT_IMPORTED", source)
-        self.assertIn("Quaternion.Euler(0f, 0f,", movement)
-        self.assertIn("Time.unscaledDeltaTime", movement)
+        self.assertNotIn("AnimatePlaneRotors", movement)
+        self.assertNotIn("propellerAngle", movement)
+        self.assertIn('Resources.Load<Shader>(resource)', source)
+        self.assertIn('"GpuPropellerDiscs"', source)
+        shader = (ASSETS / "AarisAircraftPropeller.shader").read_text("utf-8")
+        self.assertIn("_Time.y + _TimeOffset", shader)
+        self.assertIn("GetMainLight()", shader)
         self.assertNotIn('"PropellerBladeA"', source)
         self.assertNotIn('"PropellerBladeB"', source)
 
@@ -764,7 +754,9 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("float stepDt = elapsed / steps;", source)
         self.assertIn("SimulateAirborne(dt);", source)
         self.assertIn("AdvanceDepartingAircraft(dt);", source)
-        self.assertIn("AnimatePlaneRotors();", source)
+        self.assertNotIn("AnimatePlaneRotors();", source)
+        self.assertIn("ShouldRetireAircraft(Time.time)", source)
+        self.assertIn("GeometryUtility.TestPlanesAABB", source)
         self.assertIn("plane.transform.position += planeFlightDirection * planeSpeed * dt;", source)
         self.assertIn("ApplyPlaneVisualInertia();", source)
         self.assertIn("Mathf.Min(freefallForwardSpeed, planeSpeed * 0.55f)", source)
@@ -953,7 +945,12 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         ]
         positions = [interrupt.index(line) for line in ordered]
         self.assertEqual(positions, sorted(positions))
-        self.assertIn("plane = null;", interrupt)
+        self.assertIn("RetireAircraft();", interrupt)
+        self.assertLess(interrupt.index("RetireAircraft();"),
+                        interrupt.index("if (!controlsSuspended) return;"))
+        retire = drop.split("private void RetireAircraft()", 1)[1].split(
+            "private void SimulateAirborne", 1)[0]
+        self.assertIn("plane = null;", retire)
         self.assertIn("canopy = null;", interrupt)
 
     def test_aerial_hud_fingers_never_steal_camera_swipe(self):

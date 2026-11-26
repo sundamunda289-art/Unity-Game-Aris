@@ -54,12 +54,11 @@ namespace Aaris.MapReview
         private Quaternion planeHeadingRotation = Quaternion.identity;
         private float planeMotionPhase;
         private float flightProgress, pathDuration, downwardSpeed, yaw, pitch, openingProgress, airborneSince;
-        private float propellerAngle;
-        // 6000 deg/s = 1000 RPM. The old 1150 deg/s (~192 RPM) made the
-        // visible three-blade rotor read like a slow toy propeller. The shared
-        // translucent blur disc already handles high-RPM integration, so this
-        // realism correction adds no renderer, physics or allocation cost.
-        private const float PropellerDegreesPerSecond = 6000f;
+        private readonly Plane[] aircraftFrustum = new Plane[6];
+        private float nextAircraftVisibilityCheck;
+        private float aircraftOutsideViewSince = -1f;
+        private const float AircraftCullDistance = 850f;
+        private const float AircraftVisualRadius = 50f;
         private int lookFinger = -1;
         private Vector3 previousMouse;
         private DropPhase phase = DropPhase.InPlane;
@@ -273,13 +272,20 @@ namespace Aaris.MapReview
 
         private void Update()
         {
-            if (!planeReady || phase == DropPhase.Landed || view == null) return;
+            if (!planeReady || view == null) return;
+            if (phase == DropPhase.Landed && plane == null) return;
             // Keep up to 200 ms of elapsed flight time on slower mobile frames.
             // MoveAirborne below uses bounded capsule sweeps rather than one long step.
             float dt = Mathf.Clamp(Time.deltaTime, 0f, 0.20f);
             if (dt <= 0f) return;
+            // A visible departing aircraft keeps flying even after touchdown.
+            // Camera/input authority still belongs exclusively to the foot motor.
+            if (phase == DropPhase.Landed)
+            {
+                AdvanceDepartingAircraft(dt);
+                return;
+            }
             ReadLookInput();
-            AnimatePlaneRotors();
             if (phase == DropPhase.InPlane)
             {
                 flightProgress = Mathf.Clamp01(flightProgress + dt / pathDuration);
@@ -341,33 +347,54 @@ namespace Aaris.MapReview
                 Quaternion.Euler(pitchGust, 0f, rollGust);
         }
 
-        private void AnimatePlaneRotors()
-        {
-            if (plane == null || propellers == null) return;
-            // All four rotors share one mesh and one angle accumulator.
-            propellerAngle = Mathf.Repeat(propellerAngle +
-                PropellerDegreesPerSecond *
-                Mathf.Min(Time.unscaledDeltaTime, .05f), 360f);
-            for (int i = 0; i < propellers.Length; i++)
-                if (propellers[i] != null)
-                    propellers[i].localRotation = Quaternion.Euler(0f, 0f,
-                        (i & 1) == 0 ? propellerAngle : -propellerAngle);
-        }
-
         private void AdvanceDepartingAircraft(float dt)
         {
             if (plane == null) return;
-            if (Time.time - airborneSince >= 4.5f)
-            {
-                Destroy(plane);
-                plane = null;
-                propellers = null;
-                return;
-            }
             // Ejection retains a visible aircraft that continues to fly away.
             // Keep path authority independent from the visual micro-bank above.
             plane.transform.position += planeFlightDirection * planeSpeed * dt;
             ApplyPlaneVisualInertia();
+            if (ShouldRetireAircraft(Time.time)) RetireAircraft();
+        }
+
+        private bool ShouldRetireAircraft(float now)
+        {
+            if (plane == null || now < nextAircraftVisibilityCheck || view == null) return false;
+            nextAircraftVisibilityCheck = now + .25f;
+            Vector3 position = plane.transform.position;
+            float distanceSquared = (position - view.transform.position).sqrMagnitude;
+            if (distanceSquared < AircraftCullDistance * AircraftCullDistance)
+            {
+                aircraftOutsideViewSince = -1f;
+                return false;
+            }
+            GeometryUtility.CalculateFrustumPlanes(view, aircraftFrustum);
+            // Conservative bounds include both the authored body and short
+            // wingtip wake. Never pop a visible plane at an arbitrary age.
+            bool visible = GeometryUtility.TestPlanesAABB(aircraftFrustum,
+                new Bounds(position, Vector3.one * (AircraftVisualRadius * 2f)));
+            if (visible)
+            {
+                aircraftOutsideViewSince = -1f;
+                return false;
+            }
+            if (aircraftOutsideViewSince < 0f) aircraftOutsideViewSince = now;
+            return now - aircraftOutsideViewSince >= 2f;
+        }
+
+        private void RetireAircraft()
+        {
+            if (plane != null)
+            {
+#if UNITY_EDITOR
+                if (!Application.isPlaying) DestroyImmediate(plane);
+                else Destroy(plane);
+#else
+                Destroy(plane);
+#endif
+            }
+            plane = null;
+            propellers = null;
         }
 
         private void SimulateAirborne(float elapsed)
@@ -820,7 +847,6 @@ namespace Aaris.MapReview
                 Destroy(canopy, 1.25f);
                 canopy = null;
             }
-            if (plane != null) { Destroy(plane); plane = null; }
             ShowPlayer();
             if (footMotor != null) footMotor.RestoreLegacyAerialPose();
             capsule.enabled = true;
@@ -983,8 +1009,8 @@ namespace Aaris.MapReview
 
         private void OnDisable()
         {
+            RetireAircraft();
             if (!controlsSuspended) return;
-            if (plane != null) { Destroy(plane); plane = null; }
             if (canopy != null) { Destroy(canopy); canopy = null; }
             // An interrupted drop must not register an airborne location as
             // the foot motor's HOME point. Abort to the known ground spawn

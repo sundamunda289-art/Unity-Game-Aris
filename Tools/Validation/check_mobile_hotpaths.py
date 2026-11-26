@@ -172,9 +172,20 @@ def audit():
     # Do not dirty the native visual hierarchy every idle frame. The aerial
     # override is selected before the single final rotation setter (previously
     # two setters each skydiving frame). This changes no physical motor.
-    # Grounded player root stays upright: only the additive humanoid Spine
-    # gets running/turning balance, preserving the foot contacts.
-    assert "Quaternion desiredRotation = restingLocalRotation;" in late
+    # Standing/crouch keep their upright target. Grounded authored prone
+    # shares the cached physical support plane; no extra visual Physics
+    # query is introduced, and the physical player motor is never tilted.
+    ground_alignment = late[late.index("Quaternion groundTarget ="):
+                            late.index("// Visual-only skydiving pose;")]
+    assert "!visuallyAirborne && authoredProne" in ground_alignment
+    assert "actions != null && (aerialDrop == null || aerialDrop.HasLanded)" in ground_alignment
+    assert "Quaternion.FromToRotation(Vector3.up, actions.ProneGroundNormal)" in ground_alignment
+    assert "Mathf.Clamp01(effectiveProneBlend)" in ground_alignment
+    assert ": Quaternion.identity;" in ground_alignment
+    assert "Quaternion.Inverse(transform.rotation)" in ground_alignment
+    assert "proneGroundRotation * transform.rotation" in ground_alignment
+    assert "Quaternion desiredRotation = localGroundRotation * restingLocalRotation;" in ground_alignment
+    assert "Physics." not in ground_alignment
     assert "balanceSpineBone.localRotation *= Quaternion.Euler" in late
     assert "balanceSpineBone = animator.GetBoneTransform(HumanBodyBones.Spine);" in startup
     assert "80f, fallbackProne" not in late

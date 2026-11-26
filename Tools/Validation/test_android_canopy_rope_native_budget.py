@@ -19,7 +19,7 @@ class CanopyNativeBudget(unittest.TestCase):
         self.assertIn("if (cachedCanopyCordMesh != null) return cachedCanopyCordMesh;", helper)
         self.assertIn("UnityEngine.Object.Destroy(prototype);", helper)
     def test_every_rope_is_renderer_only_without_ghost_colliders(self):
-        rope = section("private static void RigidLine(", "private static Mesh BuildPropellerMesh()")
+        rope = section("private static void RigidLine(", "private static Mesh BuildPropellerMesh(")
         self.assertIn('new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer))', rope)
         self.assertIn("EnsureCanopyCordMesh()", rope)
         self.assertIn("new Vector3(diameter, offset.magnitude * 0.5f, diameter)", rope)

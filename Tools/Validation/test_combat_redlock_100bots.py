@@ -275,7 +275,7 @@ class CombatEndToEndContract(unittest.TestCase):
         # Hunting range is separate from real sight and firing authority.
         self.assertIn("private const float RivalHuntRadius = 110f;", BOTS)
         self.assertIn("float nearest = RivalHuntRadius * RivalHuntRadius;", BOTS)
-        self.assertIn("(target.position - transform.position).sqrMagnitude < 42f * 42f && HasSight()", BOTS)
+        self.assertIn("(target.position - transform.position).sqrMagnitude < SightRange * SightRange && HasSight()", BOTS)
         self.assertIn("IsPostMoveShotInRangeAndFacing(afterMove, transform.forward,", BOTS)
         # Far and near/visual gates use squared distances, no per-frame sqrt.
         self.assertIn("float playerDistanceSqr =", BOTS)
@@ -304,8 +304,14 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertNotIn("victim.position + Vector3.up * 1.07f - eye;", BOTS)
         # Floor-relative center on the actor, updated by AarisBattleActions.
         actions = read("AarisBattleActions.cs")
-        self.assertIn("capsule.center = new Vector3(standingCenter.x, floorRelative + height * 0.5f", actions)
-        for height in (0.62, 1.14, 1.8):
+        resize = actions.split("private void ApplyStanceHeight(", 1)[1].split(
+            "private void AdvanceStanceTransition(", 1)[0]
+        self.assertIn("floorRelative + height * 0.5f, standingCenter.z", resize)
+        self.assertIn("capsule.center = center", resize)
+        self.assertIn("ApplyStanceHeight(height);", actions)
+        # Bots see the current collision center throughout the transition,
+        # including intermediate physical heights, with the same fixed foot.
+        for height in (0.62, 0.85, 1.14, 1.43, 1.8):
             self.assertGreater(height * 0.5, 0.0)
             self.assertLess(height * 0.5, height)
 
@@ -331,7 +337,7 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("AarisAudioDirector.GunShot(carriedGun.category, carriedGun.id,", attack)
         self.assertNotIn('carriedGun.id : "Rival"', attack)
         self.assertNotIn('carriedGun.category : "SMG"', attack)
-        self.assertIn("carriedGun == null ? (distance > 1.7f ? 2.85f : 0f)", BOTS)
+        self.assertIn("return distance > 1.7f ? owner.RivalJogSpeed : 0f;", BOTS)
         self.assertIn("&& carriedGun != null)", BOTS)
         self.assertIn("(target != playerTarget || owner.MayAttackPlayer(this))", attack)
         self.assertLess(2.25, 38.0)
@@ -374,7 +380,7 @@ class CombatEndToEndContract(unittest.TestCase):
         # The shooter pose is captured once before inspecting many cover
         # candidates; the candidate direction still points away from that
         # exact shooter position and the PhysX cover-ray remains required.
-        self.assertIn("Vector3 attackerPosition = attacker.transform.position;", reaction)
+        self.assertIn("TrySeekTacticalCover(attacker.transform.position, Time.time);", reaction)
         self.assertEqual(reaction.count("attacker.transform.position"), 1)
         for part in ("Vector3 coverAxis = bounds.center - attackerPosition;",
                      "Vector3 candidate = bounds.center + coverAxis.normalized *",
