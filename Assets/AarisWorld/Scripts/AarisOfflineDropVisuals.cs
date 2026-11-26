@@ -198,8 +198,9 @@ namespace Aaris.MapReview
 #else
             saved = Resources.Load<Material>("AarisDrop/Materials/" + materialName);
 #endif
-            if (saved != null && saved.shader != null &&
-                saved.shader.name.StartsWith("Universal Render Pipeline/", StringComparison.Ordinal))
+            if (saved != null && saved.shader != null && saved.shader.isSupported &&
+                (saved.shader.name.StartsWith("Universal Render Pipeline/", StringComparison.Ordinal) ||
+                 saved.shader.name == "Aaris/Mobile Subject Lit"))
                 return saved;
             Material material = Paint(ref fallback, fallbackColor);
             SetAircraftFinish(material, metallic, smoothness);
@@ -224,7 +225,10 @@ namespace Aaris.MapReview
             if (fill.maxColorComponent < 0.05f)
                 fill = new Color(0.095f, 0.106f, 0.103f, 1f);
             cached.SetColor("_EmissionColor", fill);
-            cached.EnableKeyword("_EMISSION");
+            if (cached.HasProperty("_AircraftMarkings") && cached.GetFloat("_AircraftMarkings") > .5f)
+                cached.EnableKeyword("_AARIS_AIRFRAME");
+            else
+                cached.EnableKeyword("_EMISSION");
             return cached;
         }
 

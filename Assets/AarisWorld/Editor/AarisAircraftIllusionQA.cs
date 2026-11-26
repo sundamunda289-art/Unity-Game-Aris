@@ -316,6 +316,8 @@ namespace Aaris.MapReview.Editor
                     "aircraft-rear.png");
                 CaptureView(camera, position + new Vector3(60f, -15f, -200f), position,
                     "aircraft-departing.png");
+                CaptureView(camera, position + new Vector3(19f, 5f, 20f), position,
+                    "aircraft-livery.png");
                 // A short orthographic view at aircraft altitude excludes the
                 // terrain and animated sky while retaining actual URP sunlight.
                 // Keep the production layer: the active RendererData may reject
@@ -351,6 +353,16 @@ namespace Aaris.MapReview.Editor
                 rotorCopy.SetFloat("_TimeOffset", .012f);
                 Color32[] second = WritePng(camera, "rotor-gpu-time-b.png");
                 int changed = ChangedPixels(first, second);
+                // A single pair can alias the same blade phase while the
+                // software renderer advances Unity's clock between readbacks.
+                // Sample two more phases of the same native shader and mesh.
+                foreach (float offset in new[] { .023f, .041f })
+                {
+                    rotorCopy.SetFloat("_TimeOffset", offset);
+                    Color32[] phase = WritePng(camera, "rotor-phase-" +
+                        Mathf.RoundToInt(offset * 1000f) + ".png");
+                    changed = Mathf.Max(changed, ChangedPixels(first, phase), ChangedPixels(second, phase));
+                }
                 Check(changed > 100, "GPU exposure changes " + changed + " pixels with no CPU rotor movement");
                 Check(rotor.localRotation == beforeRotation && rotor.localPosition == beforePosition,
                     "native GPU animation retains static rotor local transform");

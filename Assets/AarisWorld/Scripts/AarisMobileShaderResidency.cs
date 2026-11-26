@@ -47,6 +47,7 @@ namespace Aaris.MapReview
         private static readonly string[] CommonRuntimeShaders =
         {
             "Universal Render Pipeline/Lit",
+            "Aaris/Mobile Subject Lit",
             "Universal Render Pipeline/Simple Lit",
             "Universal Render Pipeline/Terrain/Lit",
             "Universal Render Pipeline/Unlit",

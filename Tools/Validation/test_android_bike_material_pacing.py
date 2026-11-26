@@ -88,8 +88,9 @@ class BikeMaterialPacingContract(unittest.TestCase):
         )
         for token in invariants:
             self.assertIn(token, BIKE)
-        # No material cloning for every visible vehicle and no altered art.
-        self.assertEqual(BIKE.count("new Material(shader)"), 1)
+        # Exactly one material factory for palette slots and one paint-variant clone.
+        self.assertEqual(BIKE.count("new Material("), 2)
+        self.assertIn("new Material(i == 0 || i == 2 ? coatShader : shader)", BIKE)
         self.assertEqual(BIKE.count("new Material(surfaces[0])"), 1)
         self.assertNotIn("QualitySettings.masterTextureLimit =", BIKE)
         self.assertNotIn("renderScale =", BIKE)

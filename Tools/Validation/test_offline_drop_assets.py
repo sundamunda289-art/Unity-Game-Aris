@@ -345,18 +345,23 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("Material hullPaint = SavedAircraftFinish(", visuals)
         self.assertIn("if (saved != null && saved.shader != null", visuals)
         profiles = {
-            "CargoPlane-HulledMetal": (0.38, 0.32),
+            "CargoPlane-HulledMetal": (0.47, 0.56),
             "CargoPlane-DarkCockpit": (0.08, 0.82),
-            "CargoPlane-WingPanels": (0.30, 0.25),
+            "CargoPlane-WingPanels": (0.34, 0.49),
             "CargoPlane-EngineDark": (0.52, 0.26),
-            "CargoPlane-SafetyAccent": (0.18, 0.27),
+            "CargoPlane-SafetyAccent": (0.17, 0.43),
         }
         for name, (metallic, smoothness) in profiles.items():
             with self.subTest(material=name):
                 self.assertIn(f'SavedAircraftFinish("{name}"', visuals)
                 source = (ASSETS / "AarisDrop" / "Materials" /
                           (name + ".mat")).read_text("utf-8")
-                self.assertIn("guid: 933532a4fcc9baf4fa0491de14d08ed7", source)
+                marked = name in ("CargoPlane-HulledMetal", "CargoPlane-WingPanels")
+                shader = "7c1250a80a8c49bbbc05ca030a9dd635" if marked else "933532a4fcc9baf4fa0491de14d08ed7"
+                self.assertIn(f"m_Shader: {{fileID: 4800000, guid: {shader}, type: 3}}", source)
+                if marked:
+                    self.assertIn("_AircraftMarkings: 1", source)
+                    self.assertIn("_AARIS_AIRFRAME", source)
                 self.assertRegex(source, rf"(?m)^    - _Metallic: {metallic:g}$")
                 self.assertRegex(source, rf"(?m)^    - _Smoothness: {smoothness:g}$")
 
@@ -1065,7 +1070,11 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("healEnd = Time.time + 3f;", script)
         self.assertIn("new Vector2(velocity.x, velocity.z).sqrMagnitude > 0.04f", script)
         self.assertIn("medicalHealth.RestoreHealth(medicalHealing);", script)
-        self.assertIn("renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;", script)
+        geometry = (SCRIPTS / "AarisSupplyGeometry.cs").read_text("utf-8")
+        self.assertIn("AarisSupplyGeometry.Create(", script)
+        self.assertRegex(geometry, r"renderer\.shadowCastingMode\s*=\s*ShadowCastingMode\.Off;")
+        self.assertNotIn("CreatePrimitive(", geometry)
+        self.assertNotIn("AddComponent<Collider>", geometry)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

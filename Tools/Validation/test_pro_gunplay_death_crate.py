@@ -423,25 +423,24 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
         self.assertNotIn("new List<", take)
         self.assertNotIn("new GameObject(", take)
 
-    def test_death_crate_visuals_share_lit_cube_mesh_without_colliders(self):
-        self.assertIn("private static Mesh beamMesh, crateCubeMesh;", CRATE)
-        mesh = CRATE.split("private static Mesh CrateCubeMesh()",1)[1].split(
-            "private static void Part(",1)[0]
-        self.assertIn("if (crateCubeMesh != null) return crateCubeMesh;", mesh)
-        self.assertIn("var vertices = new Vector3[24];", mesh)
-        self.assertIn("var triangles = new int[36];", mesh)
-        self.assertIn("result.normals = normals;", mesh)
-        self.assertIn("result.uv = uv;", mesh)
-        self.assertIn("result.UploadMeshData(true);", mesh)
-        part = CRATE.split("private static void Part(",1)[1].split(
-            "private static Mesh BeamGeometry()",1)[0]
-        self.assertIn("new GameObject(label, typeof(MeshFilter), typeof(MeshRenderer))", part)
-        self.assertIn("part.GetComponent<MeshFilter>().sharedMesh = CrateCubeMesh();", part)
-        self.assertIn("renderer.sharedMaterial = material;", part)
-        self.assertIn("renderer.shadowCastingMode = ShadowCastingMode.Off;", part)
-        self.assertNotIn("GameObject.CreatePrimitive", part)
-        self.assertNotIn("GetComponent<Collider>", part)
-        self.assertNotIn("AddComponent<Collider>", part)
+    def test_death_crate_visuals_share_beveled_mesh_without_colliders(self):
+        geometry = read("AarisSupplyGeometry.cs")
+        baker = (ROOT / "Assets/AarisWorld/Editor/AarisSupplyMeshBaker.cs").read_text()
+        crate = baker.split("private static Mesh Crate", 1)[1].split("private static Mesh Helmet", 1)[0]
+        self.assertIn('Shared(ref crate, "AarisLootAmmoCrate")', geometry)
+        self.assertIn("Resources.Load<Mesh>(resource)", geometry)
+        self.assertNotIn("new Mesh", geometry)
+        self.assertIn("if (crate != null) return crate;", crate)
+        self.assertIn("new Builder(2)", crate)
+        self.assertIn("mesh.RecalculateNormals();", baker)
+        self.assertIn("mesh.UploadMeshData(true);", geometry)
+        visual = CRATE.split("private GameObject CreateVisual()", 1)[1].split("private void OnDestroy()", 1)[0]
+        self.assertIn("sharedMesh = AarisSupplyGeometry.Crate;", visual)
+        self.assertIn("shellRenderer.sharedMaterials = new[] { shell, edge };", visual)
+        self.assertIn("shellRenderer.shadowCastingMode = ShadowCastingMode.Off;", visual)
+        self.assertIn("shellRenderer.receiveShadows = false;", visual)
+        self.assertNotIn("CreatePrimitive(", visual + geometry)
+        self.assertNotIn("AddComponent<Collider>", visual + geometry)
 
     def test_full_slot_exchange_reserves_drop_and_rolls_back_on_failure(self):
         exchange = INVENTORY.split("internal bool TryPickupDeathCrateGun(",1)[1].split(

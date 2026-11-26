@@ -35,7 +35,14 @@ namespace Aaris.MapReview
 {
     internal sealed class Shader
     {
-        public static Shader Find(string name) { return new Shader(); }
+        internal static bool subjectSupported = true;
+        internal bool isSupported;
+        internal string name;
+        public static Shader Find(string name)
+        {
+            bool supported = name != "Aaris/Mobile Subject Lit" || subjectSupported;
+            return new Shader { name = name, isSupported = supported };
+        }
     }
 
     internal static class AarisShaderCache
@@ -57,8 +64,9 @@ namespace Aaris.MapReview
         internal static int created;
         public string name;
         public bool enableInstancing;
-        public Material(Shader shader) { created++; }
-        public Material(Material original) { created++; }
+        public Shader shader;
+        public Material(Shader shader) { this.shader = shader; created++; }
+        public Material(Material original) { shader = original.shader; created++; }
         public void SetColor(string key, Color value) { }
         public void SetFloat(string key, float value) { }
         public bool HasProperty(string key) { return true; }
@@ -121,6 +129,18 @@ namespace Aaris.MapReview
 #endif
             if (bike.paintVariants[0] != bike.surfaces[0])
                 throw new Exception("Original paint slot alias changed");
+            for (int i = 0; i < bike.surfaces.Length; i++)
+            {
+                bool coated = i == 0 || i == 2;
+                if ((bike.surfaces[i].shader.name == "Aaris/Mobile Subject Lit") != coated)
+                    throw new Exception("Incorrect subject finish for slot " + i);
+            }
+            Shader.subjectSupported = false;
+            var fallback = new BikeBuildFixture();
+            fallback.SetupMaterials();
+            foreach (var surface in fallback.surfaces)
+                if (surface.shader.name != "Universal Render Pipeline/Lit")
+                    throw new Exception("Unsupported subject shader selected");
             Console.WriteLine("BIKE_MATERIAL_PRODUCTION_CSHARP_PASS");
         }
     }

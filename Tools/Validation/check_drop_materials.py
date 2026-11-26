@@ -9,6 +9,7 @@ DROP = ROOT / "Assets/Resources/AarisDrop"
 MATS = DROP / "Materials"
 
 URP_LIT_GUID = "933532a4fcc9baf4fa0491de14d08ed7"
+SUBJECT_GUID = "7c1250a80a8c49bbbc05ca030a9dd635"
 METAL_NORMAL_GUID = "1e667989b45456ba8e8cda1597b81513"
 
 def text(name: str) -> str:
@@ -43,14 +44,17 @@ safety = text("CargoPlane-SafetyAccent.mat")
 cockpit = text("CargoPlane-DarkCockpit.mat")
 
 for material in (hull, wing, engine, safety, cockpit):
-    assert URP_LIT_GUID in material
+    shader = SUBJECT_GUID if material in (hull, wing) else URP_LIT_GUID
+    assert f"m_Shader: {{fileID: 4800000, guid: {shader}, type: 3}}" in material
+    if shader == SUBJECT_GUID:
+        assert "_AARIS_AIRFRAME" in material and "_AircraftMarkings: 1" in material
     assert "RenderType: Opaque" in material
 
 for material, expected_scale in (
-    (hull, 0.12),
-    (wing, 0.16),
+    (hull, 0.24),
+    (wing, 0.28),
     (engine, 0.10),
-    (safety, 0.08),
+    (safety, 0.16),
 ):
     assert "- _NORMALMAP" in material
     assert METAL_NORMAL_GUID in material
@@ -58,7 +62,7 @@ for material, expected_scale in (
     assert match
     actual = float(match.group(1))
     assert abs(actual - expected_scale) < 1e-6, (actual, expected_scale)
-    assert 0.05 <= actual <= 0.20
+    assert 0.05 <= actual <= 0.28
 
 # Cockpit stays smooth/glazed; do not stamp a rough metal normal onto glass.
 assert METAL_NORMAL_GUID not in cockpit

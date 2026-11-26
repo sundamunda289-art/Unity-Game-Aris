@@ -68,7 +68,9 @@ def audit() -> None:
     assert "medicalHealth.TryEquipHelmet()" in tactical
     assert "if (!site.isHelmet) medkits++;" in tactical
     assert "helmetVisualPool.Push(visual)" in tactical
-    assert 'new GameObject("Aaris Streamed Helmet")' in tactical
+    assert "var helmetRoot = CreateMedicalVisual(true);" in tactical
+    assert "return AarisSupplyGeometry.Create(true," in tactical
+    assert 'isHelmet ? "Aaris Streamed Helmet" : "Aaris Streamed Medkit"' in source("AarisSupplyGeometry.cs")
     assert "out RaycastHit overhead, 7f" in tactical
     assert 'helmetIndicator.GetComponent<Image>().raycastTarget = false;' in tactical
 

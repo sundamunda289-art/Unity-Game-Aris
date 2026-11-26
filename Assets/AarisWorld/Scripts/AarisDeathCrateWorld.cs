@@ -33,7 +33,7 @@ namespace Aaris.MapReview
 
         private static AarisDeathCrateWorld instance;
         private static Material metal, trim, beamMaterial;
-        private static Mesh beamMesh, crateCubeMesh;
+        private static Mesh beamMesh;
         private readonly List<Drop> drops = new List<Drop>(100);
         private readonly Stack<Drop> unusedDrops = new Stack<Drop>(100);
         private readonly Stack<GameObject> unusedVisuals = new Stack<GameObject>(MaxVisuals);
@@ -455,7 +455,12 @@ namespace Aaris.MapReview
             if (cached.HasProperty("_EmissionColor"))
             {
                 cached.EnableKeyword("_EMISSION");
-                cached.SetColor("_EmissionColor", color * (transparent ? 1.2f : 0.15f));
+                cached.SetColor("_EmissionColor", color * (transparent ? 1.2f : 0.035f));
+            }
+            if (!transparent)
+            {
+                if (cached.HasProperty("_Metallic")) cached.SetFloat("_Metallic", .32f);
+                if (cached.HasProperty("_Smoothness")) cached.SetFloat("_Smoothness", .48f);
             }
             if (transparent)
             {
@@ -467,81 +472,6 @@ namespace Aaris.MapReview
                 cached.renderQueue = (int)RenderQueue.Transparent;
             }
             return cached;
-        }
-
-        // Unity's CreatePrimitive allocates a BoxCollider per mesh, even when
-        // the collider is immediately disabled and Destroy-scheduled. Sixteen
-        // streamed crates previously built 48 throwaway native colliders.
-        // Share one lit, UV-complete cube mesh across every crate part instead.
-        private static Mesh CrateCubeMesh()
-        {
-            if (crateCubeMesh != null) return crateCubeMesh;
-            var result = new Mesh { name = "Aaris Shared Death Crate Cube" };
-            Vector3[] faceNormals =
-            {
-                Vector3.forward, Vector3.back, Vector3.right,
-                Vector3.left, Vector3.up, Vector3.down
-            };
-            Vector3[] faceRights =
-            {
-                Vector3.right, Vector3.left, Vector3.back,
-                Vector3.forward, Vector3.right, Vector3.right
-            };
-            Vector3[] faceUps =
-            {
-                Vector3.up, Vector3.up, Vector3.up,
-                Vector3.up, Vector3.back, Vector3.forward
-            };
-            var vertices = new Vector3[24];
-            var normals = new Vector3[24];
-            var uv = new Vector2[24];
-            var triangles = new int[36];
-            for (int face = 0; face < 6; face++)
-            {
-                int vi = face * 4;
-                int ti = face * 6;
-                Vector3 center = faceNormals[face] * .5f;
-                Vector3 side = faceRights[face] * .5f;
-                Vector3 up = faceUps[face] * .5f;
-                vertices[vi] = center - side - up;
-                vertices[vi + 1] = center + side - up;
-                vertices[vi + 2] = center + side + up;
-                vertices[vi + 3] = center - side + up;
-                for (int j = 0; j < 4; j++)
-                    normals[vi + j] = faceNormals[face];
-                uv[vi] = Vector2.zero;
-                uv[vi + 1] = Vector2.right;
-                uv[vi + 2] = Vector2.one;
-                uv[vi + 3] = Vector2.up;
-                triangles[ti] = vi;
-                triangles[ti + 1] = vi + 1;
-                triangles[ti + 2] = vi + 2;
-                triangles[ti + 3] = vi;
-                triangles[ti + 4] = vi + 2;
-                triangles[ti + 5] = vi + 3;
-            }
-            result.vertices = vertices;
-            result.normals = normals;
-            result.uv = uv;
-            result.triangles = triangles;
-            result.RecalculateBounds();
-            result.UploadMeshData(true);
-            crateCubeMesh = result;
-            return result;
-        }
-
-        private static void Part(Transform root, string label,
-            Vector3 offset, Vector3 scale, Material material)
-        {
-            var part = new GameObject(label, typeof(MeshFilter), typeof(MeshRenderer));
-            part.transform.SetParent(root, false);
-            part.transform.localPosition = offset;
-            part.transform.localScale = scale;
-            part.GetComponent<MeshFilter>().sharedMesh = CrateCubeMesh();
-            MeshRenderer renderer = part.GetComponent<MeshRenderer>();
-            renderer.sharedMaterial = material;
-            renderer.shadowCastingMode = ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
         }
 
         private static Mesh BeamGeometry()
@@ -571,18 +501,17 @@ namespace Aaris.MapReview
 
         private GameObject CreateVisual()
         {
-            var shell = Paint(ref metal, new Color(.16f, .24f, .25f), "Aaris Crate Metal", false);
-            var edge = Paint(ref trim, new Color(.57f, .43f, .18f), "Aaris Crate Brass", false);
+            var shell = Paint(ref metal, new Color(.19f, .28f, .31f), "Aaris Crate Metal", false);
+            var edge = Paint(ref trim, new Color(.53f, .40f, .16f), "Aaris Crate Brass", false);
             var glow = Paint(ref beamMaterial,
                 new Color(.28f, .76f, 1f, .30f), "Aaris Crate Vertical Glow", true);
             var root = new GameObject("Aaris Pooled Bot Death Crate");
             root.transform.SetParent(transform, false);
-            Part(root.transform, "Armoured crate body", new Vector3(0f, .22f, 0f),
-                new Vector3(.68f, .42f, .48f), shell);
-            Part(root.transform, "Metal crate lid", new Vector3(0f, .46f, 0f),
-                new Vector3(.73f, .09f, .53f), edge);
-            Part(root.transform, "Front latch", new Vector3(0f, .29f, -.25f),
-                new Vector3(.15f, .15f, .03f), edge);
+            root.AddComponent<MeshFilter>().sharedMesh = AarisSupplyGeometry.Crate;
+            var shellRenderer = root.AddComponent<MeshRenderer>();
+            shellRenderer.sharedMaterials = new[] { shell, edge };
+            shellRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            shellRenderer.receiveShadows = false;
             if (glow != null)
             {
                 var beam = new GameObject("Vertical loot marker",
@@ -595,6 +524,7 @@ namespace Aaris.MapReview
                 render.shadowCastingMode = ShadowCastingMode.Off;
                 render.receiveShadows = false;
             }
+            AarisSubjectContacts.Register(root.transform,new Vector2(.84f,.66f),.4f,28f);
             return root;
         }
 

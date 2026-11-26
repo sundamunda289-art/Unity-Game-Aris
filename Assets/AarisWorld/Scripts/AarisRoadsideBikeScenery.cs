@@ -164,6 +164,8 @@ namespace Aaris.MapReview
 #endif
             Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
             if (shader == null) { enabled = false; yield break; }
+            Shader coatShader = AarisShaderCache.Find("Aaris/Mobile Subject Lit");
+            if (coatShader == null || !coatShader.isSupported) coatShader = shader;
             Color[] tones = {
                 new Color(.08f,.23f,.40f), new Color(.034f,.039f,.048f),
                 new Color(.57f,.61f,.67f), new Color(.15f,.17f,.20f),
@@ -184,7 +186,7 @@ namespace Aaris.MapReview
                     if (!isActiveAndEnabled) yield break;
                 }
 #endif
-                surfaces[i] = new Material(shader)
+                surfaces[i] = new Material(i == 0 || i == 2 ? coatShader : shader)
                 {
                     name = "Aaris Road Bike " + i,
                     enableInstancing = true
@@ -801,6 +803,8 @@ namespace Aaris.MapReview
             bikeVisuals.Add(root, new BikeVisualCache {
                 renderers = renderers, paintLayouts = layouts
             });
+            AarisSubjectContacts.Register(root.transform,
+                new Vector2(1.10f, 2.35f), .24f, 26f);
             return root;
         }
 
