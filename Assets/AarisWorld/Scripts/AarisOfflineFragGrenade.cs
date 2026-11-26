@@ -156,8 +156,8 @@ namespace Aaris.MapReview
             }
             if (grenadeMaterial == null)
             {
-                Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-                if (shader == null) shader = Shader.Find("Standard");
+                Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
+                if (shader == null) shader = AarisShaderCache.Find("Standard");
                 grenadeMaterial = new Material(shader);
                 grenadeMaterial.color = new Color(0.16f, 0.25f, 0.17f);
             }
