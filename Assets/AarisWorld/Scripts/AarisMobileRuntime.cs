@@ -32,6 +32,30 @@ namespace Aaris.MapReview
 #endif
         }
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private const float SceneRetirementCalmSeconds = 2f;
+        private const float ProactiveAssetCleanupCooldownSeconds = 30f;
+        private static int pendingRetiredAdditiveScenes;
+        private static float lastAdditiveSceneRetirementAt = -1f;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetSceneRetirementCleanupState()
+        {
+            pendingRetiredAdditiveScenes = 0;
+            lastAdditiveSceneRetirementAt = -1f;
+        }
+
+        internal static void NotifyAdditiveSceneRetired()
+        {
+            // Called on Unity's main thread after an owned additive scene has
+            // completed retirement. Saturate the counter; only "some dead
+            // scene assets exist" matters to the memory-pressure scheduler.
+            pendingRetiredAdditiveScenes =
+                Math.Min(pendingRetiredAdditiveScenes + 1, 32);
+            lastAdditiveSceneRetirementAt = Time.unscaledTime;
+        }
+#endif
+
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         private static readonly ProfilerMarker k_DiagnosticsRecord =
             new ProfilerMarker("Aaris.Diagnostics.Record");
@@ -153,6 +177,8 @@ namespace Aaris.MapReview
         private int suppressedWindZones, suppressedGrassTiles;
         private int slowIntervals, steadyIntervals, lastTargetFps;
         private float lastEffectiveTargetFps;
+        private bool proactiveAssetCleanupPending;
+        private float proactiveAssetCleanupAfter;
         // A CPU-bound stutter must not be "fixed" by blurring the GPU output.
         // This scratch array is reused; sampling runs at most once per 15 frames.
         private readonly FrameTiming[] mobileFrameTimings = new FrameTiming[1];
@@ -988,6 +1014,12 @@ namespace Aaris.MapReview
                     // scene hierarchies and cosmetic asset imports. Other
                     // streamers retry without dropping authored content.
                     AarisMobileStreamingFrameGate.DeferOptionalWorkDuringAssetCleanup(unloading);
+                    // This pass also covers every additive scene retired before
+                    // it started, so do not schedule a redundant proactive scan.
+                    pendingRetiredAdditiveScenes = 0;
+                    proactiveAssetCleanupPending = false;
+                    proactiveAssetCleanupAfter =
+                        Time.unscaledTime + ProactiveAssetCleanupCooldownSeconds;
 #endif
                     assetUnloadStartedCount++;
                     unloadAfter = Time.unscaledTime + 30;
@@ -1002,6 +1034,39 @@ namespace Aaris.MapReview
 #endif
             }
 #if UNITY_ANDROID && !UNITY_EDITOR
+            // SceneManager.UnloadSceneAsync destroys scene objects but Unity 6
+            // explicitly retains regular assets. Only sample Android memory
+            // pressure at low frequency, and only queue a reclaim when at least
+            // one owned additive scene has actually retired.
+            if (AarisMobileStreamingFrameGate.IsConstrainedDevice() &&
+                AarisAndroidMemoryPressure.TrySample(out bool memoryPressure))
+            {
+                proactiveAssetCleanupPending =
+                    memoryPressure && pendingRetiredAdditiveScenes > 0;
+            }
+
+            if (proactiveAssetCleanupPending &&
+                pendingRetiredAdditiveScenes > 0 &&
+                lastAdditiveSceneRetirementAt >= 0f &&
+                Time.unscaledTime - lastAdditiveSceneRetirementAt >=
+                    SceneRetirementCalmSeconds &&
+                Time.unscaledTime >= proactiveAssetCleanupAfter &&
+                (unloading == null || unloading.isDone) &&
+                Time.smoothDeltaTime > 0f &&
+                Time.smoothDeltaTime <=
+                    AarisMobileStreamingFrameGate.CurrentPacedFrameBudgetSeconds() * 1.08f &&
+                AarisMobileStreamingFrameGate.TryClaimUnusedAssetCleanupFrame())
+            {
+                assetUnloadStartedRealtime = Time.realtimeSinceStartup;
+                unloading = Resources.UnloadUnusedAssets();
+                AarisMobileStreamingFrameGate.DeferOptionalWorkDuringAssetCleanup(unloading);
+                assetUnloadStartedCount++;
+                pendingRetiredAdditiveScenes = 0;
+                proactiveAssetCleanupPending = false;
+                proactiveAssetCleanupAfter =
+                    Time.unscaledTime + ProactiveAssetCleanupCooldownSeconds;
+            }
+
             // Avoid two diagnostic snapshots in the same frame. If a low-memory
             // notification or stall already recorded evidence, retry next
             // frame without losing the completion event or its counters.
