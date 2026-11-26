@@ -22,6 +22,7 @@ namespace Aaris.MapReview
             new ProfilerMarker("Aaris.Startup.CharacterRigInstantiate");
 #endif
         private const string PrimaryModel = "AarisCharacters/Primary/TacticalSoldier/TacticalSoldier";
+        private const string PrimaryAvatar = "AarisCharacters/Primary/TacticalSoldier/AarisHeroAvatar";
         private const string PreviousPrimaryModel = "AarisCharacters/Primary/RealisticSoldier/RealisticSoldier";
         private const string LegacyPrimaryModel = "AarisCharacters/Primary/Player";
         private const string FallbackModel = "AarisCharacters/Kenney/characterMedium";
@@ -415,6 +416,15 @@ namespace Aaris.MapReview
             animator = visual.GetComponentInChildren<Animator>(true);
             if (animator == null)
                 animator = visual.AddComponent<Animator>();
+
+            if (resourcePath == PrimaryModel)
+            {
+                // The normalized rig's authored pose also works with older
+                // serialized Humanoid settings on existing checkouts.
+                Avatar normalizedAvatar = Resources.Load<Avatar>(PrimaryAvatar);
+                if (normalizedAvatar != null && normalizedAvatar.isValid && normalizedAvatar.isHuman)
+                    animator.avatar = normalizedAvatar;
+            }
 
             if (animator.avatar == null || !animator.avatar.isValid || !animator.avatar.isHuman)
             {
