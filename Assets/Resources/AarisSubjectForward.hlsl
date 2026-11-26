@@ -67,7 +67,12 @@ void AarisLitPassFragment(
     half radome = smoothstep(8.6 - stationEdge, 8.6 + stationEdge, station);
     half aftBand = 1.0 - smoothstep(0.18, 0.18 + stationEdge, abs(station + 5.65));
     half enamel = max(max(waist, tips), max(radome, tail) * centreline);
-    half accent = max(max(pinstripe, wingBand), aftBand * centreline);
+    // Retain the upper aft trim where a fly-by mostly sees the wing and tail.
+    float upperBelt = airframe.y - 0.09 - 0.065 * airframe.z;
+    half upperTrim = (1.0 - smoothstep(0.065, 0.065 + edge, abs(upperBelt)))
+        * (1.0 - smoothstep(1.30, 1.48, span))
+        * (1.0 - smoothstep(1.8, 3.0, station));
+    half accent = max(max(pinstripe, upperTrim), max(wingBand, aftBand * centreline));
     half belly = (1.0 - smoothstep(-0.08 - edge, -0.08 + edge, belt)) * centreline;
     float jointDistance = min(abs(station - 5.9), abs(station + 2.8));
     half panelJoint = (1.0 - smoothstep(0.024, 0.024 + stationEdge, jointDistance))

@@ -150,10 +150,15 @@ namespace Aaris.MapReview.Editor
             var inventory = typeof(AarisWeaponInventory);
             var authored = (Material)inventory.GetMethod("AuthoredPbrFinish", Priv)
                 .Invoke(null, new object[] { pickup.Spec, ground });
-            var groundFinish = inventory.GetMethod("GroundPickupFinish", Priv);
-            Require(ground != authored
-                && ReferenceEquals(ground, groundFinish.Invoke(null, new object[] { authored })),
+            var groundFinish = (Func<Material, Material>)Delegate.CreateDelegate(
+                typeof(Func<Material, Material>), inventory.GetMethod("GroundPickupFinish", Priv));
+            Require(ground != authored && ReferenceEquals(ground, groundFinish(authored)),
                 "native floor finish is reused across pickups and separate from the held finish");
+            for (int i = 0; i < 16; i++) groundFinish(authored);
+            long beforeGroundCache = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 256; i++) groundFinish(authored);
+            long groundBytes = GC.GetAllocatedBytesForCurrentThread() - beforeGroundCache;
+            Require(groundBytes == 0, "256 warmed floor material lookups allocate " + groundBytes + " managed bytes");
             Require(ground.GetTexture("_BaseMap") == authored.GetTexture("_BaseMap") &&
                 ground.GetTexture("_BumpMap") == authored.GetTexture("_BumpMap") &&
                 ground.GetTexture("_MetallicGlossMap") == authored.GetTexture("_MetallicGlossMap"),

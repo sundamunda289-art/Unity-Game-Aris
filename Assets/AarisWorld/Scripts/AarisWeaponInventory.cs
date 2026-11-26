@@ -384,11 +384,12 @@ namespace Aaris.MapReview
 
         private static Material GroundPickupFinish(Material finish)
         {
-            if (finish.shader == null || finish.shader.name != "Aaris/Mobile Subject Lit" ||
-                finish.GetFloat("_Surface") > .5f)
-                return finish;
             if (groundFinishCache.TryGetValue(finish, out var cached) && cached != null)
                 return cached;
+            Shader subjectShader = AarisShaderCache.Find("Aaris/Mobile Subject Lit");
+            if (subjectShader == null || finish.shader != subjectShader ||
+                finish.GetFloat("_Surface") > .5f)
+                return finish;
 
             // Lift textured midtones slightly on asphalt while controlling
             // grazing shine. This keeps the dark grip and the original maps.
