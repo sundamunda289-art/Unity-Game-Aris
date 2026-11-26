@@ -64,11 +64,21 @@ void AarisLitPassFragment(
     half aftBand = 1.0 - smoothstep(0.18, 0.18 + stationEdge, abs(station + 5.65));
     half enamel = max(max(waist, tips), max(radome, tail) * centreline);
     half accent = max(max(pinstripe, wingBand), aftBand * centreline);
-    surfaceData.albedo = lerp(surfaceData.albedo, half3(0.022h, 0.057h, 0.084h), enamel);
-    surfaceData.albedo = lerp(surfaceData.albedo, half3(0.73h, 0.32h, 0.063h), accent);
+    // The lower fuselage and a few transverse panel joints give the
+    // cylinder shape at normal fly-by distance. Reuse the marking derivatives.
+    half belly = (1.0 - smoothstep(-0.78 - edge, -0.78 + edge, belt)) * centreline;
+    float jointDistance = min(abs(station - 5.9), abs(station + 2.8));
+    half panelJoint = (1.0 - smoothstep(0.024, 0.024 + stationEdge, jointDistance))
+        * saturate(1.0 - 3.5 * stationEdge) * centreline;
+    surfaceData.albedo *= 1.0h - 0.36h * belly;
+    surfaceData.albedo = lerp(surfaceData.albedo, half3(0.026h, 0.066h, 0.095h), enamel);
+    surfaceData.albedo = lerp(surfaceData.albedo, half3(0.62h, 0.30h, 0.075h), accent);
+    surfaceData.albedo *= 1.0h - 0.27h * panelJoint;
+    surfaceData.smoothness = lerp(surfaceData.smoothness, 0.72h, enamel * 0.74h);
     // The serialized daylight colour is used even when runtime-only
     // emission keywords are stripped from a mobile player build.
-    surfaceData.emission = _EmissionColor.rgb * (1.0h - 0.82h * max(enamel, accent));
+    half painted = max(enamel, accent);
+    surfaceData.emission = _EmissionColor.rgb * (1.0h - max(0.28h * belly, 0.82h * painted));
 #endif
 
     half4 color = AarisSubjectPBR(inputData, surfaceData);
