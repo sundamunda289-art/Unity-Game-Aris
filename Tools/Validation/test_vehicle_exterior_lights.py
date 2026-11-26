@@ -80,7 +80,9 @@ class VehicleExteriorLighting(unittest.TestCase):
         self.assertIn("driver != null && driver.isActiveAndEnabled &&", lights)
         self.assertIn("isActiveAndEnabled;", lights)
         self.assertIn("roadHeadlight.enabled = roadBeam;", lights)
-        self.assertIn("bool roadBeam = driving && NeedsRoadBeam();", lights)
+        self.assertIn(
+            "bool roadBeam = driving && roadHeadlight != null && NeedsRoadBeam();",
+            lights)
         self.assertIn("(roadBeam ? 8 : 0)", lights)
         configure = MOTOR.split("public void ConfigureExteriorLights(", 1)[1].split(
             "private void EnsureRoadHeadlight()", 1)[0]
