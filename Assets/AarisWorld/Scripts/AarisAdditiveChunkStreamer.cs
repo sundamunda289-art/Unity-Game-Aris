@@ -181,8 +181,16 @@ namespace Aaris.MapReview
                 }
                 else
                 {
+                    bool retiredOwnedScene = states[finished].loadedByThisStreamer;
                     states[finished].loadedByThisStreamer = false;
                     ForgetResident(finished);
+#if UNITY_ANDROID && !UNITY_EDITOR
+                    // Scene retirement itself does not unload regular assets.
+                    // Notify the memory governor only after a scene this
+                    // streamer actually owned has completed retirement.
+                    if (retiredOwnedScene)
+                        AarisMobileRuntime.NotifyAdditiveSceneRetired();
+#endif
                 }
 #if UNITY_ANDROID && !UNITY_EDITOR
                 // Native renderer/physics integration and scene retirement can finish
