@@ -31,7 +31,7 @@ namespace Aaris.MapReview
                 float.IsNaN(height) || float.IsInfinity(height) ||
                 width < 7.5f || depth < 8f || height < 4.5f)
                 return;
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
             if (shader == null) return;
             if (sharedStucco == null)
             {
