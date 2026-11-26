@@ -118,11 +118,11 @@ namespace Aaris.MapReview
         private static Material Paint(ref Material cached, Color color)
         {
             if (cached != null) return cached;
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Simple Lit");
-            if (shader == null) shader = Shader.Find("Standard");
-            if (shader == null) shader = Shader.Find("Sprites/Default");
-            if (shader == null) shader = Shader.Find("Hidden/InternalErrorShader");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = AarisShaderCache.Find("Universal Render Pipeline/Simple Lit");
+            if (shader == null) shader = AarisShaderCache.Find("Standard");
+            if (shader == null) shader = AarisShaderCache.Find("Sprites/Default");
+            if (shader == null) shader = AarisShaderCache.Find("Hidden/InternalErrorShader");
             if (shader == null)
                 throw new InvalidOperationException("AARIS_OFFLINE_URP_SHADER_UNAVAILABLE");
             cached = new Material(shader);
@@ -140,9 +140,9 @@ namespace Aaris.MapReview
             bool transparent = false)
         {
             if (cached != null) return cached;
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null) shader = Shader.Find("Sprites/Default");
-            if (shader == null) shader = Shader.Find("Unlit/Color");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = AarisShaderCache.Find("Sprites/Default");
+            if (shader == null) shader = AarisShaderCache.Find("Unlit/Color");
             if (shader == null) return Paint(ref cached, color);
             cached = new Material(shader)
             {
