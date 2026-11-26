@@ -36,15 +36,15 @@ class PickupOneTimeNativeCost(unittest.TestCase):
     def test_shader_lookup_occurs_only_during_shared_material_cache_miss(self):
         cache=SOURCE.split("internal static class AarisLootBeaconMaterial",1)[1]
         self.assertIn("if (shared != null) return shared;",cache)
-        self.assertIn('Shader.Find("Universal Render Pipeline/Unlit")',cache)
-        self.assertIn('Shader.Find("Sprites/Default")',cache)
+        self.assertIn('AarisShaderCache.Find("Universal Render Pipeline/Unlit")',cache)
+        self.assertIn('AarisShaderCache.Find("Sprites/Default")',cache)
         self.assertLess(cache.index("if (shared != null) return shared;"),
-                        cache.index("Shader.Find("))
+                        cache.index("AarisShaderCache.Find("))
         self.assertIn("if (shader == null) return null;",cache)
         self.assertIn('new Material(shader) { name = "Aaris Loot Beacon Shared" }',cache)
         self.assertIn('shared.SetColor("_BaseColor", Color.white)',cache)
         init=section("public bool Initialize(", "private void Update()")
-        self.assertNotIn("Shader.Find(",init)
+        self.assertNotIn("AarisShaderCache.Find(",init)
         self.assertNotIn("new Material(",init)
         self.assertEqual(init.count("AarisLootBeaconMaterial.Get();"),1)
     def test_beacon_visual_settings_and_culling_unchanged(self):

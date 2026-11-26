@@ -393,9 +393,9 @@ namespace Aaris.MapReview
             // later re-streamed weapons. Preserve original URP/Unlit preference
             // and Sprites fallback when the current pipeline is unavailable.
             if (shared != null) return shared;
-            Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
-            if (shader == null) shader = Shader.Find("Sprites/Default");
-            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Particles/Unlit");
+            if (shader == null) shader = AarisShaderCache.Find("Sprites/Default");
+            if (shader == null) shader = AarisShaderCache.Find("Universal Render Pipeline/Unlit");
             if (shader == null) return null;
             shared = new Material(shader) { name = "Aaris Loot Beacon Shared" };
             if (shared.HasProperty("_Surface")) shared.SetFloat("_Surface", 1f);

@@ -10,7 +10,7 @@ class GunPbrImport(unittest.TestCase):
   method=src.split("private static Material ConvertedWeaponFinish(",1)[1].split(
    "internal static Quaternion ImportedModelRotation(",1)[0]
   for value in ('if (HasAuthoredTexture(source))',
-    'Shader.Find("Universal Render Pipeline/Lit")',
+    'AarisShaderCache.Find("Universal Render Pipeline/Lit")',
     'shaderName == "Universal Render Pipeline/Lit"',
     'source.GetTextureScale(texProperty)',
     'source.GetTextureOffset(texProperty)',

@@ -840,9 +840,9 @@ namespace Aaris.MapReview
         private static Material MedicalPaint(ref Material material, Color color, string name)
         {
             if (material != null) return material;
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Simple Lit");
-            if (shader == null) shader = Shader.Find("Standard");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = AarisShaderCache.Find("Universal Render Pipeline/Simple Lit");
+            if (shader == null) shader = AarisShaderCache.Find("Standard");
             if (shader == null) return null;
             material = new Material(shader) { name = name };
             if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
