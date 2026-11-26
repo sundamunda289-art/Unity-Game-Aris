@@ -93,8 +93,8 @@ namespace Aaris.MapReview
             string label, Color baseColor, float metallic, float smoothness)
         {
             if (cached != null) return cached;
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Simple Lit");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = AarisShaderCache.Find("Universal Render Pipeline/Simple Lit");
             if (shader == null) return null;
             cached = new Material(shader) { name = "AarisWeaponFinish_" + label };
             if (cached.HasProperty("_BaseColor"))
@@ -125,9 +125,9 @@ namespace Aaris.MapReview
             if (baseColor == null || normal == null || metallicSmoothness == null)
                 return null;
 
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
             if (shader == null) shader =
-                Shader.Find("Universal Render Pipeline/Simple Lit");
+                AarisShaderCache.Find("Universal Render Pipeline/Simple Lit");
             if (shader == null) return null;
             var material = new Material(shader)
             {
@@ -237,7 +237,7 @@ namespace Aaris.MapReview
                     return source;
                 if (weaponFinishCache.TryGetValue(source, out Material textured) &&
                     textured != null) return textured;
-                Shader urp = Shader.Find("Universal Render Pipeline/Lit");
+                Shader urp = AarisShaderCache.Find("Universal Render Pipeline/Lit");
                 if (urp == null) return source;
                 var converted = new Material(urp)
                 {
@@ -311,9 +311,9 @@ namespace Aaris.MapReview
                 cached != null) return cached;
 
             Material fallback = WeaponFinish(spec);
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
             if (shader == null) shader =
-                Shader.Find("Universal Render Pipeline/Simple Lit");
+                AarisShaderCache.Find("Universal Render Pipeline/Simple Lit");
             if (shader == null) return fallback;
 
             Color authored = Color.white;
