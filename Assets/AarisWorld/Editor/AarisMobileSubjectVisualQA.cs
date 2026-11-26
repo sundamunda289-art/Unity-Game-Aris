@@ -589,9 +589,11 @@ namespace Aaris.MapReview.Editor
         }
 
         // The two enabled observers are rendered in the same player frame.
-        // Only the contact observer receives the production camera batch.
+        // The control excludes the isolated batch layer while the contact
+        // observer receives the same geometry as a normal game camera.
         internal sealed class ContactPhoto : IDisposable
         {
+            private const int ReviewLayer = 31;
             private readonly Type type = typeof(AarisWeaponPickup).Assembly
                 .GetType("Aaris.MapReview.AarisSubjectContacts");
             private readonly Behaviour contacts;
@@ -602,7 +604,7 @@ namespace Aaris.MapReview.Editor
             private readonly Camera observer, control;
             private readonly RenderTexture frame, controlFrame;
             private readonly string directory, label;
-            private readonly int expectedDraws, firstFrame;
+            private readonly int expectedDraws, firstFrame, originalLayer;
             private readonly bool expectedWheelPlane;
             private int renderedFrame = -1, controlRenderedFrame = -1;
             private int draws, probes;
@@ -632,9 +634,14 @@ namespace Aaris.MapReview.Editor
                 Array.Clear(entries, 0, entries.Length);
                 entries.SetValue(selected, 0);
 
+                originalLayer = contacts.gameObject.layer;
+                contacts.gameObject.layer = ReviewLayer;
                 observer = CreateContactObserver(root, eye, target, out frame);
                 if (expectedDraws > 0)
+                {
                     control = CreateContactObserver(root, eye, target, out controlFrame);
+                    control.cullingMask &= ~(1 << ReviewLayer);
+                }
                 cameraField.SetValue(contacts, observer);
                 firstFrame = Time.frameCount + 1;
                 RenderPipelineManager.endCameraRendering += OnCameraRendered;
@@ -706,6 +713,7 @@ namespace Aaris.MapReview.Editor
                 }
                 Array.Copy(savedEntries, entries, entries.Length);
                 cameraField.SetValue(contacts, originalCamera);
+                contacts.gameObject.layer = originalLayer;
                 RenderTexture.ReleaseTemporary(frame);
                 Object.Destroy(observer.gameObject);
             }

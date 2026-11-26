@@ -194,9 +194,17 @@ namespace Aaris.MapReview
                         e.size.x * fade, (prone ? 1.5f : e.size.y) * fade);
                 }
             }
-            if (LastDrawCount>0)
-                Graphics.DrawMeshInstanced(quad,0,paint,matrices,LastDrawCount,null,
-                    ShadowCastingMode.Off, false, 0, camera, LightProbeUsage.Off);
+            if (LastDrawCount == 0) return;
+            var render = new RenderParams(paint)
+            {
+                // Layer filtering keeps the batch visible to offscreen game
+                // cameras, which can skip a camera-specific instanced draw.
+                layer = gameObject.layer,
+                shadowCastingMode = ShadowCastingMode.Off,
+                receiveShadows = false,
+                lightProbeUsage = LightProbeUsage.Off
+            };
+            Graphics.RenderMeshInstanced(render, quad, 0, matrices, LastDrawCount);
         }
 
         private static float PlaneHeight(Vector3 point, Vector3 normal, Vector3 position)
