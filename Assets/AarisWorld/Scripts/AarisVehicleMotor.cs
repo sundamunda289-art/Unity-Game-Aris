@@ -785,6 +785,10 @@ namespace Aaris.MapReview
             // body pivot already exists when the player enters a fitted car.
             if (roadHeadlight != null || frontLamps[0] == null ||
                 frontLamps[1] == null) return;
+            // The emissive headlamp materials remain visible regardless. Avoid
+            // constructing a Spot Light when the active Android URP asset has
+            // additional lights disabled and would render no road illumination.
+            if (!AarisMobileRuntime.CanRenderAdditionalLights()) return;
             Transform mount = frontLamps[0].transform.parent;
             if (mount == null) return;
             var beamObject = new GameObject("Player Car Headlight Beam");
@@ -834,7 +838,7 @@ namespace Aaris.MapReview
             // moving-forward car is merely braking with the down arrow.
             bool reversing = driving && forward < -.08f &&
                 SpeedMetresPerSecond < .55f;
-            bool roadBeam = driving && NeedsRoadBeam();
+            bool roadBeam = driving && roadHeadlight != null && NeedsRoadBeam();
             int lampState = (driving ? 1 : 0) |
                 (braking ? 2 : 0) | (reversing ? 4 : 0) |
                 (roadBeam ? 8 : 0);

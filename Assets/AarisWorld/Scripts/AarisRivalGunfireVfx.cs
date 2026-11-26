@@ -119,9 +119,9 @@ namespace Aaris.MapReview
             if (!brass) return AarisEquippedGun.SharedGunfireGlowMaterial();
             Material cached = shotgun ? shotgunMaterial : brassMaterial;
             if (cached != null) return cached;
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null) shader = Shader.Find("Unlit/Color");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = AarisShaderCache.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = AarisShaderCache.Find("Unlit/Color");
             if (shader == null) return null;
             Color color = shotgun
                 ? new Color(.55f, .11f, .07f) : new Color(.85f, .63f, .24f);
@@ -172,15 +172,21 @@ namespace Aaris.MapReview
             slot.flash.shadowCastingMode = ShadowCastingMode.Off;
             slot.flash.receiveShadows = false;
             slot.flash.enabled = false;
-            var light = new GameObject("Aaris Pooled Bot Barrel Light");
-            light.transform.SetParent(slot.flashPose, false);
-            slot.burst = light.AddComponent<Light>();
-            slot.burst.type = LightType.Point;
-            slot.burst.color = new Color(1f, .60f, .25f);
-            slot.burst.range = 2.3f;
-            slot.burst.intensity = 1.2f;
-            slot.burst.shadows = LightShadows.None;
-            slot.burst.enabled = false;
+            // Keep the pooled emissive flash/tracer on every pipeline. A real
+            // Point Light is useful only if the active URP asset renders
+            // additional lights; otherwise it is invisible native/culling work.
+            if (AarisMobileRuntime.CanRenderAdditionalLights())
+            {
+                var light = new GameObject("Aaris Pooled Bot Barrel Light");
+                light.transform.SetParent(slot.flashPose, false);
+                slot.burst = light.AddComponent<Light>();
+                slot.burst.type = LightType.Point;
+                slot.burst.color = new Color(1f, .60f, .25f);
+                slot.burst.range = 2.3f;
+                slot.burst.intensity = 1.2f;
+                slot.burst.shadows = LightShadows.None;
+                slot.burst.enabled = false;
+            }
             return slot;
         }
 
@@ -250,9 +256,10 @@ namespace Aaris.MapReview
             int activeBursts = 0;
             for (int i = 0; i < slots.Length; i++)
                 if (slots[i] != null && slots[i] != slot &&
-                    slots[i].burst.enabled) activeBursts++;
-            slot.burst.enabled = activeBursts < 2 &&
-                (from - observer.position).sqrMagnitude <= 18f * 18f;
+                    slots[i].burst != null && slots[i].burst.enabled) activeBursts++;
+            if (slot.burst != null)
+                slot.burst.enabled = activeBursts < 2 &&
+                    (from - observer.position).sqrMagnitude <= 18f * 18f;
 
             // The next short muzzle/tracer slot must never erase an earlier
             // falling shell. Casings own a separately bounded ring pool.
@@ -330,7 +337,7 @@ namespace Aaris.MapReview
                 gun.category == "DMR" ? .0095f :
                 gun.id == "BattleRifle" ? .0105f : .009f;
             flash.flashPose.localScale *= scale;
-            flash.burst.intensity = 1.2f * scale;
+            if (flash.burst != null) flash.burst.intensity = 1.2f * scale;
             if (gun.category == "Pistol") casing.pose.localScale *= .76f;
             else if (gun.category == "SMG") casing.pose.localScale *= .88f;
             else if (gun.category == "Sniper") casing.pose.localScale *= 1.18f;
@@ -356,7 +363,7 @@ namespace Aaris.MapReview
                 if (slot.flash.enabled && now >= slot.flashUntil)
                 {
                     slot.flash.enabled = false;
-                    slot.burst.enabled = false;
+                    if (slot.burst != null) slot.burst.enabled = false;
                 }
                 if (slot.tracer.enabled)
                 {
@@ -373,7 +380,8 @@ namespace Aaris.MapReview
                         slot.tracer.SetPosition(1, slot.origin + segment * head);
                     }
                 }
-                if (slot.flash.enabled || slot.tracer.enabled || slot.burst.enabled)
+                if (slot.flash.enabled || slot.tracer.enabled ||
+                    (slot.burst != null && slot.burst.enabled))
                     anyLiveEffect = true;
             }
             for (int i = 0; i < casings.Length; i++)

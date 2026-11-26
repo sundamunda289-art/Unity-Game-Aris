@@ -16,6 +16,22 @@ namespace Aaris.MapReview
     [DisallowMultipleComponent, DefaultExecutionOrder(-300)]
     public sealed class AarisMobileRuntime : MonoBehaviour
     {
+        // Runtime VFX may request local point/spot lights even when the active
+        // URP asset has additional lights disabled. On Android those components
+        // would still enter native light/culling bookkeeping while contributing
+        // zero surface lighting. Suppress only that proven no-op configuration;
+        // Editor and future pipeline assets retain the authored local lights.
+        internal static bool CanRenderAdditionalLights()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            UniversalRenderPipelineAsset asset = UniversalRenderPipeline.asset;
+            return asset == null ||
+                asset.additionalLightsRenderingMode != LightRenderingMode.Disabled;
+#else
+            return true;
+#endif
+        }
+
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         private static readonly ProfilerMarker k_DiagnosticsRecord =
             new ProfilerMarker("Aaris.Diagnostics.Record");

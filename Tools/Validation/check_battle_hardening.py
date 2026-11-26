@@ -294,7 +294,7 @@ def audit() -> None:
         assert f'IndexOf("{slot}"' in visual
     assert "BuildRealisticSoldierMaterial(" in visual
     assert "ApplyRealisticSoldierMaterials();" in visual
-    assert 'Shader.Find("Universal Render Pipeline/Lit")' in visual
+    assert 'AarisShaderCache.Find("Universal Render Pipeline/Lit")' in visual
     assert "realisticSkinMaterials.TryGetValue" in visual
     assert "renderer.sharedMaterials = converted;" in visual
     assert "_SURFACE_TYPE_TRANSPARENT" in visual

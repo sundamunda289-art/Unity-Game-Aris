@@ -218,9 +218,9 @@ namespace Aaris.MapReview
         private static Material MuzzleFlashMaterial()
         {
             if (sharedMuzzleFlashMaterial != null) return sharedMuzzleFlashMaterial;
-            Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
-            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null) shader = Shader.Find("Unlit/Color");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Particles/Unlit");
+            if (shader == null) shader = AarisShaderCache.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = AarisShaderCache.Find("Unlit/Color");
             if (shader == null) return null;
             var material = new Material(shader)
             {
@@ -353,18 +353,25 @@ namespace Aaris.MapReview
                 UnityEngine.Rendering.ShadowCastingMode.Off;
             muzzleFlashRenderer.receiveShadows = false;
             muzzleFlashRenderer.enabled = false;
-            // Point-light shadows cost six cubemap faces in URP. Never cast any.
-            var lightObject = new GameObject("Aaris Shadowless Barrel Burst");
-            lightObject.transform.SetParent(flash.transform, false);
-            lightObject.transform.localPosition = Vector3.zero;
-            muzzleLight = lightObject.AddComponent<Light>();
-            muzzleLight.type = LightType.Point;
-            muzzleLight.color = new Color(1f, 0.60f, 0.25f);
-            muzzleLight.range = 2.3f;
-            muzzleLight.intensity = 1.5f;
-            muzzleLight.shadows = LightShadows.None;
-            muzzleLight.renderMode = LightRenderMode.ForcePixel;
-            muzzleLight.enabled = false;
+            // The saved mobile URP asset currently disables additional lights.
+            // In that mode a Point Light cannot affect pixels, so do not create a
+            // native Light/GameObject just to feed culling. The tapered emissive
+            // flame above remains the visible muzzle flash. If a future pipeline
+            // enables additional lights this exact local burst returns.
+            if (AarisMobileRuntime.CanRenderAdditionalLights())
+            {
+                var lightObject = new GameObject("Aaris Shadowless Barrel Burst");
+                lightObject.transform.SetParent(flash.transform, false);
+                lightObject.transform.localPosition = Vector3.zero;
+                muzzleLight = lightObject.AddComponent<Light>();
+                muzzleLight.type = LightType.Point;
+                muzzleLight.color = new Color(1f, 0.60f, 0.25f);
+                muzzleLight.range = 2.3f;
+                muzzleLight.intensity = 1.5f;
+                muzzleLight.shadows = LightShadows.None;
+                muzzleLight.renderMode = LightRenderMode.ForcePixel;
+                muzzleLight.enabled = false;
+            }
         }
 
         private void TriggerMuzzleFlash()
@@ -392,9 +399,9 @@ namespace Aaris.MapReview
         {
             Material cached = shotgun ? sharedShotgunShellMaterial : sharedBrassMaterial;
             if (cached != null) return cached;
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Simple Lit");
-            if (shader == null) shader = Shader.Find("Standard");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = AarisShaderCache.Find("Universal Render Pipeline/Simple Lit");
+            if (shader == null) shader = AarisShaderCache.Find("Standard");
             if (shader == null) return null;
             var material = new Material(shader)
             {
@@ -661,9 +668,9 @@ namespace Aaris.MapReview
         {
             if (sharedImpactParticleMaterial != null)
                 return sharedImpactParticleMaterial;
-            Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
-            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null) shader = Shader.Find("Unlit/Color");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Particles/Unlit");
+            if (shader == null) shader = AarisShaderCache.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = AarisShaderCache.Find("Unlit/Color");
             if (shader == null) return null;
             var material = new Material(shader)
             {
