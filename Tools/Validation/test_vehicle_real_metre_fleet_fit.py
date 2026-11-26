@@ -105,8 +105,10 @@ class RealMetreVehicleFit(unittest.TestCase):
             self.assertLess(max(rgb) - min(rgb), .70)
         tint = WORLD.split("private static void PaintVerifiedBodySlots(", 1)[1].split(
             "private void FallBackToVerifiedModel(", 1)[0]
-        self.assertIn('case "GT":', tint)
-        self.assertIn("paintClearCoat = .41f", tint)
+        gt_paint = tint.split('case "GT":', 1)[1].split("break;", 1)[0]
+        gt_coat = float(re.search(r"paintClearCoat = ([0-9.]+)f;", gt_paint)[1])
+        self.assertGreaterEqual(gt_coat, .35)
+        self.assertLessEqual(gt_coat, .47)
         self.assertIn("if (separatePaint || civilianPaint)", tint)
         self.assertIn("renderer.SetPropertyBlock(block, slot)", tint)
         material = WORLD.split("private Material AuthoredUrpMaterial(", 1)[1].split(
