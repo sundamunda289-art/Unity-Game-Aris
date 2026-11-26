@@ -46,8 +46,8 @@ namespace Aaris.MapReview
         private static Material smgFinish, assaultFinish, battleFinish,
             sniperFinish, shotgunFinish;
         // One shared URP PBR material per locally vendored textured firearm.
-        // The cache is keyed by Resources folder and is reused by every held,
-        // stowed and floor instance; no per-pickup material copies are made.
+        // The same imported maps and base finish are reused for held, stowed
+        // and floor instances. The floor finish changes the tint and smoothness.
         private static readonly Dictionary<string, Material> pbrFinishCache =
             new Dictionary<string, Material>(8, System.StringComparer.Ordinal);
         // One converted URP material per imported flat-shaded source slot.
@@ -55,6 +55,8 @@ namespace Aaris.MapReview
         // does not become per-gun memory churn.
         private static readonly Dictionary<Material, Material> weaponFinishCache =
             new Dictionary<Material, Material>();
+        private static readonly Dictionary<Material, Material> groundFinishCache =
+            new Dictionary<Material, Material>(12);
         // A complete humanoid carries the equipped gun at low-ready while sprinting;
         // incomplete rigs keep the established safe back-holster fallback.
         public bool IsSprintLowReady { get; private set; }
@@ -380,8 +382,27 @@ namespace Aaris.MapReview
                 : Quaternion.identity;
         }
 
+        private static Material GroundPickupFinish(Material finish)
+        {
+            if (finish.shader == null || finish.shader.name != "Aaris/Mobile Subject Lit" ||
+                finish.GetFloat("_Surface") > .5f)
+                return finish;
+            if (groundFinishCache.TryGetValue(finish, out var cached) && cached != null)
+                return cached;
+
+            // Lift textured midtones slightly on asphalt while controlling
+            // grazing shine. This keeps the dark grip and the original maps.
+            var ground = new Material(finish) { name = finish.name + " Ground" };
+            Color tint = finish.GetColor("_BaseColor");
+            ground.SetColor("_BaseColor", new Color(tint.r * 1.34f,
+                tint.g * 1.34f, tint.b * 1.34f, tint.a));
+            ground.SetFloat("_Smoothness", finish.GetFloat("_Smoothness") * .76f);
+            groundFinishCache[finish] = ground;
+            return ground;
+        }
+
         internal static void ApplyTextureAwareWeaponFinish(AarisWeaponSpec spec,
-            Renderer[] renderers)
+            Renderer[] renderers, bool groundPickup = false)
         {
             if (renderers == null || renderers.Length == 0) return;
             foreach (Renderer renderer in renderers)
@@ -391,19 +412,12 @@ namespace Aaris.MapReview
                 bool changed = false;
                 for (int i = 0; i < source.Length; i++)
                 {
-                    Material authoredPbr = AuthoredPbrFinish(spec, source[i]);
-                    if (authoredPbr != null)
-                    {
-                        if (source[i] != authoredPbr)
-                        {
-                            source[i] = authoredPbr;
-                            changed = true;
-                        }
-                        continue;
-                    }
-                    Material converted = ConvertedWeaponFinish(spec, source[i]);
-                    if (converted == null || converted == source[i]) continue;
-                    source[i] = converted;
+                    Material finish = AuthoredPbrFinish(spec, source[i]) ??
+                        ConvertedWeaponFinish(spec, source[i]);
+                    if (finish == null) continue;
+                    if (groundPickup) finish = GroundPickupFinish(finish);
+                    if (finish == source[i]) continue;
+                    source[i] = finish;
                     changed = true;
                 }
                 if (changed) renderer.sharedMaterials = source;

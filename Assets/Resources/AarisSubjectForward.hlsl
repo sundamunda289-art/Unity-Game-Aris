@@ -46,27 +46,29 @@ void AarisLitPassFragment(
     // Derivative-width boundaries soften subpixel stripes at flight distance.
     float3 airframe = TransformWorldToObject(input.positionWS);
     float span = abs(airframe.x);
-    float belt = airframe.y + 0.23 - 0.065 * airframe.z;
-    float edge = max(fwidth(belt), 0.012);
-    half waist = (1.0 - smoothstep(0.24 - edge, 0.24 + edge, abs(belt)))
-        * (1.0 - smoothstep(1.30, 1.48, span));
-    float wingEdge = max(fwidth(span), 0.025);
-    half tips = smoothstep(9.55 - wingEdge, 9.55 + wingEdge, span);
-    half pinstripe = (1.0 - smoothstep(0.065, 0.065 + edge, abs(belt - 0.32)))
-        * (1.0 - smoothstep(1.30, 1.48, span));
-    half wingBand = 1.0 - smoothstep(0.12, 0.12 + wingEdge, abs(span - 9.10));
-    // Broad tail and nose blocks remain recognizable when the belt is subpixel.
     float station = airframe.z - 0.55 * airframe.y;
     float stationEdge = max(fwidth(station), 0.03);
     half centreline = 1.0 - smoothstep(1.45, 1.75, span);
+
+    // The transport's sidewall sits below the wing-root datum. Place the
+    // stripe along that wall and stop it before the radome and tail blocks.
+    float belt = airframe.y + 1.07 - 0.032 * airframe.z;
+    float edge = max(fwidth(belt), 0.014);
+    half sidewall = centreline
+        * smoothstep(-5.85 - stationEdge, -5.85 + stationEdge, station)
+        * (1.0 - smoothstep(7.8 - stationEdge, 7.8 + stationEdge, station));
+    half waist = (1.0 - smoothstep(0.24 - edge, 0.24 + edge, abs(belt))) * sidewall;
+    half pinstripe = (1.0 - smoothstep(0.048, 0.048 + edge, abs(belt - 0.31))) * sidewall;
+
+    float wingEdge = max(fwidth(span), 0.025);
+    half tips = smoothstep(9.55 - wingEdge, 9.55 + wingEdge, span);
+    half wingBand = 1.0 - smoothstep(0.12, 0.12 + wingEdge, abs(span - 9.10));
     half tail = 1.0 - smoothstep(-6.2 - stationEdge, -6.2 + stationEdge, station);
     half radome = smoothstep(8.6 - stationEdge, 8.6 + stationEdge, station);
     half aftBand = 1.0 - smoothstep(0.18, 0.18 + stationEdge, abs(station + 5.65));
     half enamel = max(max(waist, tips), max(radome, tail) * centreline);
     half accent = max(max(pinstripe, wingBand), aftBand * centreline);
-    // The lower fuselage and a few transverse panel joints give the
-    // cylinder shape at normal fly-by distance. Reuse the marking derivatives.
-    half belly = (1.0 - smoothstep(-0.78 - edge, -0.78 + edge, belt)) * centreline;
+    half belly = (1.0 - smoothstep(-0.08 - edge, -0.08 + edge, belt)) * centreline;
     float jointDistance = min(abs(station - 5.9), abs(station + 2.8));
     half panelJoint = (1.0 - smoothstep(0.024, 0.024 + stationEdge, jointDistance))
         * saturate(1.0 - 3.5 * stationEdge) * centreline;

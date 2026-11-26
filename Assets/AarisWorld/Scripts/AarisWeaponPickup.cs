@@ -137,10 +137,10 @@ namespace Aaris.MapReview
             // Loot never interferes with player or map physics. Reuse one
             // complete Collider list instead of allocating a new array.
             DisableImportedColliders(visible);
-            // Floor loot and held weapons share the exact cached PBR finish,
-            // so picking up the AR never changes its material appearance.
+            // Reuse the authored weapon maps with a shared satin floor
+            // finish. The held weapon keeps its own material settings.
             AarisWeaponInventory.ApplyTextureAwareWeaponFinish(
-                state.Spec, modelRenderers);
+                state.Spec, modelRenderers, groundPickup: true);
 
             // Measure actual mesh geometry in the pickup root's local space.
             // Unity Renderer.bounds can lag a transform/scale change until a

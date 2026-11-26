@@ -1123,6 +1123,13 @@ namespace Aaris.MapReview
                         polished.SetFloat("_Metallic", .05f);
                     if (polished.HasProperty("_Smoothness"))
                         polished.SetFloat("_Smoothness", .83f);
+                    // Give separate glass a restrained neutral reflection
+                    // alongside the tint, in the existing opaque pass.
+                    if (polished.shader == subject)
+                    {
+                        polished.SetFloat("_ClearCoatMask", .20f);
+                        polished.SetFloat("_ClearCoatSmoothness", .92f);
+                    }
                 }
                 authoredMaterialCache[source] = polished;
                 return polished;

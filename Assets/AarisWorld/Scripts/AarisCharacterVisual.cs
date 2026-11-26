@@ -696,11 +696,11 @@ namespace Aaris.MapReview
             if (!hasAuthoredBase && label.IndexOf("Clothes", StringComparison.OrdinalIgnoreCase) >= 0)
             { colour = new Color(.16f,.205f,.165f,sourceColor.a); metallic = 0f; smoothness = .14f; }
             else if (!hasAuthoredBase && label.IndexOf("Fabric", StringComparison.OrdinalIgnoreCase) >= 0)
-            { colour = new Color(.32f,.27f,.19f,sourceColor.a); metallic = 0f; smoothness = .10f; }
+            { colour = new Color(.35f,.283f,.184f,sourceColor.a); metallic = 0f; smoothness = .10f; }
             else if (!hasAuthoredBase && label.IndexOf("Armor", StringComparison.OrdinalIgnoreCase) >= 0)
-            { colour = new Color(.24f,.235f,.17f,sourceColor.a); metallic = .04f; smoothness = .39f; }
+            { colour = new Color(.242f,.268f,.254f,sourceColor.a); metallic = .13f; smoothness = .47f; }
             else if (!hasAuthoredBase && label.IndexOf("Elements", StringComparison.OrdinalIgnoreCase) >= 0)
-            { colour = new Color(.095f,.10f,.095f,sourceColor.a); metallic = .06f; smoothness = .35f; }
+            { colour = new Color(.128f,.145f,.125f,sourceColor.a); metallic = .04f; smoothness = .27f; }
             else if (!hasAuthoredBase && label.IndexOf("Iron", StringComparison.OrdinalIgnoreCase) >= 0)
             { colour = new Color(.16f,.17f,.16f,sourceColor.a); metallic = .80f; smoothness = .50f; }
             else if (!hasAuthoredBase && label.IndexOf("Metal", StringComparison.OrdinalIgnoreCase) >= 0)
