@@ -131,16 +131,23 @@ The final stance, seven-pose, transition, and full-scene results use the same ve
 | Aircraft actual renders | **10 checks PASS** | Includes real shader-time motion with static rotor transforms |
 | Full-scene 25-second run | **Final source-matched PASS; exit 0, zero C#/shader exceptions** | 25.000 simulated seconds, 138.65 s elapsed, 100/100 spawned and 98 alive; details below |
 | Logical candidate benchmark | **PASS; 18.37 s elapsed** | All 100 actors moved; all 97 expected virtual actors remained virtual; scoped comparison below |
-| Changed source-validation gates | **13 of 14 PASS in live workspace** | Remaining gate encounters pre-existing user importer metadata; see the preservation note below |
+| Initial focused source-validation gates | **13 of 14 PASS in live workspace** | Initial 14-gate scope; remaining gate encounters pre-existing user importer metadata |
+| Additional CI regression corrections | **9 focused tests PASS: 5 post-movement and 4 cover/reaction** | Two additional modified test files; final complete workflow result belongs to the PR/delivery record |
 | Main merge and Codespace synchronization | Delivery record is separate from this pre-merge audit | Canonical merge/HEAD identifiers and post-sync preservation outcome will be recorded in the PR/final delivery report |
 
 Entry points are `AarisPlayerStanceQA`, `AarisPlayerSlopeVisualQA`, `AarisRivalTacticsQA`, and `AarisAircraftIllusionQA`, alongside the existing integration gates. Raw logs, authentication data, private screenshots, and license material are not publication artifacts.
 
 ### Source validation and preserved importer metadata
 
-Thirteen of the fourteen changed source-validation gates pass against the live workspace. The remaining gate contains an existing `hasTranslationDoF` importer assertion: five user-modified `.meta` files already contain `hasTranslationDoF: 0`, whereas canonical main contains `1`. Those pre-existing user files were not overwritten to make the assertion pass.
+The **initial focused set of fourteen source-validation gates** produced thirteen passes against the live workspace. The remaining gate contains an existing `hasTranslationDoF` importer assertion: five user-modified `.meta` files already contain `hasTranslationDoF: 0`, whereas canonical main contains `1`. Those pre-existing user files were not overwritten to make the assertion pass. Two further regression files were subsequently updated following the broader CI checks below; the original 13/14 figure is not a claim about that expanded test scope.
 
 A separate plain temporary overlay under `/tmp` used the exact candidate code and hydrated FBX inputs with the five canonical metadata versions. **All 43 offline asset assertions passed** in that controlled overlay. This isolates the source assertion's importer-data dependency; it does not turn the live failure into a pass or establish that the user's importer values should be changed. Native candidate tests use the actual workspace. Preserve this distinction in the final merge report.
+
+### Follow-up CI source assertions
+
+CI exposed two stale expectations in previously existing regression files. `Tools/Validation/test_rival_post_move_combat_range.py` now checks the actual per-weapon `FireRange`/`shotReach` contract instead of requiring a fixed 38 m range. It preserves and strengthens post-movement pose/facing, settling, attacker admission, LOS/muzzle, and virtual cover-before-ammunition/damage checks. `Tools/Validation/test_combat_hit_reaction_dense_cover.py` now verifies guarded delegation from the damage handler into the shared cover helper, where `nextCoverQuery = now + 1.5f` precedes both early return and physics search. Its bounded 24-to-128-collider retry checks remain enforced. The focused rerun passed **all nine tests: five plus four**.
+
+A broader live sweep of **74 workflow Python commands** recorded **67 passes**, with the two known stale cases held for correction and five commands blocked by missing local prerequisites (`tree_sitter`/`mono-mcs`) that the GitHub workflow installs. No additional stale assertion failure was identified in that sweep. These are local sweep and focused-correction results, not a claim that the final complete GitHub workflow is green; that outcome is recorded separately in the PR/delivery report. This follow-up changes only those two Python test files and this audit, with no runtime, shader, or material changes.
 
 ### Actual full-scene integration
 
@@ -186,7 +193,7 @@ The final stance, seven-pose, 16-frame transition, and full-scene runs use the v
 
 `d1482455e98b91b8988c850190f65dc2b286f332d4e2500ccbfe8eb3b0ae52f5`
 
-The aggregate is calculated from sorted repository-relative paths, each followed by NUL, its file SHA-256, and newline. It identifies the selected tested inputs independently of the eventual documentation/merge commit. The aircraft and rival code/shader evidence above applies to their retained verified files; the legacy compatibility runs are qualified in the ledger. Native results do not erase the preserved importer-data distinction in the source tests.
+The aggregate is calculated from sorted repository-relative paths, each followed by NUL, its file SHA-256, and newline. It identifies the selected tested inputs independently of the eventual documentation/merge commit. The two subsequent Python regression-file corrections are outside this original 44-file manifest; its native runtime/shader/material inputs and identity remain unchanged. The aircraft and rival code/shader evidence above applies to their retained verified files; the legacy compatibility runs are qualified in the ledger. Native results do not erase the preserved importer-data distinction in the source tests.
 
 Before commit, **all 84 pre-existing user-file hashes matched the initial snapshot**. Four known incidental serializations introduced by the Editor verification were restored to their verified initial bytes. One newly generated Editor metadata file was backed up and removed. No Editor process was left active at this preservation check. These checks explicitly preserve the user's original tracked and untracked work; no existing material or importer metadata was changed to force a test to pass.
 
