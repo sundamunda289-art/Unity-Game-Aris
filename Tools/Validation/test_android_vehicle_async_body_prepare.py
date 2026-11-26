@@ -45,6 +45,9 @@ class AndroidVehicleAsyncBodyPrepareTests(unittest.TestCase):
         release_method = SOURCE[SOURCE.index("private void ReleasePreparedBodyPreparation"):
                                 SOURCE.index("private bool TryConsumePreparedBody")]
         self.assertIn("operation.Cancel();", release_method)
+        starter = SOURCE[SOURCE.index("private bool StartPreparedBodyClone"):
+                         SOURCE.index("private void PumpPreparedBodyClone")]
+        self.assertIn("if (now < parkedCacheAllowedAt ||", starter)
 
     def test_visual_and_gameplay_streaming_contracts_are_unchanged(self):
         self.assertIn("private const float LoadRadius = 105f;", SOURCE)
