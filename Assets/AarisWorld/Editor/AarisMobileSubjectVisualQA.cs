@@ -355,8 +355,18 @@ namespace Aaris.MapReview.Editor
                 Require(message.severity!=ShaderCompilerMessageSeverity.Error,"shader message: "+message.message);
             var pass=ShaderUtil.GetShaderData(shader).GetSubshader(0).GetPass(0);
             Require(pass.Name=="SubjectForward","one native forward Lit pass");
+            var keywordSets = new[]
+            {
+                Array.Empty<string>(),
+                new[] { "_NORMALMAP" },
+                new[] { "_NORMALMAP", "_METALLICSPECGLOSSMAP", "INSTANCING_ON" },
+                new[] { "_NORMALMAP", "_EMISSION", "FOG_LINEAR" },
+                new[] { "_AARIS_AIRFRAME", "_NORMALMAP", "_EMISSION", "FOG_LINEAR" },
+                new[] { "_AARIS_GT_TREAD" },
+                new[] { "_AARIS_GT_TREAD", "FOG_LINEAR", "INSTANCING_ON" }
+            };
             foreach(var platform in new[]{ShaderCompilerPlatform.OpenGLCore,ShaderCompilerPlatform.GLES3x,ShaderCompilerPlatform.Vulkan})
-            foreach(var keywords in new[]{new string[0],new[]{"_NORMALMAP"},new[]{"_NORMALMAP","_METALLICSPECGLOSSMAP","INSTANCING_ON"},new[]{"_NORMALMAP","_EMISSION","FOG_LINEAR"},new[]{"_AARIS_AIRFRAME","_NORMALMAP","_EMISSION","FOG_LINEAR"}})
+            foreach(var keywords in keywordSets)
             {
                 var stage=ShaderType.Vertex;
                 var target=platform==ShaderCompilerPlatform.OpenGLCore?BuildTarget.StandaloneLinux64:BuildTarget.Android;
@@ -585,7 +595,7 @@ namespace Aaris.MapReview.Editor
             File.AppendAllText(Path.Combine(directory, "contact-review.txt"),
                 label + " speed_mps=" + motor.TotalSpeedMetresPerSecond.ToString("F2",
                     System.Globalization.CultureInfo.InvariantCulture) + Environment.NewLine);
-            return new ContactPhoto(car, eye, target, directory, label, grounded ? 1 : 0, true);
+            return new ContactPhoto(car, eye, target, directory, label, grounded ? 3 : 0, true);
         }
 
         // The two enabled observers are rendered in the same player frame.
@@ -698,7 +708,12 @@ namespace Aaris.MapReview.Editor
                         " ankle_y=" + left.position.y.ToString("F3") + "," + right.position.y.ToString("F3");
                 }
                 File.AppendAllText(Path.Combine(directory, "contact-review.txt"), evidence + Environment.NewLine);
-                if (draws != expectedDraws || fromWheels != expectedWheelPlane || probes > (expectedWheelPlane ? 0 : 1))
+                // A grounded live car needs a centered body shadow and at
+                // least one footprint from each supported axle.
+                bool suitableDrawCount = expectedWheelPlane && expectedDraws > 0
+                    ? draws >= expectedDraws && draws <= 5
+                    : draws == expectedDraws;
+                if (!suitableDrawCount || fromWheels != expectedWheelPlane || probes > (expectedWheelPlane ? 0 : 1))
                     throw new InvalidOperationException("Unexpected contact sample: " + evidence);
                 return true;
             }

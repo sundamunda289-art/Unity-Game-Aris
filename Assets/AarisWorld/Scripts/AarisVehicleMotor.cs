@@ -76,6 +76,11 @@ namespace Aaris.MapReview
         private readonly Renderer[] rearLamps = new Renderer[2];
         private readonly Renderer[] reversingLamps = new Renderer[2];
         private Material headlampGlass, headlampOn, taillampGlass, brakeLamp;
+        private static readonly int LampEmissionId = Shader.PropertyToID("_EmissionColor");
+        private Renderer nativeLampRenderer;
+        private int nativeHeadSlot, nativeTailSlot;
+        private MaterialPropertyBlock nativeLampBlock;
+        private Vector3 roadHeadlightAnchor;
         private Light roadHeadlight;
         private int lastLampState = -1;
         // Only the occupied car may use a real spotlight. Keep its daytime
@@ -207,7 +212,16 @@ namespace Aaris.MapReview
         // axles: two front tyres at a crest are not two supported axles.
         // Bit 0 = front, bit 1 = rear. Reuse the SAME four WheelHit queries.
         private int groundedAxleMask;
-        private Vector3 wheelShadowPoints, wheelShadowNormals;
+        private struct WheelShadowContact
+        {
+            internal Collider receiver;
+            internal Vector3 point, normal, forward, visualCentre;
+            internal float width, radius;
+        }
+        private readonly WheelShadowContact[] wheelShadowContacts = new WheelShadowContact[4];
+        private int wheelShadowMask;
+        private Vector3 wheelShadowOrigin;
+        private Quaternion wheelShadowRotation;
         private float wheelShadowSampleTime = float.NegativeInfinity;
         private float nextTelemetryAt;
         // A short impact pulse communicates a meaningful collision without
@@ -241,7 +255,8 @@ namespace Aaris.MapReview
         public float ThrottleInput => driver == null ? 0f : forward;
         // True only when the active driver is asking the wheels to slow down;
         // parking/coasting drag must not illuminate the brake indicator.
-        public bool IsServiceBraking => driver != null && appliedBrakeTorque >= 500f;
+        public bool IsServiceBraking => driver != null && driver.isActiveAndEnabled &&
+            appliedBrakeTorque >= 500f && appliedBrakeTorque < ParkingBrakeTorque;
         public bool IsRecentImpact => driver != null && Time.time < impactFlashUntil;
         public float Damage01 => damage01;
         public float LateralSlipMetresPerSecond => body == null ? 0f :
@@ -256,15 +271,76 @@ namespace Aaris.MapReview
         {
             point = default;
             normal = default;
-            if (!isActiveAndEnabled || !IsOccupied || groundedAxleMask != 3 ||
-                groundedWheelCount < 2 ||
-                Time.fixedTime - wheelShadowSampleTime > Mathf.Max(.12f, 3f * Time.fixedDeltaTime))
-                return false;
+            int mask = GetWheelShadowMask();
+            if ((mask & 3) == 0 || (mask & 12) == 0) return false;
+            int count = 0;
+            for (int i = 0; i < wheelShadowContacts.Length; i++)
+            {
+                if ((mask & (1 << i)) == 0) continue;
+                ref WheelShadowContact sample = ref wheelShadowContacts[i];
+                point += sample.point;
+                normal += sample.normal;
+                count++;
+            }
+            point /= count;
+            normal.Normalize();
+            return normal.y >= .72f;
+        }
 
-            normal = wheelShadowNormals.normalized;
-            if (normal.y < .72f) return false;
-            point = wheelShadowPoints / groundedWheelCount;
+        internal int GetWheelShadowMask()
+        {
+            int mask = wheelShadowMask;
+            if (mask == 0 || !isActiveAndEnabled) return 0;
+            if (Time.fixedTime - wheelShadowSampleTime > Mathf.Max(.12f, 3f * Time.fixedDeltaTime) &&
+                (IsOccupied || !body.IsSleeping() ||
+                 (body.position - wheelShadowOrigin).sqrMagnitude > .0144f ||
+                 Quaternion.Angle(body.rotation, wheelShadowRotation) > 3f))
+                return 0;
+            for (int i = 0; i < wheelShadowContacts.Length; i++)
+            {
+                if ((mask & (1 << i)) == 0) continue;
+                Collider receiver = wheelShadowContacts[i].receiver;
+                if (receiver == null || !receiver.enabled || !receiver.gameObject.activeInHierarchy)
+                    mask &= ~(1 << i);
+            }
+            return mask;
+        }
+
+        internal bool TryGetTyreShadow(int index, out Vector3 point, out Vector3 normal,
+            out Quaternion rotation, out Vector2 size, out bool terrainReceiver)
+        {
+            ref WheelShadowContact sample = ref wheelShadowContacts[index];
+            normal = sample.normal;
+            Vector3 delta = sample.visualCentre - sample.point;
+            Vector3 tangentDelta = delta - normal * Vector3.Dot(delta, normal);
+            point = sample.point + tangentDelta;
+            rotation = Quaternion.identity;
+            size = default;
+            terrainReceiver = sample.receiver is TerrainCollider;
+            // The physics sample can be a tick behind the interpolated mesh.
+            // Reject a stale or offscreen wheel pose instead of dragging a
+            // patch away from its actual road contact.
+            if (tangentDelta.sqrMagnitude > .36f || sample.forward.sqrMagnitude < .05f ||
+                sample.width <= .01f)
+                return false;
+            rotation = Quaternion.LookRotation(sample.forward, normal);
+            size = new Vector2(Mathf.Clamp(sample.width * 1.42f, .24f, .48f),
+                Mathf.Clamp(sample.radius * 1.48f, .32f, .62f));
             return true;
+        }
+
+        private void CacheWheelShadow(int index, WheelHit hit)
+        {
+            ref WheelShadowContact sample = ref wheelShadowContacts[index];
+            sample.receiver = null;
+            Collider receiver = hit.collider;
+            if (hit.normal.y < .72f || !AarisVehicleWorld.IsStaticDriveSupport(receiver))
+                return;
+            sample.receiver = receiver;
+            sample.point = hit.point;
+            sample.normal = hit.normal;
+            sample.forward = hit.forwardDir;
+            wheelShadowMask |= 1 << index;
         }
 
         public bool CanPark => !IsOccupied && body != null &&
@@ -288,12 +364,13 @@ namespace Aaris.MapReview
                     body.angularVelocity.magnitude >= .5f ||
                     Vector3.Dot(transform.up, Vector3.up) < .72f)
                     return false;
-                int grounded = 0;
-                foreach (var wheel in wheels)
-                    if (wheel != null && wheel.isGrounded) grounded++;
-                return grounded >= 2;
+                return (HasGroundedWheel(wheels[0]) || HasGroundedWheel(wheels[1])) &&
+                    (HasGroundedWheel(wheels[2]) || HasGroundedWheel(wheels[3]));
             }
         }
+
+        private static bool HasGroundedWheel(WheelCollider wheel) =>
+            wheel != null && wheel.isGrounded;
 
         // A rolled car may rest motionless on its roof with zero grounded
         // wheels. Allow a deliberate low-speed EXIT attempt in that case;
@@ -593,6 +670,9 @@ namespace Aaris.MapReview
                     }
                     instance.transform.localScale *=
                         Mathf.Clamp(2f * WheelRadius / maxDimension, .01f, 30f);
+                    wheelShadowContacts[i].width = combined.size.x *
+                        Mathf.Abs(instance.transform.lossyScale.x);
+                    wheelShadowContacts[i].radius = WheelRadius;
                     // Imported prefab pivots need not coincide with the rendered
                     // tyre centre. The measurement is in wheel-local orientation
                     // AFTER sizing, so steering/spin rotate it without drifting.
@@ -686,6 +766,8 @@ namespace Aaris.MapReview
                     float diameter = Mathf.Max(bounds[i].size.y, bounds[i].size.z);
                     wheels[i].radius = Mathf.Clamp(diameter * 0.5f, .27f, .46f);
                     wheels[i].transform.localPosition = bounds[i].center;
+                    wheelShadowContacts[i].width = bounds[i].size.x;
+                    wheelShadowContacts[i].radius = wheels[i].radius;
 
                     Quaternion restOffset =
                         Quaternion.Inverse(transform.rotation) * wheelVisual.rotation;
@@ -792,36 +874,42 @@ namespace Aaris.MapReview
             return renderer;
         }
 
+        internal void ConfigureNativeLampSlots(Renderer renderer, int head, int tail)
+        {
+            nativeLampRenderer = renderer;
+            nativeHeadSlot = head;
+            nativeTailSlot = tail;
+            nativeLampBlock = new MaterialPropertyBlock();
+        }
+
         public void ConfigureExteriorLights(Bounds fittedBounds,
             Material frontGlass, Material frontActive,
             Material backGlass, Material backBrake, Material reverseWhite,
             Mesh sharedLensMesh, Material darkBezel,
-            Transform viewer = null)
+            Transform viewer = null, bool hasAuthoredLenses = false)
         {
             if (frontGlass == null || frontActive == null ||
                 backGlass == null || backBrake == null || reverseWhite == null ||
                 sharedLensMesh == null || darkBezel == null ||
                 fittedBounds.size.x < .5f || fittedBounds.size.z < 1f ||
-                frontLamps[0] != null) return;
+                lampDetailRoot != null) return;
             headlampGlass = frontGlass;
             headlampOn = frontActive;
             taillampGlass = backGlass;
             brakeLamp = backBrake;
 
-            // Distinct nose and rear elevations; the prior identical Y value
-            // made van brake lamps sit at sedan-headlight height. Widths now
-            // follow the fitted car, rather than forcing 0.24m toy rectangles.
+            // Coordinates are local to the elevated Rigidbody pivot. Derive
+            // their height from the visible body envelope, including coupes
+            // whose real lamps sit below the chassis origin.
             float width = fittedBounds.size.x;
             float height = fittedBounds.size.y;
-            float halfTrack = Mathf.Clamp(width * .385f, .48f, .84f);
-            float frontY = Mathf.Clamp(
-                fittedBounds.center.y + height * .15f, .55f, 1.06f);
-            float backY = Mathf.Clamp(
-                fittedBounds.center.y + height * .22f, .62f, 1.24f);
-            float frontZ = fittedBounds.max.z + .017f;
-            float backZ = fittedBounds.min.z - .017f;
-            float lampWidth = Mathf.Clamp(width * .174f, .26f, .39f);
-            float lampHeight = Mathf.Clamp(height * .097f, .10f, .17f);
+            float halfTrack = width * .326f;
+            float frontY = fittedBounds.min.y + height * .39f;
+            float backY = fittedBounds.min.y + height * .48f;
+            float frontZ = fittedBounds.max.z + .009f;
+            float backZ = fittedBounds.min.z - .009f;
+            float lampWidth = Mathf.Clamp(width * .120f, .18f, .29f);
+            float lampHeight = Mathf.Clamp(height * .073f, .065f, .135f);
             var lampSize = new Vector3(lampWidth, lampHeight, 1f);
             var bezelSize = new Vector3(lampWidth * 1.20f,
                 lampHeight * 1.32f, 1f);
@@ -833,25 +921,29 @@ namespace Aaris.MapReview
             lampDetailRoot = new GameObject("Mobile Vehicle Lamp Detail");
             lampDetailRoot.transform.SetParent(lampChassis, false);
             Transform lampMount = lampDetailRoot.transform;
+            roadHeadlightAnchor = new Vector3(0f, frontY, frontZ);
             for (int side = 0; side < 2; side++)
             {
                 float x = side == 0 ? -halfTrack : halfTrack;
-                // Dark narrow bezels give the front/back glass real visual
-                // contrast without covering the detailed body textures.
-                CreateLampLens(lampMount, "Headlight Bezel " + side,
-                    new Vector3(x, frontY, frontZ - .007f),
-                    bezelSize, darkBezel, sharedLensMesh, false);
-                CreateLampLens(lampMount, "Taillight Bezel " + side,
-                    new Vector3(x, backY, backZ + .007f),
-                    bezelSize, darkBezel, sharedLensMesh, true);
-                frontLamps[side] = CreateLampLens(lampMount,
-                    "Beveled Headlamp " + side,
-                    new Vector3(x, frontY, frontZ), lampSize,
-                    headlampGlass, sharedLensMesh, false);
-                rearLamps[side] = CreateLampLens(lampMount,
-                    "Beveled Brake Lamp " + side,
-                    new Vector3(x, backY, backZ), lampSize,
-                    taillampGlass, sharedLensMesh, true);
+                // Imported lenses are already part of the visible mesh/atlas.
+                // Generic front/rear polygons are reserved for the fallback kit.
+                if (!hasAuthoredLenses && nativeLampRenderer == null)
+                {
+                    CreateLampLens(lampMount, "Headlight Bezel " + side,
+                        new Vector3(x, frontY, frontZ - .007f),
+                        bezelSize, darkBezel, sharedLensMesh, false);
+                    CreateLampLens(lampMount, "Taillight Bezel " + side,
+                        new Vector3(x, backY, backZ + .007f),
+                        bezelSize, darkBezel, sharedLensMesh, true);
+                    frontLamps[side] = CreateLampLens(lampMount,
+                        "Beveled Headlamp " + side,
+                        new Vector3(x, frontY, frontZ), lampSize,
+                        headlampGlass, sharedLensMesh, false);
+                    rearLamps[side] = CreateLampLens(lampMount,
+                        "Beveled Brake Lamp " + side,
+                        new Vector3(x, backY, backZ), lampSize,
+                        taillampGlass, sharedLensMesh, true);
+                }
                 reversingLamps[side] = CreateLampLens(lampMount,
                     "Recessed Reverse Lamp " + side,
                     new Vector3(x * .68f, backY - lampHeight * .96f, backZ),
@@ -888,19 +980,15 @@ namespace Aaris.MapReview
         {
             // No per-frame allocations or repeated lamp creation. The visual
             // body pivot already exists when the player enters a fitted car.
-            if (roadHeadlight != null || frontLamps[0] == null ||
-                frontLamps[1] == null) return;
+            if (roadHeadlight != null || lampDetailRoot == null) return;
             // The emissive headlamp materials remain visible regardless. Avoid
             // constructing a Spot Light when the active Android URP asset has
             // additional lights disabled and would render no road illumination.
             if (!AarisMobileRuntime.CanRenderAdditionalLights()) return;
-            Transform mount = frontLamps[0].transform.parent;
-            if (mount == null) return;
+            Transform mount = lampDetailRoot.transform;
             var beamObject = new GameObject("Player Car Headlight Beam");
             beamObject.transform.SetParent(mount, false);
-            Vector3 middle = (frontLamps[0].transform.localPosition +
-                frontLamps[1].transform.localPosition) * .5f;
-            beamObject.transform.localPosition = middle + Vector3.forward * .10f;
+            beamObject.transform.localPosition = roadHeadlightAnchor + Vector3.forward * .10f;
             roadHeadlight = beamObject.AddComponent<Light>();
             roadHeadlight.type = LightType.Spot;
             roadHeadlight.color = new Color(1f, .94f, .80f);
@@ -933,11 +1021,11 @@ namespace Aaris.MapReview
 
         private void RefreshExteriorLights()
         {
-            if (frontLamps[0] == null) return;
+            if (lampDetailRoot == null) return;
             bool driving = driver != null && driver.isActiveAndEnabled &&
                 isActiveAndEnabled;
             bool braking = driving &&
-                (appliedBrakeTorque >= 500f || Time.time < impactFlashUntil);
+                (IsServiceBraking || Time.time < impactFlashUntil);
             // Reverse lamps turn on when the driver requests backward travel
             // and the car has slowed enough to engage reverse, not when a
             // moving-forward car is merely braking with the down arrow.
@@ -949,15 +1037,30 @@ namespace Aaris.MapReview
                 (roadBeam ? 8 : 0);
             if (lastLampState == lampState) return;
             lastLampState = lampState;
+            if (nativeLampRenderer != null)
+            {
+                SetNativeLampEmission(nativeHeadSlot, driving
+                    ? new Color(1.08f, 1.04f, .98f) : new Color(.045f, .045f, .045f));
+                SetNativeLampEmission(nativeTailSlot, braking
+                    ? new Color(1.65f, .025f, .042f) : driving
+                        ? new Color(.41f, .016f, .023f) : new Color(.07f, .004f, .006f));
+            }
             for (int side = 0; side < 2; side++)
             {
-                frontLamps[side].sharedMaterial =
-                    driving ? headlampOn : headlampGlass;
-                rearLamps[side].sharedMaterial =
-                    braking ? brakeLamp : taillampGlass;
+                if (frontLamps[side] != null)
+                    frontLamps[side].sharedMaterial = driving ? headlampOn : headlampGlass;
+                if (rearLamps[side] != null)
+                    rearLamps[side].sharedMaterial = braking ? brakeLamp : taillampGlass;
                 reversingLamps[side].enabled = reversing;
             }
             if (roadHeadlight != null) roadHeadlight.enabled = roadBeam;
+        }
+
+        private void SetNativeLampEmission(int slot, Color emission)
+        {
+            nativeLampRenderer.GetPropertyBlock(nativeLampBlock, slot);
+            nativeLampBlock.SetColor(LampEmissionId, emission);
+            nativeLampRenderer.SetPropertyBlock(nativeLampBlock, slot);
         }
 
         // The world has already tinted these precise PBR slots with a
@@ -1262,6 +1365,7 @@ namespace Aaris.MapReview
             RefreshBodyWear();
             smoothSteer = tyreSlip = 0f;
             groundedWheelCount = groundedAxleMask = 0;
+            wheelShadowMask = 0;
             rearContactsGrounded[0] = rearContactsGrounded[1] = false;
             hasPreviousPhysicsVelocity = false;
             nextDamageAt = nextTelemetryAt = nextExhaustUpdateAt = 0f;
@@ -1356,6 +1460,7 @@ namespace Aaris.MapReview
                 if (wheels[i] == null || visualWheels[i] == null) continue;
                 wheels[i].GetWorldPose(out Vector3 worldPosition,
                     out Quaternion worldRotation);
+                wheelShadowContacts[i].visualCentre = worldPosition;
                 Quaternion visualRotation =
                     worldRotation * visualWheelRotationOffsets[i];
                 // Preserve the visible mesh CENTRE at the real WheelCollider
@@ -1405,6 +1510,7 @@ namespace Aaris.MapReview
 
         private void OnEnable()
         {
+            wheelShadowMask = 0;
             wheelShadowSampleTime = float.NegativeInfinity;
             RegisterPhysicsResident();
             sleepingWheelPoseCurrent = false;
@@ -1560,8 +1666,9 @@ namespace Aaris.MapReview
             if (driver == null && body.IsSleeping()) return;
             float speed = SpeedMetresPerSecond;
             float speedAbs = Mathf.Abs(speed);
-            float throttle = driver != null ? forward : 0f;
-            float turn = driver != null ? steering : 0f;
+            bool activeDriver = driver != null && driver.isActiveAndEnabled;
+            float throttle = activeDriver ? forward : 0f;
+            float turn = activeDriver ? steering : 0f;
             // Reuse last physics step's real WheelHit slip as a zero-query
             // traction-control signal. This avoids cartoon wheelspin on loose
             // terrain/water without adding raycasts or changing WheelCollider
@@ -1587,7 +1694,7 @@ namespace Aaris.MapReview
             {
                 // Realistic rolling drag; touching neither arrow coasts
                 // rather than stopping instantly in mid-air.
-                brake = driver == null ? ParkingBrakeTorque : 155f;
+                brake = activeDriver ? 155f : ParkingBrakeTorque;
             }
             // Damage costs only some torque; preserve drivable exits.
             drive *= Mathf.Lerp(1f, .72f, damage01);
@@ -1633,13 +1740,12 @@ namespace Aaris.MapReview
             groundedWheelCount = 0;
             groundedAxleMask = 0;
             rearContactsGrounded[0] = rearContactsGrounded[1] = false;
-            if (driver != null)
-            {
-                // Only the occupied car needs a fresh plane for its contact
-                // shadow. ApplyAntiRoll collects its existing WheelHit samples.
-                wheelShadowPoints = wheelShadowNormals = Vector3.zero;
-                wheelShadowSampleTime = Time.fixedTime;
-            }
+            // Store the same suspension results for the visual contact batch.
+            // Sleeping parked cars keep a valid sample at their last pose.
+            wheelShadowMask = 0;
+            wheelShadowOrigin = body.position;
+            wheelShadowRotation = body.rotation;
+            wheelShadowSampleTime = Time.fixedTime;
             ApplyAntiRoll(0, 1);
             ApplyAntiRoll(2, 3);
             SampleBodyDynamics();
@@ -1767,12 +1873,9 @@ namespace Aaris.MapReview
                     Mathf.Abs(leftHit.forwardSlip) * .78f);
                 tyreSlip = Mathf.Max(tyreSlip, leftSlip);
                 CacheRearTyreContact(leftIndex, leftHit, leftSlip);
-                if (driver != null)
-                {
-                    wheelShadowPoints += leftHit.point;
-                    wheelShadowNormals += leftHit.normal;
-                }
+                CacheWheelShadow(leftIndex, leftHit);
             }
+            else wheelShadowContacts[leftIndex].receiver = null;
             if (rightGrounded)
             {
                 groundedWheelCount++;
@@ -1784,12 +1887,9 @@ namespace Aaris.MapReview
                     Mathf.Abs(rightHit.forwardSlip) * .78f);
                 tyreSlip = Mathf.Max(tyreSlip, rightSlip);
                 CacheRearTyreContact(rightIndex, rightHit, rightSlip);
-                if (driver != null)
-                {
-                    wheelShadowPoints += rightHit.point;
-                    wheelShadowNormals += rightHit.normal;
-                }
+                CacheWheelShadow(rightIndex, rightHit);
             }
+            else wheelShadowContacts[rightIndex].receiver = null;
             // A lifted wheel has no suspension contact. The legacy
             // leftTravel/rightTravel default of 1 would push upward on the
             // ONLY grounded wheel at a curb and roll the car further over.
@@ -1808,6 +1908,9 @@ namespace Aaris.MapReview
 
         private void OnDisable()
         {
+            wheelShadowMask = 0;
+            for (int i = 0; i < wheelShadowContacts.Length; i++)
+                wheelShadowContacts[i].receiver = null;
             // Component-only suspension leaves the actual Rigidbody active.
             // Inactive pools release pins in the central pre-physics pass, but
             // retain their record so a still-disabled component can resume.

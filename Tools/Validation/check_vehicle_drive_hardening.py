@@ -26,7 +26,8 @@ def test():
     assert "TotalSpeedMetresPerSecond >= 1.1f" in motor
     assert "body.angularVelocity.magnitude >= .5f" in motor
     assert "Vector3.Dot(transform.up, Vector3.up) < .72f" in motor
-    assert "return grounded >= 2;" in motor
+    assert "(HasGroundedWheel(wheels[0]) || HasGroundedWheel(wheels[1])) &&" in motor
+    assert "(HasGroundedWheel(wheels[2]) || HasGroundedWheel(wheels[3]));" in motor
     # Only a stationary rollover can bypass the upright/wheel-contact gate.
     # Every EXIT path still requires the verified ground/capsule/wall route.
     assert "public bool CanEvacuateStoppedVehicle" in motor
@@ -67,6 +68,7 @@ def test():
     assert "groundHits = Physics.RaycastAll(floorRay, 5f," in exit_path
     assert "hits = groundHits.Length;" in exit_path
     assert "var hit = groundHits[i];" in exit_path
+    assert "!AarisVehicleWorld.IsStaticDriveSupport(hit.collider)" in exit_path
     assert "Collider[] occupiedColliders = exitOverlap;" in exit_path
     assert "if (overlaps >= exitOverlap.Length)" in exit_path
     assert "occupiedColliders = Physics.OverlapCapsule(bottom, top, r," in exit_path
@@ -142,7 +144,8 @@ def test():
     assert "ServiceBrakeTorque = 3200f" in motor
     assert "if (speed < -.55f) brake = ServiceBrakeTorque * throttle;" in motor
     assert "if (speed > .55f) brake = ServiceBrakeTorque * -throttle;" in motor
-    assert "driver == null ? ParkingBrakeTorque : 155f" in motor
+    assert "bool activeDriver = driver != null && driver.isActiveAndEnabled;" in motor
+    assert "brake = activeDriver ? 155f : ParkingBrakeTorque;" in motor
     parking_reuse = motor.split("internal void ReactivateParkedVehicle(", 1)[1].split(
         "private void EnsureExhaustEmitter()", 1)[0]
     assert "ApplyWheelForces(0f, ParkingBrakeTorque);" in parking_reuse

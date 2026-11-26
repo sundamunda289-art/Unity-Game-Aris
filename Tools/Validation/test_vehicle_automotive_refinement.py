@@ -83,8 +83,9 @@ class AutomotiveRefinement(unittest.TestCase):
         self.assertIn("sourceLabel.Contains(\"body_pbr\")", method)
         self.assertIn("sourceLabel.Contains(\"aarisglass\")", method)
         self.assertIn("sourceLabel.Contains(\"aarispaint\")", method)
-        self.assertIn("polished.EnableKeyword(\"_CLEARCOAT\")", method)
-        self.assertIn("if (!dedicatedPaint && !mixedBodyAtlas && !separateGlass)", method)
+        self.assertIn('polished.SetFloat("_ClearCoatMask", .42f);', method)
+        self.assertIn('polished.shader = subject;', method)
+        self.assertIn("if (!dedicatedPaint && !mixedBodyAtlas && !separateGlass && !gtLens)", method)
         self.assertNotIn("renderer.material", method)
         for src in ("_BaseMap", "_BumpMap", "_MetallicGlossMap"):
             self.assertIn(src, method)
@@ -113,7 +114,7 @@ class AutomotiveRefinement(unittest.TestCase):
                 self.assertAlmostEqual(sum(brake * b for b in biases), 4 * brake)
         self.assertIn("appliedServiceBrakeDirection = 0;", MOTOR)
 
-    def test_paint_keeps_imported_surface_tone_and_clearcoat_keyword(self):
+    def test_paint_keeps_imported_surface_tone_and_clearcoat_controls(self):
         method = WORLD.split("private Material AuthoredUrpMaterial(", 1)[1].split(
             "private void ApplyAuthoredMaterials(", 1)[0]
         body = WORLD.split("private static void PaintVerifiedBodySlots(", 1)[1].split(
@@ -121,7 +122,8 @@ class AutomotiveRefinement(unittest.TestCase):
         build = WORLD.split("private bool Build(", 1)[1].split(
             "private void Update()", 1)[0]
         self.assertIn('sourceLabel.Contains("aarisciviliansurface")', method)
-        self.assertIn('polished.EnableKeyword("_CLEARCOAT")', method)
+        self.assertIn('polished.SetFloat("_ClearCoatSmoothness", .82f);', method)
+        self.assertNotIn('polished.EnableKeyword("_CLEARCOAT")', method)
         self.assertIn("record.type.preserveAuthoredUrpMaterials)", build)
         self.assertIn("ApplyAuthoredMaterials(renderers);", build)
         helper = WORLD.split("internal static Color SelectPaintTint(", 1)[1].split(

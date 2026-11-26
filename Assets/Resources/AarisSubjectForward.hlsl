@@ -52,6 +52,25 @@ void AarisLitPassFragment(
 #endif
 
     InitializeBakedGIData(input, inputData);
+#if defined(_AARIS_GT_TREAD)
+    // The GT OBJ has no UVs, but its roll axis is authored on local X.
+    // Angular tread follows the real spinning mesh. Derivatives fade the
+    // grooves when they become subpixel, without a texture or extra pass.
+    float3 tyre = TransformWorldToObject(inputData.positionWS);
+    float treadPhase = atan2(tyre.y, tyre.z) * (38.0 / 6.2831853) + abs(tyre.x) * 4.8;
+    float treadWidth = max(fwidth(treadPhase), 0.015);
+    half treadCut = (1.0h - smoothstep(0.10, 0.10 + treadWidth, abs(frac(treadPhase) - 0.5)))
+        * (1.0h - smoothstep(0.16, 0.48, treadWidth));
+    float longitudinalPhase = abs(tyre.x) * 16.0;
+    float grooveWidth = max(fwidth(longitudinalPhase), 0.015);
+    half longitudinal = (1.0h - smoothstep(0.075, 0.075 + grooveWidth,
+        abs(frac(longitudinalPhase) - 0.5))) * (1.0h - smoothstep(0.18, 0.46, grooveWidth));
+    half3 axle = TransformObjectToWorldDir(float3(1.0, 0.0, 0.0));
+    half crown = 1.0h - smoothstep(0.46h, 0.86h, abs(dot(axle, inputData.normalWS)));
+    half exposed = max(treadCut * 0.75h, longitudinal) * crown;
+    surfaceData.albedo *= 1.0h - 0.36h * exposed;
+    surfaceData.smoothness *= 1.0h - 0.44h * exposed;
+#endif
 #if defined(_AARIS_AIRFRAME)
     // The transport mesh is authored in metres. Paint moves with the airframe.
     // Derivative-width boundaries soften subpixel stripes at flight distance.
@@ -103,6 +122,8 @@ void AarisLitPassFragment(
     half4 color = AarisHeroPBR(inputData, surfaceData, heroMasks);
 #elif defined(_AARIS_HERO_GEAR)
     half4 color = AarisHeroPBR(inputData, surfaceData, half3(0.0h, 0.0h, 0.0h));
+#elif defined(_AARIS_GT_TREAD)
+    half4 color = UniversalFragmentPBR(inputData, surfaceData);
 #else
     half4 color = AarisSubjectPBR(inputData, surfaceData);
 #endif

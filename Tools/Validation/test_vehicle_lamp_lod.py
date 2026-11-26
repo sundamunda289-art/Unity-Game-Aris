@@ -49,7 +49,7 @@ class VehicleLampLod(unittest.TestCase):
                         late.index("if (parkedSleeping && sleepingWheelPoseCurrent"))
         setup = WORLD.split("private bool Build(", 1)[1].split(
             "private void Update()", 1)[0]
-        self.assertIn("reverseLampMaterial, sharedLampLensMesh, lampBezelMaterial,\n                player);", setup)
+        self.assertIn("reverseLampMaterial, sharedLampLensMesh, lampBezelMaterial,\n                player, importedCar);", setup)
         lod = MOTOR.split("private void UpdateLampDetailLod()", 1)[1].split(
             "private void EnsureRoadHeadlight()", 1)[0]
         self.assertNotIn("WheelCollider", lod)

@@ -52,7 +52,7 @@ class MobileVehicleBudget(unittest.TestCase):
         self.assertIn('new GameObject("Player Car Headlight Beam")',lazy)
         self.assertIn("roadHeadlight != null",lazy)
         self.assertIn("LightShadows.None",lazy)
-        self.assertIn("frontLamps[0].transform.parent",lazy)
+        self.assertIn("lampDetailRoot.transform",lazy)
         self.assertIn("EnsureRoadHeadlight();",enter)
         self.assertIn("RefreshExteriorLights();",enter)
         lights=SOURCE.split("private void RefreshExteriorLights()",1)[1]

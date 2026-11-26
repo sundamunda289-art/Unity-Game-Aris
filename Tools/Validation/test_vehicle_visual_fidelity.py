@@ -70,9 +70,9 @@ class VehicleVisualFidelity(unittest.TestCase):
         cfg = MOTOR.split("public void ConfigureExteriorLights(", 1)[1].split(
             "private void EnsureRoadHeadlight()", 1)[0]
         for piece in (
-            "float halfTrack = Mathf.Clamp(width * .385f, .48f, .84f)",
-            "fittedBounds.max.z + .017f",
-            "fittedBounds.min.z - .017f",
+            "float halfTrack = width * .326f",
+            "fittedBounds.min.y + height * .39f",
+            "fittedBounds.min.y + height * .48f",
             "lampWidth * 1.20f",
             "lampHeight * 1.32f",
             "Headlight Bezel", "Taillight Bezel",
@@ -90,12 +90,12 @@ class VehicleVisualFidelity(unittest.TestCase):
             (1.8, 1.5, 4.1), (1.9, 1.2, 4.4), (2.05, 1.93, 4.9),
             (1.9, 1.9, 4.7), (2.0, 1.9, 5.3), (1.85, 1.35, 4.2)
         ):
-            half_track = min(.84, max(.48, width * .385))
-            lamp_w = min(.39, max(.26, width * .174))
-            lamp_h = min(.17, max(.10, height * .097))
+            half_track = width * .326
+            lamp_w = min(.29, max(.18, width * .120))
+            lamp_h = min(.135, max(.065, height * .073))
             self.assertGreater(half_track - lamp_w * .5, 0)
             self.assertLess(half_track + lamp_w * .6, width * .5 + .1)
-            self.assertGreater(lamp_h, .09)
+            self.assertGreater(lamp_h, .065)
             self.assertGreater(length, 3.5)
 
     def test_suv_spare_wheel_does_not_move_rear_lamps_into_air(self):

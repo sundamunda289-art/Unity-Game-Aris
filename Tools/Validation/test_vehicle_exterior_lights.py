@@ -31,8 +31,9 @@ class VehicleExteriorLighting(unittest.TestCase):
             "private void RefreshExteriorLights()", 1)[0]
         self.assertIn("float width = fittedBounds.size.x;", lights)
         self.assertIn("float height = fittedBounds.size.y;", lights)
-        self.assertIn("fittedBounds.max.z + .017f", lights)
-        self.assertIn("fittedBounds.min.z - .017f", lights)
+        self.assertIn("fittedBounds.min.y + height * .39f", lights)
+        self.assertIn("fittedBounds.min.y + height * .48f", lights)
+        self.assertIn("if (!hasAuthoredLenses && nativeLampRenderer == null)", lights)
         self.assertIn("new Vector3(x, frontY, frontZ)", lights)
         self.assertIn("new Vector3(x, backY, backZ)", lights)
         self.assertIn("lampWidth * 1.20f", lights)
@@ -136,7 +137,8 @@ class VehicleExteriorLighting(unittest.TestCase):
     def test_brake_and_reverse_follow_physics_and_clear_on_exit(self):
         lights = MOTOR.split("private void RefreshExteriorLights()", 1)[1].split(
             "private void SyncVisibleWheels()", 1)[0]
-        self.assertIn("appliedBrakeTorque >= 500f", lights)
+        self.assertIn("IsServiceBraking || Time.time < impactFlashUntil", lights)
+        self.assertIn("appliedBrakeTorque >= 500f && appliedBrakeTorque < ParkingBrakeTorque", MOTOR)
         self.assertIn("SpeedMetresPerSecond < .55f", lights)
         self.assertIn("forward < -.08f", lights)
         self.assertIn("reversingLamps[side].enabled = reversing;", lights)

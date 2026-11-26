@@ -425,7 +425,8 @@ namespace Aaris.MapReview
                 for (int i = 0; i < hits; i++)
                 {
                     var hit = groundHits[i];
-                    if (hit.collider == null || hit.collider.transform.IsChildOf(t) ||
+                    if (!AarisVehicleWorld.IsStaticDriveSupport(hit.collider) ||
+                        hit.collider.transform.IsChildOf(t) ||
                         hit.collider.transform.IsChildOf(transform) ||
                         hit.normal.y < .707f || hit.point.y < seaLevel + .35f ||
                         // A roof/bridge above the actual street surface

@@ -94,7 +94,7 @@ class VehicleSkidAndImpact(unittest.TestCase):
         self.assertIn("RefreshExteriorLights();", collision)
         light = MOTOR.split("private void RefreshExteriorLights()", 1)[1].split(
             "private void EnsureRearTyreTraces()", 1)[0]
-        self.assertIn("appliedBrakeTorque >= 500f || Time.time < impactFlashUntil", light)
+        self.assertIn("IsServiceBraking || Time.time < impactFlashUntil", light)
         self.assertIn("public bool IsRecentImpact => driver != null && Time.time < impactFlashUntil;", MOTOR)
         self.assertIn("vehicle.IsRecentImpact", HUD)
         self.assertIn("impactFlashUntil = 0f;", MOTOR.split("public void ReleaseDriver(", 1)[1])
