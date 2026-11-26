@@ -38,6 +38,11 @@ namespace Aaris.MapReview
         public static Shader Find(string name) { return new Shader(); }
     }
 
+    internal static class AarisShaderCache
+    {
+        internal static Shader Find(string name) { return Shader.Find(name); }
+    }
+
     internal struct Color
     {
         public float r, g, b;
