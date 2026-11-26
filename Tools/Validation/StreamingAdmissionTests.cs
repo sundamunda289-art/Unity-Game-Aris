@@ -17,7 +17,12 @@ namespace UnityEngine
     {
         public RuntimeInitializeOnLoadMethodAttribute(RuntimeInitializeLoadType type) { }
     }
-    public static class Time { public static int frameCount; public static float unscaledDeltaTime; }
+    public static class Time
+    {
+        public static int frameCount;
+        public static float unscaledDeltaTime;
+        public static float unscaledTime;
+    }
     public static class Application { public static int targetFrameRate = 30; }
     public struct RefreshRate { public double value; }
     public struct Resolution { public RefreshRate refreshRateRatio; }
@@ -64,7 +69,11 @@ internal static class StreamingAdmissionTests
     private static void Check(bool ok, string message)
     { checks++; if (!ok) throw new Exception(message); }
     private static void Frame(int frame, float delta = 0.016f)
-    { Time.frameCount = frame; Time.unscaledDeltaTime = delta; }
+    {
+        Time.frameCount = frame;
+        Time.unscaledDeltaTime = delta;
+        Time.unscaledTime = frame * delta;
+    }
     private static void Configure(int ram = 4096, string gpu = "Adreno (TM) 610",
         int targetFps = 30, double refreshHz = 60d)
     {
