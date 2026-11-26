@@ -378,13 +378,13 @@ class LootGridRegression(unittest.TestCase):
         self.assertIn("private AarisNearbyColliders medicalNearbyColliders;", tactical)
         self.assertIn("medicalNearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();", tactical)
         spawn = tactical[tactical.index("private bool TrySpawnMedicalCase("):
-                         tactical.index("private static void HelmetPart(")]
+                         tactical.index("private static GameObject CreateMedicalVisual(")]
         guard = "medicalNearbyColliders.HasPotentialInactiveObstacle("
         self.assertIn(guard, spawn)
         self.assertIn("center, halfExtents, Quaternion.identity))", spawn)
         self.assertLess(spawn.index(guard), spawn.index("Physics.OverlapBoxNonAlloc("))
         self.assertIn("if (site.isHelmet)", spawn)
-        self.assertIn("var root = new GameObject(\"Aaris Streamed Medkit\")", spawn)
+        self.assertIn("var root = CreateMedicalVisual(false)", spawn)
         self.assertIn("if ((!includeActive && !isActiveAndEnabled) || obstacles == null", obstacles)
         self.assertIn("if (worldBounds[i].Intersects(probe) &&", obstacles)
         self.assertIn("bool includeActive = false", obstacles)

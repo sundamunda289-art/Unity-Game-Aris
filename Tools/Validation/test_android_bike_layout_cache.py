@@ -43,7 +43,7 @@ class BikePaintLayoutCache(unittest.TestCase):
         self.assertNotIn("renderer.sharedMaterials", match)
         self.assertIn("private readonly List<Material> bikeSourceScratch = new List<Material>(8);", SOURCE)
 
-    def test_no_new_palette_mesh_or_visual_changes(self):
+    def test_layouts_reuse_shared_palette_mesh_and_lod(self):
         markers = (
             "private const int MaximumVisibleBikes = 3;",
             "private const float LoadRadius = 45f;",
@@ -58,7 +58,7 @@ class BikePaintLayoutCache(unittest.TestCase):
         )
         for token in markers:
             self.assertIn(token, SOURCE)
-        self.assertEqual(SOURCE.count("new Material(shader)"), 1)
+        self.assertEqual(SOURCE.count("new Material("), 2)
         self.assertEqual(SOURCE.count("new Material(surfaces[0])"), 1)
         self.assertNotIn("renderer.materials =", SOURCE)
         self.assertNotIn("new Material(", SOURCE.split("private GameObject CreateBike(", 1)[1])
