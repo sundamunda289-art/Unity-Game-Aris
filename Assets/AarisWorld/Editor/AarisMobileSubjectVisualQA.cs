@@ -593,7 +593,8 @@ namespace Aaris.MapReview.Editor
         // observer receives the same geometry as a normal game camera.
         internal sealed class ContactPhoto : IDisposable
         {
-            private const int ReviewLayer = 31;
+            // The original scene has no renderers on built-in TransparentFX.
+            private const int ReviewLayer = 1;
             private readonly Type type = typeof(AarisWeaponPickup).Assembly
                 .GetType("Aaris.MapReview.AarisSubjectContacts");
             private readonly Behaviour contacts;
@@ -637,6 +638,7 @@ namespace Aaris.MapReview.Editor
                 originalLayer = contacts.gameObject.layer;
                 contacts.gameObject.layer = ReviewLayer;
                 observer = CreateContactObserver(root, eye, target, out frame);
+                observer.cullingMask |= 1 << ReviewLayer;
                 if (expectedDraws > 0)
                 {
                     control = CreateContactObserver(root, eye, target, out controlFrame);
@@ -678,9 +680,11 @@ namespace Aaris.MapReview.Editor
             {
                 if (renderedFrame < firstFrame || (control != null && controlRenderedFrame != renderedFrame))
                     return false;
-                if (control != null)
+                byte[] controlPixels = control == null ? null :
                     WriteWorldPixels(controlFrame, directory, label + "_control");
-                WriteWorldPixels(frame, directory, label + "_contact");
+                byte[] renderedPixels = WriteWorldPixels(frame, directory, label + "_contact");
+                if (controlPixels != null && controlPixels.SequenceEqual(renderedPixels))
+                    throw new InvalidOperationException(label + " contact batch produced no visible change");
                 var selected = entries.GetValue(0);
                 string evidence = label + " instances=" + draws + " rays=" + probes +
                     " wheels=" + fromWheels + " rendered_frame=" + renderedFrame;
@@ -769,7 +773,7 @@ namespace Aaris.MapReview.Editor
             }
         }
 
-        private static void WriteWorldPixels(RenderTexture frame, string directory, string label)
+        private static byte[] WriteWorldPixels(RenderTexture frame, string directory, string label)
         {
             var pixels = new Texture2D(frame.width, frame.height, TextureFormat.RGB24, false);
             var previous = RenderTexture.active;
@@ -778,7 +782,9 @@ namespace Aaris.MapReview.Editor
                 RenderTexture.active = frame;
                 pixels.ReadPixels(new Rect(0, 0, frame.width, frame.height), 0, 0);
                 pixels.Apply();
-                File.WriteAllBytes(Path.Combine(directory, label + ".png"), pixels.EncodeToPNG());
+                byte[] png = pixels.EncodeToPNG();
+                File.WriteAllBytes(Path.Combine(directory, label + ".png"), png);
+                return png;
             }
             finally
             {
