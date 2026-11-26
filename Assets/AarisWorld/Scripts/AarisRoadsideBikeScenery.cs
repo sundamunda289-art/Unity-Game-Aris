@@ -162,7 +162,7 @@ namespace Aaris.MapReview
                 if (!isActiveAndEnabled) yield break;
             }
 #endif
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
             if (shader == null) { enabled = false; yield break; }
             Color[] tones = {
                 new Color(.08f,.23f,.40f), new Color(.034f,.039f,.048f),
