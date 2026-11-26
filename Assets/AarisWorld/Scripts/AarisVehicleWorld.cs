@@ -1900,7 +1900,11 @@ namespace Aaris.MapReview
 
         private bool StartPreparedBodyClone(int typeIndex, float now)
         {
-            if (preparedBodyOperation != null || preparedBodyClone != null ||
+            // Reuse the existing low-memory cooldown: after Android reports
+            // pressure, do not recreate hidden speculative geometry for 60 s.
+            // Visible/required vehicles still use the ordinary spawn path.
+            if (now < parkedCacheAllowedAt ||
+                preparedBodyOperation != null || preparedBodyClone != null ||
                 typeIndex < 0 || typeIndex >= vehicleTypes.Length ||
                 !authoredBodyResolved[typeIndex])
                 return false;
