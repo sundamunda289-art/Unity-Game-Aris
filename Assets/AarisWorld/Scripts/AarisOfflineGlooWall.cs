@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Aaris.MapReview
@@ -246,8 +247,8 @@ namespace Aaris.MapReview
                     }
                 }
             float distance = FindOpenDistance(player, ahead, desired);
-            // The authored OBJ bows toward local +Z (centre +0.26m,
-            // outer edges -0.19m), so its OPEN/concave side is local -Z.
+            // The authored armor bows toward local +Z, so the open
+            // side of the shell is local -Z.
             // The fallback segments use that same convention. Point +Z
             // AWAY from the player: the open side then faces the player.
             // Preview and deployed cover must share this exact rotation.
@@ -430,6 +431,7 @@ namespace Aaris.MapReview
         private static Material cachedIce, cachedFrost;
         private static bool finishesResolved;
         private static readonly MaterialPropertyBlock block = new MaterialPropertyBlock();
+        private static readonly List<Material> damageSlots = new List<Material>(2);
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetAuthoredArtCache()
@@ -616,21 +618,21 @@ namespace Aaris.MapReview
             foreach (var renderer in renderers)
             {
                 if (renderer == null) continue;
-                var slots = renderer.sharedMaterials;
-                for (int slot = 0; slot < slots.Length; slot++)
+                renderer.GetSharedMaterials(damageSlots);
+                for (int slot = 0; slot < damageSlots.Count; slot++)
                 {
-                    bool frost = slots[slot] != null && slots[slot].name.IndexOf("Frost",
-                        System.StringComparison.OrdinalIgnoreCase) >= 0;
-                    Color tint = frost
-                        ? Color.Lerp(new Color(0.62f, 0.88f, 0.96f),
-                            new Color(1f, 0.62f, 0.58f), cracks)
-                        : Color.Lerp(new Color(0.14f, 0.46f, 0.78f),
-                            new Color(0.84f, 0.25f, 0.36f), cracks);
+                    Material material = damageSlots[slot];
+                    if (material == null) continue;
+                    bool frost = material == cachedFrost;
+                    Color tint = Color.Lerp(material.color, frost
+                        ? new Color(.94f, .61f, .57f)
+                        : new Color(.62f, .23f, .31f), cracks);
                     block.Clear();
                     block.SetColor("_BaseColor", tint);
                     block.SetColor("_Color", tint);
                     renderer.SetPropertyBlock(block, slot);
                 }
+                damageSlots.Clear();
             }
         }
 

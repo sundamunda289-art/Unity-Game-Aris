@@ -46,6 +46,7 @@ Shader "Aaris/Mobile Subject Lit"
         [Normal] _DetailNormalMap("Normal Map", 2D) = "bump" {}
 
         // SRP batching compatibility for Clear Coat (Not used in Lit)
+        [Toggle(_AARIS_ICE_ARMOR)] _IceArmor("Frosted armor", Float) = 0
         [Toggle(_AARIS_AIRFRAME)] _AircraftMarkings("Aircraft markings", Float) = 0
         [HideInInspector] _ClearCoatMask("_ClearCoatMask", Float) = 0.0
         [HideInInspector] _ClearCoatSmoothness("_ClearCoatSmoothness", Float) = 0.0
@@ -124,10 +125,11 @@ Shader "Aaris/Mobile Subject Lit"
 
             // -------------------------------------
             // Material Keywords
+            #pragma shader_feature_local_fragment _AARIS_ICE_ARMOR
             #pragma shader_feature_local_fragment _AARIS_AIRFRAME
             #pragma shader_feature_local_fragment _ _AARIS_HERO_FACE _AARIS_HERO_GEAR
             #pragma shader_feature_local_fragment _AARIS_GT_TREAD
-            #pragma require derivatives : _AARIS_GT_TREAD _AARIS_HERO_GEAR
+            #pragma require derivatives : _AARIS_GT_TREAD _AARIS_HERO_GEAR _AARIS_ICE_ARMOR
             #pragma shader_feature_local _NORMALMAP
             #pragma shader_feature_local _PARALLAXMAP
             #pragma shader_feature_local _RECEIVE_SHADOWS_OFF

@@ -511,7 +511,6 @@ namespace Aaris.MapReview.Editor
                 // This observer never drives
                 // production visibility. The actual main camera enabled the marker.
                 marker.enabled = false;
-                landedPickup.transform.Find("Loot centered rotation pivot").localRotation = Quaternion.identity;
                 WriteWorldPhoto(observer, subject + angle * 2.5f, subject, directory, "terrain_loot_2m5");
                 Vector3 distantEye = subject + angle * 9f;
                 WriteWorldPhoto(observer, distantEye, subject, directory, "terrain_loot_9m");

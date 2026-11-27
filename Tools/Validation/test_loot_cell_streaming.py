@@ -51,7 +51,7 @@ class LootGridRegression(unittest.TestCase):
     def test_far_resolved_floor_is_rejected_before_prefab_instantiation(self):
         authored = SOURCE[SOURCE.index("foreach (int i in nearbyCandidateIndices)"):
                           SOURCE.index("private void EnsureStarterLoot(")]
-        check = "(spot - playerPosition).sqrMagnitude > ReleaseMetres * ReleaseMetres"
+        check = "(spot.position - playerPosition).sqrMagnitude > ReleaseMetres * ReleaseMetres"
         self.assertLess(authored.index("TryResolveNearCandidate("), authored.index(check))
         self.assertLess(authored.index(check), authored.index("TryReuseLootVisual(state, i,"))
         self.assertLess(authored.index(check), authored.index("new GameObject(visualName)"))
@@ -245,8 +245,8 @@ class LootGridRegression(unittest.TestCase):
                       SOURCE.index("private bool IsBlockedDrop(")]
         self.assertIn("active.Count >= MaximumActiveLoot", drop)
         self.assertLess(drop.index("active.Count >= MaximumActiveLoot"),
-                        drop.index("!TryFindDropSpot(out Vector3 point)"))
-        self.assertLess(drop.index("CreateDropped(state, point, 1.25f)"),
+                        drop.index("!TryFindDropSpot(out Pose placement)"))
+        self.assertLess(drop.index("CreateDropped(state, placement, 1.25f)"),
                         drop.index("inventory.TryRemove(out AarisWeaponState removed)"))
         # Swapping a gun must still reserve its persistent record without
         # constructing a second model on the same frame.
@@ -279,7 +279,7 @@ class LootGridRegression(unittest.TestCase):
         self.assertIn("flight.isActiveAndEnabled && !flight.HasLanded", starter)
         self.assertIn("if (active.Count >= MaximumActiveLoot)", starter)
         self.assertLess(starter.index("if (active.Count >= MaximumActiveLoot)"),
-                        starter.index("TryFindDropSpot(out Vector3 point"))
+                        starter.index("TryFindDropSpot(out Pose placement"))
         full = starter[starter.index("if (active.Count >= MaximumActiveLoot)"):]
         self.assertLess(full.index("TryLastResortStarterEquip();"),
                         full.index("// One fallback per match"))
@@ -294,14 +294,14 @@ class LootGridRegression(unittest.TestCase):
         self.assertIn("flight.isActiveAndEnabled && !flight.HasLanded) return;", starter)
         self.assertIn("CharacterController controller) || !controller.enabled", starter)
         self.assertNotIn("!controller.isGrounded", starter)
-        self.assertIn("TryFindDropSpot(out Vector3 point, requireReachable: true)", starter)
+        self.assertIn("TryFindDropSpot(out Pose placement, requireReachable: true)", starter)
         self.assertIn("starterLootId = starter.id;", starter)
         # No new gun is spawned without a nearby real supporting collider:
         placement = SOURCE[SOURCE.index("private bool TryFindDropSpot("):
                            SOURCE.index("public bool TryDropEquipped()")]
         for safety in ("Physics.RaycastNonAlloc(", "Physics.OverlapCapsuleNonAlloc(",
                        "if (floor == null) continue;", "if (!clear) continue;",
-                       "if (requireReachable && !CanReachPoint(candidate)) continue;"):
+                       "if (requireReachable && !CanReachPoint(candidate.position)) continue;"):
             self.assertIn(safety, placement)
         self.assertIn("for (int attempt = 0; attempt < (requireReachable ? 20 : 12); attempt++)", placement)
         self.assertIn("else if (attempt < 8)", placement)
@@ -345,7 +345,7 @@ class LootGridRegression(unittest.TestCase):
         self.assertIn("alternative < 2 && alternateProbeBudget > 0", SOURCE)
         self.assertIn("alternateProbeBudget--;", SOURCE)
         self.assertIn("TryResolve(candidate, terrains, out spot,", SOURCE)
-        self.assertIn("ref alternateProbeBudget, out Vector3 spot", SOURCE)
+        self.assertIn("ref alternateProbeBudget, out Pose spot", SOURCE)
         self.assertIn("MaximumBuildAttemptsPerFrame = 2;", SOURCE)
         self.assertIn("if (!foundFloor) return false;", SOURCE)
         self.assertIn("Physics.CheckCapsule(center", SOURCE)

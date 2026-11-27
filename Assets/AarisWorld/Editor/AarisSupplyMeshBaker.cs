@@ -79,10 +79,10 @@ namespace Aaris.MapReview.Editor
             }
             internal void HelmetDome()
             {
-                const int steps=28;
-                float[] y={.105f,.16f,.25f,.33f,.39f,.425f};
-                float[] rx={.285f,.29f,.264f,.202f,.105f,.001f};
-                float[] rz={.26f,.27f,.249f,.188f,.101f,.001f};
+                const int steps=24;
+                float[] y={.105f,.155f,.238f,.312f,.365f,.393f,.398f};
+                float[] rx={.285f,.29f,.275f,.231f,.155f,.076f,.001f};
+                float[] rz={.26f,.27f,.256f,.217f,.143f,.067f,.001f};
                 int start=vertices.Count;
                 for(int r=0;r<y.Length;r++)
                 for(int i=0;i<steps;i++)
@@ -98,8 +98,13 @@ namespace Aaris.MapReview.Editor
                     indices[0].Add(a);indices[0].Add(b+steps);indices[0].Add(b);
                 }
             }
-            internal Mesh Finish(string name)
+            internal Mesh Finish(string name, float scale = 1f, float baseHeight = 0f)
             {
+                if (scale != 1f || baseHeight != 0f)
+                {
+                    for (int i = 0; i < vertices.Count; i++)
+                        vertices[i] = (vertices[i] - Vector3.up * baseHeight) * scale;
+                }
                 var mesh = new Mesh { name=name };
                 mesh.SetVertices(vertices);
                 mesh.subMeshCount=indices.Length;
@@ -116,27 +121,26 @@ namespace Aaris.MapReview.Editor
             {
                 if (medical != null) return medical;
                 var b = new Builder(3);
-                b.Box(new Vector3(0,.091f,0),new Vector3(.51f,.164f,.37f),.018f,0);
-                b.Box(new Vector3(0,.191f,0),new Vector3(.52f,.060f,.38f),.012f,0);
-                b.Box(new Vector3(0,.168f,0),new Vector3(.509f,.015f,.369f),.003f,2);
-                // Molded corner bumpers, hinge covers and an open handle.
+                b.Box(new Vector3(0f, .090f, 0f), new Vector3(.518f, .158f, .380f), .023f, 2);
+                b.Box(new Vector3(0f, .203f, 0f), new Vector3(.534f, .066f, .394f), .017f, 0);
+                b.Box(new Vector3(0f, .170f, 0f), new Vector3(.511f, .022f, .374f), .003f, 2);
                 for (int side = -1; side <= 1; side += 2)
                 {
-                    b.Box(new Vector3(side * .219f, .029f, 0f),
-                        new Vector3(.046f, .037f, .374f), .008f, 2);
-                    b.Box(new Vector3(side * .145f, .151f, -.190f),
-                        new Vector3(.055f, .060f, .025f), .006f, 2);
-                    b.Box(new Vector3(side * .129f, .170f, .188f),
-                        new Vector3(.070f, .027f, .022f), .005f, 2);
-                    b.Box(new Vector3(side * .067f, .116f, -.199f),
-                        new Vector3(.027f, .023f, .041f), .005f, 2);
+                    b.Box(new Vector3(side * .214f, .022f, 0f),
+                        new Vector3(.069f, .040f, .393f), .010f, 2);
+                    b.Box(new Vector3(side * .153f, .163f, -.196f),
+                        new Vector3(.069f, .083f, .031f), .008f, 0);
+                    b.Box(new Vector3(side * .143f, .172f, .195f),
+                        new Vector3(.081f, .048f, .028f), .008f, 2);
+                    b.Box(new Vector3(side * .086f, .112f, -.203f),
+                        new Vector3(.037f, .036f, .056f), .008f, 2);
                 }
-                b.Box(new Vector3(0f, .116f, -.221f),
-                    new Vector3(.159f, .023f, .019f), .005f, 2);
-                // Non-overlapping cross segments share a single red submesh.
-                b.Box(new Vector3(0,.222f,0),new Vector3(.067f,.008f,.23f),.003f,1);
-                b.Box(new Vector3(-.082f,.222f,0),new Vector3(.092f,.008f,.067f),.003f,1);
-                b.Box(new Vector3(.082f,.222f,0),new Vector3(.092f,.008f,.067f),.003f,1);
+                b.Box(new Vector3(0f, .112f, -.232f),
+                    new Vector3(.200f, .035f, .030f), .008f, 2);
+                // Three flush painted faces form a broad medical marking.
+                b.Box(new Vector3(0f, .237f, 0f), new Vector3(.084f, .004f, .263f), .001f, 1);
+                b.Box(new Vector3(-.092f, .237f, 0f), new Vector3(.100f, .004f, .084f), .001f, 1);
+                b.Box(new Vector3(.092f, .237f, 0f), new Vector3(.100f, .004f, .084f), .001f, 1);
                 medical=b.Finish("Aaris shared beveled medical case");
                 return medical;
             }
@@ -173,18 +177,18 @@ namespace Aaris.MapReview.Editor
                 var b = new Builder(2);
                 b.HelmetDome();
                 b.HelmetRing(.077f,.105f,.265f,.247f,.292f,.272f,1);
-                b.Box(new Vector3(0,.127f,-.241f),new Vector3(.36f,.045f,.105f),.016f,0);
+                b.Box(new Vector3(0,.115f,-.245f),new Vector3(.39f,.070f,.112f),.018f,0);
                 // Forehead mounting plate and paired accessory rails share the trim submesh.
                 b.Box(new Vector3(0,.208f,-.265f),new Vector3(.112f,.062f,.028f),.009f,1);
                 b.Box(new Vector3(0,.218f,-.281f),new Vector3(.060f,.028f,.012f),.004f,0);
                 for (int side = -1; side <= 1; side += 2)
                 {
-                    b.Box(new Vector3(side*.275f,.167f,0),new Vector3(.031f,.052f,.19f),.009f,1);
-                    for (int lug = -1; lug <= 1; lug++)
+                    b.Box(new Vector3(side*.275f,.165f,0),new Vector3(.043f,.064f,.208f),.011f,1);
+                    for (int lug = -1; lug <= 1; lug += 2)
                         b.Box(new Vector3(side * .290f, .179f, lug * .044f),
                             new Vector3(.022f, .014f, .023f), .004f, 0);
                 }
-                helmet=b.Finish("Aaris shared tactical helmet");
+                helmet=b.Finish("Aaris shared tactical helmet", .84f, .077f);
                 return helmet;
             }
         }

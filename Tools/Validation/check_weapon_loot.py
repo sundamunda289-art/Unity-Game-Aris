@@ -10,6 +10,7 @@ import math
 import subprocess
 import sys
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[2]
 MODELS = ROOT / "Assets/Resources/AarisWeapons/Models"
@@ -380,7 +381,7 @@ def run():
     assert '"Sniper_Optic" : "Sniper_Finish"' in inventory
     assert 'string cacheKey = resourceFolder + "/" + stem;' in inventory
     assert "mesh.localRotation = ImportedModelRotation(incoming.Spec);" in inventory
-    assert "Quaternion.Euler(0f, 0f, -75f) *" in pickup_cs
+    assert "Quaternion.Euler(0f, 0f, -90f) *" in pickup_cs
     assert "AarisWeaponInventory.ImportedModelRotation(state.Spec)" in pickup_cs
     assert "Quaternion grip = Quaternion.Euler(equipped.Spec.handRotation);" in inventory
     assert "hand.position + hand.rotation * equipped.Spec.handOffset" in inventory
@@ -401,22 +402,14 @@ def run():
     assert "visible.GetComponentInChildren<Renderer>(true)" not in pickup_cs
     assert "if (modelRenderers.Length == 0)" in pickup_cs
     assert "AarisWeaponMeshBounds.TryMeasure(transform," in pickup_cs
-    assert "private const float ModelFloorClearance = 0.025f;" in pickup_cs
+    floor_root = float(re.search(r"LootRootFloorClearance = ([0-9.]+)f", world)[1])
+    model_root = float(re.search(r"ModelFloorClearance = ([0-9.]+)f", pickup_cs)[1])
+    assert 0.01 <= floor_root + model_root <= 0.03
     assert "ModelFloorClearance - modelBounds.min.y * scale" in pickup_cs
-    assert "ModelFloorClearance + (modelBounds.center.y - modelBounds.min.y) * scale" in pickup_cs
-    assert "private const float LootRootFloorClearance = 0.04f;" in world
-    assert "private const float OutdoorLootPresentationClearance = 0.28f;" in world
-    assert "(indoor ? LootRootFloorClearance : OutdoorLootPresentationClearance)" in world
-    assert "(floor is TerrainCollider ? OutdoorLootPresentationClearance :" in world
-    assert "LootRootFloorClearance);" in world
-    # Measured visual floor clearance for both authored and dropped guns.
-    # Small positive margin avoids z-fighting without 21cm arcade hovering.
-    # Indoor low-profile contact stays 6.5 cm; terrain grass presentation
-    # sits ~30.5 cm above ground to avoid fully hidden gun silhouettes.
-    assert 0.05 < 0.04 + 0.025 < 0.08
-    assert abs((0.28 + 0.025) - 0.305) < 1e-6
-    assert "(modelBounds.center.y - modelBounds.min.y) * scale" in pickup_cs
-    assert "model.SetParent(visualPivot.transform, true);" in pickup_cs
+    assert "spot = GroundPose(floor);" in world
+    assert "Pose candidate = GroundPose(support);" in world
+    assert "Quaternion.FromToRotation(Vector3.up, normal)" in world
+    assert "OutdoorLootPresentationClearance" not in world
     assert "meshFilter.sharedMesh.bounds" in pickup_cs
     assert "skinned.localBounds" in pickup_cs
     assert "renderer.transform.TransformPoint(local)" in pickup_cs
@@ -426,7 +419,7 @@ def run():
     # the collected world pickup without duping its ammo/weapon state.
     assert "private AarisDroppedWeapon CreateDropped" in world
     assert "private bool TryTake(AarisWeaponPickup pickup)" in world
-    assert "CreateDropped(outgoing, pickup.transform.position, 1.25f," in world
+    assert "CreateDropped(outgoing, new Pose(floorRoot.position, floorRoot.rotation), 1.25f," in world
     assert "deferVisual: true" in world and "pickup.CommitConsumed();" in world
     assert "UndoDrop(replacement)" in world
     assert "inventory.TryPickup(pickup.State, out AarisWeaponState exchanged)" in world
@@ -772,7 +765,7 @@ def run():
     # Prevent a future refactor from silently stranding players unarmed.
     assert "private void TryLastResortStarterEquip()" in starter
     assert "Time.unscaledTime - starterUnarmedSince < 3f" in starter
-    assert "if (!TryFindDropSpot(out Vector3 point, requireReachable: true))" in starter
+    assert "if (!TryFindDropSpot(out Pose placement, requireReachable: true))" in starter
     assert "TryLastResortStarterEquip();" in starter
     assert "inventory.TryPickup(state, out AarisWeaponState previous)" in starter
     assert "starterLootSettled = true;" in starter

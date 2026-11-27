@@ -76,13 +76,13 @@ def audit():
     assert "pickup.ReleaseReservation();" in world
     assert "pickup.CommitConsumed();" in world
     assert "public bool TryReserve()" in pickup
-    reserve = world.index("CreateDropped(outgoing, pickup.transform.position, 1.25f,")
+    reserve = world.index("CreateDropped(outgoing, new Pose(floorRoot.position, floorRoot.rotation), 1.25f,")
     commit = world.index("inventory.TryPickup(pickup.State, out AarisWeaponState exchanged)")
     assert reserve < commit, "World must reserve old weapon on floor before swap."
     assert "UndoDrop(replacement)" in world
     assert "if (id >= 0)" in world and "consumed[id] = true;" in world
     assert "DeleteDrop(id);" in world
-    assert "TryFindDropSpot(out Vector3 point)" in world
+    assert "TryFindDropSpot(out Pose placement)" in world
     assert "inventory.TryRemove(out AarisWeaponState removed)" in world
     assert "rec.visible = null;" in world
     assert "if (record.visible != null) continue;" in world

@@ -33,7 +33,7 @@ class AndroidIdleLootVisualReuse(unittest.TestCase):
         self.assertIn("pickup.Spec.id != gunState.Spec.id", rent)
         self.assertIn("idleLootVisuals.RemoveAt(i);", rent)
         self.assertIn("pickup.RebindForStreaming(gunState, candidateIndex)", rent)
-        self.assertIn("pickup.transform.SetPositionAndRotation(position,", rent)
+        self.assertIn("pickup.transform.SetPositionAndRotation(placement.position, placement.rotation)", rent)
         self.assertIn("pickup.gameObject.SetActive(true);", rent)
         self.assertIn("return pickup;", rent)
         self.assertNotIn("Instantiate(", rent)
@@ -46,9 +46,7 @@ class AndroidIdleLootVisualReuse(unittest.TestCase):
             "state = gunState;",
             "candidateIndex = index;",
             "reserved = consumed = false;",
-            "pendingSpinDegrees = 0f;",
-            "model.localRotation = Quaternion.identity;",
-            "modelWasVisible = false;",
+            "nextBeaconVisibilityCheck = 0f;",
             "beaconObserver = null;",
         ):
             self.assertIn(invariant, rebind)

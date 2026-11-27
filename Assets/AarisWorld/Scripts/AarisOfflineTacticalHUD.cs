@@ -684,6 +684,7 @@ namespace Aaris.MapReview
             if (medicalTerrains == null) return false;
             Vector3 p = site.position;
             float ground = float.NegativeInfinity;
+            Vector3 surfaceNormal = Vector3.up;
             bool supported = false;
             for (int i = 0; i < medicalTerrains.Length; i++)
             {
@@ -695,14 +696,17 @@ namespace Aaris.MapReview
                     p.z < origin.z || p.z > origin.z + size.z) continue;
                 float u = (p.x - origin.x) / size.x;
                 float v = (p.z - origin.z) / size.z;
-                if (tile.terrainData.GetInterpolatedNormal(u, v).y < 0.87f)
-                    return false;
+                surfaceNormal = tile.terrainData.GetInterpolatedNormal(u, v);
+                if (surfaceNormal.y < 0.87f) return false;
                 ground = origin.y + tile.SampleHeight(p);
                 supported = true;
                 break;
             }
             if (!supported || ground <= -37.35f) return false;
-            Vector3 spot = new Vector3(p.x, ground + 0.08f, p.z);
+            Vector3 support = new Vector3(p.x, ground, p.z);
+            AarisSupplyGeometry.AlignToRunway(ref support, ref surfaceNormal);
+            Vector3 spot = support + surfaceNormal * .012f;
+            Quaternion rotation = Quaternion.FromToRotation(Vector3.up, surfaceNormal);
             // Reject loot hidden under sealed houses, including high ceilings.
             if (Physics.Raycast(spot + Vector3.up * 0.65f, Vector3.up,
                 out RaycastHit overhead, 7f, Physics.DefaultRaycastLayers,
@@ -750,7 +754,7 @@ namespace Aaris.MapReview
                     GameObject recycledHelmet = helmetVisualPool.Pop();
                     if (recycledHelmet != null)
                     {
-                        recycledHelmet.transform.position = spot;
+                        recycledHelmet.transform.SetPositionAndRotation(spot, rotation);
                         recycledHelmet.SetActive(true);
                         site.visual = recycledHelmet;
                         return true;
@@ -767,8 +771,8 @@ namespace Aaris.MapReview
                 }
 #endif
                 var helmetRoot = CreateMedicalVisual(true);
-                helmetRoot.transform.position = spot;
-                AarisSubjectContacts.Register(helmetRoot.transform,new Vector2(.72f,.68f),.19f,22f);
+                helmetRoot.transform.SetPositionAndRotation(spot, rotation);
+                AarisSubjectContacts.Register(helmetRoot.transform,new Vector2(.62f,.59f),.19f,22f);
                 site.visual = helmetRoot;
                 return true;
             }
@@ -778,7 +782,7 @@ namespace Aaris.MapReview
                 GameObject reused = medicalVisualPool.Pop();
                 if (reused != null)
                 {
-                    reused.transform.position = spot;
+                    reused.transform.SetPositionAndRotation(spot, rotation);
                     reused.SetActive(true);
                     site.visual = reused;
                     return true;
@@ -794,8 +798,8 @@ namespace Aaris.MapReview
             }
 #endif
             var root = CreateMedicalVisual(false);
-            root.transform.position = spot;
-            AarisSubjectContacts.Register(root.transform,new Vector2(.66f,.53f),.19f,22f);
+            root.transform.SetPositionAndRotation(spot, rotation);
+            AarisSubjectContacts.Register(root.transform,new Vector2(.70f,.57f),.19f,22f);
             site.visual = root;
             return true;
         }
@@ -805,21 +809,22 @@ namespace Aaris.MapReview
             if (helmet)
             {
                 Material shell = MedicalPaint(ref helmetShellPaint,
-                    new Color(.23f,.29f,.22f), "Aaris Helmet Shell");
+                    new Color(.38f, .43f, .30f), "Aaris Helmet Shell", .04f, .31f);
                 Material trim = MedicalPaint(ref helmetTrimPaint,
-                    new Color(.075f,.085f,.085f), "Aaris Helmet Trim");
+                    new Color(.13f, .16f, .15f), "Aaris Helmet Trim", .28f, .47f);
                 return AarisSupplyGeometry.Create(true, new[] { shell, trim });
             }
             Material body = MedicalPaint(ref medcasePaint,
-                new Color(.74f,.77f,.70f), "Aaris Medkit Case");
+                new Color(.79f, .80f, .73f), "Aaris Medkit Case", .03f, .34f);
             Material cross = MedicalPaint(ref medcrossPaint,
-                new Color(.84f,.055f,.042f), "Aaris Medkit Cross");
+                new Color(.87f, .095f, .056f), "Aaris Medkit Cross", 0f, .23f);
             Material seam = MedicalPaint(ref medtrimPaint,
-                new Color(.08f,.105f,.10f), "Aaris Medkit Trim");
+                new Color(.15f, .21f, .21f), "Aaris Medkit Trim", .11f, .27f);
             return AarisSupplyGeometry.Create(false, new[] { body, cross, seam });
         }
 
-        private static Material MedicalPaint(ref Material material, Color color, string name)
+        private static Material MedicalPaint(ref Material material, Color color, string name,
+            float metallic, float smoothness)
         {
             if (material != null) return material;
             Shader shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");
@@ -829,10 +834,8 @@ namespace Aaris.MapReview
             material = new Material(shader) { name = name };
             if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
             else material.color = color;
-            bool shell = name == "Aaris Helmet Shell";
-            bool medical = name == "Aaris Medkit Case";
-            if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", shell ? .08f : 0f);
-            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", shell ? .43f : medical ? .31f : .19f);
+            if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", metallic);
+            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", smoothness);
             material.enableInstancing = true;
             return material;
         }

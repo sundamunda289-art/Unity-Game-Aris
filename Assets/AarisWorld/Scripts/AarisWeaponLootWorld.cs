@@ -96,7 +96,7 @@ namespace Aaris.MapReview
     {
         public int id;
         public AarisWeaponState state;
-        public Vector3 position;
+        public Pose placement;
         public float blockedUntil, nextVisualAttemptAt;
         public AarisWeaponPickup visible;
     }
@@ -123,13 +123,8 @@ namespace Aaris.MapReview
         private const float RetryDelaySeconds = 3f;
         private const int MaximumDroppedLoot = 320;
         private const float PickupDistance = 2.15f;
-        // Both authored and player-dropped guns get exactly the same rooted
-        // floor clearance. Together with pickup's 2.5 cm mesh lift, their
-        // lowest geometry rests 6.5 cm above a verified ground hit.
-        private const float LootRootFloorClearance = 0.04f;
-        // Open-ground weapons rise slightly above tall terrain grass for
-        // readable silhouettes; indoors retain exact floor contact.
-        private const float OutdoorLootPresentationClearance = 0.28f;
+        // Same small positive support margin on terrain and solid floors.
+        private const float LootRootFloorClearance = 0.008f;
         private const float SeaLevel = -38.07552f;
         private const float CandidateCellMetres = 64f;
 
@@ -333,7 +328,7 @@ namespace Aaris.MapReview
         }
 
         private AarisWeaponPickup TryRentIdleVisual(AarisWeaponState gunState,
-            int candidateIndex, Vector3 position, string rootName)
+            int candidateIndex, Pose placement, string rootName)
         {
             if (gunState == null || gunState.Spec == null ||
                 idleLootCapacity == 0 || idlePoolTrimPending ||
@@ -359,8 +354,7 @@ namespace Aaris.MapReview
                     Destroy(pickup.gameObject);
                     continue;
                 }
-                pickup.transform.SetPositionAndRotation(position,
-                    Quaternion.identity);
+                pickup.transform.SetPositionAndRotation(placement.position, placement.rotation);
                 pickup.gameObject.name = rootName;
                 pickup.gameObject.SetActive(true);
                 return pickup;
@@ -382,11 +376,11 @@ namespace Aaris.MapReview
 
         // On all non-Android platforms, original new-prefab path is unchanged.
         private AarisWeaponPickup TryReuseLootVisual(AarisWeaponState gunState,
-            int candidateIndex, Vector3 position, string rootName)
+            int candidateIndex, Pose placement, string rootName)
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             return TryRentIdleVisual(gunState, candidateIndex,
-                position, rootName);
+                placement, rootName);
 #else
             return null;
 #endif
@@ -701,11 +695,21 @@ namespace Aaris.MapReview
             return count;
         }
 
+        private static Pose GroundPose(RaycastHit support)
+        {
+            Vector3 point = support.point;
+            Vector3 normal = support.normal;
+            if (support.collider is TerrainCollider)
+                AarisSupplyGeometry.AlignToRunway(ref point, ref normal);
+            return new Pose(point + normal * LootRootFloorClearance,
+                Quaternion.FromToRotation(Vector3.up, normal));
+        }
+
         private bool TryResolve(AarisLootCandidate c, Terrain[] terrains,
-            out Vector3 spot, float offsetX = 0f, float offsetZ = 0f,
+            out Pose spot, float offsetX = 0f, float offsetZ = 0f,
             bool forceOutdoor = false)
         {
-            spot = default(Vector3);
+            spot = default;
             float x = c.x + offsetX, z = c.z + offsetZ;
             var terrain = TerrainAt(x, z, terrains);
             if (terrain == null) return false;
@@ -797,8 +801,7 @@ namespace Aaris.MapReview
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
                 return false; // no inside-wall or furniture placement
 
-            spot = floor.point + Vector3.up *
-                (indoor ? LootRootFloorClearance : OutdoorLootPresentationClearance);
+            spot = GroundPose(floor);
             return true;
         }
 
@@ -809,7 +812,7 @@ namespace Aaris.MapReview
         // query budget across the entire mobile streaming frame. Invalid
         // indoor floors may fall back to safe uncovered ground outside houses.
         private bool TryResolveNearCandidate(AarisLootCandidate candidate,
-            int index, Terrain[] terrains, ref int alternateProbeBudget, out Vector3 spot)
+            int index, Terrain[] terrains, ref int alternateProbeBudget, out Pose spot)
         {
             if (TryResolve(candidate, terrains, out spot)) return true;
             bool relocateIndoor = candidate.kind == "indoor";
@@ -913,7 +916,7 @@ namespace Aaris.MapReview
         }
 
         private AarisDroppedWeapon CreateDropped(AarisWeaponState state,
-            Vector3 point, float graceSeconds, bool deferVisual = false)
+            Pose placement, float graceSeconds, bool deferVisual = false)
         {
             if (state == null || state.Spec == null ||
                 dropped.Count >= MaximumDroppedLoot) return null;
@@ -926,7 +929,7 @@ namespace Aaris.MapReview
             int id = nextDropId--;
             var record = new AarisDroppedWeapon
             {
-                id = id, state = state, position = point,
+                id = id, state = state, placement = placement,
                 blockedUntil = Time.unscaledTime + graceSeconds
             };
             // During an exchange, defer the previous gun mesh to the next
@@ -936,7 +939,7 @@ namespace Aaris.MapReview
             {
                 var root = new GameObject("Dropped " + state.Spec.displayName + " #" + (-id));
                 root.transform.SetParent(transform, false);
-                root.transform.position = point;
+                root.transform.SetPositionAndRotation(placement.position, placement.rotation);
                 var pickup = root.AddComponent<AarisWeaponPickup>();
                 if (!pickup.Initialize(state, id))
                 {
@@ -949,7 +952,7 @@ namespace Aaris.MapReview
             dropped.Add(record);
             if (Debug.isDebugBuild)
                 Debug.Log("AARIS_LOOT_DROPPED " + state.Spec.id +
-                    " pos=" + point.ToString("F2"));
+                    " pos=" + placement.position.ToString("F2"));
             return record;
         }
 
@@ -964,9 +967,9 @@ namespace Aaris.MapReview
             DeleteDrop(record.id);
         }
 
-        private bool TryFindDropSpot(out Vector3 position, bool requireReachable = false)
+        private bool TryFindDropSpot(out Pose placement, bool requireReachable = false)
         {
-            position = Vector3.zero;
+            placement = default;
             if (player == null) return false;
             Vector3 forward = player.forward;
             Vector3 right = player.right;
@@ -1020,7 +1023,7 @@ namespace Aaris.MapReview
                 }
                 float best = float.PositiveInfinity;
                 Collider floor = null;
-                Vector3 hitPoint = Vector3.zero;
+                RaycastHit support = default;
                 for (int i = 0; i < count; i++)
                 {
                     var hit = resolvedFloors[i];
@@ -1031,11 +1034,11 @@ namespace Aaris.MapReview
                         Mathf.Abs(hit.point.y - player.position.y) > .75f)
                         continue; // Do not throw a gun off a roof/cliff below the player.
                     floor = hit.collider;
-                    hitPoint = hit.point;
+                    support = hit;
                     best = hit.distance;
                 }
                 if (floor == null) continue;
-                Vector3 middle = hitPoint + Vector3.up * .44f;
+                Vector3 middle = support.point + Vector3.up * .44f;
                 Vector3 capsuleBottom = middle + Vector3.down * .06f;
                 Vector3 capsuleTop = middle + Vector3.up * .19f;
                 int blockers = Physics.OverlapCapsuleNonAlloc(
@@ -1068,11 +1071,9 @@ namespace Aaris.MapReview
                     break;
                 }
                 if (!clear) continue;
-                Vector3 candidate = hitPoint + Vector3.up *
-                    (floor is TerrainCollider ? OutdoorLootPresentationClearance :
-                     LootRootFloorClearance);
-                if (requireReachable && !CanReachPoint(candidate)) continue;
-                position = candidate;
+                Pose candidate = GroundPose(support);
+                if (requireReachable && !CanReachPoint(candidate.position)) continue;
+                placement = candidate;
                 return true;
             }
             return false;
@@ -1092,11 +1093,11 @@ namespace Aaris.MapReview
                 !HasLandingAuthority || !inventory.RequiresExchangeDrop ||
                 inventory.Current == null || incoming == null ||
                 incoming.Spec == null || !incoming.Spec.Valid ||
-                !TryFindDropSpot(out Vector3 point, requireReachable: true))
+                !TryFindDropSpot(out Pose placement, requireReachable: true))
                 return false;
 
             AarisWeaponState outgoing = inventory.Current.CaptureState();
-            AarisDroppedWeapon reserved = CreateDropped(outgoing, point, 1.25f,
+            AarisDroppedWeapon reserved = CreateDropped(outgoing, placement, 1.25f,
                 deferVisual: true);
             if (reserved == null) return false;
             if (!inventory.TryPickup(incoming, out AarisWeaponState displaced))
@@ -1128,9 +1129,9 @@ namespace Aaris.MapReview
             // budget is full. The held gun remains owned by the player.
             if (inventory == null || !inventory.HasGun ||
                 active.Count >= MaximumActiveLoot ||
-                !TryFindDropSpot(out Vector3 point)) return false;
+                !TryFindDropSpot(out Pose placement)) return false;
             var state = inventory.Current.CaptureState();
-            var record = CreateDropped(state, point, 1.25f);
+            var record = CreateDropped(state, placement, 1.25f);
             if (record == null) return false;
             if (!inventory.TryRemove(out AarisWeaponState removed))
             {
@@ -1169,8 +1170,9 @@ namespace Aaris.MapReview
             // physical carried slots are already full.
             var outgoing = inventory.RequiresExchangeDrop && inventory.Current != null
                 ? inventory.Current.CaptureState() : null;
+            Transform floorRoot = pickup.transform;
             var replacement = outgoing != null
-                ? CreateDropped(outgoing, pickup.transform.position, 1.25f,
+                ? CreateDropped(outgoing, new Pose(floorRoot.position, floorRoot.rotation), 1.25f,
                     deferVisual: true) : null;
             if (outgoing != null && replacement == null)
             {
@@ -1420,7 +1422,7 @@ namespace Aaris.MapReview
             {
                 if (record.visible != null) continue;
                 if (now < record.nextVisualAttemptAt) continue;
-                float dist = (record.position - playerPosition).sqrMagnitude;
+                float dist = (record.placement.position - playerPosition).sqrMagnitude;
                 if (dist > loadSquared) continue;
                 if (active.Count >= streamLimit) return false;
                 if (buildAttempts >= modelBuildBudget) return true;
@@ -1430,12 +1432,12 @@ namespace Aaris.MapReview
                 buildAttempts++;
                 string visualName = "Dropped " + record.state.Spec.displayName;
                 AarisWeaponPickup pickup = TryReuseLootVisual(record.state,
-                    record.id, record.position, visualName);
+                    record.id, record.placement, visualName);
                 if (pickup == null)
                 {
                     var root = new GameObject(visualName);
                     root.transform.SetParent(transform, false);
-                    root.transform.position = record.position;
+                    root.transform.SetPositionAndRotation(record.placement.position, record.placement.rotation);
                     pickup = root.AddComponent<AarisWeaponPickup>();
                     if (!pickup.Initialize(record.state, record.id))
                     {
@@ -1472,14 +1474,14 @@ namespace Aaris.MapReview
                     cachedTerrains = terrains;
                 }
                 if (!TryResolveNearCandidate(c, i, terrains,
-                    ref alternateProbeBudget, out Vector3 spot))
+                    ref alternateProbeBudget, out Pose spot))
                 {
                     nextCandidateProbeAt[i] = now + RetryDelaySeconds;
                     continue;
                 }
                 // Skip a resolved floor that RefreshPickups would immediately
                 // unload again, including tall cliffs and low-altitude fly-bys.
-                if ((spot - playerPosition).sqrMagnitude > ReleaseMetres * ReleaseMetres)
+                if ((spot.position - playerPosition).sqrMagnitude > ReleaseMetres * ReleaseMetres)
                 {
                     nextCandidateProbeAt[i] = now + 0.33f;
                     continue;
@@ -1499,7 +1501,7 @@ namespace Aaris.MapReview
                 {
                     var root = new GameObject(visualName);
                     root.transform.SetParent(transform, false);
-                    root.transform.position = spot;
+                    root.transform.SetPositionAndRotation(spot.position, spot.rotation);
                     pickup = root.AddComponent<AarisWeaponPickup>();
                     if (!pickup.Initialize(state, i))
                     {
@@ -1512,7 +1514,7 @@ namespace Aaris.MapReview
                 if (Debug.isDebugBuild)
                     Debug.Log("AARIS_LOOT_PLACED " + choices[i].id +
                         " kind=" + c.kind + " origin=" + c.origin +
-                        " index=" + i + " pos=" + spot.ToString("F2"));
+                        " index=" + i + " pos=" + spot.position.ToString("F2"));
             }
 
             // Leave a starter fallback for a frame with a construction slot.
@@ -1568,7 +1570,7 @@ namespace Aaris.MapReview
             }
 
             // One fallback per match. Use the existing safe floor and pickup path.
-            if (!TryFindDropSpot(out Vector3 point, requireReachable: true))
+            if (!TryFindDropSpot(out Pose placement, requireReachable: true))
             {
                 TryLastResortStarterEquip();
                 return;
@@ -1576,7 +1578,7 @@ namespace Aaris.MapReview
             var spec = AarisWeaponCatalog.Select(ref rng, false);
             if (spec == null) return;
             var state = new AarisWeaponState(spec, matchSeed ^ 0x4F67A2C1u);
-            var starter = CreateDropped(state, point, 0f);
+            var starter = CreateDropped(state, placement, 0f);
             if (starter == null)
             {
                 TryLastResortStarterEquip();
