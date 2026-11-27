@@ -202,8 +202,9 @@ def check() -> None:
     # A released semi-auto trigger must stay queued briefly when the prior
     # shot's cooldown outlasts a very short tap. Automatic and unarmed
     # releases still stop immediately.
-    assert "if (!held && (!IsArmed || equippedGun.Automatic))" in press
-    assert "fireBufferUntil = Time.time + SemiTapBufferSeconds;" in press
+    assert "if (!held && (!IsArmed || (equippedGun.Automatic && !shotQueuedDuringDraw)))" in press
+    assert "shotQueuedDuringDraw = IsArmed && equippedGun.RequiresVisualDraw;" in press
+    assert "fireBufferUntil = Time.time + SemiTapBufferSeconds +" in press
     assert "private const float SemiTapBufferSeconds = 0.16f;" in state
     assert "if (!newPress) return;" in press
     assert "Time.time < nextAttack) return;" in press
@@ -212,10 +213,11 @@ def check() -> None:
     assert "ShootEquippedWeapon();" in press
     assert "QueuePunch();" in combat_update
     assert combat_update.count("lastPunchTime = Time.time;") == 1
-    assert "bool bufferedSemi = IsArmed && !equippedGun.Automatic &&" in combat_update
+    assert "bool bufferedPress = IsArmed && (!equippedGun.Automatic || shotQueuedDuringDraw) &&" in combat_update
     assert "semiShotQueued && Time.time <= fireBufferUntil;" in combat_update
-    assert "if ((!fireHeld && !bufferedSemi) || Time.time < nextAttack) return;" in combat_update
-    assert "if (!equippedGun.Automatic && !bufferedSemi) return;" in combat_update
+    assert "if ((!fireHeld && !bufferedPress) || Time.time < nextAttack) return;" in combat_update
+    assert "if (!equippedGun.Automatic && !bufferedPress) return;" in combat_update
+    assert "if (equippedGun.RequiresVisualDraw) return;" in combat_update
     # Consume the trigger edge only when TryFire actually succeeds.
     assert combat_update.index("if (equippedGun.TryFire(motor.AimCamera, gameObject))") < combat_update.index("semiShotQueued = false;")
     assert "fireBufferUntil = 0f;" in combat_update

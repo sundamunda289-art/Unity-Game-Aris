@@ -20,12 +20,21 @@ namespace Aaris.MapReview
         private AarisBattleActions combat;
         private AarisThirdPersonPlayer motor;
         private AarisWeaponLootWorld lootWorld;
-        private Transform hand, chest, leftUpperArm, leftForearm, leftHand;
-        // A Humanoid chest's bind-axis can differ by 90/180 degrees from
-        // player-forward. Calibrate once per imported rig before positioning
-        // crossed back weapons in the animated torso's corrected world basis.
-        private Transform calibratedChest;
-        private Quaternion chestToRootRestRotation;
+        private Transform hand, chest, hips, leftUpperArm, leftForearm, leftHand;
+        private readonly List<Animator> socketAnimators = new List<Animator>(4);
+        private const float DrawSeconds = 0.18f;
+        private const float StowSeconds = 0.22f;
+
+        internal enum SocketKind { Unplaced, Hands, RightBack, LeftBack }
+
+        internal struct SocketMotion
+        {
+            internal SocketKind Kind;
+            internal bool Active, AroundShoulders;
+            internal float Started, Progress;
+            internal Vector3 StartCenter;
+            internal Quaternion StartRotation;
+        }
         private Transform leftThumb, leftMiddle;
         private Transform rightUpperArm, rightForearm;
         private readonly Transform[] rightGripDigits = new Transform[12];
@@ -563,11 +572,12 @@ namespace Aaris.MapReview
             // Keep the entire gun body centered a short distance forward
             // from the animated right wrist, regardless of imported FBX pivot.
             // Keep the receiver/trigger near the grip for all five real-size FBXs.
-            mesh.localPosition = new Vector3(0f, -0.025f,
-                incoming.Spec.presentationLengthMetres * 0.22f) -
-                combinedBounds.center * scale;
+            Vector3 modelCenter = new Vector3(0f, -0.025f,
+                incoming.Spec.presentationLengthMetres * 0.22f);
+            mesh.localPosition = modelCenter - combinedBounds.center * scale;
 
             var next = root.AddComponent<AarisEquippedGun>();
+            next.ModelLocalBounds = new Bounds(modelCenter, combinedBounds.size * scale);
             next.Configure(incoming);
             if (!next.Configured)
             {
@@ -696,7 +706,8 @@ namespace Aaris.MapReview
                 fingerRigResolved) return;
             if (Time.unscaledTime < nextRigSearch) return;
             nextRigSearch = Time.unscaledTime + 1f;
-            foreach (var animator in GetComponentsInChildren<Animator>(true))
+            GetComponentsInChildren(true, socketAnimators);
+            foreach (var animator in socketAnimators)
             {
                 if (animator == null || animator.avatar == null ||
                     !animator.avatar.isValid || !animator.avatar.isHuman) continue;
@@ -704,12 +715,7 @@ namespace Aaris.MapReview
                 chest = animator.GetBoneTransform(HumanBodyBones.UpperChest);
                 if (chest == null) chest = animator.GetBoneTransform(HumanBodyBones.Chest);
                 if (chest == null) chest = animator.GetBoneTransform(HumanBodyBones.Spine);
-                if (chest != null && chest != calibratedChest)
-                {
-                    calibratedChest = chest;
-                    chestToRootRestRotation = Quaternion.Inverse(chest.rotation) *
-                        transform.rotation;
-                }
+                hips = animator.GetBoneTransform(HumanBodyBones.Hips);
                 leftUpperArm = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
                 leftForearm = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm);
                 leftHand = animator.GetBoneTransform(HumanBodyBones.LeftHand);
@@ -744,35 +750,159 @@ namespace Aaris.MapReview
                 fingerRigResolved = true;
                 if (hand != null) break;
             }
+            socketAnimators.Clear();
         }
 
-        private void PlaceOnBack(Transform item, bool rightShoulder)
+        private Pose AnimatedTorso()
         {
-            if (item == null) return;
-            if (item.parent != transform) item.SetParent(transform, false);
-            // World-metre sockets and owner-space rotation avoid 0.01/100x FBX
-            // rig transforms. Two guns cross on the back in Fist mode.
-            Vector3 origin = chest != null ? chest.position :
-                transform.TransformPoint(new Vector3(0f, 1.35f, 0f));
-            // Follow the ANIMATED upper torso, not only the motor yaw: a
-            // crouching/turning spine must not leave either gun in mid-air.
-            // Apply offsets in world metres, never as a child of FBX bones.
-            Quaternion torso = chest != null && chest == calibratedChest
-                ? chest.rotation * chestToRootRestRotation : transform.rotation;
-            AarisEquippedGun gun = item == stowedRoot ? stowed : equipped;
-            float length = gun != null && gun.Spec != null ?
-                gun.Spec.presentationLengthMetres : 0.91f;
-            float longGunClearance = Mathf.Clamp(
-                (length - 0.91f) * 0.08f, 0f, 0.035f);
+            // The live shoulder and hip landmarks define the body axes
+            // regardless of the avatar's bind axes or stance at first equip.
+            if (chest != null && hips != null && leftUpperArm != null && rightUpperArm != null)
+            {
+                Vector3 side = (rightUpperArm.position - leftUpperArm.position).normalized;
+                Vector3 up = Vector3.ProjectOnPlane(chest.position - hips.position, side);
+                Vector3 forward = Vector3.Cross(side, up);
+                if (forward.sqrMagnitude > 0.0001f)
+                    return new Pose(chest.position, Quaternion.LookRotation(forward, up));
+            }
+            float eye = combat != null ? combat.CameraEyeHeight : 1.45f;
+            float pitch = Mathf.Lerp(74f, 0f, Mathf.InverseLerp(0.48f, 1.35f, eye));
+            return new Pose(transform.position + Vector3.up * (eye - 0.12f),
+                transform.rotation * Quaternion.Euler(pitch, 0f, 0f));
+        }
+
+        private void PlaceOnBack(AarisEquippedGun gun, Pose torso, bool rightShoulder)
+        {
+            if (gun == null) return;
+            // Position the model's measured centre. These offsets describe
+            // clearance to the inner face of the weapon, in torso metres.
+            float across, down, depth;
+            switch (gun.Spec.category)
+            {
+                case "Pistol": across = 0.45f; down = 0.16f; depth = 0.174f; break;
+                case "SMG": across = 0.49f; down = 0.18f; depth = 0.188f; break;
+                case "Shotgun": across = 0.60f; down = 0.24f; depth = 0.212f; break;
+                case "Sniper": across = 0.64f; down = 0.26f; depth = 0.224f; break;
+                case "DMR": across = 0.59f; down = 0.23f; depth = 0.213f; break;
+                default: across = 0.56f; down = 0.22f; depth = 0.201f; break;
+            }
             float side = rightShoulder ? 1f : -1f;
-            // Stagger the left slot behind the right one while both are
-            // stowed, so crossed receivers do not occupy the same plane.
-            float backDepth = 0.225f + longGunClearance +
-                (!rightShoulder && stowedRoot != null ? 0.065f : 0f);
-            item.SetPositionAndRotation(
-                origin + torso * new Vector3(
-                    side * (0.17f + longGunClearance), 0.02f, -backDepth),
-                torso * Quaternion.Euler(12f, side * 12f, side * 63f));
+            Vector3 barrel = new Vector3(-side * across, -Mathf.Sqrt(1f - across * across), 0f);
+            // The FBX barrel is +Z and the magazine points away from the back.
+            Quaternion rotation = torso.rotation * Quaternion.LookRotation(barrel, Vector3.forward);
+            Vector3 front = torso.rotation * Vector3.forward;
+            Bounds bounds = gun.ModelLocalBounds;
+            if (!rightShoulder && stowed != null)
+            {
+                // Separate the actual crossed model volumes, including long
+                // magazines in the forward slot.
+                depth += stowed.ModelLocalBounds.size.y + 0.046f;
+            }
+            depth += ProjectedRadius(bounds, rotation, front);
+            Vector3 center = torso.position + torso.rotation * new Vector3(side * 0.024f, -down, -depth);
+            WriteSocket(gun, torso, center - rotation * bounds.center, rotation,
+                rightShoulder ? SocketKind.RightBack : SocketKind.LeftBack);
+            KeepSocketAboveGround(gun);
+        }
+
+        private static float ProjectedRadius(Bounds bounds, Quaternion rotation, Vector3 normal)
+        {
+            Vector3 axis = Quaternion.Inverse(rotation) * normal;
+            Vector3 size = bounds.extents;
+            return Mathf.Abs(axis.x) * size.x + Mathf.Abs(axis.y) * size.y + Mathf.Abs(axis.z) * size.z;
+        }
+
+        private void WriteSocket(AarisEquippedGun gun, Pose torso, Vector3 target,
+            Quaternion rotation, SocketKind kind)
+        {
+            Transform item = gun.transform;
+            if (item.parent != transform) item.SetParent(transform, false);
+            ref SocketMotion motion = ref gun.PresentationSocket;
+            Bounds bounds = gun.ModelLocalBounds;
+            Quaternion intoTorso = Quaternion.Inverse(torso.rotation);
+            if (motion.Kind != kind)
+            {
+                motion.Active = motion.Kind != SocketKind.Unplaced;
+                motion.AroundShoulders = motion.Active &&
+                    (motion.Kind == SocketKind.Hands || kind == SocketKind.Hands);
+                motion.Kind = kind;
+                motion.Started = Time.time;
+                motion.Progress = 0f;
+                motion.StartCenter = intoTorso * (item.TransformPoint(bounds.center) - torso.position);
+                motion.StartRotation = intoTorso * item.rotation;
+                // An input edge must start from the current visible pose.
+                // The following evaluated frames move it around the body.
+                if (motion.Active) return;
+            }
+            if (motion.Active)
+            {
+                float seconds = kind == SocketKind.Hands ? DrawSeconds : StowSeconds;
+                motion.Progress = Mathf.Clamp01((Time.time - motion.Started) / seconds);
+                motion.Active = motion.Progress < 1f;
+            }
+            if (!motion.Active)
+            {
+                item.SetPositionAndRotation(target, rotation);
+                return;
+            }
+
+            float t = Mathf.SmoothStep(0f, 1f, motion.Progress);
+            Vector3 finish = intoTorso * (target + rotation * bounds.center - torso.position);
+            Vector3 center = Vector3.Lerp(motion.StartCenter, finish, t);
+            Quaternion orientation = torso.rotation * Quaternion.Slerp(
+                motion.StartRotation, intoTorso * rotation, t);
+            if (motion.AroundShoulders)
+            {
+                // Draw via the right shoulder and stow via the left. The
+                // moving torso owns the arc, so running cannot leave it behind.
+                float side = kind == SocketKind.Hands ? 1f : -1f;
+                Vector3 from = motion.StartCenter;
+                float fromAngle = Mathf.Atan2(from.x, from.z) * Mathf.Rad2Deg;
+                float toAngle = Mathf.Atan2(finish.x, finish.z) * Mathf.Rad2Deg;
+                float angle = t <= 0.5f ? Mathf.LerpAngle(fromAngle, side * 90f, t * 2f) :
+                    Mathf.LerpAngle(side * 90f, toAngle, (t - 0.5f) * 2f);
+                angle *= Mathf.Deg2Rad;
+                Vector3 outward = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle));
+                float radius = Mathf.Lerp(new Vector2(from.x, from.z).magnitude,
+                    new Vector2(finish.x, finish.z).magnitude, t);
+                float clearanceBlend = Mathf.SmoothStep(0f, 1f, Mathf.Min(t, 1f - t) * 4f);
+                float clearRadius = 0.30f + ProjectedRadius(bounds, orientation, torso.rotation * outward);
+                radius = Mathf.Lerp(radius, Mathf.Max(radius, clearRadius), clearanceBlend);
+                center = outward * radius + Vector3.up * (center.y + clearanceBlend * 0.075f);
+            }
+
+            item.SetPositionAndRotation(torso.position + torso.rotation * center -
+                orientation * bounds.center, orientation);
+        }
+
+        private bool TryGetGroundedProneSupport(out Vector3 point, out Vector3 normal)
+        {
+            point = normal = Vector3.zero;
+            return combat != null && capsule != null && capsule.enabled && capsule.isGrounded &&
+                motor != null && motor.isActiveAndEnabled &&
+                combat.MovementStance == AarisBattleActions.PlayerStance.Prone &&
+                combat.TryGetProneSupportPlane(out point, out normal);
+        }
+
+        private void KeepSocketAboveGround(AarisEquippedGun gun)
+        {
+            SocketMotion motion = gun.PresentationSocket;
+            if (motion.Active && motion.Progress <= 0f) return;
+            if (!TryGetGroundedProneSupport(out Vector3 floor, out Vector3 normal)) return;
+            Transform item = gun.transform;
+            float clearance = WeaponGroundGap(gun, floor, normal);
+            // Keep the silhouette clear while easing in the settled margin.
+            // A rifle already clear of the floor should not jump on input.
+            float margin = motion.Active ? Mathf.SmoothStep(0f, 0.020f, motion.Progress) : 0.020f;
+            if (clearance < margin) item.position += normal * (margin - clearance);
+        }
+
+        private static float WeaponGroundGap(AarisEquippedGun gun, Vector3 floor, Vector3 normal)
+        {
+            Transform item = gun.transform;
+            Bounds bounds = gun.ModelLocalBounds;
+            return Vector3.Dot(item.TransformPoint(bounds.center) - floor, normal) -
+                ProjectedRadius(bounds, item.rotation, normal);
         }
 
         // Chest anchoring and two-hand IK must use the SAME rig contract.
@@ -791,10 +921,11 @@ namespace Aaris.MapReview
         {
             if (equipped == null || weaponRoot == null) return;
             FindHumanoidSockets();
-            if (stowedRoot != null) PlaceOnBack(stowedRoot, true);
+            Pose torso = AnimatedTorso();
+            if (stowedRoot != null) PlaceOnBack(stowed, torso, true);
             if (fistMode || IsSprintHolstered)
             {
-                PlaceOnBack(weaponRoot, stowedRoot != null ? false : true);
+                PlaceOnBack(equipped, torso, stowedRoot == null);
                 return;
             }
             if (weaponRoot.parent != transform)
@@ -835,22 +966,21 @@ namespace Aaris.MapReview
                     Vector3.up * 0.105f + Vector3.up * aimPitch * 0.025f;
                 receiver -= sprintReadyBlend *
                     (shoulderForward * 0.035f + Vector3.up * 0.08f);
-                weaponRoot.SetPositionAndRotation(receiver, aimRotation);
+                receiver = ReachableReceiver(receiver, aimRotation);
+                WriteSocket(equipped, torso, receiver, aimRotation, SocketKind.Hands);
             }
             else
             {
                 // Missing Humanoid avatar: retain the working legacy grip
                 // instead of hiding/dropping an otherwise usable weapon.
                 Quaternion grip = Quaternion.Euler(equipped.Spec.handRotation);
-                if (hand != null)
-                    weaponRoot.SetPositionAndRotation(
-                        hand.position + hand.rotation * equipped.Spec.handOffset,
-                        hand.rotation * grip);
-                else
-                    weaponRoot.SetPositionAndRotation(
-                        transform.TransformPoint(new Vector3(.29f, 1.1f, .3f)),
-                        transform.rotation * grip);
+                Vector3 handPosition = hand != null ? hand.position + hand.rotation * equipped.Spec.handOffset :
+                    transform.TransformPoint(new Vector3(.29f, 1.1f, .3f));
+                Quaternion gripRotation = hand != null ? hand.rotation * grip : transform.rotation * grip;
+                WriteSocket(equipped, torso, handPosition, gripRotation, SocketKind.Hands);
             }
+            if (equipped.RequiresVisualDraw || !HasCompleteHumanoidGripRig())
+                KeepSocketAboveGround(equipped);
         }
 
         // No per-frame allocations or Animation Rigging dependency: the
@@ -896,17 +1026,20 @@ namespace Aaris.MapReview
                 {
                     circleUp /= normalSpan;
                     float centerGap = Vector3.Dot(elbowCenter - supportPoint, supportNormal);
-                    float requiredUp = Mathf.Clamp((0.035f - centerGap) /
+                    float requiredUp = Mathf.Clamp((0.046f - centerGap) /
+                        (perpendicular * normalSpan), -1f, 1f);
+                    float highestBracedUp = Mathf.Clamp((0.115f - centerGap) /
                         (perpendicular * normalSpan), -1f, 1f);
                     float currentUp = Mathf.Clamp(Vector3.Dot(pole, circleUp), -1f, 1f);
-                    if (requiredUp > currentUp)
+                    float bracedUp = Mathf.Clamp(currentUp, requiredUp, highestBracedUp);
+                    if (Mathf.Abs(bracedUp - currentUp) > 0.001f)
                     {
                         Vector3 tangent = pole - circleUp * currentUp;
                         if (tangent.sqrMagnitude < 0.000001f)
                             tangent = Vector3.Cross(direction, circleUp);
                         tangent.Normalize();
-                        pole = circleUp * requiredUp + tangent *
-                            Mathf.Sqrt(Mathf.Max(0f, 1f - requiredUp * requiredUp));
+                        pole = circleUp * bracedUp + tangent *
+                            Mathf.Sqrt(Mathf.Max(0f, 1f - bracedUp * bracedUp));
                     }
                 }
             }
@@ -931,23 +1064,22 @@ namespace Aaris.MapReview
         // chain but left a visible gap between palm and gun. Translate only
         // the weapon root, by at most 12 cm, toward the shoulder until the
         // trigger is reachable; rotation/aim direction remains untouched.
-        private void FitTriggerGripToArmReach()
+        private Vector3 ReachableReceiver(Vector3 receiver, Quaternion rotation)
         {
             if (weaponRoot == null || hand == null || rightUpperArm == null ||
-                rightForearm == null) return;
+                rightForearm == null) return receiver;
             float upperLength = Vector3.Distance(
                 rightUpperArm.position, rightForearm.position);
             float lowerLength = Vector3.Distance(
                 rightForearm.position, hand.position);
-            if (upperLength < 0.05f || lowerLength < 0.05f) return;
-            Vector3 trigger = weaponRoot.TransformPoint(
-                new Vector3(0.015f, -0.045f, -0.045f));
+            if (upperLength < 0.05f || lowerLength < 0.05f) return receiver;
+            Vector3 trigger = receiver + rotation * new Vector3(0.015f, -0.045f, -0.045f);
             Vector3 fromShoulder = trigger - rightUpperArm.position;
             float distance = fromShoulder.magnitude;
             float maximumReach = upperLength + lowerLength - 0.025f;
-            if (distance <= maximumReach || distance < 0.001f) return;
+            if (distance <= maximumReach || distance < 0.001f) return receiver;
             float correction = Mathf.Min(distance - maximumReach, 0.12f);
-            weaponRoot.position -= fromShoulder / distance * correction;
+            return receiver - fromShoulder / distance * correction;
         }
 
         // A fixed foregrip point on a long sniper/rifle can lie beyond the
@@ -983,36 +1115,48 @@ namespace Aaris.MapReview
                 Mathf.Max(minimumForegripZ, minimumReachableZ), maximumReachableZ);
         }
 
-        // A prone rifle follows camera pitch after the body has finished its
-        // terrain pose. Its low foregrip can otherwise pull a correctly
-        // grounded hand through the floor in this final (+310) arm solve.
-        // Translate the whole grip frame, preserving aim and both handholds.
-        // Reuse the stance support plane; no new ground query or body lift.
-        private void KeepProneGripsAboveSupport(float foregrip)
+        private void KeepProneWeaponAboveSupport(ref float foregrip,
+            Vector3 floor, Vector3 normal)
         {
-            if (combat == null || capsule == null || !capsule.enabled ||
-                !capsule.isGrounded || motor == null || !motor.isActiveAndEnabled ||
-                combat.MovementStance != AarisBattleActions.PlayerStance.Prone)
-                return;
-            Vector3 normal = combat.ProneGroundNormal;
-            Vector3 floor = transform.TransformPoint(capsule.center -
-                Vector3.up * (capsule.height * 0.5f));
+            // The barrel or magazine can be lower than either grip. Test
+            // the stored model bounds against the same plane the torso uses.
+            float lift = ReachableWeaponLift(foregrip, floor, normal, out float needed);
+            Vector3 barrel = weaponRoot.forward;
+            float tiltIntoGround = Vector3.Dot(barrel, normal);
+            if (needed - lift > 0.003f && tiltIntoGround < -0.001f)
+            {
+                // In extreme downhill ADS there may be no reachable lift.
+                // Pitch the drawn model just enough to clear the support
+                // plane. Input aim and the authoritative shot ray keep their yaw.
+                Vector3 levelBarrel = Vector3.ProjectOnPlane(barrel, normal).normalized;
+                if (levelBarrel.sqrMagnitude < 0.01f)
+                    levelBarrel = Vector3.ProjectOnPlane(transform.forward, normal).normalized;
+                float remaining = Mathf.Asin(Mathf.Clamp01((needed - lift) /
+                    Mathf.Max(0.12f, equipped.ModelLocalBounds.max.z)));
+                Vector3 supportedBarrel = Vector3.RotateTowards(barrel, levelBarrel, remaining, 0f);
+                weaponRoot.rotation = Quaternion.FromToRotation(barrel, supportedBarrel) * weaponRoot.rotation;
+                foregrip = ReachableSupportGripZ(leftUpperArm, leftForearm, leftHand, weaponRoot, foregrip);
+                lift = ReachableWeaponLift(foregrip, floor, normal, out _);
+            }
+            if (lift > 0.0001f) weaponRoot.position += normal * lift;
+        }
+
+        private float ReachableWeaponLift(float foregrip, Vector3 floor,
+            Vector3 normal, out float needed)
+        {
             Vector3 trigger = weaponRoot.TransformPoint(
                 new Vector3(0.015f, -0.045f, -0.045f));
             Vector3 support = weaponRoot.TransformPoint(
                 new Vector3(-0.045f, -0.035f, foregrip));
             float lowestGrip = Mathf.Min(Vector3.Dot(trigger - floor, normal),
                 Vector3.Dot(support - floor, normal));
-            float lift = Mathf.Clamp(0.035f - lowestGrip, 0f, 0.18f);
-            if (lift <= 0.0001f) return;
-            // The support translation must fit inside BOTH actual arm reach
-            // spheres. Their existing analytic IK remains the final authority;
-            // never stretch a chain or detach a palm to clear the ground.
+            needed = Mathf.Max(0.035f - lowestGrip, 0.018f - WeaponGroundGap(equipped, floor, normal));
+            if (needed <= 0.0001f) return 0f;
+            float lift = Mathf.Min(0.22f, needed);
             lift = Mathf.Min(lift, AvailableArmSupportLift(rightUpperArm,
                 rightForearm, hand, trigger, normal));
-            lift = Mathf.Min(lift, AvailableArmSupportLift(leftUpperArm,
+            return Mathf.Min(lift, AvailableArmSupportLift(leftUpperArm,
                 leftForearm, leftHand, support, normal));
-            if (lift > 0.0001f) weaponRoot.position += normal * lift;
         }
 
         private static float AvailableArmSupportLift(Transform upper,
@@ -1031,7 +1175,7 @@ namespace Aaris.MapReview
 
         private void ApplyProceduralWeaponMotion()
         {
-            if (!HasGun || IsSprintHolstered || weaponRoot == null)
+            if (!HasGun || IsSprintHolstered || weaponRoot == null || equipped.RequiresVisualDraw)
             {
                 weaponMotionReady = false;
                 smoothedWeaponSway = Vector3.zero;
@@ -1232,30 +1376,33 @@ namespace Aaris.MapReview
         {
             if (!HasGun || IsSprintHolstered || weaponRoot == null ||
                 !HasCompleteHumanoidGripRig()) return;
+            bool drawing = equipped.RequiresVisualDraw;
+            float gripWeight = drawing ? Mathf.SmoothStep(0f, 1f,
+                Mathf.InverseLerp(0.73f, 1f, equipped.PresentationSocket.Progress)) : 1f;
+            if (gripWeight <= 0.001f) return;
             // Receiver at right trigger, front grip down barrel +Z.
-            // First make the trigger physically reachable on this Humanoid;
-            // then match the left support grip to the weapon's barrel length.
-            FitTriggerGripToArmReach();
+            // The receiver already fitted the trigger reach before its socket
+            // blend. Match the left support grip to the weapon's barrel length.
             // A pistol is supported around the trigger hand, not at a rifle's
             // fore-end beyond its muzzle. The same stance-aware arm solve runs.
             float foregrip = equipped.Spec.category == "Pistol" ? -0.025f :
                 Mathf.Clamp(equipped.Spec.presentationLengthMetres * 0.40f, 0.22f, 0.48f);
             foregrip = ReachableSupportGripZ(
                 leftUpperArm, leftForearm, leftHand, weaponRoot, foregrip);
-            KeepProneGripsAboveSupport(foregrip);
-            Vector3 supportPoint = Vector3.zero, supportNormal = Vector3.zero;
-            bool supportedProne = combat != null && capsule != null && capsule.enabled &&
-                capsule.isGrounded && motor != null && motor.isActiveAndEnabled &&
-                combat.MovementStance == AarisBattleActions.PlayerStance.Prone &&
-                combat.TryGetProneSupportPlane(out supportPoint, out supportNormal);
-            if (!supportedProne) supportNormal = Vector3.zero;
+            if (TryGetGroundedProneSupport(out Vector3 supportPoint, out Vector3 supportNormal))
+            {
+                if (!drawing) KeepProneWeaponAboveSupport(ref foregrip, supportPoint, supportNormal);
+            }
+            else supportNormal = Vector3.zero;
             ReachArm(rightUpperArm, rightForearm, hand,
-                weaponRoot.TransformPoint(new Vector3(0.015f, -0.045f, -0.045f)),
+                Vector3.Lerp(hand.position,
+                    weaponRoot.TransformPoint(new Vector3(0.015f, -0.045f, -0.045f)), gripWeight),
                 transform.right, supportPoint, supportNormal);
             ReachArm(leftUpperArm, leftForearm, leftHand,
-                weaponRoot.TransformPoint(new Vector3(-0.045f, -0.035f, foregrip)),
+                Vector3.Lerp(leftHand.position,
+                    weaponRoot.TransformPoint(new Vector3(-0.045f, -0.035f, foregrip)), gripWeight),
                 -transform.right, supportPoint, supportNormal);
-            AlignSupportWristRotation();
+            if (!drawing) AlignSupportWristRotation();
 
             // Position-only IK can still leave the trigger palm visibly
             // twisted around the receiver. The catalog's handRotation is the
@@ -1266,8 +1413,8 @@ namespace Aaris.MapReview
             Quaternion grip = Quaternion.Euler(equipped.Spec.handRotation);
             Quaternion desiredWrist = weaponRoot.rotation * Quaternion.Inverse(grip);
             hand.rotation = Quaternion.Slerp(hand.rotation, desiredWrist,
-                GripBlendAlpha(aiming ? 0.92f : 0.76f));
-            ApplyFingerGrip(foregrip);
+                GripBlendAlpha(aiming ? 0.92f : 0.76f) * gripWeight);
+            if (!drawing) ApplyFingerGrip(foregrip);
         }
 
         private void LateUpdate()
@@ -1287,7 +1434,7 @@ namespace Aaris.MapReview
             bool sprintIntent = motor != null && motor.IsAutoSprinting ||
                 Input.GetKey(KeyCode.LeftShift);
             bool sprinting = !fistMode && !aiming && combat != null &&
-                !combat.FireHeld &&
+                !combat.RequestsWeaponDraw &&
                 combat.Stance == AarisBattleActions.PlayerStance.Standing &&
                 capsule != null && capsule.isGrounded &&
                 sprintIntent && planarSpeedSqr > 3.75f * 3.75f;

@@ -47,6 +47,12 @@ namespace Aaris.MapReview
         private static readonly List<MonoBehaviour> damageScratch =
             new List<MonoBehaviour>(8);
         private AarisWeaponSpec spec;
+        internal Bounds ModelLocalBounds;
+        internal AarisWeaponInventory.SocketMotion PresentationSocket;
+        internal bool RequiresVisualDraw =>
+            PresentationSocket.Kind != AarisWeaponInventory.SocketKind.Unplaced &&
+            (PresentationSocket.Kind != AarisWeaponInventory.SocketKind.Hands ||
+                PresentationSocket.Active);
         // The weapon can be exchanged or dropped. Cache native component
         // lookups by owning GameObject, never by gun or a stale static player.
         private GameObject cachedOwner;
@@ -1059,7 +1065,7 @@ namespace Aaris.MapReview
         public bool TryFire(Camera camera, GameObject owner)
         {
             RefreshReload();
-            if (spec == null || camera == null || owner == null || reloading ||
+            if (spec == null || camera == null || owner == null || reloading || RequiresVisualDraw ||
                 Time.time < nextFire) return false;
             if (magazine <= 0)
             {
