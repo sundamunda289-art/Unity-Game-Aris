@@ -38,7 +38,7 @@ class AndroidColliderBudget(unittest.TestCase):
                         routine.index("IndexCollider(indexCursor);"))
         self.assertIn("FinishIndexBuild();", routine)
         self.assertIn("if (!indexReady) return;", CODE)
-        self.assertIn("if (!indexReady) return false;", CODE)
+        self.assertIn("if (!indexReady) return includeActive && obstacles != null && obstacles.Length > 0;", CODE)
 
     def test_bounded_gating_rechecks_live_player_position(self):
         task = CODE[CODE.index("private IEnumerator DeactivateDistantAcrossFrames()"):

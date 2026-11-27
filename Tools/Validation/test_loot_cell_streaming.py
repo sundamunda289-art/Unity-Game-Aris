@@ -387,10 +387,11 @@ class LootGridRegression(unittest.TestCase):
         self.assertIn("AarisHouseLoot.TryResolve(site.socket, out Pose surface)", spawn)
         self.assertIn("return PlaceSupplyVisual(site, spot, rotation, out deferredByBudget);", spawn)
         self.assertIn("if ((!includeActive && !isActiveAndEnabled) || obstacles == null", obstacles)
-        self.assertIn("if (worldBounds[i].Intersects(probe) &&", obstacles)
+        self.assertIn("bounds.Intersects(first)", obstacles)
         self.assertIn("bool includeActive = false", obstacles)
-        self.assertIn("streamed[i] && c != null && (includeActive", obstacles)
-        self.assertIn(": !c.enabled))", obstacles)
+        self.assertIn("if (!streamed[index]) return false;", obstacles)
+        self.assertIn("collider != null && (includeActive", obstacles)
+        self.assertIn(": !collider.enabled);", obstacles)
         self.assertNotIn("Physics.SyncTransforms()", spawn)
 
     def test_open_ground_gun_coverage_at_50m_sample_sites(self):

@@ -339,7 +339,7 @@ namespace Aaris.MapReview
 
         private void FixedUpdate()
         {
-            if (!indexReady || target == null ||
+            if (!indexReady || target == null || worldBounds == null ||
                 (AarisVehicleMotor.TrackedPhysicsResidentCount == 0 &&
                  vehiclePhysicsPins.Count == 0)) return;
             // Execution order -250 runs before the vehicle motor (-40) and
@@ -348,7 +348,7 @@ namespace Aaris.MapReview
             if (!AarisVehicleMotor.CollectPhysicsResidencyBounds(vehiclePhysicsPins))
                 return;
             VehicleSupportRefreshCount++;
-            RefreshNow(false);
+            RefreshColliderResidency(false);
         }
 
         private bool IsVehicleSupportPinned(int index)
@@ -430,6 +430,11 @@ namespace Aaris.MapReview
         {
             if (!indexReady || target == null || worldBounds == null) return;
             AarisVehicleMotor.CollectPhysicsResidencyBounds(vehiclePhysicsPins);
+            RefreshColliderResidency(forcePhysicsSync);
+        }
+
+        private void RefreshColliderResidency(bool forcePhysicsSync)
+        {
             // Forced startup/teleport refreshes can invoke Physics.SyncTransforms:
             // keep their original native-frame reservation. Routine movement
             // refreshes reserve only if a collider is actually re-enabled;
@@ -641,14 +646,6 @@ namespace Aaris.MapReview
         internal bool HasPotentialInactiveObstacle(Vector3 center,
             Vector3 halfExtents, Quaternion rotation, bool includeActive = false)
         {
-            // While Android builds the index, physical movers still have the
-            // original colliders. Math-only actors must wait for complete cover
-            // rather than interpret a partial index as an empty world.
-            if (includeActive && !indexReady && obstacles != null && obstacles.Length > 0)
-                return true;
-            if (!indexReady) return false;
-            if ((!includeActive && !isActiveAndEnabled) || obstacles == null || streamed == null ||
-                worldBounds == null) return false;
             Vector3 extents;
             // AI cover, player pickups and many spawn probes use EXACT
             // identity rotation. Avoid three quaternion-vector transforms per
@@ -669,11 +666,31 @@ namespace Aaris.MapReview
                     Mathf.Abs(right.y) + Mathf.Abs(up.y) + Mathf.Abs(forward.y),
                     Mathf.Abs(right.z) + Mathf.Abs(up.z) + Mathf.Abs(forward.z));
             }
-            Bounds probe = new Bounds(center, 2f * extents);
-            Vector3 probeMin = probe.min, probeMax = probe.max;
+            return HasObstacleInProbes(new Bounds(center, 2f * extents), null, 0, includeActive);
+        }
+
+        // All the movement boxes share one grid walk. The envelope limits
+        // candidates; the original individual boxes still decide the result.
+        internal bool HasObstacleInProbes(Bounds first, Bounds[] additional,
+            int additionalCount, bool includeActive)
+        {
+            // Until the index is complete, native movement has the original
+            // colliders. Math-only movement waits for the complete cover data.
+            if (!indexReady) return includeActive && obstacles != null && obstacles.Length > 0;
+            if ((!includeActive && !isActiveAndEnabled) || obstacles == null ||
+                streamed == null || worldBounds == null) return false;
+
+            Vector3 probeMin = first.min, probeMax = first.max;
             // A broken/overflowing transform is not evidence of a clear
             // vehicle/AI spawn or safe exit. Reject it without grid traversal.
             if (!Finite(probeMin) || !Finite(probeMax)) return true;
+            for (int i = 0; i < additionalCount; i++)
+            {
+                Vector3 min = additional[i].min, max = additional[i].max;
+                if (!Finite(min) || !Finite(max)) return true;
+                probeMin = Vector3.Min(probeMin, min);
+                probeMax = Vector3.Max(probeMax, max);
+            }
             int firstX = Cell(probeMin.x), lastX = Cell(probeMax.x);
             int firstZ = Cell(probeMin.z), lastZ = Cell(probeMax.z);
             long width = (long)lastX - firstX + 1;
@@ -686,16 +703,9 @@ namespace Aaris.MapReview
                 // serialized authored obstacle set (including oversized
                 // grid members), preserving exact 3D bounds intersection.
                 for (int i = 0; i < obstacles.Length; i++)
-                {
-                    if (!streamed[i] || !worldBounds[i].Intersects(probe))
-                        continue;
-                    Collider candidate = obstacles[i];
-                    if (candidate != null && (includeActive
-                        ? !candidate.isTrigger && candidate.gameObject.activeInHierarchy &&
-                          (candidate.enabled || disabledByStreaming[i])
-                        : !candidate.enabled))
+                    if (MatchesObstacleProbe(i, first, additional, additionalCount,
+                        probeMin, probeMax, includeActive))
                         return true;
-                }
                 return false;
             }
             // The same large wall can occupy several spatial cells. Check it only
@@ -706,20 +716,16 @@ namespace Aaris.MapReview
                 probeQuery = 0;
             }
             int probeStamp = ++probeQuery;
-            for (int xCell = firstX; xCell <= lastX; xCell++)
-                for (int zCell = firstZ; zCell <= lastZ; zCell++)
+            for (long xCell = firstX; xCell <= lastX; xCell++)
+                for (long zCell = firstZ; zCell <= lastZ; zCell++)
                 {
-                    if (!cells.TryGetValue(Key(xCell, zCell), out List<int> entries)) continue;
+                    if (!cells.TryGetValue(Key((int)xCell, (int)zCell), out List<int> entries)) continue;
                     foreach (int i in entries)
                     {
                         if (probeVisited[i] == probeStamp) continue;
                         probeVisited[i] = probeStamp;
-                        Collider c = obstacles[i];
-                        if (worldBounds[i].Intersects(probe) &&
-                            streamed[i] && c != null && (includeActive
-                                ? !c.isTrigger && c.gameObject.activeInHierarchy &&
-                                  (c.enabled || disabledByStreaming[i])
-                                : !c.enabled))
+                        if (MatchesObstacleProbe(i, first, additional, additionalCount,
+                            probeMin, probeMax, includeActive))
                             return true;
                     }
                 }
@@ -727,17 +733,36 @@ namespace Aaris.MapReview
             // rival-cover probes even when it spans more than 64 grid cells.
             foreach (int i in oversizedIndices)
             {
-                if (probeVisited[i] == probeStamp) continue;
-                probeVisited[i] = probeStamp;
-                Collider c = obstacles[i];
-                if (worldBounds[i].Intersects(probe) &&
-                    streamed[i] && c != null && (includeActive
-                        ? !c.isTrigger && c.gameObject.activeInHierarchy &&
-                          (c.enabled || disabledByStreaming[i])
-                        : !c.enabled))
+                if (MatchesObstacleProbe(i, first, additional, additionalCount,
+                    probeMin, probeMax, includeActive))
                     return true;
             }
             return false;
+        }
+
+        private bool MatchesObstacleProbe(int index, Bounds first, Bounds[] additional,
+            int additionalCount, Vector3 probeMin, Vector3 probeMax, bool includeActive)
+        {
+            if (!streamed[index]) return false;
+            Bounds bounds = worldBounds[index];
+            if (additionalCount > 0)
+            {
+                Vector3 min = bounds.min, max = bounds.max;
+                if (max.x < probeMin.x || min.x > probeMax.x ||
+                    max.y < probeMin.y || min.y > probeMax.y ||
+                    max.z < probeMin.z || min.z > probeMax.z) return false;
+            }
+            if (!bounds.Intersects(first))
+            {
+                int i = 0;
+                while (i < additionalCount && !bounds.Intersects(additional[i])) i++;
+                if (i == additionalCount) return false;
+            }
+            Collider collider = obstacles[index];
+            return collider != null && (includeActive
+                ? !collider.isTrigger && collider.gameObject.activeInHierarchy &&
+                  (collider.enabled || disabledByStreaming[index])
+                : !collider.enabled);
         }
 
         // Long-range combat can reach past the active PhysX radius. Use the

@@ -37,16 +37,22 @@ namespace Aaris.MapReview
         private string csvPath, display = "";
         private GUIStyle overlayStyle;
         private ProfilerRecorder mainThreadRecorder, gcAllocRecorder;
+        private ProfilerRecorder drawCallsRecorder, setPassRecorder;
         private Task writeTask;
         private FrameTiming[] frameTiming;
         private AarisVehicleWorld vehicleWorld;
         private int[] captureHistogram;
         private bool capturing, captureStarted, skipCaptureFrame;
         private float captureStartsAt, captureEndsAt, capturePausedAt = -1f;
+        private float nextCaptureReportAt;
         private int captureFrames, captureStalls, captureLongStalls;
         private int captureFreshAtStart, captureReusedAtStart;
         private int captureCpuCount, captureRenderCount, captureGpuCount;
+        private int captureMainCount, captureGcCount, captureAllocatingFrames;
+        private int captureDrawCount, captureSetPassCount;
         private double captureFrameSum, captureCpuSum, captureRenderSum, captureGpuSum;
+        private double captureMainSum, captureDrawSum, captureSetPassSum;
+        private long captureGcTotal, captureGcPeak;
         private double capturePeakReservedMiB;
         private float captureWorstMs;
         private int captureThermalStart;
@@ -103,6 +109,22 @@ namespace Aaris.MapReview
                 }
                 else if (skipCaptureFrame) skipCaptureFrame = false;
                 else if (ms > 0f && ms < 120000f) RecordCaptureFrame(ms);
+
+                if (now >= nextCaptureReportAt)
+                {
+                    nextCaptureReportAt = now + RefreshIntervalSeconds;
+                    double reservedMiB = Profiler.GetTotalReservedMemoryLong() / BytesPerMiB;
+                    capturePeakReservedMiB = Math.Max(capturePeakReservedMiB, reservedMiB);
+                    SampleCaptureTimings();
+                }
+                if (now >= captureEndsAt) FinishCapture();
+            }
+            // Hiding the overlay during a capture keeps its census, string
+            // formatting and IMGUI draws out of the sampled frames.
+            if (!overlayVisible && !recording)
+            {
+                if (pendingCsv.Length > 0 || writeTask != null) TryFlushCsv();
+                return;
             }
             if (ms >= 0f && ms < 120000f)
             {
@@ -140,13 +162,6 @@ namespace Aaris.MapReview
             long gcBytes = ReadGcAllocatedBytes(gcAllocRecorder);
             double monoMiB = Profiler.GetMonoUsedSizeLong() / BytesPerMiB;
             double unityReservedMiB = Profiler.GetTotalReservedMemoryLong() / BytesPerMiB;
-            if (capturing && now >= captureStartsAt && capturePausedAt < 0f)
-            {
-                capturePeakReservedMiB = Math.Max(capturePeakReservedMiB, unityReservedMiB);
-                SampleCaptureTimings();
-                if (now >= captureEndsAt) FinishCapture();
-            }
-
             display = string.Format(CultureInfo.InvariantCulture,
                 "AARIS PERF  |  F8 / 3 fingers: overlay\n" +
                 "FPS avg {0:F1}  |  target {1}\n" +
@@ -204,18 +219,29 @@ namespace Aaris.MapReview
 
         private void StartCapture(int seconds)
         {
+            if (capturing) return;
             if (captureHistogram == null) captureHistogram = new int[CaptureBuckets];
             else Array.Clear(captureHistogram, 0, captureHistogram.Length);
             captureFrames = captureStalls = captureLongStalls = 0;
             captureCpuCount = captureRenderCount = captureGpuCount = 0;
+            captureMainCount = captureGcCount = captureAllocatingFrames = 0;
+            captureDrawCount = captureSetPassCount = 0;
             captureFrameSum = captureCpuSum = captureRenderSum = captureGpuSum = 0d;
+            captureMainSum = captureDrawSum = captureSetPassSum = 0d;
+            captureGcTotal = captureGcPeak = 0L;
             capturePeakReservedMiB = captureWorstMs = 0f;
             captureStartsAt = Time.unscaledTime + CaptureWarmupSeconds;
             captureEndsAt = captureStartsAt + seconds;
+            nextCaptureReportAt = captureStartsAt;
             capturePausedAt = -1f;
             captureStarted = skipCaptureFrame = false;
             captureReport = "";
             capturing = true;
+            if (FrameTimingManager.IsFeatureEnabled() && frameTiming == null)
+                frameTiming = new FrameTiming[1];
+            drawCallsRecorder = StartCounter(ProfilerCategory.Render, "Draw Calls Count");
+            setPassRecorder = StartCounter(ProfilerCategory.Render, "SetPass Calls Count");
+            UpdateRecorders();
         }
 
         private void RecordCaptureFrame(float ms)
@@ -229,6 +255,27 @@ namespace Aaris.MapReview
             captureWorstMs = Mathf.Max(captureWorstMs, ms);
             if (ms > 1000f / 30f) captureStalls++;
             if (ms >= 100f) captureLongStalls++;
+
+            // LastValue refers to the preceding completed frame, like deltaTime.
+            // Count valid samples so unavailable counters cannot look like zero.
+            long gcBytes = ReadGcAllocatedBytes(gcAllocRecorder);
+            if (gcBytes >= 0)
+            {
+                captureGcCount++;
+                captureGcTotal += gcBytes;
+                captureGcPeak = Math.Max(captureGcPeak, gcBytes);
+                if (gcBytes > 0) captureAllocatingFrames++;
+            }
+            long cpuNs = ReadCounter(mainThreadRecorder, ProfilerMarkerDataUnit.TimeNanoseconds);
+            if (cpuNs > 0)
+            {
+                captureMainSum += cpuNs / 1000000d;
+                captureMainCount++;
+            }
+            long draws = ReadCounter(drawCallsRecorder, ProfilerMarkerDataUnit.Count);
+            if (draws >= 0) { captureDrawSum += draws; captureDrawCount++; }
+            long passes = ReadCounter(setPassRecorder, ProfilerMarkerDataUnit.Count);
+            if (passes >= 0) { captureSetPassSum += passes; captureSetPassCount++; }
         }
 
         private string CaptureP99()
@@ -271,25 +318,40 @@ namespace Aaris.MapReview
         private void FinishCapture()
         {
             capturing = false;
+            if (drawCallsRecorder.Valid) drawCallsRecorder.Dispose();
+            if (setPassRecorder.Valid) setPassRecorder.Dispose();
+            UpdateRecorders();
             if (captureFrames == 0) return;
             string vehicleSummary = vehicleWorld == null ? "n/a" :
                 string.Format(CultureInfo.InvariantCulture, "{0} built, {1} reused, {2} currently cached",
                     vehicleWorld.FreshVehicleBuilds - captureFreshAtStart,
                     vehicleWorld.ReusedVehicleBuilds - captureReusedAtStart,
                     vehicleWorld.ParkedCacheCount);
+            string gcSummary = captureGcCount == 0 ? "unavailable" :
+                string.Format(CultureInfo.InvariantCulture,
+                    "avg {0:F1} B, max {1} B, allocating {2}, sampled {3}/{4} frames",
+                    (double)captureGcTotal / captureGcCount, captureGcPeak,
+                    captureAllocatingFrames, captureGcCount, captureFrames);
             captureReport = string.Format(CultureInfo.InvariantCulture,
                 "Aaris {0} | {1} | {2}\n" +
                 "{3:F1}s, {4} frames | {5:F1} FPS avg | p99 frame {6} ms | worst {7:F2} ms\n" +
                 ">33.3 ms {8} | >=100 ms {9} | Unity reserved sampled peak {10:F0} MiB\n" +
                 "Sampled CPU main/render/GPU ms {11}/{12}/{13}\n" +
                 "Android thermal status {14} -> {15} (-1 unavailable)\n" +
-                "Vehicles {16}",
+                "Vehicles {16}\n" +
+                "Profiler CPU main {17} ms ({18}/{4} frames)\n" +
+                "GC Allocated In Frame {19}\n" +
+                "Draw calls / SetPass {20} / {21} avg ({22}/{23} samples)",
                 Application.version, SystemInfo.graphicsDeviceType, SystemInfo.graphicsDeviceName,
                 captureFrameSum / 1000d, captureFrames, captureFrames * 1000d / captureFrameSum,
                 CaptureP99(), captureWorstMs, captureStalls, captureLongStalls,
                 capturePeakReservedMiB, FormatAverage(captureCpuSum, captureCpuCount),
                 FormatAverage(captureRenderSum, captureRenderCount), FormatAverage(captureGpuSum, captureGpuCount),
-                captureThermalStart, AarisAndroidThermalGovernor.ThermalStatus, vehicleSummary);
+                captureThermalStart, AarisAndroidThermalGovernor.ThermalStatus, vehicleSummary,
+                FormatAverage(captureMainSum, captureMainCount), captureMainCount, gcSummary,
+                FormatAverage(captureDrawSum, captureDrawCount),
+                FormatAverage(captureSetPassSum, captureSetPassCount), captureDrawCount,
+                captureSetPassCount);
         }
 
         private string CaptureStatus(float now)
@@ -370,24 +432,32 @@ namespace Aaris.MapReview
 
         private void UpdateRecorders()
         {
-            bool needed = overlayVisible || recording;
+            bool needed = overlayVisible || recording || capturing;
             if (needed && !mainThreadRecorder.Valid)
-            {
-                try { mainThreadRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Internal, "CPU Main Thread Frame Time"); }
-                catch (Exception) { /* Counter may be unsupported on this device. */ }
-            }
+                mainThreadRecorder = StartCounter(ProfilerCategory.Internal, "CPU Main Thread Frame Time");
             if (needed && !gcAllocRecorder.Valid)
             {
                 // GC.Alloc is an allocation marker, not the whole-frame byte
                 // counter. Never label a marker duration/count as memory.
-                try { gcAllocRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame"); }
-                catch (Exception) { /* No fabricated zero when unavailable. */ }
+                gcAllocRecorder = StartCounter(ProfilerCategory.Memory, "GC Allocated In Frame");
             }
             if (!needed)
             {
                 if (mainThreadRecorder.Valid) mainThreadRecorder.Dispose();
                 if (gcAllocRecorder.Valid) gcAllocRecorder.Dispose();
             }
+        }
+
+        private static ProfilerRecorder StartCounter(ProfilerCategory category, string name)
+        {
+            try { return ProfilerRecorder.StartNew(category, name); }
+            catch (Exception) { return default; }
+        }
+
+        private static long ReadCounter(ProfilerRecorder recorder, ProfilerMarkerDataUnit unit)
+        {
+            if (!recorder.Valid || recorder.UnitType != unit || recorder.Count == 0) return -1L;
+            return Math.Max(-1L, recorder.LastValue);
         }
 
         internal static long ReadGcAllocatedBytes(ProfilerRecorder recorder)
@@ -462,6 +532,8 @@ namespace Aaris.MapReview
             if (instance == this) instance = null;
             if (mainThreadRecorder.Valid) mainThreadRecorder.Dispose();
             if (gcAllocRecorder.Valid) gcAllocRecorder.Dispose();
+            if (drawCallsRecorder.Valid) drawCallsRecorder.Dispose();
+            if (setPassRecorder.Valid) setPassRecorder.Dispose();
             TryFlushCsv();
         }
     }

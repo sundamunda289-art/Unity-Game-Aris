@@ -42,11 +42,11 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           code = Path('Assets/AarisWorld/Scripts/AarisNearbyColliders.cs').read_text()
-          body = code.split('internal bool HasPotentialInactiveObstacle(', 1)[1].split('private void OnEnable()', 1)[0]
+          body = code.split('internal bool HasObstacleInProbes(', 1)[1].split('private bool MatchesObstacleProbe(', 1)[0]
           assert 'MaxCellsPerProbe = 64' in code
           assert 'long width = (long)lastX - firstX + 1;' in body
           assert 'width * depth > MaxCellsPerProbe' in body
-          assert body.index('for (int i = 0; i < obstacles.Length; i++)') < body.index('for (int xCell = firstX;')
+          assert body.index('for (int i = 0; i < obstacles.Length; i++)') < body.index('for (long xCell = firstX;')
           assert 'if (!Finite(probeMin) || !Finite(probeMax)) return true;' in body
           print('BOUNDED_COLLIDER_PROBE_SOURCE_CONTRACT_PASS')
           PY
@@ -78,7 +78,10 @@ jobs:
           generated=Path(os.environ['RUNNER_TEMP']) / 'BoundedColliderProbeTests.generated.cs'
           text=generated.read_text()
           assert '/* PROBE_BODY */' not in text
+          assert '/* PROBE_BATCH_BODY */' not in text
+          assert '/* MATCH_PROBE_BODY */' not in text
           assert '/* SWEEP_BODY */' not in text
+          assert '/* SWEEP_CAP */' not in text
           assert '/* FINITE_BODY */' not in text
           assert '/* PROBE_CAP */' not in text
           template=Path('Tools/Validation/BoundedColliderProbeTests.cs')

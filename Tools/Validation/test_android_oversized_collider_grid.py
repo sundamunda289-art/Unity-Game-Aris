@@ -60,9 +60,11 @@ class OversizedColliderGrid(unittest.TestCase):
         probe = SOURCE.split("internal bool HasPotentialInactiveObstacle", 1)[1].split(
             "private void OnEnable()", 1
         )[0]
-        for body in (refresh, probe):
-            self.assertIn("foreach (int i in oversizedIndices)", body)
-            self.assertIn("Collider c = obstacles[i];", body)
+        self.assertIn("foreach (int i in oversizedIndices)", refresh)
+        self.assertIn("Collider c = obstacles[i];", refresh)
+        overflow = probe.split("foreach (int i in oversizedIndices)", 1)[1].split(
+            "private bool MatchesObstacleProbe(", 1)[0]
+        self.assertIn("MatchesObstacleProbe(i, first, additional, additionalCount,", overflow)
         self.assertIn("wanted[i] = query;", refresh)
         self.assertIn("if (!c.enabled)", refresh)
         self.assertEqual(refresh.count("c.enabled = true;"), 2)
@@ -70,9 +72,10 @@ class OversizedColliderGrid(unittest.TestCase):
         self.assertIn("AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();", guarded)
         self.assertIn("nextActive.Add(i);", refresh)
         self.assertIn("if (visited[i] == query) continue;", refresh)
-        self.assertIn("worldBounds[i].Intersects(probe)", probe)
-        self.assertIn("streamed[i] && c != null && (includeActive", probe)
-        self.assertIn(": !c.enabled)", probe)
+        self.assertIn("bounds.Intersects(first)", probe)
+        self.assertIn("!streamed[index]", probe)
+        self.assertIn("collider != null && (includeActive", probe)
+        self.assertIn(": !collider.enabled)", probe)
         self.assertIn("probeVisited[i] = probeStamp;", probe)
         self.assertIn("if (forcePhysicsSync) Physics.SyncTransforms();", refresh)
 
@@ -102,7 +105,7 @@ class OversizedColliderGrid(unittest.TestCase):
 
     def test_collision_streaming_lifecycle_stays_intact(self):
         self.assertIn("if (!indexReady) return;", SOURCE)
-        self.assertIn("if (!indexReady) return false;", SOURCE)
+        self.assertIn("if (!indexReady) return includeActive && obstacles != null && obstacles.Length > 0;", SOURCE)
         self.assertIn("BeginDeferredGridBuild();", SOURCE)
         self.assertIn("if (processed >= AndroidIndexUpdatesPerFrame ||", SOURCE)
         self.assertIn("if (processed >= DeferredColliderUpdatesPerFrame ||", SOURCE)

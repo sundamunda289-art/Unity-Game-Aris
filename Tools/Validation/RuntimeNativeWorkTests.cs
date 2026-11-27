@@ -25,6 +25,8 @@ namespace UnityEngine
     {
         public Vector3 center, extents;
         public Bounds(Vector3 c, Vector3 e) { center=c; extents=e; }
+        public Vector3 min => new Vector3(center.x-extents.x,center.y-extents.y,center.z-extents.z);
+        public Vector3 max => new Vector3(center.x+extents.x,center.y+extents.y,center.z+extents.z);
         public Vector3 ClosestPoint(Vector3 p) => new Vector3(
             Math.Max(center.x-extents.x, Math.Min(center.x+extents.x,p.x)),
             Math.Max(center.y-extents.y, Math.Min(center.y+extents.y,p.y)),
@@ -91,12 +93,10 @@ internal sealed class ColliderFixture
         foreach(int i in new[]{0}) { /* OVERSIZED_BODY */ }
         return nextActive.Count==1 && wanted[0]==query;
     }
-    internal bool Probe(Collider c, Bounds probe)
-    {
-        int i=0;
-        bool includeActive=false;
-        return /* PROBE_EXPRESSION */ false;
-    }
+    internal bool Probe(Bounds probe) => MatchesObstacleProbe(0, probe, null, 0, probe.min, probe.max, false);
+    private bool MatchesObstacleProbe(int index, Bounds first, Bounds[] additional,
+        int additionalCount, Vector3 probeMin, Vector3 probeMax, bool includeActive)
+    { /* MATCH_PROBE_BODY */ }
 }
 
 internal sealed class BoundaryFixture
@@ -166,7 +166,7 @@ internal static class RuntimeNativeWorkTests
                         var probe=new Bounds(player,new Vector3(1,1,1));
                         bool intersects=bounds.Intersects(probe);
                         bool blocked=managed && intersects && mode>=2 && !c.state;
-                        Check(f.Probe(c,probe)==blocked,"Inactive-cover decision changed");
+                        Check(f.Probe(probe)==blocked,"Inactive-cover decision changed");
                         if(mode>=2 && !intersects) Check(c.gets==0,"Nonintersecting native state read");
                     }
                 }

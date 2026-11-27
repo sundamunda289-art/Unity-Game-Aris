@@ -22,10 +22,10 @@ class CoverProbe(unittest.TestCase):
                   "rotation * (Vector3.right * halfExtents.x)",
                   "rotation * (Vector3.up * halfExtents.y)",
                   "rotation * (Vector3.forward * halfExtents.z)",
-                  "Bounds probe = new Bounds(center, 2f * extents)",
+                  "HasObstacleInProbes(new Bounds(center, 2f * extents), null, 0, includeActive)",
                   "if (!Finite(probeMin) || !Finite(probeMax)) return true;",
                   "if (probeVisited[i] == probeStamp) continue;",
-                  "!c.enabled"):
+                  "!collider.enabled"):
             self.assertIn(s,G)
         self.assertNotIn("rotation == Quaternion.identity",G)
 

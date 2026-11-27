@@ -26,10 +26,11 @@ def blocked(distance, wall_start, wall_end):
 class BotInactiveCoverSweep(unittest.TestCase):
     def test_production_sweep_is_present(self):
         for fragment in (
-            "if (distance <= 0.72f) return false;",
-            "int steps = Mathf.CeilToInt(distance / stride);",
-            "if (steps > 17) return true;",
+            "distance > 0.72f ? Mathf.CeilToInt(distance / stride) : 1;",
+            "private const int MaxCoverSteps = 17;",
+            "steps > MaxCoverSteps) return true;",
             "for (int step = 1; step < steps; step++)",
+            "nearbyColliders.HasObstacleInProbes(first, coverProbes, count, includeActive)",
             "owner.WouldCrossInactiveCover(selfPosition,",
         ):
             self.assertIn(fragment, SOURCE)
