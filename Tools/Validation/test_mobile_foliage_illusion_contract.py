@@ -32,6 +32,8 @@ def check_graph():
     node_id = interaction[0]["m_ObjectId"]
     assert node_id in {p["m_Id"] for p in root["m_Nodes"]}
     edges = root["m_Edges"]
+    occlusion = next(b for b in blocks if b.get("m_Name") == "SurfaceDescription.Occlusion")
+    assert all(e["m_InputSlot"]["m_Node"]["m_Id"] != occlusion["m_ObjectId"] for e in edges)
     assert all(e["m_InputSlot"]["m_Node"]["m_Id"] in nodes and
                e["m_OutputSlot"]["m_Node"]["m_Id"] in nodes for e in edges)
     assert any(e["m_InputSlot"]["m_Node"]["m_Id"] == node_id for e in edges)
@@ -48,7 +50,7 @@ def check_graph():
                       5: "PerInstanceRandom (Custom Interpolator)", 6: "Property"}
     outputs = {nodes[e["m_InputSlot"]["m_Node"]["m_Id"]]["m_Name"]
                for e in edges if e["m_OutputSlot"]["m_Node"]["m_Id"] == ground["m_ObjectId"]}
-    assert outputs == {"SurfaceDescription.BaseColor", "Multiply", "Power"}
+    assert outputs == {"SurfaceDescription.BaseColor", "Multiply", "Power", "Add"}
 
     def destinations(node, port):
         return [(nodes[e["m_InputSlot"]["m_Node"]["m_Id"]], e["m_InputSlot"]["m_SlotId"])
@@ -59,6 +61,9 @@ def check_graph():
     [(interpolator, _)] = destinations(pack, 3)
     assert interpolator["m_SerializedDescriptor"] == "VertexDescription.TerrainColorMatch#4"
     assert [(n["m_Name"], p) for n, p in destinations(ground, 4)] == [("Power", 0)]
+    [(fill, port)] = destinations(ground, 8)
+    assert fill["m_Name"] == "Add" and port == 1
+    assert [(n["m_Name"], p) for n, p in destinations(fill, 2)] == [("SurfaceDescription.Emission", 0)]
     keep = next(b for b in blocks if b.get("m_FunctionName") == "AarisDetailKeepCanopyNormal")
     branches = destinations(keep, 3)
     assert len(branches) == 2 and all(n["m_Name"] == "Branch" and p == 0 for n, p in branches)
@@ -213,7 +218,7 @@ def check_mobile_transmission():
     assert "TransformWorldToShadowCoord" not in shader
     assert "void AarisDetailGround_half" in shader
     assert "saturate(1.0h - 2.0h * Height01)" in shader
-    assert "lerp(rootedColor, terrainColor, fade)" in shader
+    assert "max(lerp(rootedColor, terrainColor, fade), half3(0.041h, 0.060h, 0.016h))" in shader
     assert "Height01 = TerrainColorAndHeight.w" in shader
     assert "TransmissionColor = Out * (0.20h + 0.80h * heightMask)" in shader
     assert "0.25h * SSRadius.x" in shader
