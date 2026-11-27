@@ -778,7 +778,7 @@ half4 SpeedTree8Frag(SpeedTreeFragmentInput input) : SV_Target
         #elif !defined(EFFECT_BILLBOARD)
             // Sharpen bark away from soil while softening micro-relief exactly
             // where fake root AO/earth tint visually anchors the trunk.
-            normalTs.xy *= 1.20h - 0.12h * rootContact;
+            normalTs.xy *= 1.34h - 0.15h * rootContact;
         #endif
     #else
         half3 normalTs = half3(0, 0, 1);
@@ -810,7 +810,7 @@ half4 SpeedTree8Frag(SpeedTreeFragmentInput input) : SV_Target
     #if !defined(EFFECT_SUBSURFACE) && !defined(EFFECT_BILLBOARD)
         // Warm, earthy bark at the ground interface; preserves original bark texture.
         albedo *= lerp(half3(1.0h, 1.0h, 1.0h), half3(0.84h, 0.80h, 0.73h), rootContact);
-        occlusion *= 1.0h - 0.20h * rootContact;
+        occlusion *= 1.0h - 0.27h * rootContact;
         smoothness *= 1.0h - 0.16h * rootContact; // Soil contact reads dry, not varnished.
     #endif
     #if defined(EFFECT_SUBSURFACE) && !defined(EFFECT_BILLBOARD)
@@ -952,7 +952,7 @@ half4 SpeedTree8FragDepthNormal(SpeedTreeDepthNormalFragmentInput input) : SV_Ta
             normalTs.xy *= 0.74h;
         #elif !defined(EFFECT_BILLBOARD)
             half rootContact = saturate(input.interpolated.color.b);
-            normalTs.xy *= 1.20h - 0.12h * rootContact;
+            normalTs.xy *= 1.34h - 0.15h * rootContact;
         #endif
     #else
         half3 normalTs = half3(0, 0, 1);
