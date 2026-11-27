@@ -299,7 +299,12 @@ assert 'if (count >= overlaps.Length) return false;' not in gloo
 models = ROOT / 'Assets/Resources/AarisCombat'
 geometry = (models / 'GlooWall.obj').read_text()
 verts = [tuple(map(float, line.split()[1:4])) for line in geometry.splitlines() if line.startswith('v ')]
-assert len(verts) == 432
+assert len(verts) <= 432
+assert sum(len(line.split()) - 3 for line in geometry.splitlines()
+           if line.startswith("f ")) <= 832
+assert max(z for x, y, z in verts if abs(x) < .05) - min(
+    z for x, y, z in verts if abs(x) < .05) >= .47
+assert all(-.55 <= z <= .29 and 0 <= y <= 2.30 for x, y, z in verts)
 assert geometry.count('usemtl ') >= 2
 central = [z for x,y,z in verts if abs(x) < 0.5]
 edge = [z for x,y,z in verts if abs(x) > 1.4]

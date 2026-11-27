@@ -453,9 +453,9 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
             "public bool TryDropEquipped()",1)[0]
         self.assertIn("!HasLandingAuthority", method)
         self.assertIn("player != inventory.transform", method)
-        self.assertIn("!TryFindDropSpot(out Vector3 point, requireReachable: true)",method)
+        self.assertIn("!TryFindDropSpot(out Pose placement, requireReachable: true)",method)
         self.assertIn("deferVisual: true", method)
-        self.assertLess(method.index("CreateDropped(outgoing, point"),
+        self.assertLess(method.index("CreateDropped(outgoing, placement"),
                         method.index("inventory.TryPickup(incoming,"))
         self.assertIn("UndoDrop(reserved);", method)
         self.assertIn("if (reserved == null) return false;", method)

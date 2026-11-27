@@ -459,8 +459,9 @@ namespace Aaris.MapReview
             }
             if (!transparent)
             {
-                if (cached.HasProperty("_Metallic")) cached.SetFloat("_Metallic", .32f);
-                if (cached.HasProperty("_Smoothness")) cached.SetFloat("_Smoothness", .48f);
+                bool hardware = name == "Aaris Crate Brass";
+                if (cached.HasProperty("_Metallic")) cached.SetFloat("_Metallic", hardware ? .58f : .23f);
+                if (cached.HasProperty("_Smoothness")) cached.SetFloat("_Smoothness", hardware ? .46f : .31f);
             }
             if (transparent)
             {
@@ -501,8 +502,8 @@ namespace Aaris.MapReview
 
         private GameObject CreateVisual()
         {
-            var shell = Paint(ref metal, new Color(.19f, .28f, .31f), "Aaris Crate Metal", false);
-            var edge = Paint(ref trim, new Color(.53f, .40f, .16f), "Aaris Crate Brass", false);
+            var shell = Paint(ref metal, new Color(.255f, .33f, .34f), "Aaris Crate Metal", false);
+            var edge = Paint(ref trim, new Color(.63f, .45f, .22f), "Aaris Crate Brass", false);
             var glow = Paint(ref beamMaterial,
                 new Color(.28f, .76f, 1f, .30f), "Aaris Crate Vertical Glow", true);
             var root = new GameObject("Aaris Pooled Bot Death Crate");

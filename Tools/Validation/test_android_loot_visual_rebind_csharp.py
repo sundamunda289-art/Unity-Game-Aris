@@ -55,13 +55,12 @@ namespace Aaris.MapReview {
     }
     public sealed class AarisWeaponPickup {
         public GameObject gameObject = new GameObject();
-        public bool consumed, reserved, modelWasVisible;
+        public bool consumed, reserved;
         public AarisWeaponState state;
         public int candidateIndex;
         public Transform model;
         public Renderer[] modelRenderers;
-        public float pendingSpinDegrees;
-        public float nextModelVisibilityCheck, nextBeaconVisibilityCheck;
+        public float nextBeaconVisibilityCheck;
         public Camera beaconObserver;
 '''
         suffix = r'''
@@ -77,11 +76,8 @@ namespace Aaris.MapReview {
                 candidateIndex = 11,
                 model = new Transform {localRotation = new Quaternion {marker = 13}},
                 modelRenderers = new Renderer[] { new Renderer() },
-                pendingSpinDegrees = 71,
-                nextModelVisibilityCheck = 12,
                 nextBeaconVisibilityCheck = 10,
                 beaconObserver = new Camera(),
-                modelWasVisible = true,
             };
             if (pickup.RebindForStreaming(new AarisWeaponState(sniper), 21)) return 1;
             if (pickup.candidateIndex != 11 || pickup.state != original) return 2;
@@ -97,11 +93,9 @@ namespace Aaris.MapReview {
             if (!pickup.RebindForStreaming(replacement, 22)) return 6;
             if (pickup.state != replacement || pickup.candidateIndex != 22) return 7;
             if (pickup.consumed || pickup.reserved) return 8;
-            if (pickup.pendingSpinDegrees != 0 ||
-                pickup.model.localRotation.marker != 0) return 9;
-            if (pickup.modelWasVisible || pickup.beaconObserver != null ||
-                pickup.nextBeaconVisibilityCheck != 0 ||
-                pickup.nextModelVisibilityCheck != 0) return 10;
+            if (pickup.model.localRotation.marker != 13) return 9;
+            if (pickup.beaconObserver != null ||
+                pickup.nextBeaconVisibilityCheck != 0) return 10;
             pickup.modelRenderers = null;
             if (pickup.RebindForStreaming(original, 23)) return 11;
             return 0;

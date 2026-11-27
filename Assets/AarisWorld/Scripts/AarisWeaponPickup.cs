@@ -10,10 +10,8 @@ namespace Aaris.MapReview
     [DisallowMultipleComponent]
     public sealed class AarisWeaponPickup : MonoBehaviour
     {
-        // Root is already lifted from the verified floor by the loot world.
-        // Keep the source mesh only 2.5 cm higher to avoid Z-fighting without
-        // making ground loot look like it is levitating above the terrain.
-        private const float ModelFloorClearance = 0.025f;
+        // The root is aligned to the verified support plane at placement.
+        private const float ModelFloorClearance = 0.012f;
         // One bounded registration per successfully initialized pickup. The HUD can
         // discover nearby visible guns without any scene-wide Find call in Update.
         private static readonly HashSet<AarisWeaponPickup> activePickups =
@@ -75,11 +73,6 @@ namespace Aaris.MapReview
         private int candidateIndex;
         private Transform model;
         private Renderer[] modelRenderers;
-        private float pendingSpinDegrees;
-        // Visible pickups still animate every frame. Once off-screen, native
-        // Renderer.isVisible checks are throttled across the streamed loot set.
-        private float nextModelVisibilityCheck;
-        private bool modelWasVisible;
         private LineRenderer beacon;
         private Camera beaconObserver;
         private float nextBeaconVisibilityCheck;
@@ -122,7 +115,7 @@ namespace Aaris.MapReview
             }
             var visible = Instantiate(prefab, transform);
             // One hierarchy traversal per streamed pickup: keep its renderers
-            // for sizing, centering and visibility-gated spin. On low-memory
+            // for sizing and ground contact. On low-memory
             // phones a separate GetComponentInChildren scan was unnecessary.
             modelRenderers = visible.GetComponentsInChildren<Renderer>(true);
             if (modelRenderers.Length == 0)
@@ -151,7 +144,7 @@ namespace Aaris.MapReview
             // Keep floor presentation arbitrary, but preserve the same source
             // forward correction used by the held model before measuring bounds.
             model.localRotation =
-                Quaternion.Euler(0f, 0f, -75f) *
+                Quaternion.Euler(0f, 0f, -90f) *
                 AarisWeaponInventory.ImportedModelRotation(state.Spec);
             if (!AarisWeaponMeshBounds.TryMeasure(transform,
                 modelRenderers, out Bounds modelBounds))
@@ -175,19 +168,12 @@ namespace Aaris.MapReview
             float scale = Mathf.Clamp(state.Spec.presentationLengthMetres / length,
                 0.0000001f, 10f);
             model.localScale *= scale;
-            // Original root-space bounds scale linearly around the FBX pivot.
-            // Correct horizontal centering and leave the lowest geometry
-            // only 2.5 centimetres above the pickup root's verified floor clearance.
+            // The side-rest pose and bounds use the same root space as the
+            // floor normal. The model stays planted while it is visible.
             model.localPosition = new Vector3(
                 -modelBounds.center.x * scale,
                 ModelFloorClearance - modelBounds.min.y * scale,
                 -modelBounds.center.z * scale);
-            var visualPivot = new GameObject("Loot centered rotation pivot");
-            visualPivot.transform.SetParent(transform, false);
-            visualPivot.transform.localPosition = new Vector3(0f,
-                ModelFloorClearance + (modelBounds.center.y - modelBounds.min.y) * scale, 0f);
-            model.SetParent(visualPivot.transform, true);
-            model = visualPivot.transform;
 
             // Small nonphysical highlight for dark grass; no bright 50m
             // spotlight and no additional real-time mobile lighting.
@@ -202,11 +188,14 @@ namespace Aaris.MapReview
                 beacon.useWorldSpace = false;
                 beacon.sharedMaterial = beaconPaint;
                 beacon.positionCount = 2;
-                beacon.SetPosition(0, new Vector3(0f, 0.09f, 0f));
-                beacon.SetPosition(1, new Vector3(0f, 0.90f, 0f));
-                beacon.startWidth = 0.076f;
+                // Compact pickups occupy only a few pixels at follow-camera
+                // distance. Keep their original stronger cue in the same line.
+                bool compact = state.Spec.presentationLengthMetres < 0.45f;
+                beacon.SetPosition(0, new Vector3(0f, 0.07f, 0f));
+                beacon.SetPosition(1, new Vector3(0f, compact ? 0.90f : 0.58f, 0f));
+                beacon.startWidth = compact ? 0.076f : 0.045f;
                 beacon.endWidth = 0.008f;
-                beacon.startColor = new Color(0.65f, 0.90f, 1f, 0.73f);
+                beacon.startColor = new Color(0.62f, 0.88f, 1f, compact ? 0.73f : 0.52f);
                 beacon.endColor = new Color(0.38f, 0.76f, 0.90f, 0f);
                 beacon.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 beacon.receiveShadows = false;
@@ -217,8 +206,9 @@ namespace Aaris.MapReview
             nextBeaconVisibilityCheck = Time.unscaledTime +
                 Mathf.Abs(index % 9) * 0.05f;
             activePickups.Add(this);
+            Vector2 footprint = new Vector2(modelBounds.size.x, modelBounds.size.z) * scale;
             AarisSubjectContacts.Register(transform,
-                Vector2.one * Mathf.Clamp(state.Spec.presentationLengthMetres + .15f,.42f,1.25f),
+                new Vector2(Mathf.Max(.27f, footprint.x + .20f), Mathf.Max(.42f, footprint.y + .18f)),
                 .42f, 22f);
             return true;
         }
@@ -238,12 +228,6 @@ namespace Aaris.MapReview
             state = gunState;
             candidateIndex = index;
             reserved = consumed = false;
-            pendingSpinDegrees = 0f;
-            // This is the original pivot rotation before the pickup spin.
-            // Reset only while invisible so camera entry has no stale pose.
-            model.localRotation = Quaternion.identity;
-            modelWasVisible = false;
-            nextModelVisibilityCheck = 0f;
             nextBeaconVisibilityCheck = 0f;
             beaconObserver = null;
             return true;
@@ -277,44 +261,10 @@ namespace Aaris.MapReview
                     beacon.enabled = false;
                 }
             }
-            if (model == null || Time.deltaTime <= 0f) return;
-            // Off-screen pickups must not dirty Transform hierarchies every
-            // Android frame. Keep elapsed rotation so the mesh resumes at
-            // exactly the same orientation when it becomes visible again.
-            pendingSpinDegrees += 19f * Time.deltaTime;
-            if (pendingSpinDegrees >= 360f)
-                pendingSpinDegrees = Mathf.Repeat(pendingSpinDegrees, 360f);
-            if (modelRenderers == null) return;
-            // Hidden loot would otherwise query every Renderer at 60-120 Hz.
-            // Poll off-screen meshes at most once every 0.10s; the original
-            // pending-angle accumulator preserves exact spin on reappearance.
-            // A visible mesh still updates on EVERY rendered gameplay frame.
-            if (!modelWasVisible && Time.unscaledTime < nextModelVisibilityCheck)
-                return;
-            bool visibleNow = false;
-            for (int i = 0; i < modelRenderers.Length; i++)
-            {
-                Renderer renderer = modelRenderers[i];
-                if (renderer == null || !renderer.isVisible) continue;
-                visibleNow = true;
-                break;
-            }
-            modelWasVisible = visibleNow;
-            if (!visibleNow)
-            {
-                nextModelVisibilityCheck = Time.unscaledTime + 0.10f;
-                return;
-            }
-            model.Rotate(0f, pendingSpinDegrees, 0f, Space.World);
-            pendingSpinDegrees = 0f;
         }
 
         private void OnEnable()
         {
-            // A formerly invisible pickup must be checked on its first
-            // re-enabled frame, not inherit an old hidden polling deadline.
-            modelWasVisible = false;
-            nextModelVisibilityCheck = 0f;
             // A streamed pickup may be temporarily disabled and reenabled.
             if (state != null && model != null && !consumed)
                 activePickups.Add(this);

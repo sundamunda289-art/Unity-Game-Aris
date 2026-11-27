@@ -400,13 +400,15 @@ namespace Aaris.MapReview
                 finish.GetFloat("_Surface") > .5f)
                 return finish;
 
-            // Lift textured midtones slightly on asphalt while controlling
-            // grazing shine. This keeps the dark grip and the original maps.
+            // Retain the authored metal and polymer response. The shared
+            // subject shader already supplies a restrained grazing lobe.
             var ground = new Material(finish) { name = finish.name + " Ground" };
             Color tint = finish.GetColor("_BaseColor");
-            ground.SetColor("_BaseColor", new Color(tint.r * 1.34f,
-                tint.g * 1.34f, tint.b * 1.34f, tint.a));
-            ground.SetFloat("_Smoothness", finish.GetFloat("_Smoothness") * .76f);
+            ground.SetColor("_BaseColor", new Color(tint.r * 1.24f,
+                tint.g * 1.24f, tint.b * 1.24f, tint.a));
+            ground.SetFloat("_Smoothness", finish.GetFloat("_Smoothness") * .93f);
+            ground.SetFloat("_ClearCoatMask", .17f);
+            ground.SetFloat("_ClearCoatSmoothness", .45f);
             groundFinishCache[finish] = ground;
             return ground;
         }

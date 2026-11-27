@@ -171,7 +171,7 @@ class OfflineWeaponPauseAndLandingAuthority(unittest.TestCase):
                       "!inventory.isActiveAndEnabled"):
             self.assertIn(token, drop)
         self.assertLess(drop.index("!HasLandingAuthority"),
-                        drop.index("TryFindDropSpot(out Vector3 point)"))
+                        drop.index("TryFindDropSpot(out Pose placement)"))
 
     def test_authority_matrix_denies_pause_vehicle_and_flight(self):
         for time_scale in (0.0, 1.0):

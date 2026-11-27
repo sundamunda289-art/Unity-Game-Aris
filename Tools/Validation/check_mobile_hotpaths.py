@@ -1025,58 +1025,19 @@ def audit():
             maximum_burst = max(maximum_burst, destroyed)
         assert remaining == 0 and maximum_burst <= 6, (fps, remaining)
 
-    # Ground loot can be abundant in the original offline map. Hidden weapon
-    # meshes must not dirty Unity Transform state at 30/60/120 FPS, while
-    # reappearing meshes catch up to the exact elapsed-time spin angle.
+    # The static support pose leaves only the throttled marker check in Update.
     pickup = (SRC / "AarisWeaponPickup.cs").read_text(encoding="utf-8")
-    spin = pickup[pickup.index("private void Update()"):
-                  pickup.index("private void OnDisable()")]
-    assert "private Renderer[] modelRenderers;" in pickup
-    assert "modelRenderers = visible.GetComponentsInChildren<Renderer>(true);" in pickup
-    # FBX models may contain several renderer components, but discover them
-    # once on spawn and reuse the cached array for both world bounds passes.
-    # No duplicate managed array allocation on streamed gun construction.
+    update = pickup.split("private void Update()", 1)[1].split(
+        "private void OnEnable()", 1)[0]
     pickup_init = pickup.split("public bool Initialize(", 1)[1].split(
         "private void Update()", 1)[0]
     assert pickup_init.count("visible.GetComponentsInChildren<Renderer>(true)") == 1
-    # Freshly spawned/scaled FBX renderer AABBs can be stale in Unity.
-    # Measure real mesh corners only once, before computing stable scale.
     assert pickup_init.count("AarisWeaponMeshBounds.TryMeasure(transform,") == 1
-    assert "modelBounds.center.y - modelBounds.min.y" in pickup_init
+    assert "ModelFloorClearance - modelBounds.min.y * scale" in pickup_init
     assert "modelRenderers[i].bounds" not in pickup_init
     assert "internal static class AarisWeaponMeshBounds" in pickup
-    assert "pendingSpinDegrees += 19f * Time.deltaTime;" in spin
-    assert "if (pendingSpinDegrees >= 360f)" in spin
-    assert "Mathf.Repeat(pendingSpinDegrees, 360f)" in spin
-    assert "if (renderer == null || !renderer.isVisible) continue;" in spin
-    assert spin.index("renderer.isVisible") < spin.index("model.Rotate(")
-    assert spin.index("model.Rotate(") < spin.index("pendingSpinDegrees = 0f;")
-    assert spin.count("model.Rotate(") == 1
-    for fps in (10, 20, 30, 60, 90, 120):
-        pending, applied, writes = 0.0, 0.0, 0
-        # Four seconds outside the camera, then one second on-screen.
-        for frame in range(fps * 5):
-            pending += 19.0 / fps
-            if pending >= 360.0:
-                pending %= 360.0
-            visible = frame >= fps * 4
-            if visible:
-                applied = (applied + pending) % 360.0
-                pending = 0.0
-                writes += 1
-            else:
-                assert writes == 0
-        assert writes == fps, (fps, writes)
-        assert math.isclose(applied, 95.0, abs_tol=1e-7), (fps, applied)
-
-    # Long-hidden pickups keep a bounded angle instead of growing to an
-    # imprecise float, even if they stay out of view for several minutes.
-    pending = 0.0
-    for _ in range(60 * 600):
-        pending += 19.0 / 60
-        if pending >= 360.0:
-            pending %= 360.0
-    assert 0 <= pending < 360
+    assert "nextBeaconVisibilityCheck = Time.unscaledTime + 0.45f;" in update
+    assert "model.Rotate(" not in update and "isVisible" not in update
 
     # Idle animation used to issue 16 native Playables weight setters and
     # five identical gait SetTime calls every rendered frame. Keep breathing

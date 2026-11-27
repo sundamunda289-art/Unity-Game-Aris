@@ -54,6 +54,23 @@ void AarisLitPassFragment(
 #endif
 
     InitializeBakedGIData(input, inputData);
+#if defined(_AARIS_ICE_ARMOR)
+    // Broad frozen strata follow the mesh. The opaque face writes depth
+    // normally and needs neither a refraction sample nor a layered shell.
+    float3 ice = TransformWorldToObject(inputData.positionWS);
+    float stratum = ice.y * 1.48 + ice.x * 0.65 - ice.z * 0.76;
+    float width = max(fwidth(stratum), 0.01);
+    half ridge = (1.0h - smoothstep(0.035, 0.17 + width, abs(frac(stratum) - 0.5)))
+        * saturate(1.0 - width * 3.0);
+    half foot = smoothstep(0.025h, 0.58h, (half)ice.y);
+    half mineral = abs(frac((half)(ice.x * 1.67 - ice.y * 0.92)) * 2.0h - 1.0h);
+    surfaceData.albedo *= 0.58h + 0.36h * foot + 0.10h * mineral;
+    surfaceData.albedo = lerp(surfaceData.albedo, surfaceData.albedo * 1.36h, ridge * foot);
+    surfaceData.smoothness *= 1.11h - 0.38h * ridge;
+    half iceRim = 1.0h - saturate(dot(inputData.normalWS, inputData.viewDirectionWS));
+    iceRim *= iceRim;
+    surfaceData.emission += _EmissionColor.rgb * (0.07h * foot + 0.62h * iceRim * iceRim);
+#endif
 #if defined(_AARIS_GT_TREAD)
     // The GT OBJ has no UVs, but its roll axis is authored on local X.
     // Angular tread follows the real spinning mesh. Derivatives fade the
