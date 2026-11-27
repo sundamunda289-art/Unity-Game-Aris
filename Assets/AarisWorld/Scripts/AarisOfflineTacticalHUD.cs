@@ -30,6 +30,8 @@ namespace Aaris.MapReview
         private sealed class MedicalSite
         {
             public Vector3 position;
+            public AarisLootCandidate socket;
+            public AarisHouseLootItem item;
             public GameObject visual;
             public bool taken;
             public bool isHelmet;
@@ -45,6 +47,12 @@ namespace Aaris.MapReview
             new Stack<GameObject>(MaxMedicalVisuals);
         private readonly Stack<GameObject> helmetVisualPool =
             new Stack<GameObject>(MaxMedicalVisuals);
+        private readonly Stack<GameObject>[] kitVisualPools = {
+            new Stack<GameObject>(MaxMedicalVisuals),
+            new Stack<GameObject>(MaxMedicalVisuals),
+            new Stack<GameObject>(MaxMedicalVisuals)
+        };
+        private static readonly Material[] kitPaint = new Material[3];
         private bool lowMemoryPending;
         private float medicalPoolAllowedAt;
         private readonly Collider[] medicalHits = new Collider[20];
@@ -58,6 +66,7 @@ namespace Aaris.MapReview
         private AarisNearbyColliders medicalNearbyColliders;
         private AarisOfflineHealth medicalHealth;
         private AarisBattleActions medicalBattle;
+        private AarisWeaponInventory supplyWeapons;
         private CharacterController medicalController;
         private Text medicalText, helmetText;
         private int medkits, shownMedkits = -1, shownSeconds = -1;
@@ -134,6 +143,7 @@ namespace Aaris.MapReview
             vehicle = GetComponent<AarisVehicleSession>();
             medicalHealth = GetComponent<AarisOfflineHealth>();
             medicalBattle = GetComponent<AarisBattleActions>();
+            supplyWeapons = GetComponent<AarisWeaponInventory>();
             medicalController = GetComponent<CharacterController>();
             medicalTerrains = Terrain.activeTerrains;
             medicalNearbyColliders = FindFirstObjectByType<AarisNearbyColliders>();
@@ -193,6 +203,7 @@ namespace Aaris.MapReview
             nextOptionalComponentRefresh = Time.unscaledTime + 1f;
             if (drop == null) drop = GetComponent<AarisOfflineDrop>();
             if (vehicle == null) vehicle = GetComponent<AarisVehicleSession>();
+            if (supplyWeapons == null) supplyWeapons = GetComponent<AarisWeaponInventory>();
         }
 
         private void Update()
@@ -438,6 +449,16 @@ namespace Aaris.MapReview
 #endif
                 if (doc == null || doc.schema != 1 || doc.sizeMetres != 2000 ||
                     doc.candidates == null) return;
+                var houseLoot = AarisHouseLoot.ForMatch(doc);
+                for (int i = 0; i < houseLoot.Items.Length; i++)
+                {
+                    var item = houseLoot.Items[i];
+                    if (item < AarisHouseLootItem.Medkit) continue;
+                    var socket = doc.houseSockets[i];
+                    medicalSites.Add(new MedicalSite {
+                        position = new Vector3(socket.x, socket.y, socket.z),
+                        item = item, socket = socket });
+                }
                 for (int i = 0; i < doc.candidates.Length; i++)
                 {
                     var c = doc.candidates[i];
@@ -551,18 +572,12 @@ namespace Aaris.MapReview
                     float distanceSq = dx * dx + dz * dz;
                     if (checkPickup && distanceSq <= 2.15f * 2.15f &&
                         Mathf.Abs(site.visual.transform.position.y - playerPosition.y) < 1.25f &&
-                        (site.isHelmet || medkits < maxMedkits) && CanCollectMedical(site))
+                        CanReceiveSupply(site) && CanCollectMedical(site) && TryReceiveSupply(site))
                     {
-                        bool collected = !site.isHelmet ||
-                            (medicalHealth != null && medicalHealth.TryEquipHelmet());
-                        if (collected)
-                        {
-                            site.taken = true;
-                            if (!site.isHelmet) medkits++;
-                            RecycleMedicalCase(site);
-                            activeMedicalSites.RemoveAt(i);
-                            continue;
-                        }
+                        site.taken = true;
+                        RecycleMedicalCase(site);
+                        activeMedicalSites.RemoveAt(i);
+                        continue;
                     }
                     if (refresh && distanceSq > 56f * 56f)
                     {
@@ -624,8 +639,54 @@ namespace Aaris.MapReview
                 Destroy(visual);
                 return;
             }
-            if (site.isHelmet) helmetVisualPool.Push(visual);
-            else medicalVisualPool.Push(visual);
+            var pool = VisualPool(site);
+            if (site.item >= AarisHouseLootItem.Ammo && pool.Count >= 4)
+                Destroy(visual);
+            else pool.Push(visual);
+        }
+
+        private Stack<GameObject> VisualPool(MedicalSite site)
+        {
+            if (site.isHelmet) return helmetVisualPool;
+            if (site.item >= AarisHouseLootItem.Ammo)
+                return kitVisualPools[(int)site.item - (int)AarisHouseLootItem.Ammo];
+            return medicalVisualPool;
+        }
+
+        private bool CanReceiveSupply(MedicalSite site)
+        {
+            switch (site.item)
+            {
+                case AarisHouseLootItem.Ammo:
+                    return supplyWeapons != null && supplyWeapons.Current != null &&
+                        supplyWeapons.Current.HasReserveSpace;
+                case AarisHouseLootItem.Frag:
+                    return fragGrenades < 10;
+                case AarisHouseLootItem.GlooWall:
+                    return gloo != null && gloo.Count < 15;
+                default:
+                    return site.isHelmet || medkits < maxMedkits;
+            }
+        }
+
+        private bool TryReceiveSupply(MedicalSite site)
+        {
+            if (!AcceptsTacticalInput) return false;
+            switch (site.item)
+            {
+                case AarisHouseLootItem.Ammo:
+                    return supplyWeapons.Current.AddReserve(supplyWeapons.Current.Spec.magazineSize) > 0;
+                case AarisHouseLootItem.Frag:
+                    fragGrenades++;
+                    return true;
+                case AarisHouseLootItem.GlooWall:
+                    return gloo.TryCollectWallCharge();
+                default:
+                    if (site.isHelmet)
+                        return medicalHealth != null && medicalHealth.TryEquipHelmet();
+                    medkits++;
+                    return true;
+            }
         }
 
         private void OnLowMemory() { lowMemoryPending = true; }
@@ -639,13 +700,16 @@ namespace Aaris.MapReview
             }
             if (Time.unscaledTime >= medicalPoolAllowedAt) return;
             int released = 0;
-            while (released < MaxMedicalPoolReleasesPerFrame &&
-                (medicalVisualPool.Count > 0 || helmetVisualPool.Count > 0))
+            while (released < MaxMedicalPoolReleasesPerFrame)
             {
-                // Both pools hold ONLY inactive cached roots. Keep all
-                // activeMedicalSites in place, retaining collection/range.
-                GameObject inactive = medicalVisualPool.Count > 0
-                    ? medicalVisualPool.Pop() : helmetVisualPool.Pop();
+                Stack<GameObject> pool = null;
+                if (medicalVisualPool.Count > 0) pool = medicalVisualPool;
+                else if (helmetVisualPool.Count > 0) pool = helmetVisualPool;
+                else
+                    for (int i = 0; i < kitVisualPools.Length && pool == null; i++)
+                        if (kitVisualPools[i].Count > 0) pool = kitVisualPools[i];
+                if (pool == null) break;
+                GameObject inactive = pool.Pop();
                 if (inactive != null) Destroy(inactive);
                 released++;
             }
@@ -679,6 +743,11 @@ namespace Aaris.MapReview
         private bool TrySpawnMedicalCase(MedicalSite site, out bool deferredByBudget)
         {
             deferredByBudget = false;
+            if (site.socket != null)
+            {
+                if (!AarisHouseLoot.TryResolve(site.socket, out Pose surface)) return false;
+                return PlaceSupplyVisual(site, surface.position, surface.rotation, out deferredByBudget);
+            }
             if (medicalTerrains == null || medicalTerrains.Length == 0)
                 medicalTerrains = Terrain.activeTerrains;
             if (medicalTerrains == null) return false;
@@ -745,41 +814,17 @@ namespace Aaris.MapReview
                 if (c != null && !(c is TerrainCollider) &&
                     !c.transform.IsChildOf(transform)) return false;
             }
-            // Separate type-safe pools keep helmet visuals from impersonating
-            // medical cases, with at most eight live pickups of either type.
-            if (site.isHelmet)
+            return PlaceSupplyVisual(site, spot, rotation, out deferredByBudget);
+        }
+
+        private bool PlaceSupplyVisual(MedicalSite site, Vector3 spot, Quaternion rotation,
+            out bool deferredByBudget)
+        {
+            deferredByBudget = false;
+            var pool = VisualPool(site);
+            while (pool.Count > 0)
             {
-                if (helmetVisualPool.Count > 0)
-                {
-                    GameObject recycledHelmet = helmetVisualPool.Pop();
-                    if (recycledHelmet != null)
-                    {
-                        recycledHelmet.transform.SetPositionAndRotation(spot, rotation);
-                        recycledHelmet.SetActive(true);
-                        site.visual = recycledHelmet;
-                        return true;
-                    }
-                }
-#if UNITY_ANDROID && !UNITY_EDITOR
-                // No new native 3D hierarchy may collide with a large
-                // car, loot, bike or settlement build on a 4 GB Android frame.
-                // Pooled helmets above are never delayed.
-                if (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
-                {
-                    deferredByBudget = true;
-                    return false;
-                }
-#endif
-                var helmetRoot = CreateMedicalVisual(true);
-                helmetRoot.transform.SetPositionAndRotation(spot, rotation);
-                AarisSubjectContacts.Register(helmetRoot.transform,new Vector2(.62f,.59f),.19f,22f);
-                site.visual = helmetRoot;
-                return true;
-            }
-            // All reused positions passed the same full overlap test above.
-            if (medicalVisualPool.Count > 0)
-            {
-                GameObject reused = medicalVisualPool.Pop();
+                GameObject reused = pool.Pop();
                 if (reused != null)
                 {
                     reused.transform.SetPositionAndRotation(spot, rotation);
@@ -797,11 +842,34 @@ namespace Aaris.MapReview
                 return false;
             }
 #endif
-            var root = CreateMedicalVisual(false);
+            var root = site.item >= AarisHouseLootItem.Ammo ? CreateKitVisual(site.item) :
+                CreateMedicalVisual(site.isHelmet);
+            if (root == null) return false;
             root.transform.SetPositionAndRotation(spot, rotation);
-            AarisSubjectContacts.Register(root.transform,new Vector2(.70f,.57f),.19f,22f);
+            AarisSubjectContacts.Register(root.transform,site.isHelmet ? new Vector2(.62f,.59f) :
+                new Vector2(.70f,.57f),.19f,22f);
             site.visual = root;
             return true;
+        }
+
+        private static GameObject CreateKitVisual(AarisHouseLootItem item)
+        {
+            Mesh mesh = AarisSupplyGeometry.Crate;
+            if (mesh == null) return null;
+            int index = (int)item - (int)AarisHouseLootItem.Ammo;
+            Color tint = item == AarisHouseLootItem.Ammo ? new Color(.77f,.58f,.25f) :
+                item == AarisHouseLootItem.Frag ? new Color(.44f,.55f,.28f) : new Color(.27f,.64f,.86f);
+            Material paint = MedicalPaint(ref kitPaint[index], tint, "Aaris Tactical Supply", .03f, .25f);
+            var spawn = new GameObject(item == AarisHouseLootItem.Ammo ? "Aaris Ammo Cache" :
+                item == AarisHouseLootItem.Frag ? "Aaris Frag Cache" : "Aaris Gloo Charge Cache");
+            spawn.transform.localScale = Vector3.one * .56f;
+            spawn.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = spawn.AddComponent<MeshRenderer>();
+            var materials = new Material[mesh.subMeshCount];
+            for (int i = 0; i < materials.Length; i++) materials[i] = paint;
+            renderer.sharedMaterials = materials;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            return spawn;
         }
 
         private static GameObject CreateMedicalVisual(bool helmet)
@@ -876,6 +944,16 @@ namespace Aaris.MapReview
             {
                 GameObject visual = helmetVisualPool.Pop();
                 if (visual != null) Destroy(visual);
+            }
+            for (int i = 0; i < kitVisualPools.Length; i++)
+            {
+                var pool = kitVisualPools[i];
+                while (pool.Count > 0)
+                {
+                    GameObject visual = pool.Pop();
+                    if (visual != null) Destroy(visual);
+                }
+                if (kitPaint[i] != null) Destroy(kitPaint[i]);
             }
             if (canvas != null) Destroy(canvas.gameObject);
         }

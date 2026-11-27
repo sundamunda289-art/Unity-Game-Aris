@@ -18,6 +18,7 @@ namespace Aaris.MapReview
     {
         public int schema, sizeMetres;
         public AarisLootCandidate[] candidates;
+        public AarisLootCandidate[] houseSockets;
 
         private static AarisLootDocument cached;
         internal static AarisLootDocument AndroidCached => cached;
@@ -438,16 +439,19 @@ namespace Aaris.MapReview
                 (ramMB > 0 && ramMB <= 4096) ||
                 AarisMobileRuntime.UseConstrainedGpuStreamingBudget();
 #endif
-            // Different each match; deterministic once seed is chosen. A
-            // future authoritative server can provide this seed to clients.
-            matchSeed = unchecked((uint)DateTime.UtcNow.Ticks) ^
-                unchecked((uint)Environment.TickCount) ^ 0x59371FA3u;
+            var houseLoot = AarisHouseLoot.ForMatch(doc);
+            matchSeed = houseLoot.Seed;
             rng = matchSeed;
 
             // 4 tiles hold around 7,500 native trees. Sampling stays seeded
             // and bounded. On Android, spread the native tree probes over
             // several rendered frames instead of one post-model-load frame.
-            var allCandidates = new List<AarisLootCandidate>(doc.candidates);
+            var allCandidates = new List<AarisLootCandidate>(doc.candidates.Length + houseLoot.Items.Length);
+            foreach (var candidate in doc.candidates)
+                if (!houseLoot.ReplacesIndoor(candidate)) allCandidates.Add(candidate);
+            for (int i = 0; i < houseLoot.Items.Length; i++)
+                if (houseLoot.Items[i] == AarisHouseLootItem.Weapon)
+                    allCandidates.Add(doc.houseSockets[i]);
 #if UNITY_ANDROID && !UNITY_EDITOR
             StartCoroutine(CompleteAndroidInitialization(allCandidates));
 #else
@@ -491,6 +495,13 @@ namespace Aaris.MapReview
                 // native-tree spots per terrain tile. Spawned GameObjects
                 // remain separately capped at MaximumActiveLoot.
                 if (!WithinMap(c)) continue;
+                if (c.kind == "socket")
+                {
+                    uint socketRng = matchSeed ^ unchecked((uint)c.slot * 2246822519u) ^ 0xA7192CB7u;
+                    choices[i] = AarisWeaponCatalog.Select(ref socketRng, true);
+                    if (choices[i] != null) selected++;
+                    continue;
+                }
                 bool indoor = c.kind == "indoor";
                 if (indoor && !string.IsNullOrEmpty(c.origin) &&
                     !fallbackSlotByHome.ContainsKey(c.origin))
@@ -814,6 +825,7 @@ namespace Aaris.MapReview
         private bool TryResolveNearCandidate(AarisLootCandidate candidate,
             int index, Terrain[] terrains, ref int alternateProbeBudget, out Pose spot)
         {
+            if (candidate.kind == "socket") return AarisHouseLoot.TryResolve(candidate, out spot);
             if (TryResolve(candidate, terrains, out spot)) return true;
             bool relocateIndoor = candidate.kind == "indoor";
 

@@ -368,6 +368,8 @@
 # Generated native map meshes and extracted textures
 Assets/AarisWorld/**/*.asset filter=lfs diff=lfs merge=lfs -text
 Assets/AarisWorld/**/*.png filter=lfs diff=lfs merge=lfs -text
+# Small deterministic text meshes for the six shared playable houses.
+Assets/AarisWorld/Models/AiryHouses/*.asset !filter !diff !merge -text
 Assets/Resources/AarisCharacters/Primary/*.fbx filter=lfs diff=lfs merge=lfs -text
 Assets/Resources/AarisCharacters/Primary/Animations/*.fbx filter=lfs diff=lfs merge=lfs -text
 Assets/Resources/AarisCharacters/Primary/Textures/*.png filter=lfs diff=lfs merge=lfs -text

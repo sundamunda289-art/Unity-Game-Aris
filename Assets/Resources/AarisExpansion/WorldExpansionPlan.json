@@ -17,7 +17,8 @@
       "width": 12.383,
       "depth": 16.43,
       "height": 10.244,
-      "style": "local_original_LOD_prefab"
+      "style": "local_original_LOD_prefab",
+      "baked": true
     },
     {
       "name": "ARX_02_OldVillage_bungalow",
@@ -30,7 +31,8 @@
       "width": 14.448,
       "depth": 14.349,
       "height": 6.673,
-      "style": "local_original_LOD_prefab"
+      "style": "local_original_LOD_prefab",
+      "baked": true
     },
     {
       "name": "ARX_03_ValleySettlement_detached",
@@ -43,7 +45,8 @@
       "width": 12.383,
       "depth": 16.43,
       "height": 10.244,
-      "style": "local_original_LOD_prefab"
+      "style": "local_original_LOD_prefab",
+      "baked": true
     },
     {
       "name": "ARX_04_ValleySettlement_detached",
@@ -56,7 +59,8 @@
       "width": 12.383,
       "depth": 16.43,
       "height": 10.244,
-      "style": "local_original_LOD_prefab"
+      "style": "local_original_LOD_prefab",
+      "baked": true
     },
     {
       "name": "ARX_05_ClockTowerTown_detached",
@@ -69,7 +73,8 @@
       "width": 12.383,
       "depth": 16.43,
       "height": 10.244,
-      "style": "local_original_LOD_prefab"
+      "style": "local_original_LOD_prefab",
+      "baked": true
     },
     {
       "name": "ARX_06_ClockTowerTown_bungalow",
@@ -82,7 +87,8 @@
       "width": 14.448,
       "depth": 14.349,
       "height": 6.673,
-      "style": "local_original_LOD_prefab"
+      "style": "local_original_LOD_prefab",
+      "baked": true
     },
     {
       "name": "ARX_07_CoastalHamlet_detached",
@@ -95,7 +101,8 @@
       "width": 12.383,
       "depth": 16.43,
       "height": 10.244,
-      "style": "local_original_LOD_prefab"
+      "style": "local_original_LOD_prefab",
+      "baked": true
     },
     {
       "name": "ARX_08_NorthernRidgeTown_detached",
@@ -108,7 +115,8 @@
       "width": 12.383,
       "depth": 16.43,
       "height": 10.244,
-      "style": "local_original_LOD_prefab"
+      "style": "local_original_LOD_prefab",
+      "baked": true
     },
     {
       "name": "ARX_09_LakesideHamlet_cottage",
@@ -121,7 +129,8 @@
       "width": 9.968,
       "depth": 14.349,
       "height": 7.517,
-      "style": "local_original_LOD_prefab"
+      "style": "local_original_LOD_prefab",
+      "baked": true
     },
     {
       "name": "ARX_10_CanalMarket_cottage",
@@ -134,7 +143,8 @@
       "width": 9.968,
       "depth": 14.349,
       "height": 7.517,
-      "style": "local_original_LOD_prefab"
+      "style": "local_original_LOD_prefab",
+      "baked": true
     },
     {
       "name": "ARX_11_EasternPort_cottage",
@@ -147,7 +157,8 @@
       "width": 9.968,
       "depth": 14.349,
       "height": 7.517,
-      "style": "local_original_LOD_prefab"
+      "style": "local_original_LOD_prefab",
+      "baked": true
     },
     {
       "name": "ARX_12_FreightDistrict_cottage",
@@ -160,7 +171,8 @@
       "width": 9.968,
       "depth": 14.349,
       "height": 7.517,
-      "style": "local_original_LOD_prefab"
+      "style": "local_original_LOD_prefab",
+      "baked": true
     },
     {
       "name": "ARX_13_HighlandObservatory_watchtower",
@@ -242,7 +254,8 @@
       "style": "local_original_LOD_prefab",
       "name": "ARX_18_OldVillage_cottage",
       "designRole": "low-rise cover and habitation",
-      "interactive": true
+      "interactive": true,
+      "baked": true
     },
     {
       "district": "NorthernRidgeTown",
@@ -257,7 +270,8 @@
       "style": "local_original_LOD_prefab",
       "name": "ARX_19_NorthernRidgeTown_bungalow",
       "designRole": "residential profile variation",
-      "interactive": true
+      "interactive": true,
+      "baked": true
     },
     {
       "district": "ValleySettlement",
@@ -272,7 +286,8 @@
       "style": "local_original_LOD_prefab",
       "name": "ARX_20_ValleySettlement_cottage",
       "designRole": "route-side cover",
-      "interactive": true
+      "interactive": true,
+      "baked": true
     },
     {
       "district": "CoastalHamlet",
@@ -287,7 +302,8 @@
       "style": "local_original_LOD_prefab",
       "name": "ARX_21_CoastalHamlet_detached",
       "designRole": "two-storey silhouette variation",
-      "interactive": true
+      "interactive": true,
+      "baked": true
     }
   ]
 }

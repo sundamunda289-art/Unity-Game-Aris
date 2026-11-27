@@ -76,7 +76,7 @@ class ExpansionIntegrity(unittest.TestCase):
     def test_expansion_does_not_create_all_houses_in_one_frame(self):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn(
-            "StartCoroutine(PlaceSitesAcrossFrames(plan, catalog, terrains, interactionTarget))",
+            "StartCoroutine(PlaceSitesAcrossFrames(plan, catalog, terrains))",
             source,
         )
         routine = source.split("private IEnumerator PlaceSitesAcrossFrames(", 1)[1]
@@ -254,9 +254,9 @@ class ExpansionIntegrity(unittest.TestCase):
         expansion = SCRIPT.read_text(encoding="utf-8")
         for name in ["AarisModularHouse.cs", "AarisBreakablePanel.cs"]:
             self.assertTrue((scripts / (name + ".meta")).is_file())
-        self.assertIn("public bool interactive;", expansion)
+        self.assertIn("public bool interactive, baked;", expansion)
         self.assertIn("site.interactive", expansion)
-        self.assertIn("AarisModularHouse.Create(", expansion)
+        self.assertNotIn("AarisModularHouse.Create(", expansion)
         self.assertIn("GameObject.CreatePrimitive(PrimitiveType.Cube)", modular)
         self.assertIn("WallSection(root,left,right,DoorHeight,height,z)", modular)
         self.assertIn("WallSection(root,left,right,0f,Sill,z)", modular)
