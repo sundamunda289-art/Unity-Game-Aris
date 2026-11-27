@@ -36,7 +36,9 @@ void AarisLitPassFragment(
     half3 heroMasks = AarisHeroFaceMasks(atlasUV, surfaceData.albedo);
     AarisHeroFaceSurface(heroMasks, surfaceData);
 #elif defined(_AARIS_HERO_GEAR)
-    AarisHeroGearSurface(input.uv, surfaceData);
+    // Reuse the world position already carried by the Lit pass.
+    float3 eyeDelta = input.positionWS - GetCameraPositionWS();
+    AarisHeroGearSurface(input.uv, dot(eyeDelta, eyeDelta), surfaceData);
 #endif
 
 #ifdef LOD_FADE_CROSSFADE

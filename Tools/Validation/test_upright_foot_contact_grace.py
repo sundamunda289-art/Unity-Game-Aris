@@ -25,7 +25,18 @@ assert "(deliberateJump ||" in airborne
 start = visual.index("private void PlantUprightContact(")
 end = visual.index("private void AlignFootToSupport(", start)
 plant = visual[start:end]
-assert "SupportedAnkleY(foot, UprightAnkleClearanceMetres" in plant
+sample_start = visual.index("private AnkleSupportSample SampleUprightAnkle(")
+sample = visual[sample_start:start]
+assert "coarse.footPosition.Equals(footPosition)" in sample
+assert sample.count("SupportedAnkleY(foot, UprightAnkleClearanceMetres") == 1
+assert "SupportedAnkleY(" not in plant
+assert "float supportY = support.height;" in plant
+
+solve_start = visual.index("if (useUprightContact)")
+sampled = visual[solve_start:visual.index("// The CC0 Humanoid crawl", solve_start)]
+assert sampled.count("SampleUprightAnkle(") == 2
+assert sampled.index("AnkleSupportSample rightSupport") < sampled.index("locomotionHipsBone.position +=")
+assert "leftSupport.normal.y" in sampled and "rightSupport.normal.y" in sampled
 assert "if (float.IsNaN(supportY))" in plant
 assert "plantLocked = false;" in plant
 assert "CorrectReversedSwingKnee" in plant

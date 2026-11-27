@@ -125,6 +125,9 @@ namespace Aaris.MapReview
         private Transform proneChestBone, proneHeadBone;
         private Transform proneLeftHandBone, proneRightHandBone;
         private Transform balanceSpineBone, locomotionHipsBone;
+        private Vector3 leftBindSoleUp, rightBindSoleUp;
+        private float leftBootClearance, rightBootClearance;
+        private float tacticalStandingWeight;
         private const float ProneChestCorrectionMaxDegrees = 24f;
         private const float ProneHeadColliderInset = 0.10f;
         // The imported soldier's animated standing bounds are shorter than
@@ -355,7 +358,9 @@ namespace Aaris.MapReview
             if (tacticalSoldierLoaded || realisticSoldierLoaded)
                 AarisSubjectContacts.Register(transform, new Vector2(.85f, .75f),
                     .20f, 18f, controller, visual.transform,
-                    leftFoot: leftFootBone, rightFoot: rightFootBone);
+                    leftFoot: leftFootBone, rightFoot: rightFootBone,
+                    leftToe: tacticalSoldierLoaded ? animator.GetBoneTransform(HumanBodyBones.LeftToes) : null,
+                    rightToe: tacticalSoldierLoaded ? animator.GetBoneTransform(HumanBodyBones.RightToes) : null);
             proneChestBone = animator.GetBoneTransform(HumanBodyBones.Chest);
             proneHeadBone = animator.GetBoneTransform(HumanBodyBones.Head);
             proneLeftHandBone = animator.GetBoneTransform(HumanBodyBones.LeftHand);
@@ -564,7 +569,7 @@ namespace Aaris.MapReview
             helper.gameObject.SetActive(false);
         }
 
-        private bool TryFitHumanoidBonesToController()
+        private bool TryFitHumanoidBonesToController(bool fitTacticalBoots = false)
         {
             // Some valid skinned GLB/FBX rigs carry extreme bind-space vertex
             // coordinates even though their Humanoid skeleton is normal metric
@@ -590,6 +595,13 @@ namespace Aaris.MapReview
             float targetBoneSpan = TargetHeightMetres - 0.14f;
             float scale = Mathf.Clamp(targetBoneSpan / boneSpan, 0.50f, 2.00f);
             visual.transform.localScale *= scale;
+            if (fitTacticalBoots)
+            {
+                leftBindSoleUp = leftFoot.InverseTransformDirection(transform.up);
+                rightBindSoleUp = rightFoot.InverseTransformDirection(transform.up);
+                leftBootClearance = TacticalBootClearance(leftFoot, HumanBodyBones.LeftToes);
+                rightBootClearance = TacticalBootClearance(rightFoot, HumanBodyBones.RightToes);
+            }
 
             // Re-evaluate after scaling and align the full foot anchor. The
             // TacticalSoldier's Humanoid bones are metric, but its authored
@@ -603,13 +615,25 @@ namespace Aaris.MapReview
             return true;
         }
 
+        private float TacticalBootClearance(Transform ankle, HumanBodyBones toes)
+        {
+            Transform forefoot = animator.GetBoneTransform(toes);
+            if (forefoot == null) return UprightAnkleClearanceMetres;
+
+            // The tactical boot's toe pivot sits above the rubber sole.
+            // Sample the scaled binding pose before any animation evaluates.
+            const float treadBelowToeMetres = 0.028f;
+            return Mathf.Clamp(ankle.position.y - forefoot.position.y + treadBelowToeMetres,
+                UprightAnkleClearanceMetres, 0.135f);
+        }
+
         private bool FitVisualToController(string resourcePath)
         {
             // TacticalSoldier's authored skinned AABBs are not a reliable scale
             // source even after its root helper is hidden (one skin still spans
             // roughly 113 bind-space units). A valid Human skeleton is the
             // authoritative metric source for this known primary asset.
-            if (resourcePath == PrimaryModel && TryFitHumanoidBonesToController())
+            if (resourcePath == PrimaryModel && TryFitHumanoidBonesToController(fitTacticalBoots: true))
                 return true;
 
             var renderers = visual.GetComponentsInChildren<Renderer>(true);
@@ -1766,10 +1790,24 @@ namespace Aaris.MapReview
             public float height;
         }
 
+        private AnkleSupportSample SampleUprightAnkle(Transform foot, AnkleSupportSample coarse)
+        {
+            if (foot == null) return new AnkleSupportSample { height = float.NaN };
+            Vector3 footPosition = foot.position;
+            if (coarse.foot == foot && coarse.footPosition.Equals(footPosition))
+                return coarse;
+
+            float height = SupportedAnkleY(foot, UprightAnkleClearanceMetres,
+                out Vector3 normal, footPosition);
+            return new AnkleSupportSample
+            {
+                foot = foot, footPosition = footPosition, height = height, normal = normal
+            };
+        }
+
         private void PlantUprightContact(Transform thigh, Transform shin,
             Transform foot, float planarSpeed, float turnDegreesPerSecond,
-            float uprightWeight, Vector3 kneeForward,
-            AnkleSupportSample coarseSupport,
+            float uprightWeight, Vector3 kneeForward, AnkleSupportSample support,
             ref float plantedYaw, ref bool plantLocked, ref Vector3 plantWorld)
         {
             if (thigh == null || shin == null || foot == null ||
@@ -1779,14 +1817,9 @@ namespace Aaris.MapReview
                 return;
             }
 
-            // The whole-rig correction already sampled the lower boot on
-            // this frame. Reuse it only while the exact ray origin still
-            // matches, including after pelvis warping or a root correction.
-            Vector3 supportNormal = coarseSupport.normal;
-            float supportY = coarseSupport.foot == foot &&
-                coarseSupport.footPosition.Equals(foot.position)
-                ? coarseSupport.height
-                : SupportedAnkleY(foot, UprightAnkleClearanceMetres, out supportNormal);
+            Vector3 authoredFootPosition = support.footPosition;
+            Vector3 supportNormal = support.normal;
+            float supportY = support.height;
             // Never invent a floor at ledges/gaps. An unsupported foot keeps
             // authored motion and any stale world lock is discarded immediately.
             if (float.IsNaN(supportY))
@@ -1796,7 +1829,7 @@ namespace Aaris.MapReview
                 return;
             }
 
-            float gap = foot.position.y - supportY;
+            float gap = authoredFootPosition.y - supportY;
             float contactWeight = gap <= 0f ? 1f :
                 1f - Mathf.SmoothStep(0f, 1f,
                     Mathf.InverseLerp(0.025f, 0.14f, gap));
@@ -1825,13 +1858,13 @@ namespace Aaris.MapReview
                 gap <= UprightPlantEnterGapMetres &&
                 finalWeight >= 0.58f)
             {
-                plantWorld = foot.position;
+                plantWorld = authoredFootPosition;
                 plantWorld.y = supportY;
                 plantedYaw = lastFacingYaw;
                 plantLocked = true;
             }
 
-            Vector3 targetFoot = foot.position;
+            Vector3 targetFoot = authoredFootPosition;
             targetFoot.y = supportY;
             if (plantLocked)
             {
@@ -1839,7 +1872,7 @@ namespace Aaris.MapReview
                 // but horizontal contact remains world-locked until swing.
                 plantWorld.y = supportY;
                 Vector3 horizontalError = Vector3.ProjectOnPlane(
-                    plantWorld - foot.position, transform.up);
+                    plantWorld - authoredFootPosition, transform.up);
                 float errorDistance = horizontalError.magnitude;
                 float twistWeight = FootAnchorTurnWeight(plantedYaw, lastFacingYaw);
                 if (errorDistance > UprightPlantBreakDistanceMetres || twistWeight <= 0f)
@@ -1856,9 +1889,37 @@ namespace Aaris.MapReview
                 }
             }
 
-            PlantLegToTarget(thigh, shin, foot, targetFoot, kneeForward,
-                finalWeight);
-            AlignFootToSupport(foot, supportNormal, finalWeight, 32f, 0.85f);
+            // Retain the natural turnout and the world ankle lock. The
+            // calibrated sole height is only applied after an accepted plant.
+            float flatBootWeight = plantLocked && supportNormal.y >= 0.997f
+                ? tacticalStandingWeight : 0f;
+            bool isLeft = foot == leftFootBone;
+            if (flatBootWeight > 0f)
+            {
+                float clearance = isLeft ? leftBootClearance : rightBootClearance;
+                targetFoot.y += Mathf.Max(0f, clearance - UprightAnkleClearanceMetres) * flatBootWeight;
+            }
+            float plantWeight = Mathf.Lerp(finalWeight, 1f, flatBootWeight);
+            PlantLegToTarget(thigh, shin, foot, targetFoot, kneeForward, plantWeight);
+            if (flatBootWeight > 0f)
+            {
+                Vector3 bindUp = isLeft ? leftBindSoleUp : rightBindSoleUp;
+                AlignPlantedTacticalSole(foot, bindUp, supportNormal, flatBootWeight);
+            }
+            else
+            {
+                AlignFootToSupport(foot, supportNormal, finalWeight, 32f, 0.85f);
+            }
+        }
+
+        private static void AlignPlantedTacticalSole(Transform foot, Vector3 bindUp,
+            Vector3 supportNormal, float weight)
+        {
+            if (bindUp.sqrMagnitude < 0.9f) return;
+            Quaternion pose = foot.rotation;
+            Quaternion tilt = Quaternion.FromToRotation(pose * bindUp, supportNormal);
+            Quaternion limited = Quaternion.RotateTowards(Quaternion.identity, tilt, 18f);
+            foot.rotation = Quaternion.Slerp(pose, limited * pose, weight);
         }
 
         private void AlignFootToSupport(Transform foot, Vector3 supportNormal,
@@ -1873,6 +1934,30 @@ namespace Aaris.MapReview
             foot.rotation = Quaternion.Slerp(foot.rotation,
                 slopeTilt * foot.rotation,
                 Mathf.Clamp01(solveWeight * blendScale));
+        }
+
+        private void BalanceStandingTorso(float weight, bool armed)
+        {
+            if (locomotionHipsBone == null || proneChestBone == null) return;
+            Vector3 stack = proneChestBone.position - locomotionHipsBone.position;
+            float height = Vector3.Dot(stack, transform.up);
+            if (height < 0.16f) return;
+
+            // Correct the exaggerated lumbar lean while keeping the upper
+            // chest, head and rifle line close to the authored pose.
+            float pitch = Mathf.Atan2(Vector3.Dot(stack, transform.forward), height) * Mathf.Rad2Deg;
+            float lean = Mathf.Atan2(Vector3.Dot(stack, transform.right), height) * Mathf.Rad2Deg;
+            float maxPitch = armed ? 12f : 7f;
+            float maxLean = armed ? 8f : 4f;
+            float pitchCorrection = Mathf.Clamp(Mathf.Clamp(pitch, -8f, maxPitch) - pitch, -10f, 16f);
+            float leanCorrection = Mathf.Clamp(lean - Mathf.Clamp(lean, -maxLean, maxLean), -6f, 6f);
+            if (Mathf.Abs(pitchCorrection) + Mathf.Abs(leanCorrection) < 0.15f) return;
+
+            Quaternion chest = proneChestBone.rotation;
+            Quaternion correction = Quaternion.AngleAxis(leanCorrection * weight, transform.forward) *
+                Quaternion.AngleAxis(pitchCorrection * weight, transform.right);
+            balanceSpineBone.rotation = correction * balanceSpineBone.rotation;
+            proneChestBone.rotation = Quaternion.Slerp(proneChestBone.rotation, chest, 0.72f);
         }
 
         private static void LoopPlayable(AnimationClipPlayable playable, AnimationClip clip, double cycle)
@@ -2690,21 +2775,65 @@ namespace Aaris.MapReview
             // never rotate the same knee in one frame.
             if (useUprightContact)
             {
+                // Sample each unwarped ankle once, before either leg is
+                // posed. Reuse the coarse ray if its original point matches.
+                AnkleSupportSample leftSupport = SampleUprightAnkle(
+                    leftThigh != null && leftShin != null ? leftFootBone : null, coarseSupport);
+                AnkleSupportSample rightSupport = SampleUprightAnkle(
+                    rightThigh != null && rightShin != null ? rightFootBone : null, coarseSupport);
+                bool levelFeet = Mathf.Abs(leftSupport.height - rightSupport.height) < 0.04f &&
+                    leftSupport.normal.y >= 0.997f && rightSupport.normal.y >= 0.997f;
+                if (tacticalSoldierLoaded && levelFeet)
+                {
+                    bool levelStand = stableSoldier && lowPose < 0.02f &&
+                        leftUprightPlantLocked && rightUprightPlantLocked;
+                    float steady = levelStand
+                        ? (1f - Mathf.InverseLerp(0.04f, 0.15f, planar)) *
+                          (1f - Mathf.InverseLerp(20f, 100f, Mathf.Abs(yawRate)))
+                        : 0f;
+                    tacticalStandingWeight = Mathf.MoveTowards(tacticalStandingWeight, steady, dt * 7f);
+                    if (locomotionHipsBone != null && tacticalStandingWeight > 0f)
+                    {
+                        // Raise and slightly centre the skeleton over its
+                        // existing foot anchors. The original IK still solves
+                        // both fixed-length limbs from the original samples.
+                        // A fixed height relative to the standing capsule
+                        // keeps the knee angle stable across different landing
+                        // and whole-rig support offsets on the same floor.
+                        const float pelvisHeight = 1.108f;
+                        float lift = Mathf.Clamp(transform.position.y + pelvisHeight -
+                            locomotionHipsBone.position.y, -0.04f, 0.12f);
+                        if (proneHeadBone != null)
+                        {
+                            const float headClearance = 0.085f;
+                            float freeHeight = controller.bounds.max.y + 0.033f -
+                                proneHeadBone.position.y - headClearance;
+                            lift = Mathf.Min(lift, Mathf.Max(0f, freeHeight));
+                        }
+                        locomotionHipsBone.position += (transform.up * lift -
+                            transform.forward * 0.030f) * tacticalStandingWeight;
+                    }
+                }
+                else
+                {
+                    tacticalStandingWeight = 0f;
+                }
                 float uprightContactWeight = Mathf.Clamp01(1f - lowPose * 4f);
                 // One cached hip-axis evaluation serves both legs. No extra
                 // raycasts, allocations or additional Transform writes.
                 Vector3 uprightKneeForward = AnatomicalKneeForward();
                 PlantUprightContact(leftThigh, leftShin, leftFootBone,
                     planar, yawRate, uprightContactWeight, uprightKneeForward,
-                    coarseSupport, ref leftPlantYaw, ref leftUprightPlantLocked, ref leftUprightPlantWorld);
+                    leftSupport, ref leftPlantYaw, ref leftUprightPlantLocked, ref leftUprightPlantWorld);
                 PlantUprightContact(rightThigh, rightShin, rightFootBone,
                     planar, yawRate, uprightContactWeight, uprightKneeForward,
-                    coarseSupport, ref rightPlantYaw, ref rightUprightPlantLocked, ref rightUprightPlantWorld);
+                    rightSupport, ref rightPlantYaw, ref rightUprightPlantLocked, ref rightUprightPlantWorld);
             }
             else
             {
                 leftUprightPlantLocked = false;
                 rightUprightPlantLocked = false;
+                tacticalStandingWeight = 0f;
             }
 
             // The CC0 Humanoid crawl keeps the spine flat. Its two authored
@@ -2824,6 +2953,8 @@ namespace Aaris.MapReview
                     bodyPitch += Mathf.Sin(Time.time * 1.85f) * .34f * standingShare * stillness;
                 }
                 balanceSpineBone.localRotation *= Quaternion.Euler(bodyPitch, 0f, bodyRoll);
+                if (tacticalStandingWeight > 0f)
+                    BalanceStandingTorso(tacticalStandingWeight, actions != null && actions.IsArmed);
             }
 
             // The same support decision now drives gait phase, airborne pose,
