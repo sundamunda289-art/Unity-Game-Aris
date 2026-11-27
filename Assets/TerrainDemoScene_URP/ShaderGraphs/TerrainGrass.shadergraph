@@ -9318,15 +9318,15 @@
     "m_ActiveSubTarget": {
         "m_Id": "78ae2a6aa09843828232e7fd0ec07b7f"
     },
-    "m_AllowMaterialOverride": true,
+    "m_AllowMaterialOverride": false,
     "m_SurfaceType": 0,
     "m_ZTestMode": 4,
     "m_ZWriteControl": 0,
     "m_AlphaMode": 0,
     "m_RenderFace": 0,
     "m_AlphaClip": true,
-    "m_CastShadows": true,
-    "m_ReceiveShadows": true,
+    "m_CastShadows": false,
+    "m_ReceiveShadows": false,
     "m_CustomEditorGUI": "",
     "m_SupportVFX": false
 }

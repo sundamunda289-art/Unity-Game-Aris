@@ -43,8 +43,16 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 4075589374702726312}
     - target: {fileID: -7286387890281315533, guid: 5e76989194570e246acc05a8d2697af2, type: 3}
+      propertyPath: m_CastShadows
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -7286387890281315533, guid: 5e76989194570e246acc05a8d2697af2, type: 3}
+      propertyPath: m_ReceiveShadows
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -7286387890281315533, guid: 5e76989194570e246acc05a8d2697af2, type: 3}
       propertyPath: m_StaticShadowCaster
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: -7286387890281315533, guid: 5e76989194570e246acc05a8d2697af2, type: 3}
       propertyPath: m_Materials.Array.data[0]
@@ -87,8 +95,16 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 4075589374702726312}
     - target: {fileID: 2145386795432356804, guid: 5e76989194570e246acc05a8d2697af2, type: 3}
+      propertyPath: m_CastShadows
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2145386795432356804, guid: 5e76989194570e246acc05a8d2697af2, type: 3}
+      propertyPath: m_ReceiveShadows
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2145386795432356804, guid: 5e76989194570e246acc05a8d2697af2, type: 3}
       propertyPath: m_StaticShadowCaster
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 2145386795432356804, guid: 5e76989194570e246acc05a8d2697af2, type: 3}
       propertyPath: m_Materials.Array.data[0]
@@ -99,8 +115,16 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 4075589374702726312}
     - target: {fileID: 6568135339202448505, guid: 5e76989194570e246acc05a8d2697af2, type: 3}
+      propertyPath: m_CastShadows
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6568135339202448505, guid: 5e76989194570e246acc05a8d2697af2, type: 3}
+      propertyPath: m_ReceiveShadows
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6568135339202448505, guid: 5e76989194570e246acc05a8d2697af2, type: 3}
       propertyPath: m_StaticShadowCaster
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 6568135339202448505, guid: 5e76989194570e246acc05a8d2697af2, type: 3}
       propertyPath: m_Materials.Array.data[0]

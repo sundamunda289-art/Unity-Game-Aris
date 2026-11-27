@@ -51,13 +51,13 @@ void AarisDetailGround_half(half3 LeafColor, half4 TerrainColorAndHeight, half D
 
 void AarisDetailKeepCanopyNormal_half(bool FrontFace, half4 Profile, out bool Out)
 {
-    // Canopy lighting uses a fixed outward frame on both sides of a card.
-    Out = FrontFace || Profile.x > 0.001h;
+    // The authored vertex lighting frame faces up for grass and outward for
+    // shrubs. A double-sided card uses that same frame from either side.
+    Out = true;
 }
 
 // Bounded, warm transmission from the scene's existing directional light.
-// URP Lit handles real direct-light shadows; this inexpensive approximate
-// lobe must not imply an independent realtime shadow sample or self-glow.
+// A small diffuse wrap keeps grazing leaf cards lit by the existing sun.
 void PseudoSubsurface_half(float3 WorldPosition, half3 WorldNormal, half3 SSRadius,
                            half ShadowResponse, out half3 ssAmount)
 {
@@ -87,6 +87,7 @@ void PseudoSubsurface_half(float3 WorldPosition, half3 WorldNormal, half3 SSRadi
     // Authored SSS values range from 0.5 to 4, not just 0 to 1.
     half radius = saturate(0.25h * SSRadius.x);
     half ndl = dot(n, lightDir);
+    half sunWrap = saturate((ndl + 0.42h) * (1.0h / 1.42h));
     half back = saturate((radius - ndl) / (1.0h + radius));
     half wrapped = back * back * (3.0h - 2.0h * back);
     half edge = 1.0h - saturate(abs(ndl));
@@ -102,7 +103,7 @@ void PseudoSubsurface_half(float3 WorldPosition, half3 WorldNormal, half3 SSRadi
         + 0.10h * rim * (0.35h + 0.65h * back);
     half3 warmSun = half3(1.04h, 1.0h, 0.86h);
     half response = 1.0h - 0.20h * saturate(ShadowResponse);
-    ssAmount = max(0.0h, color * response * transmission * warmSun
+    ssAmount = max(0.0h, color * (response * transmission + 0.022h + 0.055h * sunWrap) * warmSun
         + ambient * skyFill * hemiFill);
 #ifndef SHADERGRAPH_PREVIEW
     ssAmount *= illusionFade;

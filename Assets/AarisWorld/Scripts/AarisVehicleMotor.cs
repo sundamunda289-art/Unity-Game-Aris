@@ -99,6 +99,9 @@ namespace Aaris.MapReview
         // once at attachment; WheelCollider wheel centres stay authoritative.
         private readonly Vector3[] visualWheelCenterOffsets = new Vector3[4];
         private Rigidbody body;
+        private Vector3 grassContactCenter;
+        private float grassContactInverseRadiusSq;
+        private Vector2 grassContactInverseExtentsSq;
         // Native physics remains live when just this MonoBehaviour is disabled.
         // Keep bounded configured-rig records until destruction; inactive pools
         // emit no support pins. A disabled MonoBehaviour receives no OnEnable
@@ -110,6 +113,52 @@ namespace Aaris.MapReview
         private Bounds physicsResidencyBounds;
         private bool hasPhysicsResidencyBounds;
         internal static int TrackedPhysicsResidentCount => physicsResidents.Count;
+
+        internal static AarisVehicleMotor FindMovingGrassInteractor(Vector3 observer)
+        {
+            AarisVehicleMotor nearest = null;
+            float bestDistanceSq = 32f * 32f;
+            for (int i = 0; i < physicsResidents.Count; i++)
+            {
+                AarisVehicleMotor vehicle = physicsResidents[i];
+                if (vehicle == null || !vehicle.gameObject.activeInHierarchy || vehicle.body == null ||
+                    vehicle.body.IsSleeping()) continue;
+                Vector3 speed = vehicle.body.linearVelocity;
+                if (speed.x * speed.x + speed.z * speed.z < .25f) continue;
+                float distanceSq = (vehicle.body.position - observer).sqrMagnitude;
+                if (distanceSq >= bestDistanceSq) continue;
+                nearest = vehicle;
+                bestDistanceSq = distanceSq;
+            }
+            return nearest;
+        }
+
+        internal void GetGrassContact(out Vector4 center, out Vector4 shape)
+        {
+            Transform chassis = transform;
+            Vector3 ground = chassis.TransformPoint(grassContactCenter);
+            Vector3 heading = chassis.forward;
+            Vector2 forward = new Vector2(heading.x, heading.z);
+            if (forward.sqrMagnitude < .0001f) forward = Vector2.up;
+            else forward.Normalize();
+            center = new Vector4(ground.x, ground.y, ground.z, grassContactInverseRadiusSq);
+            shape = new Vector4(forward.x, forward.y,
+                grassContactInverseExtentsSq.x, grassContactInverseExtentsSq.y);
+        }
+
+        private void SetGrassFootprint(BoxCollider shell, float halfTrack, float halfWheelbase)
+        {
+            // Measure once when the native chassis and axles are fitted. The
+            // outside margin feathers pressure past the body and tyre edges.
+            float halfWidth = Mathf.Max(shell.size.x * .5f,
+                halfTrack + Mathf.Abs(shell.center.x) + .16f) + .46f;
+            float halfLength = Mathf.Max(shell.size.z * .5f,
+                halfWheelbase + Mathf.Abs(shell.center.z) + WheelRadius) + .55f;
+            grassContactCenter = new Vector3(shell.center.x, -.10f - WheelRadius, shell.center.z);
+            grassContactInverseRadiusSq = 1f / (halfWidth * halfWidth + halfLength * halfLength);
+            grassContactInverseExtentsSq = new Vector2(1f / (halfWidth * halfWidth),
+                1f / (halfLength * halfLength));
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetPhysicsResidents() => physicsResidents.Clear();
@@ -448,6 +497,7 @@ namespace Aaris.MapReview
             CreateWheel(1, .84f, 1.38f);
             CreateWheel(2, -.84f, -1.38f);
             CreateWheel(3, .84f, -1.38f);
+            SetGrassFootprint(shell, .84f, 1.38f);
             appliedDriveTorque = appliedBrakeTorque = appliedSteeringAngle = float.NaN;
             appliedServiceBrakeDirection = 0;
             // Two/three PhysX vehicle substeps stabilize tyre/suspension forces
@@ -595,6 +645,7 @@ namespace Aaris.MapReview
                     (i & 1) == 0 ? -halfTrack : halfTrack,
                     -.10f, i < 2 ? halfWheelbase : -halfWheelbase);
             }
+            SetGrassFootprint(shell, halfTrack, halfWheelbase);
             // PhysX distributes chassis mass between wheels from their
             // positions and center of mass. Recalculate after changing axle
             // spacing so hatchbacks, sedans and longer bodies do not inherit
