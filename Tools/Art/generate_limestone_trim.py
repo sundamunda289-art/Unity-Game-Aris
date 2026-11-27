@@ -16,6 +16,7 @@ ASSET = ROOT / "Assets/Resources/AarisBuildings/ArchitecturalLimestone.png"
 META = Path(str(ASSET) + ".meta")
 REFERENCE = ROOT / "Assets/AarisWorld/Surfaces/Concrete.png.meta"
 SIZE = 128
+NORMAL_SLOPE = 0.035
 SEED = 0xA512026
 rng = random.Random(SEED)
 harmonics = []
@@ -53,8 +54,8 @@ for py in range(SIZE):
     for px in range(SIZE):
         def h(x,y):
             return height[(y%SIZE)*SIZE+(x%SIZE)]
-        dx=(h(px+1,py)-h(px-1,py))*0.027
-        dy=(h(px,py+1)-h(px,py-1))*0.027
+        dx=(h(px+1,py)-h(px-1,py))*NORMAL_SLOPE
+        dy=(h(px,py+1)-h(px,py-1))*NORMAL_SLOPE
         nx,ny,nz=-dx,-dy,1.0
         length=math.sqrt(nx*nx+ny*ny+nz*nz)
         normal_pixels.append((round(127.5+127.5*nx/length),

@@ -27,7 +27,7 @@ Material:
     - _Exposure: 1.15
     m_Colors:
     - _SkyTint: {r: 0.5, g: 0.5, b: 0.5, a: 1.0}
-    - _GroundColor: {r: 0.45, g: 0.47, b: 0.45, a: 1.0}
+    - _GroundColor: {r: 0.61, g: 0.7, b: 0.76, a: 1.0}
     m_Ints: []
   m_BuildTextureStacks: []
   m_ValidKeywords:
