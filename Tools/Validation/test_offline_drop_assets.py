@@ -173,7 +173,8 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertNotIn("Physics.SyncTransforms()", br)
         self.assertNotIn("nearbyColliders.RefreshNow()", br)
         self.assertIn('string participants = spawnComplete', br)
-        self.assertIn('"RIVALS " + spawnedRivals + "/" + RivalCount', br)
+        self.assertIn('int count = spawnComplete ? activeRivals + 1 : spawnedRivals;', br)
+        self.assertIn('"RIVALS " + count + "/" + RivalCount', br)
 
         # 10/15/20/30/60/90/120 FPS: a steady 2.85 m/s pursuit no longer
         # loses half its elapsed time at a 10 Hz phone frame rate.

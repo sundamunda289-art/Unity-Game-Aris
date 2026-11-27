@@ -3,7 +3,6 @@
 import argparse
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import tempfile
@@ -28,17 +27,14 @@ def braced(text, anchor):
 
 def fixture_source():
     nearby = (SRC / 'AarisNearbyColliders.cs').read_text()
-    refresh = braced(nearby, 'private void RefreshNow(bool forcePhysicsSync)')
-    probe = braced(nearby, 'internal bool HasPotentialInactiveObstacle(')
-    expressions = re.findall(r'if \((worldBounds\[i\]\.Intersects\(probe\)[\s\S]*?)\)\s*return true;', probe)
-    assert len(expressions) == 2 and expressions[0].split() == expressions[1].split()
+    refresh = braced(nearby, 'private void RefreshColliderResidency(bool forcePhysicsSync)')
     director = (SRC / 'AarisOfflineBRDirector.cs').read_text()
     draw = 'private void DrawBoundary()\n{' + braced(director, 'private void DrawBoundary()') + '\n}'
     template = (ROOT / 'Tools/Validation/RuntimeNativeWorkTests.cs').read_text()
     for marker, text in {
         '/* GRID_BODY */': braced(refresh, 'foreach (int i in entries)'),
         '/* OVERSIZED_BODY */': braced(refresh, 'foreach (int i in oversizedIndices)'),
-        '/* PROBE_EXPRESSION */ false': expressions[0],
+        '/* MATCH_PROBE_BODY */': braced(nearby, 'private bool MatchesObstacleProbe('),
         '/* DRAW_METHOD */': draw,
     }.items():
         assert template.count(marker) == 1, marker

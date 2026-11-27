@@ -56,7 +56,7 @@ class AndroidColliderGridLifecycle(unittest.TestCase):
             "private void OnEnable()", 1)[0]
         self.assertIn("if (!indexReady) return;", update)
         self.assertIn("if (!indexReady) return;", refresh)
-        self.assertIn("if (!indexReady) return false;", probe)
+        self.assertIn("if (!indexReady) return includeActive && obstacles != null && obstacles.Length > 0;", probe)
 
     def test_resuming_after_disable_does_not_duplicate_cached_colliders(self):
         build = CODE.split("private IEnumerator BuildGridAcrossFrames()", 1)[1].split(

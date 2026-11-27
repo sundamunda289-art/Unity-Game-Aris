@@ -16,6 +16,10 @@ namespace UnityEngine
         public static Vector3 zero => new Vector3(0, 0, 0);
         public float sqrMagnitude => x*x+y*y+z*z;
         public float magnitude => (float)Math.Sqrt(sqrMagnitude);
+        public static Vector3 Min(Vector3 a, Vector3 b) =>
+            new Vector3(Math.Min(a.x,b.x),Math.Min(a.y,b.y),Math.Min(a.z,b.z));
+        public static Vector3 Max(Vector3 a, Vector3 b) =>
+            new Vector3(Math.Max(a.x,b.x),Math.Max(a.y,b.y),Math.Max(a.z,b.z));
         public static Vector3 operator +(Vector3 a, Vector3 b) => new Vector3(a.x+b.x,a.y+b.y,a.z+b.z);
         public static Vector3 operator /(Vector3 v, float k) => new Vector3(v.x/k,v.y/k,v.z/k);
         public static Vector3 operator *(Vector3 v, float k) => new Vector3(v.x*k, v.y*k, v.z*k);
@@ -75,6 +79,8 @@ internal sealed class ProbeFixture
     internal readonly List<int> oversizedIndices = new List<int>();
     private const int MaxCellsPerProbe = /* PROBE_CAP */;
     private const int MaxCellsPerCollider = 64;
+    private const int MaxCoverSteps = /* SWEEP_CAP */;
+    private readonly Bounds[] coverProbes = new Bounds[MaxCoverSteps];
 
     public ProbeFixture(int count)
     {
@@ -110,6 +116,12 @@ internal sealed class ProbeFixture
     internal bool Probe(Vector3 center, Vector3 halfExtents, Quaternion rotation,
         bool includeActive = false)
     { /* PROBE_BODY */ }
+    internal bool HasObstacleInProbes(Bounds first, Bounds[] additional,
+        int additionalCount, bool includeActive)
+    { /* PROBE_BATCH_BODY */ }
+    private bool MatchesObstacleProbe(int index, Bounds first, Bounds[] additional,
+        int additionalCount, Vector3 probeMin, Vector3 probeMax, bool includeActive)
+    { /* MATCH_PROBE_BODY */ }
     private ProbeFixture nearbyColliders => this;
     internal bool HasPotentialInactiveObstacle(Vector3 center, Vector3 halfExtents,
         Quaternion rotation, bool includeActive = false) => Probe(center,halfExtents,rotation,includeActive);
@@ -142,6 +154,77 @@ internal static class BoundedProbeTests
     { checks++; if(!ok) throw new Exception(why); }
     static float Range(Random r,float lo,float hi) =>
         lo+(float)r.NextDouble()*(hi-lo);
+
+    // The original path checks each box on its own. Compare its exact answers
+    // with the batched grid for both virtual and physical movement.
+    static bool IndividualSweep(ProbeFixture fixture, Vector3 from, Vector3 displacement,
+        bool includeActive)
+    {
+        if (displacement.sqrMagnitude < .000001f) return false;
+        float distance = displacement.magnitude;
+        Vector3 heading = displacement / distance;
+        Vector3 chest = Vector3.up * .9f;
+        var half = new Vector3(.36f, .90f, .36f);
+        if (includeActive)
+        {
+            if (distance > 17f * .36f) return true;
+            Vector3 travel = displacement * .5f;
+            var swept = new Vector3(.31f + Math.Abs(travel.x), .90f + Math.Abs(travel.y),
+                .31f + Math.Abs(travel.z));
+            if (fixture.Probe(from + travel + chest, swept, Quaternion.identity, true)) return true;
+        }
+        if (fixture.Probe(from + heading * Math.Max(distance, .72f) + chest,
+            half, Quaternion.identity, includeActive)) return true;
+        if (distance <= .72f) return false;
+        int steps = Mathf.CeilToInt(distance / .36f);
+        if (steps > 17) return true;
+        for (int step = 1; step < steps; step++)
+            if (fixture.Probe(from + heading * (distance * step / steps) + chest,
+                half, Quaternion.identity, includeActive)) return true;
+        return false;
+    }
+
+    static void CompareMovementProbes(Random rng)
+    {
+        // Work around both positive and negative cell edges. A diagonal's
+        // bounding envelope touches obstacles outside its individual boxes.
+        int individualLookups = 0, batchedLookups = 0;
+        for (int lane = -2; lane <= 2; lane++)
+        {
+            var fixture = new ProbeFixture(40);
+            for (int i = 0; i < fixture.obstacles.Length; i++)
+            {
+                var center = new Vector3(250f * lane + Range(rng, -12f, 12f),
+                    Range(rng, -1f, 4f), Range(rng, -20f, 20f));
+                var size = new Vector3(Range(rng, .02f, .9f), 2f, Range(rng, .02f, 2f));
+                fixture.Add(i, new Bounds(center, size), i % 3 != 0, true);
+                fixture.obstacles[i].isTrigger = i % 7 == 0;
+                fixture.obstacles[i].gameObject.activeInHierarchy = i % 11 != 0;
+            }
+            for (int sample = 0; sample < 900; sample++)
+            {
+                var from = new Vector3(250f * lane + Range(rng, -12f, 12f),
+                    Range(rng, -1f, 3f), Range(rng, -20f, 20f));
+                var move = new Vector3(Range(rng, -4f, 4f), Range(rng, -.5f, .5f),
+                    Range(rng, -4f, 4f));
+                for (int mode = 0; mode <= 1; mode++)
+                {
+                    int previousQuery = fixture.probeQuery;
+                    bool expected = IndividualSweep(fixture, from, move, mode == 1);
+                    individualLookups += fixture.probeQuery - previousQuery;
+                    previousQuery = fixture.probeQuery;
+                    Check(fixture.Sweep(from, move, mode == 1) == expected,
+                        "batched cover differs from individual movement boxes");
+                    batchedLookups += fixture.probeQuery - previousQuery;
+                    Check(fixture.probeQuery - previousQuery <= 1, "repeated movement grid query");
+                }
+            }
+        }
+        Check(batchedLookups * 3 < individualLookups, "movement grid work was not reduced");
+        Console.WriteLine("MOVEMENT_GRID_QUERIES individual=" + individualLookups +
+            " batched=" + batchedLookups);
+    }
+
     public static void Main()
     {
         var cover=new ProbeFixture(1);
@@ -192,6 +275,7 @@ internal static class BoundedProbeTests
             "giant unverified virtual step must remain blocked");
 
         var rng=new Random(20261121);
+        CompareMovementProbes(new Random(20261127));
         var fixture=new ProbeFixture(400);
         for (int i=0;i<fixture.obstacles.Length;i++)
         {

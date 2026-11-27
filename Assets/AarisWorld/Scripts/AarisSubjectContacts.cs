@@ -15,12 +15,13 @@ namespace Aaris.MapReview
             internal AarisVehicleMotor vehicle;
             internal Vector2 size;
             internal float range, clearance, anchorOffset, nextProbe;
-            internal Vector3 sample, normal;
-            internal bool valid, candidate, wheelPlane;
+            internal Vector3 sample, normal, frameAnchor;
+            internal bool valid, wheelPlane;
         }
         private const int Capacity=96;
         private static AarisSubjectContacts instance;
         private readonly Entry[] entries=new Entry[Capacity];
+        private readonly int[] candidates = new int[Capacity];
         // A car uses an underbody quad and at most four tyre footprints.
         // 480 total instances fit one instanced batch with nonuniform scales.
         private readonly Matrix4x4[] matrices = new Matrix4x4[Capacity * 5];
@@ -89,10 +90,9 @@ namespace Aaris.MapReview
             return p;
         }
 
-        private void Probe(ref Entry e)
+        private void Probe(ref Entry e, Vector3 p)
         {
             e.valid=false;
-            Vector3 p=Anchor(ref e);
             int count=Physics.RaycastNonAlloc(p+Vector3.up*.45f,Vector3.down,
                 hits,.45f+e.clearance,Physics.DefaultRaycastLayers,QueryTriggerInteraction.Ignore);
             if (count>=hits.Length) return;
@@ -129,10 +129,10 @@ namespace Aaris.MapReview
             float now = Time.unscaledTime;
             Vector3 eye = camera.transform.position;
             GeometryUtility.CalculateFrustumPlanes(camera, frustum);
+            int candidateCount = 0;
             for (int i=0;i<Capacity;i++)
             {
                 ref Entry e=ref entries[i];
-                e.candidate=false;
                 if (e.root==null || !e.root.gameObject.activeInHierarchy ||
                     (e.visual!=null && !e.visual.gameObject.activeInHierarchy) ||
                     (e.capsule!=null && (!e.capsule.enabled || !e.capsule.isGrounded)))
@@ -141,7 +141,8 @@ namespace Aaris.MapReview
                 if ((eye-p).sqrMagnitude>e.range*e.range ||
                     !GeometryUtility.TestPlanesAABB(frustum,new Bounds(p,
                         new Vector3(e.size.x,2f,e.size.y)))) {e.valid=false;continue;}
-                e.candidate = true;
+                e.frameAnchor = p;
+                candidates[candidateCount++] = i;
                 bool useWheelPlane = e.vehicle != null && e.vehicle.IsOccupied;
                 if (useWheelPlane != e.wheelPlane)
                 {
@@ -159,19 +160,26 @@ namespace Aaris.MapReview
             for (int budget=0;budget<2;budget++)
             {
                 int selected=-1; float oldest=float.PositiveInfinity;
-                for (int i=0;i<Capacity;i++)
-                    if (entries[i].candidate && !entries[i].wheelPlane &&
-                        entries[i].nextProbe <= now && entries[i].nextProbe < oldest)
-                    {selected=i;oldest=entries[i].nextProbe;}
+                for (int i = 0; i < candidateCount; i++)
+                {
+                    int index = candidates[i];
+                    ref Entry entry = ref entries[index];
+                    if (!entry.wheelPlane && entry.nextProbe <= now && entry.nextProbe < oldest)
+                    {
+                        selected = index;
+                        oldest = entry.nextProbe;
+                    }
+                }
                 if (selected<0) break;
-                entries[selected].nextProbe=now+.25f;
-                Probe(ref entries[selected]);LastProbeCount++;
+                ref Entry probe = ref entries[selected];
+                probe.nextProbe = now + .25f;
+                Probe(ref probe, probe.frameAnchor);
+                LastProbeCount++;
             }
-            for (int i=0;i<Capacity;i++)
+            for (int i = 0; i < candidateCount; i++)
             {
-                ref Entry e=ref entries[i];
-                if (!e.candidate) continue;
-                Vector3 p = Anchor(ref e), n = e.normal, s = e.sample;
+                ref Entry e = ref entries[candidates[i]];
+                Vector3 p = e.frameAnchor, n = e.normal, s = e.sample;
                 float distance = (eye - p).magnitude;
                 if (e.vehicle != null && distance < 16f)
                     PlaceTyreContacts(e.vehicle, Mathf.Clamp01((16f - distance) / 5f));

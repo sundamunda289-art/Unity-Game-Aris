@@ -377,6 +377,8 @@ namespace Aaris.MapReview
         private float nextDropComponentRefresh;
         private AarisOfflineMatchEnd matchEnd;
         private AarisNearbyColliders nearbyColliders;
+        private const int MaxCoverSteps = 17;
+        private readonly Bounds[] coverProbes = new Bounds[MaxCoverSteps];
         private AarisWeaponLootWorld rivalLootWorld;
         private float nextLootWorldLookup;
         private Terrain[] terrains;
@@ -395,6 +397,8 @@ namespace Aaris.MapReview
         private bool started, spawnComplete;
         private Canvas statusCanvas;
         private Text status;
+        private int displayedStatusCount = -1, displayedStatusRadius, displayedStatusWait;
+        private bool displayedStatusOutside, displayedStatusSpawnComplete;
         private Text recentKillFeed;
         private float killFeedClearAt;
         private GameObject playerKillBanner;
@@ -1072,6 +1076,16 @@ namespace Aaris.MapReview
             Vector3 lookAhead = heading * Mathf.Max(distance, 0.72f);
             Vector3 half = new Vector3(0.36f, 0.90f, 0.36f);
             Vector3 chest = Vector3.up * 0.9f;
+            if (!includeActive && distance <= 0.72f)
+                return nearbyColliders.HasPotentialInactiveObstacle(from + lookAhead + chest,
+                    half, Quaternion.identity);
+
+            const float stride = 0.36f;
+            int steps = distance > 0.72f ? Mathf.CeilToInt(distance / stride) : 1;
+            if (distance > MaxCoverSteps * stride || steps > MaxCoverSteps) return true;
+            Bounds endpoint = new Bounds(from + lookAhead + chest, half * 2f);
+            Bounds first = endpoint;
+            int count = 0;
             if (includeActive)
             {
                 // A .72m look-ahead box alone misses thin walls immediately
@@ -1081,29 +1095,20 @@ namespace Aaris.MapReview
                 // receiver's .31m radius: using the extra .05m steering padding
                 // at the start would trap an otherwise clear capsule beside a
                 // wall, including when its chosen tangent moves away from it.
-                if (distance > 17f * 0.36f) return true;
                 Vector3 halfTravel = displacement * 0.5f;
                 Vector3 sweptHalf = new Vector3(
                     0.31f + Mathf.Abs(halfTravel.x),
                     0.90f + Mathf.Abs(halfTravel.y),
                     0.31f + Mathf.Abs(halfTravel.z));
-                if (nearbyColliders.HasPotentialInactiveObstacle(
-                    from + halfTravel + chest, sweptHalf, Quaternion.identity,
-                    includeActive: true)) return true;
+                first = new Bounds(from + halfTravel + chest, sweptHalf * 2f);
+                coverProbes[count++] = endpoint;
             }
-            if (nearbyColliders.HasPotentialInactiveObstacle(from + lookAhead + chest,
-                half, Quaternion.identity, includeActive)) return true;
             // Long time-sliced steps must not tunnel through disabled thin cover.
-            // Probe the indexed obstacle grid, never allocate or wake PhysX.
-            if (distance <= 0.72f) return false;
-            const float stride = 0.36f;
-            int steps = Mathf.CeilToInt(distance / stride);
-            if (steps > 17) return true; // An untested teleport is unsafe.
+            // Visit the indexed colliders once for the full batch of boxes.
             for (int step = 1; step < steps; step++)
-                if (nearbyColliders.HasPotentialInactiveObstacle(
-                    from + heading * (distance * step / steps) + chest,
-                    half, Quaternion.identity, includeActive)) return true;
-            return false;
+                coverProbes[count++] = new Bounds(
+                    from + heading * (distance * step / steps) + chest, half * 2f);
+            return nearbyColliders.HasObstacleInProbes(first, coverProbes, count, includeActive);
         }
 
         // Real PhysX rays cannot see static cover disabled by the Android
@@ -2119,15 +2124,27 @@ namespace Aaris.MapReview
                     wait = Mathf.Max(0f, CloseStarts[i] - elapsed);
                     break;
                 }
-            string label = Outside(player.position) ? "OUTSIDE ZONE" :
-                wait > 0f ? "CLOSE IN " + Mathf.CeilToInt(wait) + "s" : "ZONE MOVING";
+            bool outside = Outside(player.position);
+            int waitSeconds = outside ? 0 : Mathf.CeilToInt(wait);
+            int radiusMetres = Mathf.CeilToInt(radius);
+            int count = spawnComplete ? activeRivals + 1 : spawnedRivals;
+            if (count == displayedStatusCount && radiusMetres == displayedStatusRadius &&
+                waitSeconds == displayedStatusWait && outside == displayedStatusOutside &&
+                spawnComplete == displayedStatusSpawnComplete) return;
+            displayedStatusCount = count;
+            displayedStatusRadius = radiusMetres;
+            displayedStatusWait = waitSeconds;
+            displayedStatusOutside = outside;
+            displayedStatusSpawnComplete = spawnComplete;
+
+            string label = outside ? "OUTSIDE ZONE" :
+                waitSeconds > 0 ? "CLOSE IN " + waitSeconds + "s" : "ZONE MOVING";
             // Until a valid rival actually exists, ALIVE 1 incorrectly
             // tells the player the BR has already been won.
             string participants = spawnComplete
-                ? "ALIVE " + (activeRivals + 1)
-                : "RIVALS " + spawnedRivals + "/" + RivalCount;
-            status.text = participants +
-                "    ZONE " + Mathf.CeilToInt(radius) + "m    " + label;
+                ? "ALIVE " + count
+                : "RIVALS " + count + "/" + RivalCount;
+            status.text = participants + "    ZONE " + radiusMetres + "m    " + label;
         }
 
         private static bool TryAcquireAimFallback(Vector3 origin, Vector3 forward,
@@ -2232,6 +2249,7 @@ namespace Aaris.MapReview
             rect.anchorMin = rect.anchorMax = new Vector2(.5f, .98f);
             rect.sizeDelta = new Vector2(670f, 44f);
             status = labelRoot.GetComponent<Text>();
+            displayedStatusCount = -1;
             status.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             status.fontSize = 18;
             status.alignment = TextAnchor.MiddleCenter;
