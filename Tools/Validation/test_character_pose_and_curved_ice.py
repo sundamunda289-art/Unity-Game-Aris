@@ -116,7 +116,8 @@ assert 'float capsuleTop = transform.TransformPoint(controller.center +' in visu
 assert 'Mathf.Min(excess, 1.00f) * lowPose' in visual
 assert 'private float SupportedAnkleY(Transform foot, float clearance,' in visual
 assert 'Ray ray = new Ray(origin, Vector3.down);' in visual
-assert 'AarisPhysicsHitBuffer.Raycast(ray, 1.70f, worldMask,' in visual
+assert 'Physics.RaycastNonAlloc(ray, ankleSupportHits, 1.70f,' in visual
+assert 'if (count >= ankleSupportHits.Length) return float.NaN;' in visual
 assert 'hit.collider.transform.IsChildOf(transform)' in visual
 assert 'PlantCrouchLeg(leftThigh, leftShin, leftFootBone,' in visual
 # Turning on the spot in crouch/prone must release stale foot anchors, just
@@ -129,8 +130,9 @@ assert 'turningFast || transitioningStance)' in visual
 assert 'bool transitioningLowStance =' in visual
 assert '(crouchRigWeight > 0.03f && crouchRigWeight < 0.96f)' in visual
 assert '(proneRigWeight > 0.03f && proneRigWeight < 0.96f)' in visual
-assert visual.count('kneeClearance, kneePoleStrength,') == 2
-assert visual.count('planar, yawRate, ankleRigWeight, transitioningLowStance,') == 2
+assert 'kneeClearance - leftSwing, kneePoleStrength,' in visual
+assert 'kneeClearance - rightSwing, kneePoleStrength,' in visual
+assert visual.count('planar, yawRate, footWeight, transitioningLowStance,') == 2
 for yaw_rate, moving, weight, crouch_weight, prone_weight, should_release in (
     (0.0, 0.0, 1.0, 1.0, 0.0, False),
     (110.0, 0.0, 1.0, 1.0, 0.0, False),
@@ -361,7 +363,9 @@ assert resolved_position + prone_head_reach > wall_start
 assert 'if (obstacle is TerrainCollider terrain)' in action
 assert 'new Ray(sample + Vector3.up * 1.2f, Vector3.down)' in action
 assert 'sampleHit.point.y > sample.y - 0.10f' in action
-assert 'Vector3.ProjectOnPlane(forward, proneGroundNormal)' in action
+assert 'Vector3.ProjectOnPlane(forward, normal)' in action
+assert 'hit.point.y > maximumY' in action
+assert 'middle.collider is BoxCollider' in action
 assert 'sampleHit.normal.y < minWalkableNormal' in action
 assert 'if (obstacle is TerrainCollider) continue;' not in action
 import math

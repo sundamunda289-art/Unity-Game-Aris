@@ -124,6 +124,7 @@ namespace Aaris.MapReview
         private Transform rightThigh, rightShin, rightFootBone;
         private Transform proneChestBone, proneHeadBone;
         private Transform proneLeftHandBone, proneRightHandBone;
+        private Transform proneLeftElbowBone, proneRightElbowBone;
         private Transform balanceSpineBone, locomotionHipsBone;
         private Vector3 leftBindSoleUp, rightBindSoleUp;
         private float leftBootClearance, rightBootClearance;
@@ -136,7 +137,7 @@ namespace Aaris.MapReview
         private bool groundedRigCalibrated;
         private float standingShoeOffset;
         private float smoothedProneSupportDrop;
-        private RaycastHit[] ankleSupportHits = new RaycastHit[12];
+        private readonly RaycastHit[] ankleSupportHits = new RaycastHit[128];
         // Stance-foot world locks remove visible contact-foot skating while
         // preserving authored swing motion and CharacterController authority.
         private Vector3 leftUprightPlantWorld, rightUprightPlantWorld;
@@ -365,6 +366,8 @@ namespace Aaris.MapReview
             proneHeadBone = animator.GetBoneTransform(HumanBodyBones.Head);
             proneLeftHandBone = animator.GetBoneTransform(HumanBodyBones.LeftHand);
             proneRightHandBone = animator.GetBoneTransform(HumanBodyBones.RightHand);
+            proneLeftElbowBone = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm);
+            proneRightElbowBone = animator.GetBoneTransform(HumanBodyBones.RightLowerArm);
             balanceSpineBone = animator.GetBoneTransform(HumanBodyBones.Spine);
             locomotionHipsBone = animator.GetBoneTransform(HumanBodyBones.Hips);
             // Hide the saved player only after a candidate has a usable
@@ -1753,8 +1756,9 @@ namespace Aaris.MapReview
             // filters only colliders belonging to this character.
             int worldMask = Physics.DefaultRaycastLayers;
             Ray ray = new Ray(origin, Vector3.down);
-            int count = AarisPhysicsHitBuffer.Raycast(ray, 1.70f, worldMask,
-                ref ankleSupportHits, 128, out RaycastHit[] hits);
+            int count = Physics.RaycastNonAlloc(ray, ankleSupportHits, 1.70f,
+                worldMask, QueryTriggerInteraction.Ignore);
+            if (count >= ankleSupportHits.Length) return float.NaN;
             float closest = float.PositiveInfinity;
             float floor = float.NaN;
             // Plant only on surfaces the authoritative CharacterController can
@@ -1768,7 +1772,7 @@ namespace Aaris.MapReview
                 Mathf.Clamp(slopeLimit + 3f, 0f, 89f) * Mathf.Deg2Rad);
             for (int i = 0; i < count; i++)
             {
-                RaycastHit hit = hits[i];
+                RaycastHit hit = ankleSupportHits[i];
                 if (hit.collider == null || hit.normal.y < minWalkableNormalY ||
                     hit.collider.transform.IsChildOf(transform) ||
                     hit.distance >= closest) continue;
@@ -2456,6 +2460,25 @@ namespace Aaris.MapReview
                     proneSupportPoint, proneSupportNormal);
                 float headGap = Vector3.Dot(proneHeadBone.position -
                     proneSupportPoint, proneSupportNormal);
+                if (prone && effectiveProneBlend > 0.90f && proneChestBone != null)
+                {
+                    float chestGap = Vector3.Dot(proneChestBone.position -
+                        proneSupportPoint, proneSupportNormal);
+                    float groundLift = Mathf.Max(0.142f - pelvisGap, 0.125f - chestGap);
+                    float helmetRoom = controller.height * proneSupportNormal.y -
+                        ProneHeadColliderInset - headGap - 0.02f;
+                    float settle = Mathf.SmoothStep(0f, 1f,
+                        Mathf.InverseLerp(0.90f, 0.995f, effectiveProneBlend));
+                    float lift = Mathf.Clamp(Mathf.Min(groundLift, helmetRoom), 0f, 0.17f) * settle;
+                    if (lift > 0.0001f)
+                    {
+                        // The support normal preserves this clearance on a
+                        // slope. The planted-leg solve still runs below.
+                        visualRoot.position += proneSupportNormal * lift;
+                        pelvisGap += lift;
+                        headGap += lift;
+                    }
+                }
                 safeSupportDrop = Mathf.Max(0f, Mathf.Min(pelvisGap - 0.085f, headGap - 0.14f));
                 if (proneChestBone != null)
                     safeSupportDrop = Mathf.Min(safeSupportDrop, Mathf.Max(0f,
@@ -2471,15 +2494,24 @@ namespace Aaris.MapReview
                         safeSupportDrop = Mathf.Min(safeSupportDrop, Mathf.Max(0f,
                             Vector3.Dot(proneRightHandBone.position - proneSupportPoint,
                                 proneSupportNormal) - 0.02f));
+                    if (proneLeftElbowBone != null)
+                        safeSupportDrop = Mathf.Min(safeSupportDrop, Mathf.Max(0f,
+                            Vector3.Dot(proneLeftElbowBone.position - proneSupportPoint,
+                                proneSupportNormal) - 0.045f));
+                    if (proneRightElbowBone != null)
+                        safeSupportDrop = Mathf.Min(safeSupportDrop, Mathf.Max(0f,
+                            Vector3.Dot(proneRightElbowBone.position - proneSupportPoint,
+                                proneSupportNormal) - 0.045f));
                 }
-                if (cc0SettledProne && leftThigh != null && rightThigh != null)
+                if (prone && effectiveProneBlend > 0.90f && leftThigh != null && rightThigh != null)
                 {
                     float hipWidth = Vector3.Distance(leftThigh.position, rightThigh.position);
-                    float pelvisEnvelope = Mathf.Clamp(hipWidth * 0.42f, 0.13f, 0.17f);
+                    float stride = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.18f, 0.75f, planar));
+                    float pelvisEnvelope = Mathf.Clamp(hipWidth * 0.42f, 0.13f, 0.17f) + stride * 0.035f;
                     float settle = Mathf.SmoothStep(0f, 1f,
                         Mathf.InverseLerp(0.90f, 0.995f, effectiveProneBlend));
                     supportDropTarget = Mathf.Min(safeSupportDrop,
-                        Mathf.Clamp(pelvisGap - pelvisEnvelope, 0f, 0.16f)) * settle;
+                        Mathf.Clamp(pelvisGap - pelvisEnvelope, 0f, Mathf.Lerp(0.16f, 0.10f, stride))) * settle;
                 }
             }
             // Recompute from the uncorrected animated root every frame, so
@@ -2727,28 +2759,43 @@ namespace Aaris.MapReview
                 // Resolve X/Z BEFORE sampling Y. This keeps the one existing
                 // Physics query per foot on the actual locked point, rather
                 // than on a different goal across a ramp or stair lip.
+                bool plantedCrouch = crouching && !prone && !actions.IsStanceTransitioning &&
+                    effectiveCrouchBlend >= 0.985f && proneShare < 0.01f && planar < 0.035f &&
+                    Mathf.Abs(yawRate) < 8f;
+                float footWeight = plantedCrouch ? 1f : ankleRigWeight;
                 leftFootGoal = ResolveLowStanceFootContact(leftFootGoal,
-                    planar, yawRate, ankleRigWeight, transitioningLowStance,
+                    planar, yawRate, footWeight, transitioningLowStance,
                     currentYaw, ref leftPlantYaw,
                     ref leftLowPlantLocked, ref leftLowPlantWorld);
                 rightFootGoal = ResolveLowStanceFootContact(rightFootGoal,
-                    planar, yawRate, ankleRigWeight, transitioningLowStance,
+                    planar, yawRate, footWeight, transitioningLowStance,
                     currentYaw, ref rightPlantYaw,
                     ref rightLowPlantLocked, ref rightLowPlantWorld);
                 float leftAnkleY = SupportedAnkleY(leftFootBone,
                     ankleClearance, out Vector3 leftSupportNormal, leftFootGoal);
                 float rightAnkleY = SupportedAnkleY(rightFootBone,
                     ankleClearance, out Vector3 rightSupportNormal, rightFootGoal);
+                // Keep the authored moving crouch's swing above the actual
+                // support height. The lower foot stays planted; subtract the
+                // local floor difference so an inclined runway isn't a swing.
+                float leftSwing = 0f, rightSwing = 0f;
+                if (movingCrouchKneeRelax > 0.001f && !float.IsNaN(leftAnkleY) && !float.IsNaN(rightAnkleY))
+                {
+                    float swing = (leftFootBone.position.y - leftAnkleY) -
+                        (rightFootBone.position.y - rightAnkleY);
+                    leftSwing = Mathf.Clamp(swing - 0.025f, 0f, 0.13f) * movingCrouchKneeRelax;
+                    rightSwing = Mathf.Clamp(-swing - 0.025f, 0f, 0.13f) * movingCrouchKneeRelax;
+                }
                 if (!float.IsNaN(leftAnkleY))
                     PlantCrouchLeg(leftThigh, leftShin, leftFootBone,
-                        leftAnkleY, kneeForward, ankleRigWeight,
-                        leftFootGoal, kneeClearance, kneePoleStrength,
+                        leftAnkleY + leftSwing, kneeForward, footWeight,
+                        leftFootGoal, kneeClearance - leftSwing, kneePoleStrength,
                         kneeSideAxis, 0.23f, transitionKneeSideTurn);
                 else leftLowPlantLocked = false;
                 if (!float.IsNaN(rightAnkleY))
                     PlantCrouchLeg(rightThigh, rightShin, rightFootBone,
-                        rightAnkleY, kneeForward, ankleRigWeight,
-                        rightFootGoal, kneeClearance, kneePoleStrength,
+                        rightAnkleY + rightSwing, kneeForward, footWeight,
+                        rightFootGoal, kneeClearance - rightSwing, kneePoleStrength,
                         kneeSideAxis, 0.23f, transitionKneeSideTurn);
                 else rightLowPlantLocked = false;
                 // Crouch/prone used to correct only ankle height, leaving the
@@ -2757,10 +2804,10 @@ namespace Aaris.MapReview
                 // Physics query is introduced by this low-stance correction.
                 if (!float.IsNaN(leftAnkleY))
                     AlignFootToSupport(leftFootBone, leftSupportNormal,
-                        ankleRigWeight, 26f, 0.72f);
+                        footWeight * (1f - Mathf.Clamp01(leftSwing / 0.09f)), 26f, 0.72f);
                 if (!float.IsNaN(rightAnkleY))
                     AlignFootToSupport(rightFootBone, rightSupportNormal,
-                        ankleRigWeight, 26f, 0.72f);
+                        footWeight * (1f - Mathf.Clamp01(rightSwing / 0.09f)), 26f, 0.72f);
             }
             else
             {

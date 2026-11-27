@@ -44,11 +44,14 @@ namespace Aaris.MapReview
         private float stanceStartHeight, stanceTargetHeight, stanceElapsed, stanceDuration;
         private bool stanceTransitioning;
         private readonly RaycastHit[] proneSupportHits = new RaycastHit[32];
-        private Vector3 proneGroundNormal = Vector3.up, proneSupportPosition, proneGroundPoint;
+        private Vector3 proneGroundNormal = Vector3.up, proneGroundPoint;
         private bool proneSupportValid;
         private float nextProneSupportSample;
+        private Vector3 supportSamplePosition, supportSampleForward, supportSamplePoint, supportSampleNormal;
+        private Collider continuousSupport;
         private bool fireHeld;
         private bool semiShotQueued;
+        private bool shotQueuedDuringDraw;
         // Short trigger edges survive a cooldown / slow Android input frame,
         // but must not manufacture a delayed shot after a long reload.
         private const float SemiTapBufferSeconds = 0.16f;
@@ -66,6 +69,8 @@ namespace Aaris.MapReview
         public PlayerStance MovementStance => movementStance;
         public bool IsStanceTransitioning => stanceTransitioning;
         public bool FireHeld => fireHeld;
+        internal bool RequestsWeaponDraw => fireHeld ||
+            (shotQueuedDuringDraw && semiShotQueued && Time.time <= fireBufferUntil);
         public bool IsArmed => equippedGun != null &&
             equippedGun.isActiveAndEnabled && equippedGun.Configured;
         // Flight, vehicle seats and application pauses disable the sole on-foot
@@ -159,6 +164,7 @@ namespace Aaris.MapReview
             lastPunchTime = -10f;
             nextAttack = 0f;
             semiShotQueued = false;
+            shotQueuedDuringDraw = false;
             fireBufferUntil = 0f;
         }
 
@@ -176,10 +182,11 @@ namespace Aaris.MapReview
             fireHeld = held;
             // A released semi-auto press retains its brief buffer until it
             // fires or expires; automatic fire stops immediately on release.
-            if (!held && (!IsArmed || equippedGun.Automatic))
+            if (!held && (!IsArmed || (equippedGun.Automatic && !shotQueuedDuringDraw)))
             {
                 if (equippedGun != null) equippedGun.BreakAutomaticCadence();
                 semiShotQueued = false;
+                shotQueuedDuringDraw = false;
                 fireBufferUntil = 0f;
             }
             // The single player motor owns sprint cancellation. Clearing it
@@ -187,7 +194,9 @@ namespace Aaris.MapReview
             // Jump and Fire arrive during the same mobile input frame.
             if (!newPress) return;
             semiShotQueued = true;
-            fireBufferUntil = Time.time + SemiTapBufferSeconds;
+            shotQueuedDuringDraw = IsArmed && equippedGun.RequiresVisualDraw;
+            fireBufferUntil = Time.time + SemiTapBufferSeconds +
+                (shotQueuedDuringDraw ? 0.30f : 0f);
             // Do not bypass the gun's ammo, reload, cooldown or cover checks.
             // An unarmed tap must also begin its punch wind-up immediately,
             // otherwise a short Down/Up pair is lost before the next Update.
@@ -249,7 +258,7 @@ namespace Aaris.MapReview
             stanceTargetHeight = height;
             stanceElapsed = 0f;
             stanceDuration = target == PlayerStance.Prone || movementStance == PlayerStance.Prone
-                ? 0.38f : 0.24f;
+                ? 0.38f : target == PlayerStance.Crouching ? 0.20f : 0.24f;
             stanceTransitioning = Mathf.Abs(height - capsule.height) > 0.0001f;
             stance = target;
             if ((int)target > (int)movementStance || !stanceTransitioning)
@@ -276,8 +285,11 @@ namespace Aaris.MapReview
         private void AdvanceStanceTransition(float deltaTime)
         {
             if (capsule == null || !capsule.enabled) return;
-            if (stance == PlayerStance.Prone && capsule.isGrounded)
-                TrySampleProneSupport(transform.position);
+            // Movement/turn queries may test a position the motor never reaches.
+            // Publish a presentation plane only for the actual grounded body.
+            proneSupportValid = movementStance == PlayerStance.Prone && capsule.isGrounded &&
+                TrySampleProneSupport(transform.position, transform.forward,
+                    out proneGroundPoint, out proneGroundNormal);
             if (!stanceTransitioning || deltaTime <= 0f) return;
             stanceElapsed = Mathf.Min(stanceElapsed + Mathf.Min(deltaTime, 0.15f), stanceDuration);
             float t = Mathf.SmoothStep(0f, 1f, stanceElapsed / stanceDuration);
@@ -303,39 +315,70 @@ namespace Aaris.MapReview
             }
         }
 
-        private bool TrySampleProneSupport(Vector3 position)
+        private bool TrySampleProneSupport(Vector3 position, Vector3 forward,
+            out Vector3 point, out Vector3 normal)
         {
-            // One local player's small support ray, cached for 80 ms/10 cm.
-            // It serves clearance AND presentation; no per-bone ray fanout.
+            // Cache three samples for the whole body's footprint. This also
+            // avoids re-querying the continuous ground in each overlap.
             if (Time.unscaledTime < nextProneSupportSample &&
-                (position - proneSupportPosition).sqrMagnitude < 0.01f)
-                return proneSupportValid;
-            proneSupportPosition = position;
+                (position - supportSamplePosition).sqrMagnitude < 0.01f &&
+                Vector3.Dot(forward, supportSampleForward) > 0.985f)
+            {
+                point = supportSamplePoint;
+                normal = supportSampleNormal;
+                return true;
+            }
+
+            nextProneSupportSample = -1f;
+            continuousSupport = null;
+            point = position;
+            normal = Vector3.up;
+            float walkable = Mathf.Cos(Mathf.Min(28f, capsule.slopeLimit) * Mathf.Deg2Rad);
+            float floorHeight = position.y + (standingCenter.y - standingHeight * 0.5f) * transform.lossyScale.y;
+            if (!TryFindProneFloor(position, 0.65f, 1.25f, floorHeight + 0.145f,
+                    walkable, out RaycastHit middle))
+                return false;
+
+            Vector3 reach = Vector3.ProjectOnPlane(forward, middle.normal).normalized * 0.55f;
+            Vector3 frontPoint = middle.point + reach;
+            Vector3 rearPoint = middle.point - reach;
+            if (!TryFindProneFloor(frontPoint, 0.16f, 0.36f, frontPoint.y + 0.13f,
+                    walkable, out RaycastHit front) ||
+                !TryFindProneFloor(rearPoint, 0.16f, 0.36f, rearPoint.y + 0.13f,
+                    walkable, out RaycastHit rear))
+                return false;
+
+            supportSamplePosition = position;
+            supportSampleForward = forward;
+            point = supportSamplePoint = middle.point;
+            normal = supportSampleNormal = middle.normal;
             nextProneSupportSample = Time.unscaledTime + 0.08f;
-            proneSupportValid = false;
-            proneGroundNormal = Vector3.up;
-            int count = Physics.RaycastNonAlloc(position + Vector3.up * 0.65f,
-                Vector3.down, proneSupportHits, 1.25f,
+            // A single box has one support face. A mesh/terrain can also
+            // contain a wall or bank, so always inspect those overlaps.
+            if (middle.collider is BoxCollider &&
+                middle.collider == front.collider && middle.collider == rear.collider)
+                continuousSupport = middle.collider;
+            return true;
+        }
+
+        private bool TryFindProneFloor(Vector3 position, float above, float distance, float maximumY,
+            float minNormalY, out RaycastHit floor)
+        {
+            floor = default;
+            int count = Physics.RaycastNonAlloc(position + Vector3.up * above,
+                Vector3.down, proneSupportHits, distance,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            // A saturated unordered buffer cannot establish support safely.
-            // Fail closed without allocating or claiming a fictitious plane.
             if (count >= proneSupportHits.Length) return false;
             float nearest = float.PositiveInfinity;
             for (int i = 0; i < count; i++)
             {
                 RaycastHit hit = proneSupportHits[i];
-                if (hit.collider == null || hit.collider.transform.IsChildOf(transform) ||
+                if (hit.collider == null || hit.point.y > maximumY || hit.collider.transform.IsChildOf(transform) ||
                     hit.distance >= nearest) continue;
                 nearest = hit.distance;
-                proneGroundNormal = hit.normal;
-                proneGroundPoint = hit.point;
+                floor = hit;
             }
-            // A horizontal human body cannot safely lie along a cliff face.
-            float maxSlope = Mathf.Min(28f, capsule.slopeLimit);
-            proneSupportValid = nearest < float.PositiveInfinity &&
-                proneGroundNormal.y >= Mathf.Cos(maxSlope * Mathf.Deg2Rad);
-            if (!proneSupportValid) proneGroundNormal = Vector3.up;
-            return proneSupportValid;
+            return nearest < float.PositiveInfinity && floor.normal.y >= minNormalY;
         }
 
         private bool HasRoomAbove(float proposedHeight)
@@ -367,18 +410,11 @@ namespace Aaris.MapReview
             Collider[] headroomHits = nearHits;
             if (count >= nearHits.Length)
             {
-                // A filled NonAlloc result is incomplete, not proof of a wall.
-                // In dense settlements resolve ALL contacts, then still reject
-                // every real ceiling while ignoring only our own colliders.
                 headroomHits = crowdedHits;
                 count = Physics.OverlapCapsuleNonAlloc(low, high, radius,
                     crowdedHits, mask, QueryTriggerInteraction.Ignore);
-                if (count >= crowdedHits.Length)
-                {
-                    headroomHits = Physics.OverlapCapsule(low, high, radius, mask,
-                        QueryTriggerInteraction.Ignore);
-                    count = headroomHits.Length;
-                }
+                // A saturated unordered buffer cannot establish clear headroom.
+                if (count >= crowdedHits.Length) return false;
             }
             for (int i = 0; i < count; i++)
             {
@@ -443,10 +479,12 @@ namespace Aaris.MapReview
             // height alone would let the visual body's head pass through
             // house walls. Check an approximate *horizontal* body footprint
             // before lying down and before each prone movement.
-            if (!TrySampleProneSupport(position)) return false;
-            Vector3 fwd = Vector3.ProjectOnPlane(forward, proneGroundNormal).normalized;
+            if (!TrySampleProneSupport(position, forward, out Vector3 floor, out Vector3 normal))
+                return false;
+            Vector3 fwd = Vector3.ProjectOnPlane(forward, normal).normalized;
             if (fwd.sqrMagnitude < 0.9f) fwd = transform.forward;
-            Vector3 center = position + Vector3.up * 0.31f;
+            Vector3 feet = position - Vector3.up * (Vector3.Dot(position - floor, normal) / normal.y);
+            Vector3 center = feet + normal * 0.31f;
             Vector3 head = center + fwd * 0.55f;
             Vector3 legs = center - fwd * 0.55f;
             // Include other players even if they share the saved player's layer;
@@ -457,23 +495,16 @@ namespace Aaris.MapReview
             Collider[] proneHits = nearHits;
             if (count >= nearHits.Length)
             {
-                // Crowded terrain can fill the reusable buffer with floors and
-                // the player's own colliders. Query every hit on overflow so
-                // real walls still block crawling without falsely locking pose.
                 proneHits = crowdedHits;
                 count = Physics.OverlapCapsuleNonAlloc(head, legs, 0.245f,
                     crowdedHits, mask, QueryTriggerInteraction.Ignore);
-                if (count >= crowdedHits.Length)
-                {
-                    proneHits = Physics.OverlapCapsule(head, legs, 0.245f, mask,
-                        QueryTriggerInteraction.Ignore);
-                    count = proneHits.Length;
-                }
+                if (count >= crowdedHits.Length) return false;
             }
             for (int i = 0; i < count; i++)
             {
                 Collider obstacle = proneHits[i];
-                if (obstacle == null || obstacle.transform.IsChildOf(transform)) continue;
+                if (obstacle == null || obstacle == continuousSupport || obstacle.transform.IsChildOf(transform))
+                    continue;
                 // The character rests ON terrain or paved bridges/steps.
                 // The horizontal prone footprint must not interpret a flat
                 // MeshCollider floor as a wall when crossing a bridge.
@@ -538,14 +569,14 @@ namespace Aaris.MapReview
                 punchContactTime = -1f;
                 Punch();
             }
-            // A quick semi-auto press can start and end between Updates.
-            // Only carry a release across a short cooldown, never indefinitely.
-            bool bufferedSemi = IsArmed && !equippedGun.Automatic &&
+            // Preserve a tap during the visual draw, including a quickly
+            // released automatic trigger. A released tap still fires once.
+            bool bufferedPress = IsArmed && (!equippedGun.Automatic || shotQueuedDuringDraw) &&
                 semiShotQueued && Time.time <= fireBufferUntil;
-            if ((!fireHeld && !bufferedSemi) || Time.time < nextAttack) return;
+            if ((!fireHeld && !bufferedPress) || Time.time < nextAttack) return;
             if (IsArmed)
             {
-                if (!equippedGun.Automatic && !bufferedSemi) return;
+                if (!equippedGun.Automatic && !bufferedPress) return;
                 ShootEquippedWeapon();
                 // At very low FPS a second deadline can fall in this frame.
                 // Keep the physics/VFX cost bounded after a long hitch.
@@ -567,6 +598,7 @@ namespace Aaris.MapReview
 
         private void ShootEquippedWeapon()
         {
+            if (equippedGun.RequiresVisualDraw) return;
             if (equippedGun.Automatic)
             {
                 if (automaticShotFrame != Time.frameCount)
@@ -582,7 +614,9 @@ namespace Aaris.MapReview
             if (equippedGun.TryFire(motor.AimCamera, gameObject))
             {
                 if (equippedGun.Automatic) automaticShotsThisFrame++;
+                if (!fireHeld) equippedGun.BreakAutomaticCadence();
                 semiShotQueued = false;
+                shotQueuedDuringDraw = false;
                 fireBufferUntil = 0f;
                 attackSequence++;
                 lastShootTime = Time.time;
@@ -709,6 +743,7 @@ namespace Aaris.MapReview
             fireHeld = false;
             if (equippedGun != null) equippedGun.BreakAutomaticCadence();
             semiShotQueued = false;
+            shotQueuedDuringDraw = false;
             fireBufferUntil = 0f;
             punchContactTime = -1f;
         }

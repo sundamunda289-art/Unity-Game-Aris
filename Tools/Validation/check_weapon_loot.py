@@ -699,12 +699,12 @@ def run():
     assert "proximalDegrees * frameScale" in inventory
     assert "middleDegrees * frameScale" in inventory
     assert "weaponRoot.SetParent(transform, false);" in attach
-    assert "PlaceOnBack(stowedRoot, true)" in attach
+    assert "PlaceOnBack(stowed, torso, true)" in attach
     # Fists stow both guns. Complete humanoids keep the active rifle in
     # a two-hand low-ready pose when sprinting; incomplete rigs retain the
     # back-holster fallback while ADS/fire/prone stay shoulder-ready.
     assert "if (fistMode || IsSprintHolstered)" in attach
-    assert "PlaceOnBack(weaponRoot, stowedRoot != null ? false : true);" in attach
+    assert "PlaceOnBack(equipped, torso, stowedRoot == null);" in attach
     assert "AimCamera" in attach
     assert "combat.Stance == AarisBattleActions.PlayerStance.Prone" in attach
     assert "Quaternion.LookRotation(forward, Vector3.up)" in attach
@@ -719,15 +719,13 @@ def run():
     assert "(shoulderForward * 0.035f + Vector3.up * 0.08f);" in attach
     assert "sprintReadyBlend = Mathf.Lerp(sprintReadyBlend," in late
     assert "if (aiming || (combat != null && combat.FireHeld))" in late
-    assert "Quaternion torso = chest != null && chest == calibratedChest" in inventory
-    assert "chest.rotation * chestToRootRestRotation : transform.rotation;" in inventory
-    assert "chestToRootRestRotation = Quaternion.Inverse(chest.rotation) *" in inventory
-    assert "transform.rotation;" in inventory
-    assert "if (chest != null && chest != calibratedChest)" in inventory
-    assert "longGunClearance" in inventory
-    assert "stowedRoot != null ? 0.065f : 0f" in inventory
+    assert "(rightUpperArm.position - leftUpperArm.position).normalized" in inventory
+    assert "Vector3.ProjectOnPlane(chest.position - hips.position, side)" in inventory
+    assert "Quaternion.LookRotation(barrel, Vector3.forward)" in inventory
+    assert "stowed.ModelLocalBounds.size.y" in inventory
+    assert "gun.PresentationSocket" in inventory
     assert "if (IsSprintLowReady) targetSway *= 0.45f;" in inventory
-    assert "!combat.FireHeld" in late
+    assert "!combat.RequestsWeaponDraw" in late
     assert "capsule.isGrounded" in late
     assert "sprintIntent && planarSpeedSqr > 3.75f * 3.75f" in late
     assert "private static void ReachArm(" in inventory
@@ -737,12 +735,12 @@ def run():
     assert "Quaternion.FromToRotation(oldUpper, newUpper)" in inventory
     # Camera/chest anchoring must not leave the trigger palm floating when a
     # smaller Humanoid cannot physically reach the nominal receiver position.
-    assert "private void FitTriggerGripToArmReach()" in inventory
+    assert "private Vector3 ReachableReceiver(Vector3 receiver, Quaternion rotation)" in inventory
     assert "float maximumReach = upperLength + lowerLength - 0.025f;" in inventory
     assert "float correction = Mathf.Min(distance - maximumReach, 0.12f);" in inventory
-    assert "weaponRoot.position -= fromShoulder / distance * correction;" in inventory
-    assert inventory.index("FitTriggerGripToArmReach();") < inventory.index(
-        "foregrip = ReachableSupportGripZ(")
+    assert "return receiver - fromShoulder / distance * correction;" in inventory
+    assert attach.index("receiver = ReachableReceiver(receiver, aimRotation);") < attach.index(
+        "WriteSocket(equipped, torso, receiver, aimRotation, SocketKind.Hands);")
 
     def trigger_fit(distance, reach):
         return min(max(0.0, distance - reach), 0.12)
