@@ -7,10 +7,11 @@ void AarisPackDetailGround_float(float3 TerrainColor, float3 RestPositionOS,
     Out = float4(TerrainColor, saturate(RestPositionOS.y / max(GroundHeight, 0.05)));
 }
 
-// Carry rest height with the existing vertex-sampled soil colour. AO and
-// root tint stay anchored while wind and contact move the drawn vertex.
+// Carry rest height with the vertex-sampled soil colour so root tint stays
+// anchored while wind and contact move the drawn vertex.
 void AarisDetailGround_half(half3 LeafColor, half4 TerrainColorAndHeight, half DistanceFade,
-    half InstanceSeed, half4 Profile, out half3 Out, out half3 TransmissionColor, out half Height01)
+    half InstanceSeed, half4 Profile, out half3 Out, out half3 TransmissionColor, out half Height01,
+    out half3 DaylightFill)
 {
     Height01 = TerrainColorAndHeight.w;
     half3 terrainColor = TerrainColorAndHeight.rgb;
@@ -41,9 +42,18 @@ void AarisDetailGround_half(half3 LeafColor, half4 TerrainColorAndHeight, half D
             + canopyExposure * half3(0.040h, 0.028h, -0.018h);
     }
     half3 rootedColor = lerp(localColor, terrainColor * half3(0.88h, 0.83h, 0.75h), rootBlend);
-    Out = lerp(rootedColor, terrainColor, fade);
-    // Suppress artificial emission near soil and far silhouettes. Existing
-    // thickness, AO and normal textures continue to define the detail.
+    // Dark atlas texels and terrain samples still need usable blade albedo
+    // after the shadow and root occlusion paths are removed.
+    Out = max(lerp(rootedColor, terrainColor, fade), half3(0.041h, 0.060h, 0.016h));
+    // The cheap ambient fill stays present when thickness or distance fades
+    // out transmission. It follows the main daylight colour without a shadow lookup.
+#ifdef SHADERGRAPH_PREVIEW
+    DaylightFill = 0.0h;
+#else
+    DaylightFill = Out * saturate(_MainLightColor.rgb) * half3(0.19h, 0.25h, 0.13h);
+#endif
+    // Retain the original thickness and normal response while easing out the
+    // transmission around the base and at distance.
     half heightMask = Height01 * Height01 * (3.0h - 2.0h * Height01);
     TransmissionColor = Out * (0.20h + 0.80h * heightMask) *
         (1.0h - 0.75h * fade);
@@ -51,13 +61,13 @@ void AarisDetailGround_half(half3 LeafColor, half4 TerrainColorAndHeight, half D
 
 void AarisDetailKeepCanopyNormal_half(bool FrontFace, half4 Profile, out bool Out)
 {
-    // Canopy lighting uses a fixed outward frame on both sides of a card.
-    Out = FrontFace || Profile.x > 0.001h;
+    // The authored vertex lighting frame faces up for grass and outward for
+    // shrubs. A double-sided card uses that same frame from either side.
+    Out = true;
 }
 
 // Bounded, warm transmission from the scene's existing directional light.
-// URP Lit handles real direct-light shadows; this inexpensive approximate
-// lobe must not imply an independent realtime shadow sample or self-glow.
+// A small diffuse wrap keeps grazing leaf cards lit by the existing sun.
 void PseudoSubsurface_half(float3 WorldPosition, half3 WorldNormal, half3 SSRadius,
                            half ShadowResponse, out half3 ssAmount)
 {
@@ -87,6 +97,7 @@ void PseudoSubsurface_half(float3 WorldPosition, half3 WorldNormal, half3 SSRadi
     // Authored SSS values range from 0.5 to 4, not just 0 to 1.
     half radius = saturate(0.25h * SSRadius.x);
     half ndl = dot(n, lightDir);
+    half sunWrap = saturate((ndl + 0.42h) * (1.0h / 1.42h));
     half back = saturate((radius - ndl) / (1.0h + radius));
     half wrapped = back * back * (3.0h - 2.0h * back);
     half edge = 1.0h - saturate(abs(ndl));
@@ -102,7 +113,7 @@ void PseudoSubsurface_half(float3 WorldPosition, half3 WorldNormal, half3 SSRadi
         + 0.10h * rim * (0.35h + 0.65h * back);
     half3 warmSun = half3(1.04h, 1.0h, 0.86h);
     half response = 1.0h - 0.20h * saturate(ShadowResponse);
-    ssAmount = max(0.0h, color * response * transmission * warmSun
+    ssAmount = max(0.0h, color * (response * transmission + 0.065h + 0.095h * sunWrap) * warmSun
         + ambient * skyFill * hemiFill);
 #ifndef SHADERGRAPH_PREVIEW
     ssAmount *= illusionFade;

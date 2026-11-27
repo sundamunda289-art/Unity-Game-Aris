@@ -19,6 +19,9 @@ def check_graph():
     blocks = [json.loads(chunk) for chunk in re.split(r"\n\s*\n(?=\{)", source)]
     nodes = {b["m_ObjectId"]: b for b in blocks if "m_ObjectId" in b}
     root = blocks[0]
+    surface = next(b for b in blocks if "m_AllowMaterialOverride" in b)
+    assert surface["m_AlphaClip"] and surface["m_RenderFace"] == 0
+    assert not any(surface[key] for key in ("m_AllowMaterialOverride", "m_CastShadows", "m_ReceiveShadows"))
     interaction = [
         b for b in blocks
         if b.get("m_Type") == "UnityEditor.ShaderGraph.CustomFunctionNode"
@@ -29,6 +32,8 @@ def check_graph():
     node_id = interaction[0]["m_ObjectId"]
     assert node_id in {p["m_Id"] for p in root["m_Nodes"]}
     edges = root["m_Edges"]
+    occlusion = next(b for b in blocks if b.get("m_Name") == "SurfaceDescription.Occlusion")
+    assert all(e["m_InputSlot"]["m_Node"]["m_Id"] != occlusion["m_ObjectId"] for e in edges)
     assert all(e["m_InputSlot"]["m_Node"]["m_Id"] in nodes and
                e["m_OutputSlot"]["m_Node"]["m_Id"] in nodes for e in edges)
     assert any(e["m_InputSlot"]["m_Node"]["m_Id"] == node_id for e in edges)
@@ -45,7 +50,7 @@ def check_graph():
                       5: "PerInstanceRandom (Custom Interpolator)", 6: "Property"}
     outputs = {nodes[e["m_InputSlot"]["m_Node"]["m_Id"]]["m_Name"]
                for e in edges if e["m_OutputSlot"]["m_Node"]["m_Id"] == ground["m_ObjectId"]}
-    assert outputs == {"SurfaceDescription.BaseColor", "Multiply", "Power"}
+    assert outputs == {"SurfaceDescription.BaseColor", "Multiply", "Power", "Add"}
 
     def destinations(node, port):
         return [(nodes[e["m_InputSlot"]["m_Node"]["m_Id"]], e["m_InputSlot"]["m_SlotId"])
@@ -56,6 +61,9 @@ def check_graph():
     [(interpolator, _)] = destinations(pack, 3)
     assert interpolator["m_SerializedDescriptor"] == "VertexDescription.TerrainColorMatch#4"
     assert [(n["m_Name"], p) for n, p in destinations(ground, 4)] == [("Power", 0)]
+    [(fill, port)] = destinations(ground, 8)
+    assert fill["m_Name"] == "Add" and port == 1
+    assert [(n["m_Name"], p) for n, p in destinations(fill, 2)] == [("SurfaceDescription.Emission", 0)]
     keep = next(b for b in blocks if b.get("m_FunctionName") == "AarisDetailKeepCanopyNormal")
     branches = destinations(keep, 3)
     assert len(branches) == 2 and all(n["m_Name"] == "Branch" and p == 0 for n, p in branches)
@@ -67,7 +75,8 @@ def check_graph():
 
 def check_interaction():
     shader = (FOLIAGE / "CustomFunctions/AarisGrassInteraction.hlsl").read_text()
-    motor = (ROOT / "Assets/AarisWorld/Scripts/AarisVehicleSession.cs").read_text()
+    session = (ROOT / "Assets/AarisWorld/Scripts/AarisVehicleSession.cs").read_text()
+    motor = (ROOT / "Assets/AarisWorld/Scripts/AarisVehicleMotor.cs").read_text()
     assert "void AarisGrassInteraction_float" in shader
     assert "float4 _AarisGrassInteractor;" in shader
     assert "float inverseRadiusSq = _AarisGrassInteractor.w;" in shader
@@ -86,8 +95,8 @@ def check_interaction():
     assert shader.index("float heightDelta = abs(pivot.y") < shader.index(
         "TransformObjectToWorld(BasePositionOS).xz")
     assert "if (radial < 1.0)" in shader
-    assert shader.index("Out = WindPositionOS;") < shader.index(
-        "UNITY_BRANCH if (heightDelta >= 1.8)")
+    entry = shader.split("void AarisGrassInteraction_float", 1)[1]
+    assert entry.index("Out = WindPositionOS;") < entry.index("AarisFootGrassContact(")
     for vertical_delta in (0.0, 0.8, 1.799999, 1.8, 1.800001, 4.0):
         for radial in (0.0, 0.25, 0.999999, 1.0, 1.000001, 4.0):
             old_contact = radial < 1.0 and vertical_delta < 1.8
@@ -96,21 +105,37 @@ def check_interaction():
 
     assert "float falloff = 1.0 - radial;" in shader
     assert "radius * radius" not in shader and "d2 / r2" not in shader
-    assert "vertical = vertical * vertical * (3.0 - 2.0 * vertical)" in shader
+    assert "return vertical * vertical * (3.0 - 2.0 * vertical)" in shader
     assert "rsqrt(d2 + 0.0144)" in shader
     assert "rcp(max(GroundHeight, 0.05))" in shader
     assert "BasePositionOS.y * inverseHeight" in shader
     assert "TransformObjectToWorld(BasePositionOS).xz" in shader
     assert "min(1.0, max(GroundHeight, 0.25))" in shader
     assert not any(term in shader for term in ("RWTexture", "ComputeBuffer", "Raycast", "Collider"))
-    assert "Shader.SetGlobalVector(GrassInteractorId, next)" in motor
-    assert "FootGrassInverseRadiusSq = 1f / (1.25f * 1.25f)" in motor
-    assert "VehicleGrassInverseRadiusSq = 1f / (2.6f * 2.6f)" in motor
-    assert "new Vector4(p.x, p.y, p.z, FootGrassInverseRadiusSq)" in motor
-    assert "new Vector4(p.x, p.y, p.z, VehicleGrassInverseRadiusSq)" in motor
-    assert "footMotor.transform.position" in motor
-    assert "car.transform.position" in motor
-    assert "Shader.SetGlobalVector(GrassInteractorId, Vector4.zero)" in motor
+    assert "Shader.SetGlobalVector(id, value)" in session
+    assert "FootGrassInverseRadiusSq = 1f / (1.25f * 1.25f)" in session
+    assert "new Vector4(p.x, p.y, p.z, FootGrassInverseRadiusSq)" in session
+    assert "footMotor.transform.position" in session
+    assert "SetGrassFootprint(shell, halfTrack, halfWheelbase);" in motor
+    assert "FindMovingGrassInteractor(transform.position)" in session
+    assert "GetGrassContact(out vehicle, out shape)" in session
+    for prop in ("GrassInteractorId", "GrassVehicleId", "GrassVehicleShapeId"):
+        assert f"Shader.SetGlobalVector({prop}, Vector4.zero);" in session
+    assert "position.y = lerp(position.y, rest.y * 0.28, pressure)" in shader
+    assert "float2 normalizedSq = local * local * _AarisGrassVehicleShape.zw" in shader
+
+    def remaining_height(x, z, y):
+        outside = max((x / 1.5) ** 2, (z / 2.45) ** 2)
+        edge = min(1.0, max(0.0, (outside - .33) / .67))
+        vertical = min(1.0, max(0.0, (1.8 - y) * 1.25))
+        pressure = (1.0 - edge * edge * (3.0 - 2.0 * edge)) * vertical * vertical * (3.0 - 2.0 * vertical)
+        return 1.0 - .72 * pressure
+
+    assert abs(remaining_height(0, 0, 0) - .28) < 1e-12
+    assert remaining_height(2, 0, 0) == remaining_height(0, 0, 1.8) == 1.0
+    for x in (0, .85, 1.48):
+        heights = [remaining_height(x, z / 100., .5) for z in range(251)]
+        assert all(.2799 <= a <= b <= 1.0 for a, b in zip(heights, heights[1:]))
 
 
 def check_red_bush_broadphase():
@@ -193,11 +218,12 @@ def check_mobile_transmission():
     assert "TransformWorldToShadowCoord" not in shader
     assert "void AarisDetailGround_half" in shader
     assert "saturate(1.0h - 2.0h * Height01)" in shader
-    assert "lerp(rootedColor, terrainColor, fade)" in shader
+    assert "max(lerp(rootedColor, terrainColor, fade), half3(0.041h, 0.060h, 0.016h))" in shader
     assert "Height01 = TerrainColorAndHeight.w" in shader
     assert "TransmissionColor = Out * (0.20h + 0.80h * heightMask)" in shader
     assert "0.25h * SSRadius.x" in shader
-    assert "Out = FrontFace || Profile.x > 0.001h" in shader
+    assert "Out = true;" in shader
+    assert "sunWrap = saturate((ndl + 0.42h)" in shader
     assert "contact * contact * (3.0h - 2.0h * contact)" in shader
     assert "unity_SHAr.w, unity_SHAg.w, unity_SHAb.w" in shader
     assert "ambient * skyFill * hemiFill" in shader
@@ -283,9 +309,11 @@ def check_ground_detail_mips():
     cutoffs = {
         "Bush_A": "0.482",
         "Bush_Dry": "0.5",
+        "Bush_Twig": "0.5",
         "Fern": "0.75",
         "Grass_A": "0.415",
         "Grass_C": "0.437",
+        "Grass_Dry": "0.206",
         "Heathe": "0.777",
         "Shrub": "0.5",
     }
@@ -294,6 +322,7 @@ def check_ground_detail_mips():
         assert "    enableMipMap: 1\n" in metadata, name
         assert "    mipMapsPreserveCoverage: 1\n" in metadata, name
         assert f"    alphaTestReferenceValue: {cutoff}\n" in metadata, name
+        assert "  alphaIsTransparency: 1\n" in metadata, name
 
 
 def check_speedtree_materials():

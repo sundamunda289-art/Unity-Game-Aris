@@ -1,25 +1,26 @@
 #ifndef AARIS_GRASS_INTERACTION_INCLUDED
 #define AARIS_GRASS_INTERACTION_INCLUDED
 
-// One global interactor for the on-foot player or active vehicle.
-// Shader Graph calls this in the vertex stage only: no physics, colliders,
-// per-blade scripts, extra texture samples or rendering passes.
-float4 _AarisGrassInteractor;  // World xyz, inverse interaction radius squared.
+// Both contacts run in the vertex stage and use CPU-normalized footprints.
+float4 _AarisGrassInteractor;  // On-foot world xyz, inverse radius squared.
+float4 _AarisGrassVehicle;     // Ground centre xyz, inverse broad radius squared.
+float4 _AarisGrassVehicleShape; // Forward xz, inverse squared width and length extents.
 
-void AarisGrassInteraction_float(float3 WindPositionOS, float3 BasePositionOS,
-    float GroundHeight, float4 Profile, out float3 Out, out float3 BendSlopeOS)
-{
-    Out = WindPositionOS;
-    BendSlopeOS = 0.0;
 #ifndef SHADERGRAPH_PREVIEW
+float AarisGrassHeightFade(float heightDelta)
+{
+    float vertical = saturate((1.8 - heightDelta) * 1.25);
+    return vertical * vertical * (3.0 - 2.0 * vertical);
+}
+
+void AarisFootGrassContact(float3 pivot, float3 BasePositionOS, float GroundHeight,
+    float4 Profile, inout float3 Out, inout float3 BendSlopeOS)
+{
     // Normalize the interaction radius once on CPU. Every detail vertex then
     // uses one multiply instead of rebuilding r^2 and dividing by it.
     float inverseRadiusSq = _AarisGrassInteractor.w;
     if (inverseRadiusSq > 0.0)
     {
-        // The Terrain detail mesh pivot is the translation column of its instanced
-        // object matrix. Read it directly instead of multiplying a zero vertex.
-        float3 pivot = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
         // All vertices of this instance share the same ground pivot height.
         // Reject different floors/slopes before computing per-leaf world XZ.
         float heightDelta = abs(pivot.y - _AarisGrassInteractor.y);
@@ -61,11 +62,7 @@ void AarisGrassInteraction_float(float3 WindPositionOS, float3 BasePositionOS,
         {
             // Fade the response on slopes and during a jump, including at
             // the boundary that rejects foliage on a different floor.
-            float vertical = saturate((1.8 - heightDelta) * 1.25);
-            // Cubic vertical easing has zero slope at both ends, so crossing
-            // the full-contact height while running downhill or landing cannot
-            // abruptly change blade velocity. Keep the radial falloff squared.
-            vertical = vertical * vertical * (3.0 - 2.0 * vertical);
+            float vertical = AarisGrassHeightFade(heightDelta);
             float falloff = 1.0 - radial;
             float height = saturate(BasePositionOS.y);
             float bendScale = 1.0;
@@ -89,6 +86,62 @@ void AarisGrassInteraction_float(float3 WindPositionOS, float3 BasePositionOS,
                 BendSlopeOS = clamp(offsetOS * (2.0 * height * inverseHeight), -0.65, 0.65);
         }
     }
+}
+
+void AarisVehicleGrassContact(float3 pivot, float3 rest, float groundHeight, float4 profile,
+    inout float3 position, inout float3 bendSlope)
+{
+    float heightDelta = abs(pivot.y - _AarisGrassVehicle.y);
+    UNITY_BRANCH if (heightDelta >= 1.8)
+        return;
+
+    float2 delta = pivot.xz - _AarisGrassVehicle.xz;
+    bool shrub = profile.x > 0.001;
+    // Shrub cards may reach beyond their pivot. Only transform nearby cards.
+    float reachSq = shrub ? 4.0 : 1.0;
+    UNITY_BRANCH if (dot(delta, delta) * _AarisGrassVehicle.w >= reachSq)
+        return;
+    UNITY_BRANCH if (shrub)
+        delta = TransformObjectToWorld(rest).xz - _AarisGrassVehicle.xz;
+
+    float2 forward = _AarisGrassVehicleShape.xy;
+    float2 right = float2(forward.y, -forward.x);
+    float2 local = float2(dot(delta, right), dot(delta, forward));
+    float2 normalizedSq = local * local * _AarisGrassVehicleShape.zw;
+    float outside = max(normalizedSq.x, normalizedSq.y);
+    UNITY_BRANCH if (outside >= 1.0)
+        return;
+
+    float edge = saturate((outside - 0.33) * (1.0 / 0.67));
+    float pressure = (1.0 - edge * edge * (3.0 - 2.0 * edge)) * AarisGrassHeightFade(heightDelta);
+    float inverseHeight = rcp(max(groundHeight, 0.05));
+    float height = saturate(rest.y * inverseHeight);
+    float2 direction = forward * 0.32 + right * clamp(local.x, -0.8, 0.8) * 0.32;
+    float3 lean = TransformWorldToObjectDir(float3(direction.x, 0.0, direction.y) * pressure, false);
+    position += lean * (height * height);
+    // Compress height linearly so full pressure pins the base and keeps the
+    // canopy above the soil. The smooth footprint restores its rest height.
+    position.y = lerp(position.y, rest.y * 0.28, pressure);
+    UNITY_BRANCH if (shrub && rest.y <= groundHeight)
+    {
+        bendSlope += lean * (2.0 * height * inverseHeight);
+        bendSlope.y -= 0.72 * pressure;
+        bendSlope = clamp(bendSlope, float3(-0.65, -0.78, -0.65), 0.65);
+    }
+}
+#endif
+
+void AarisGrassInteraction_float(float3 WindPositionOS, float3 BasePositionOS,
+    float GroundHeight, float4 Profile, out float3 Out, out float3 BendSlopeOS)
+{
+    Out = WindPositionOS;
+    BendSlopeOS = 0.0;
+#ifndef SHADERGRAPH_PREVIEW
+    // Every vertex in a terrain instance shares the matrix translation.
+    float3 pivot = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
+    AarisFootGrassContact(pivot, BasePositionOS, GroundHeight, Profile, Out, BendSlopeOS);
+    UNITY_BRANCH if (_AarisGrassVehicle.w > 0.0)
+        AarisVehicleGrassContact(pivot, BasePositionOS, GroundHeight, Profile, Out, BendSlopeOS);
 #endif
 }
 #endif

@@ -112,28 +112,41 @@ namespace Aaris.MapReview
         }
 
         private static readonly int GrassInteractorId = Shader.PropertyToID("_AarisGrassInteractor");
+        private static readonly int GrassVehicleId = Shader.PropertyToID("_AarisGrassVehicle");
+        private static readonly int GrassVehicleShapeId = Shader.PropertyToID("_AarisGrassVehicleShape");
         // Precompute radial normalization on CPU once. The terrain-detail
         // vertex shader receives 1/r^2 and avoids a division for every vertex.
         private const float FootGrassInverseRadiusSq = 1f / (1.25f * 1.25f);
-        private const float VehicleGrassInverseRadiusSq = 1f / (2.6f * 2.6f);
         private Vector4 lastGrassInteractor;
+        private Vector4 lastGrassVehicle;
+        private Vector4 lastGrassVehicleShape;
 
         private void PublishGrassInteractor()
         {
             Vector4 next = Vector4.zero;
-            if (car != null && car.isActiveAndEnabled)
-            {
-                Vector3 p = car.transform.position;
-                next = new Vector4(p.x, p.y, p.z, VehicleGrassInverseRadiusSq);
-            }
-            else if (footMotor != null && footMotor.isActiveAndEnabled)
+            if (!IsDriving && footMotor != null && footMotor.isActiveAndEnabled)
             {
                 Vector3 p = footMotor.transform.position;
                 next = new Vector4(p.x, p.y, p.z, FootGrassInverseRadiusSq);
             }
-            if (next.Equals(lastGrassInteractor)) return;
-            Shader.SetGlobalVector(GrassInteractorId, next);
-            lastGrassInteractor = next;
+            SetGrassVector(GrassInteractorId, next, ref lastGrassInteractor);
+
+            // While walking, the nearest moving registered rig can press the
+            // foliage too. This also covers a rolling car without a driver.
+            // Keep the walking contact and reuse the bounded physics list.
+            AarisVehicleMotor brushCar = car != null && car.isActiveAndEnabled ? car :
+                AarisVehicleMotor.FindMovingGrassInteractor(transform.position);
+            Vector4 vehicle = Vector4.zero, shape = Vector4.zero;
+            if (brushCar != null) brushCar.GetGrassContact(out vehicle, out shape);
+            SetGrassVector(GrassVehicleId, vehicle, ref lastGrassVehicle);
+            SetGrassVector(GrassVehicleShapeId, shape, ref lastGrassVehicleShape);
+        }
+
+        private static void SetGrassVector(int id, Vector4 value, ref Vector4 previous)
+        {
+            if (value.Equals(previous)) return;
+            Shader.SetGlobalVector(id, value);
+            previous = value;
         }
 
         private void LateUpdate()
@@ -686,7 +699,9 @@ namespace Aaris.MapReview
         private void OnDisable()
         {
             Shader.SetGlobalVector(GrassInteractorId, Vector4.zero);
-            lastGrassInteractor = Vector4.zero;
+            Shader.SetGlobalVector(GrassVehicleId, Vector4.zero);
+            Shader.SetGlobalVector(GrassVehicleShapeId, Vector4.zero);
+            lastGrassInteractor = lastGrassVehicle = lastGrassVehicleShape = Vector4.zero;
             CancelDrivingInput();
         }
     }
