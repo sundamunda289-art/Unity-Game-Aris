@@ -391,3 +391,7 @@ Assets/AarisWorld/Generated/TreeMass/Pine_C_LOD2.asset filter=lfs diff=lfs merge
 Assets/AarisWorld/Generated/TreeMass/Pine_D_LOD0.asset filter=lfs diff=lfs merge=lfs -text
 Assets/AarisWorld/Generated/TreeMass/Pine_D_LOD1.asset filter=lfs diff=lfs merge=lfs -text
 Assets/AarisWorld/Generated/TreeMass/Pine_D_LOD2.asset filter=lfs diff=lfs merge=lfs -text
+# Small authored profile and two 128px generated surface normals.
+Assets/AarisWorld/Surfaces/AarisDaylightGrade.asset !filter !diff !merge -text
+Assets/AarisWorld/Surfaces/AsphaltRelief.png !filter !diff !merge -text
+Assets/AarisWorld/Surfaces/ConcreteRelief.png !filter !diff !merge -text

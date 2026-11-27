@@ -115,7 +115,7 @@ class RealMetreVehicleFit(unittest.TestCase):
             "private void ApplyAuthoredMaterials(", 1)[0]
         self.assertIn('sourceLabel.Contains("_glass")', material)
         self.assertIn('sourceLabel.Contains("window")', material)
-        self.assertIn('polished.SetFloat("_Smoothness", .83f)', material)
+        self.assertIn('polished.SetFloat("_Smoothness", .88f)', material)
         self.assertIn("authoredMaterialCache[source] = polished", material)
         self.assertNotIn("renderer.material", material)
 

@@ -28,7 +28,7 @@ half4 AarisSubjectPBR(InputData inputData, SurfaceData surfaceData)
     half skyLobe = gloss * (0.035h + 0.19h * horizon + 0.12h * rim);
     // Clearcoat has a stronger, pale grazing and horizon response. It is
     // independent of the base pigment and uses the same reflected direction.
-    half coatLobe = coat * (0.028h + 0.32h * horizon + 0.18h * rim);
+    half coatLobe = coat * (0.018h + 0.34h * horizon + 0.23h * rim);
     fill += sky * (f0 * (0.35h + 0.50h * horizon) * smoothness
         + skyLobe + coatLobe + 0.035h * rim);
 #endif

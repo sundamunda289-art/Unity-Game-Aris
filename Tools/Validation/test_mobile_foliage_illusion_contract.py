@@ -412,14 +412,14 @@ def check_custom_speedtree_shader():
     assert '#include "CustomFunctions/AarisSpeedTree8MobilePasses.hlsl"' in shader
     assert "UNITY_SETUP_INSTANCE_ID" in source
     assert "float3 treePos" in source and "hueVariationAmount" in source
-    assert "half rootContact" in source and "occlusion *= 1.0h - 0.20h * rootContact" in source
+    assert "half rootContact" in source and "occlusion *= 1.0h - 0.27h * rootContact" in source
     assert "half3 hemiTint" in source and "half transmit" in source
     assert "Light mainLight = GetMainLight(inputData, shadowMask, aoFactor);" in source
     assert "light.shadowAttenuation" in source
     assert "AarisLeafSun(inputData.normalWS, inputData.viewDirectionWS, mainLight, surfaceData.occlusion)" in source
     assert "AarisLeafSky(inputData.normalWS, inputData.bakedGI, aoFactor.indirectAmbientOcclusion)" in source
     assert "MainLightRealtimeShadow(" not in source
-    assert "SampleNormal" in source and source.count("normalTs.xy *= 1.20h - 0.12h * rootContact") == 2
+    assert "SampleNormal" in source and source.count("normalTs.xy *= 1.34h - 0.15h * rootContact") == 2
     # The blue varying must be shared by non-subsurface bark root AO and
     # subsurface leaf variation, never requiring an extra TEXCOORD.
     assert "output.color.b = contact * contact * (3.0h - 2.0h * contact)" in source

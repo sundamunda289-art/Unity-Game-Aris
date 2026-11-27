@@ -1103,7 +1103,7 @@ namespace Aaris.MapReview
                     // windows. Capping its overly mirror-like smoothness
                     // avoids a chrome/toy look without repainting those UVs.
                     polished.SetFloat("_Smoothness", Mathf.Clamp(
-                        source.GetFloat("_Smoothness"), .38f, .60f));
+                        source.GetFloat("_Smoothness"), .38f, .66f));
                 }
                 else if (dedicatedPaint)
                 {
@@ -1134,12 +1134,12 @@ namespace Aaris.MapReview
                     if (polished.HasProperty("_Metallic"))
                         polished.SetFloat("_Metallic", .05f);
                     if (polished.HasProperty("_Smoothness"))
-                        polished.SetFloat("_Smoothness", .83f);
+                        polished.SetFloat("_Smoothness", .88f);
                     // Give separate glass a restrained neutral reflection
                     // alongside the tint, in the existing opaque pass.
                     if (polished.shader == subject)
                     {
-                        polished.SetFloat("_ClearCoatMask", .26f);
+                        polished.SetFloat("_ClearCoatMask", .31f);
                         polished.SetFloat("_ClearCoatSmoothness", .92f);
                     }
                 }
