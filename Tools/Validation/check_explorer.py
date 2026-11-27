@@ -35,7 +35,15 @@ def check(require_native=False):
     camera_id=logic['followCamera']['fileID'];assert byid[camera_id][0]==20
     assert sum(c==20 for c,i,n,d in objects)==sum(c==81 for c,i,n,d in objects)==1
     camera_go=byid[camera_id][2]['m_GameObject']['fileID']
-    assert not any(c==114 and d.get('m_GameObject',{}).get('fileID')==camera_go for c,i,n,d in objects),'Flying camera controller remains'
+    # URP camera configuration and a grading volume do not control movement.
+    camera_render_scripts = {
+        'a79441f348de89743a2939f4d699eac1',  # UniversalAdditionalCameraData
+        '172515602e62fb746b5d573b38a5fe58',  # Volume
+    }
+    for c, i, n, d in objects:
+        if c == 114 and d.get('m_GameObject', {}).get('fileID') == camera_go:
+            assert d.get('m_Script', {}).get('guid') in camera_render_scripts, (
+                'Unexpected camera behaviour', i)
     assert 3<logic['followDistance']<6 and 3<logic['walkSpeed']<logic['runSpeed']<8
     for limb in ['leftArm','rightArm','leftLeg','rightLeg']:assert byid[logic[limb]['fileID']][0]==4
     assert all(d['m_StaticEditorFlags']==0 for c,i,n,d in objects if n=='GameObject' and d['m_Name'].startswith('AarisPlayer'))
