@@ -2797,15 +2797,18 @@ namespace Aaris.MapReview
                         // Raise and slightly centre the skeleton over its
                         // existing foot anchors. The original IK still solves
                         // both fixed-length limbs from the original samples.
-                        float lift = 0.060f;
+                        // A fixed height relative to the standing capsule
+                        // keeps the knee angle stable across different landing
+                        // and whole-rig support offsets on the same floor.
+                        const float pelvisHeight = 1.108f;
+                        float lift = Mathf.Clamp(transform.position.y + pelvisHeight -
+                            locomotionHipsBone.position.y, -0.04f, 0.12f);
                         if (proneHeadBone != null)
                         {
-                            // Keep headroom for the visible scalp above the
-                            // pivot, including the final upper-spine rotation.
                             const float headClearance = 0.085f;
-                            float freeHeight = controller.bounds.max.y + 0.025f -
+                            float freeHeight = controller.bounds.max.y + 0.033f -
                                 proneHeadBone.position.y - headClearance;
-                            lift = Mathf.Clamp(freeHeight, 0f, lift);
+                            lift = Mathf.Min(lift, Mathf.Max(0f, freeHeight));
                         }
                         locomotionHipsBone.position += (transform.up * lift -
                             transform.forward * 0.030f) * tacticalStandingWeight;
