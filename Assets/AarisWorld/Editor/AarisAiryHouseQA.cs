@@ -23,13 +23,18 @@ namespace Aaris.MapReview.Editor
         private const string OutputVariable = "AARIS_AIRY_HOUSE_QA_OUTPUT";
         private const string ShotsVariable = "AARIS_AIRY_HOUSE_QA_SHOTS";
         private const string HomesVariable = "AARIS_AIRY_HOUSE_QA_HOMES";
+        private const string PlayPhotosVariable = "AARIS_AIRY_HOUSE_QA_PLAY_PHOTOS";
         private const string PlayState = "aaris.airyhouse.play.state";
         private const string PlayOutput = "aaris.airyhouse.play.output";
         private const string PlayDeadline = "aaris.airyhouse.play.deadline";
         private const string PlayErrorCount = "aaris.airyhouse.play.errors";
+        private const string PlayErrorReason = "aaris.airyhouse.play.errorReason";
         private const string PlayExitCode = "aaris.airyhouse.play.exit";
         private const int Width = 1280;
         private const int Height = 720;
+        private const int PlayWidth = 960;
+        private const int PlayHeight = 540;
+        private const int MaximumPlayErrorReasons = 4;
         private const int ExpectedNativeHomes = 91;
         private const int ExpectedExpansionHomes = 16;
         private const int ExpectedScatterHomes = 21;
@@ -109,6 +114,9 @@ namespace Aaris.MapReview.Editor
             public string status = "failed";
             public string error;
             public int runtimeErrors;
+            public string[] runtimeErrorReasons;
+            public int captureWidth = PlayWidth;
+            public int captureHeight = PlayHeight;
             public List<WalkResult> homes = new List<WalkResult>();
         }
 
@@ -184,6 +192,7 @@ namespace Aaris.MapReview.Editor
             public CharacterController capsule;
             public AarisNearbyColliders nearby;
             public string[] homes;
+            public string photoMode;
             public int homeIndex;
             public Vector3[] route;
             public Quaternion inputHeading;
@@ -721,7 +730,18 @@ namespace Aaris.MapReview.Editor
             string phase = SessionState.GetString(PlayState, "");
             if ((phase == "starting" || phase == "walking" || phase == "stopping") &&
                 (type == LogType.Error || type == LogType.Assert || type == LogType.Exception))
-                SessionState.SetInt(PlayErrorCount, SessionState.GetInt(PlayErrorCount, 0) + 1);
+            {
+                int count = SessionState.GetInt(PlayErrorCount, 0);
+                if (count < MaximumPlayErrorReasons)
+                {
+                    string reason = (message ?? "").Split('\n')[0].Trim();
+                    const int maximumReasonLength = 320;
+                    if (reason.Length > maximumReasonLength)
+                        reason = reason.Substring(0, maximumReasonLength);
+                    SessionState.SetString(PlayErrorReason + count, type + " " + reason);
+                }
+                SessionState.SetInt(PlayErrorCount, count + 1);
+            }
         }
 
         private static void TickPlay()
@@ -792,13 +812,18 @@ namespace Aaris.MapReview.Editor
                 : configured.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
             if (homes.Length == 0)
                 throw new InvalidOperationException("Select at least one house route.");
+            string photoMode = Environment.GetEnvironmentVariable(PlayPhotosVariable);
+            if (string.IsNullOrWhiteSpace(photoMode)) photoMode = "all";
+            if (photoMode != "all" && photoMode != "roof" && photoMode != "stairs" && photoMode != "none")
+                throw new InvalidOperationException("Play photo mode must be all, roof, stairs, or none.");
 
             return new WalkSession
             {
                 player = player,
                 capsule = capsule,
                 nearby = Object.FindFirstObjectByType<AarisNearbyColliders>(),
-                homes = homes
+                homes = homes,
+                photoMode = photoMode
             };
         }
 
@@ -927,7 +952,7 @@ namespace Aaris.MapReview.Editor
                         session.player.SetEditorLocomotionQAInput(Vector2.zero);
                         CapturePlayer(session, "roof");
                         session.stepDirection = -1;
-                        session.settleUntil = now + .35;
+                        session.settleUntil = EditorApplication.timeSinceStartup + .35;
                     }
                     else if (step == session.route.Length / 2) CapturePlayer(session, "stairs");
                 }
@@ -946,7 +971,9 @@ namespace Aaris.MapReview.Editor
                     }
                 }
                 session.nextStep += session.stepDirection;
-                session.stepDeadline = now + 22.0;
+                // Camera.Render/readback can take longer than a movement leg on
+                // software rendering. Start the next leg's timer after the shot.
+                session.stepDeadline = EditorApplication.timeSinceStartup + 22.0;
                 return;
             }
             Vector3 local = Quaternion.Inverse(session.inputHeading) * direction.normalized;
@@ -956,6 +983,8 @@ namespace Aaris.MapReview.Editor
 
         private static void CapturePlayer(WalkSession session, string angle)
         {
+            if (session.photoMode != "all" && session.photoMode != angle)
+                return;
             Camera camera = session.player.AimCamera;
             Vector3 eye = camera.transform.position;
             string label = session.current.home + "-" + angle;
@@ -967,7 +996,8 @@ namespace Aaris.MapReview.Editor
             };
             try
             {
-                Render(camera, Path.Combine(SessionState.GetString(PlayOutput, ""), frame.file), ref frame);
+                Render(camera, Path.Combine(SessionState.GetString(PlayOutput, ""), frame.file),
+                    ref frame, PlayWidth, PlayHeight);
                 frame.status = "passed";
             }
             finally { session.current.frames.Add(frame); }
@@ -992,6 +1022,9 @@ namespace Aaris.MapReview.Editor
             WalkReport report = JsonUtility.FromJson<WalkReport>(File.ReadAllText(path));
             int code = SessionState.GetInt(PlayExitCode, 1);
             report.runtimeErrors = SessionState.GetInt(PlayErrorCount, 0);
+            report.runtimeErrorReasons = new string[Math.Min(report.runtimeErrors, MaximumPlayErrorReasons)];
+            for (int i = 0; i < report.runtimeErrorReasons.Length; i++)
+                report.runtimeErrorReasons[i] = SessionState.GetString(PlayErrorReason + i, "");
             if (report.runtimeErrors > 0) code = 1;
             report.status = code == 0 ? "passed" : "failed";
             File.WriteAllText(path, JsonUtility.ToJson(report, true));
@@ -1002,13 +1035,14 @@ namespace Aaris.MapReview.Editor
             if (Application.isBatchMode) EditorApplication.Exit(code);
         }
 
-        private static void Render(Camera camera, string path, ref Frame frame)
+        private static void Render(Camera camera, string path, ref Frame frame,
+            int width = Width, int height = Height)
         {
             RenderTexture previousActive = RenderTexture.active;
             RenderTexture previousTarget = camera.targetTexture;
-            RenderTexture target = RenderTexture.GetTemporary(Width, Height, 24,
+            RenderTexture target = RenderTexture.GetTemporary(width, height, 24,
                 RenderTextureFormat.ARGB32);
-            var image = new Texture2D(Width, Height, TextureFormat.RGBA32, false);
+            var image = new Texture2D(width, height, TextureFormat.RGBA32, false);
             try
             {
                 RenderTexture.active = target;
@@ -1016,13 +1050,14 @@ namespace Aaris.MapReview.Editor
                 camera.targetTexture = target;
                 camera.Render();
                 RenderTexture.active = target;
-                image.ReadPixels(new Rect(0, 0, Width, Height), 0, 0, false);
+                image.ReadPixels(new Rect(0, 0, width, height), 0, 0, false);
                 image.Apply(false);
 
                 Color32[] pixels = image.GetPixels32();
                 double sum = 0d, squares = 0d;
                 int count = 0, transparent = 0, magenta = 0, black = 0, white = 0;
-                for (int i = 0; i < pixels.Length; i += 113)
+                int stride = Math.Max(1, pixels.Length / 8192);
+                for (int i = 0; i < pixels.Length; i += stride)
                 {
                     Color32 pixel = pixels[i];
                     double luminance = .2126 * pixel.r + .7152 * pixel.g + .0722 * pixel.b;
