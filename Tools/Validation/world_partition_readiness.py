@@ -15,7 +15,7 @@ import sys
 
 SCENE = "Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity"
 _BLOCK = re.compile(r"(?=^--- !u!\d+ &-?\d+)", re.MULTILINE)
-_HEADER = re.compile(r"^--- !u!(\d+) &(-?\d+)", re.MULTILINE)
+_HEADER = re.compile(r"^--- !u!(\d+) &(-?\d+)( stripped)?\r?$", re.MULTILINE)
 _REF = re.compile(r"fileID: (-?\d+)")
 _GO = re.compile(r"^\s*m_GameObject: \{fileID: (\d+)\}", re.MULTILINE)
 _FATHER = re.compile(r"^\s*m_Father: \{fileID: (-?\d+)\}", re.MULTILINE)
@@ -45,6 +45,9 @@ class WorldScene:
             if uid in self.blocks:
                 raise ValueError("Duplicate Unity fileID: " + str(uid))
             self.blocks[uid] = Block(kind, section)
+            if match.group(3):
+                # The owning GameObject lives in the referenced prefab file.
+                continue
             if kind == 1:
                 name = _NAME.search(section)
                 self.names[uid] = name.group(1) if name else "<unnamed>"

@@ -36,7 +36,7 @@ All 17 reusable building prefabs now contain the same three LOD levels as the sc
 
 Cypress instances are a further 12% taller and wider in native TerrainData; already tall conifers/pines retain their scale. `Docs/CYPRESS_SCALE_TARGETS.json` stores absolute targets so repeated authoring cannot compound their size. Counts, positions, terrain heights, grass/detail data and terrain alpha textures are preserved. `Docs/WORLD_REVIEW_REPORT.json` records actual scales, clearances and daylight settings.
 
-The island still has 13 districts, 59 placed model objects from 17 sources, connected roads, a 240 m runway and 45 empty vehicle markers. Some source models contain multiple structures or closed doors; every building is not guaranteed enterable.
+The island has 13 districts, connected roads, a 240 m runway and 45 vehicle markers. Its 128 playable building placements now share six low-rise prefabs with open entrances, walkable stairs and floor/roof loot sockets. The placed set includes 16 former runtime house sites and 21 new houses in forest clearings, hill approaches and near towers. [Saved placement and socket audit](Docs/AIRY_HOUSE_AUDIT.json).
 
 Road paint is clipped at the actual paved mesh triangle boundaries and saved 2 cm above those triangles, rather than following the terrain underneath. Original road meshes and their detail are preserved. `Docs/ROAD_SURFACE_REPORT.json` records the measured separation after saving.
 

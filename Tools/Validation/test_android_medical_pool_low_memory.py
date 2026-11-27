@@ -43,8 +43,10 @@ class MedicalLowMemoryPool(unittest.TestCase):
         self.assertIn("MaxMedicalPoolReleasesPerFrame = 2;", SOURCE)
         self.assertIn("medicalPoolAllowedAt = Time.unscaledTime + 60f;", body)
         self.assertIn("released < MaxMedicalPoolReleasesPerFrame", body)
-        self.assertIn("medicalVisualPool.Pop()", body)
-        self.assertIn("helmetVisualPool.Pop()", body)
+        self.assertIn("pool = medicalVisualPool", body)
+        self.assertIn("pool = helmetVisualPool", body)
+        self.assertIn("pool = kitVisualPools[i]", body)
+        self.assertIn("GameObject inactive = pool.Pop();", body)
         self.assertIn("if (inactive != null) Destroy(inactive);", body)
         self.assertNotIn("activeMedicalSites.RemoveAt", body)
         self.assertNotIn("site.visual", body)
@@ -69,10 +71,12 @@ class MedicalLowMemoryPool(unittest.TestCase):
             "private void OnLowMemory()", 1)[0]
         self.assertIn("if (Time.unscaledTime < medicalPoolAllowedAt)", recycle)
         self.assertIn("Destroy(visual);", recycle)
-        self.assertIn("medicalVisualPool.Push(visual);", recycle)
-        self.assertIn("helmetVisualPool.Push(visual);", recycle)
+        self.assertIn("var pool = VisualPool(site);", recycle)
+        self.assertIn("return medicalVisualPool;", recycle)
+        self.assertIn("return helmetVisualPool;", recycle)
+        self.assertIn("return kitVisualPools[", recycle)
         self.assertLess(recycle.index("Destroy(visual);"),
-                        recycle.index("medicalVisualPool.Push(visual);"))
+                        recycle.index("pool.Push(visual);"))
 
     def test_subscribe_lifetime_and_original_scene_cleanup(self):
         self.assertIn("private void OnEnable() { Application.lowMemory += OnLowMemory; }", SOURCE)

@@ -1,0 +1,2407 @@
+{
+  "prefabs": {
+    "RidgeHouse": {
+      "storeys": 1,
+      "stairs": "straight",
+      "lod_triangles": [
+        1308,
+        1068,
+        492
+      ],
+      "collision_triangles": 492,
+      "indoor_sockets": 2,
+      "roof_sockets": 1
+    },
+    "CourtyardHouse": {
+      "storeys": 1,
+      "stairs": "wrap",
+      "lod_triangles": [
+        1368,
+        1140,
+        528
+      ],
+      "collision_triangles": 528,
+      "indoor_sockets": 2,
+      "roof_sockets": 2
+    },
+    "TerraceHouse": {
+      "storeys": 2,
+      "stairs": "interior",
+      "lod_triangles": [
+        2376,
+        1956,
+        936
+      ],
+      "collision_triangles": 936,
+      "indoor_sockets": 5,
+      "roof_sockets": 1
+    },
+    "LongBarracks": {
+      "storeys": 1,
+      "stairs": "straight",
+      "lod_triangles": [
+        1332,
+        1092,
+        504
+      ],
+      "collision_triangles": 504,
+      "indoor_sockets": 3,
+      "roof_sockets": 2
+    },
+    "BrokenPavilion": {
+      "storeys": 1,
+      "stairs": "straight",
+      "lod_triangles": [
+        768,
+        576,
+        300
+      ],
+      "collision_triangles": 300,
+      "indoor_sockets": 2,
+      "roof_sockets": 1
+    },
+    "CoastalHouse": {
+      "storeys": 1,
+      "stairs": "straight",
+      "lod_triangles": [
+        1308,
+        1068,
+        492
+      ],
+      "collision_triangles": 492,
+      "indoor_sockets": 2,
+      "roof_sockets": 2
+    }
+  },
+  "native_before": 91,
+  "previous_playtime_houses": 16,
+  "landmarks_preserved": [
+    "HighlandObservatory_observatory_dome_01",
+    "SoutheastLighthouse_lighthouse_01",
+    "ForestLookout_watchtower_01"
+  ],
+  "compounds_reoriented": [
+    "CanalMarket",
+    "ClockTowerTown",
+    "CoastalHamlet",
+    "EasternPort",
+    "FreightDistrict",
+    "HighlandObservatory",
+    "LakesideHamlet",
+    "NorthernRidgeTown",
+    "OldVillage"
+  ],
+  "added_by_terrain": {
+    "tower": 7,
+    "hill": 7,
+    "forest": 7
+  },
+  "total_houses": 128,
+  "total_sockets": 540,
+  "houses": [
+    {
+      "name": "CanalMarket_CanalTown_01",
+      "prefab": "LongBarracks",
+      "category": "previous-native",
+      "district": "CanalMarket",
+      "position": [
+        -120,
+        -31.06056,
+        691
+      ],
+      "yaw": 90,
+      "scale": [
+        1.2,
+        1,
+        1.2
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CanalMarket_Detail.unity"
+    },
+    {
+      "name": "CanalMarket_detached_two_storey_house_02",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "CanalMarket",
+      "position": [
+        -171.2,
+        -31.06056,
+        675
+      ],
+      "yaw": 0.0,
+      "scale": [
+        0.9199643184667533,
+        1,
+        0.9199643184667533
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CanalMarket_Detail.unity"
+    },
+    {
+      "name": "CanalMarket_garage_apartment_03",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "CanalMarket",
+      "position": [
+        -68.8,
+        -31.06056,
+        675
+      ],
+      "yaw": 0.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CanalMarket_Detail.unity"
+    },
+    {
+      "name": "CanalMarket_two_bedroom_garage_house_04",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "CanalMarket",
+      "position": [
+        -171.2,
+        -31.06056,
+        606.6
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1.0827310925312055,
+        1,
+        1.0827310925312055
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CanalMarket_Detail.unity"
+    },
+    {
+      "name": "CanalMarket_row_three_townhouses_05",
+      "prefab": "LongBarracks",
+      "category": "previous-native",
+      "district": "CanalMarket",
+      "position": [
+        -68.8,
+        -31.06056,
+        606.6
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1.0852229367395878,
+        1,
+        1.0852229367395878
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CanalMarket_Detail.unity"
+    },
+    {
+      "name": "CanalMarket_OpenDetached_Random_01",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "CanalMarket",
+      "position": [
+        -96,
+        -31.06056,
+        612
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CanalMarket_Detail.unity"
+    },
+    {
+      "name": "CanalMarket_OpenDetached_Random_02",
+      "prefab": "BrokenPavilion",
+      "category": "previous-native",
+      "district": "CanalMarket",
+      "position": [
+        -129,
+        -31.06056,
+        607
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CanalMarket_Detail.unity"
+    },
+    {
+      "name": "CanalMarket_OpenDetached_Random_03",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "CanalMarket",
+      "position": [
+        -64,
+        -31.06056,
+        698
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CanalMarket_Detail.unity"
+    },
+    {
+      "name": "ClockTowerTown_TownHall_01",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "ClockTowerTown",
+      "position": [
+        350,
+        -11.918768,
+        245
+      ],
+      "yaw": 45,
+      "scale": [
+        1.2,
+        1,
+        1.2
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ClockTowerTown_Detail.unity"
+    },
+    {
+      "name": "ClockTowerTown_a_frame_cabin_02",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "ClockTowerTown",
+      "position": [
+        289.2,
+        -11.918768,
+        245
+      ],
+      "yaw": 0.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ClockTowerTown_Detail.unity"
+    },
+    {
+      "name": "ClockTowerTown_bungalow_house_03",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "ClockTowerTown",
+      "position": [
+        410.8,
+        -11.918768,
+        245
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0790141577859527,
+        1,
+        1.0790141577859527
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ClockTowerTown_Detail.unity"
+    },
+    {
+      "name": "ClockTowerTown_pitched_roof_cottage_04",
+      "prefab": "CourtyardHouse",
+      "category": "previous-native",
+      "district": "ClockTowerTown",
+      "position": [
+        289.2,
+        -11.918768,
+        167.3
+      ],
+      "yaw": 180.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ClockTowerTown_Detail.unity"
+    },
+    {
+      "name": "ClockTowerTown_detached_two_storey_house_05",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "ClockTowerTown",
+      "position": [
+        410.8,
+        -11.918768,
+        167.3
+      ],
+      "yaw": 180.0,
+      "scale": [
+        0.9199643184667533,
+        1,
+        0.9199643184667533
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ClockTowerTown_Detail.unity"
+    },
+    {
+      "name": "ClockTowerTown_garage_apartment_06",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "ClockTowerTown",
+      "position": [
+        350,
+        -11.918768,
+        167.3
+      ],
+      "yaw": 180.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ClockTowerTown_Detail.unity"
+    },
+    {
+      "name": "ClockTowerTown_OpenDetached_07",
+      "prefab": "BrokenPavilion",
+      "category": "previous-native",
+      "district": "ClockTowerTown",
+      "position": [
+        313,
+        -11.918768,
+        219
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ClockTowerTown_Detail.unity"
+    },
+    {
+      "name": "ClockTowerTown_OpenDetached_08",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "ClockTowerTown",
+      "position": [
+        353,
+        -11.918768,
+        283
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ClockTowerTown_Detail.unity"
+    },
+    {
+      "name": "ClockTowerTown_OpenDetached_Random_01",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "ClockTowerTown",
+      "position": [
+        285,
+        -11.918768,
+        272
+      ],
+      "yaw": 90.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ClockTowerTown_Detail.unity"
+    },
+    {
+      "name": "ClockTowerTown_OpenDetached_Random_02",
+      "prefab": "BrokenPavilion",
+      "category": "previous-native",
+      "district": "ClockTowerTown",
+      "position": [
+        375,
+        -11.918768,
+        155
+      ],
+      "yaw": 270.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ClockTowerTown_Detail.unity"
+    },
+    {
+      "name": "ClockTowerTown_OpenDetached_Random_03",
+      "prefab": "BrokenPavilion",
+      "category": "previous-native",
+      "district": "ClockTowerTown",
+      "position": [
+        418,
+        -11.918768,
+        277
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ClockTowerTown_Detail.unity"
+    },
+    {
+      "name": "CoastalHamlet_bungalow_house_01",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "CoastalHamlet",
+      "position": [
+        650,
+        -18.193563,
+        675
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0790141577859527,
+        1,
+        1.0790141577859527
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CoastalHamlet_Detail.unity"
+    },
+    {
+      "name": "CoastalHamlet_row_three_townhouses_02",
+      "prefab": "LongBarracks",
+      "category": "previous-native",
+      "district": "CoastalHamlet",
+      "position": [
+        602,
+        -18.193563,
+        675
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0852229367395878,
+        1,
+        1.0852229367395878
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CoastalHamlet_Detail.unity"
+    },
+    {
+      "name": "CoastalHamlet_a_frame_cabin_03",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "CoastalHamlet",
+      "position": [
+        698,
+        -18.193563,
+        675
+      ],
+      "yaw": 0.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CoastalHamlet_Detail.unity"
+    },
+    {
+      "name": "CoastalHamlet_bungalow_house_04",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "CoastalHamlet",
+      "position": [
+        602,
+        -18.193563,
+        606.6
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1.0790141577859527,
+        1,
+        1.0790141577859527
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CoastalHamlet_Detail.unity"
+    },
+    {
+      "name": "CoastalHamlet_pitched_roof_cottage_05",
+      "prefab": "CourtyardHouse",
+      "category": "previous-native",
+      "district": "CoastalHamlet",
+      "position": [
+        698,
+        -18.193563,
+        606.6
+      ],
+      "yaw": 180.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CoastalHamlet_Detail.unity"
+    },
+    {
+      "name": "CoastalHamlet_OpenDetached_Random_01",
+      "prefab": "CourtyardHouse",
+      "category": "previous-native",
+      "district": "CoastalHamlet",
+      "position": [
+        661,
+        -18.193563,
+        601
+      ],
+      "yaw": 135,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CoastalHamlet_Detail.unity"
+    },
+    {
+      "name": "CoastalHamlet_OpenDetached_Random_02",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "CoastalHamlet",
+      "position": [
+        659,
+        -18.193563,
+        646
+      ],
+      "yaw": 90.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CoastalHamlet_Detail.unity"
+    },
+    {
+      "name": "CoastalHamlet_OpenDetached_Random_03",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "CoastalHamlet",
+      "position": [
+        676,
+        -18.193563,
+        678
+      ],
+      "yaw": 270.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_CoastalHamlet_Detail.unity"
+    },
+    {
+      "name": "EasternPort_Harbour_01",
+      "prefab": "LongBarracks",
+      "category": "previous-native",
+      "district": "EasternPort",
+      "position": [
+        840,
+        -31.06056,
+        375
+      ],
+      "yaw": 180,
+      "scale": [
+        1.16,
+        1,
+        1.16
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_EasternPort_Detail.unity"
+    },
+    {
+      "name": "EasternPort_garage_apartment_02",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "EasternPort",
+      "position": [
+        798.4,
+        -31.06056,
+        375
+      ],
+      "yaw": 0.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_EasternPort_Detail.unity"
+    },
+    {
+      "name": "EasternPort_two_bedroom_garage_house_03",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "EasternPort",
+      "position": [
+        881.6,
+        -31.06056,
+        388
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0827310925312055,
+        1,
+        1.0827310925312055
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_EasternPort_Detail.unity"
+    },
+    {
+      "name": "EasternPort_row_three_townhouses_04",
+      "prefab": "LongBarracks",
+      "category": "previous-native",
+      "district": "EasternPort",
+      "position": [
+        798.4,
+        -31.06056,
+        300.4
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1.0852229367395878,
+        1,
+        1.0852229367395878
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_EasternPort_Detail.unity"
+    },
+    {
+      "name": "EasternPort_a_frame_cabin_05",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "EasternPort",
+      "position": [
+        881.6,
+        -31.06056,
+        300.4
+      ],
+      "yaw": 180.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_EasternPort_Detail.unity"
+    },
+    {
+      "name": "EasternPort_OpenDetached_Random_01",
+      "prefab": "BrokenPavilion",
+      "category": "previous-native",
+      "district": "EasternPort",
+      "position": [
+        804,
+        -31.06056,
+        398
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_EasternPort_Detail.unity"
+    },
+    {
+      "name": "EasternPort_OpenDetached_Random_02",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "EasternPort",
+      "position": [
+        831,
+        -31.06056,
+        296
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_EasternPort_Detail.unity"
+    },
+    {
+      "name": "EasternPort_OpenDetached_Random_03",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "EasternPort",
+      "position": [
+        867,
+        -31.06056,
+        406
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_EasternPort_Detail.unity"
+    },
+    {
+      "name": "FreightDistrict_ParcelDepot_01",
+      "prefab": "LongBarracks",
+      "category": "previous-native",
+      "district": "FreightDistrict",
+      "position": [
+        550,
+        -1.053846,
+        -135
+      ],
+      "yaw": 45,
+      "scale": [
+        1.16,
+        1,
+        1.16
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_FreightDistrict_Detail.unity"
+    },
+    {
+      "name": "FreightDistrict_warehouse_loading_dock_02",
+      "prefab": "LongBarracks",
+      "category": "previous-native",
+      "district": "FreightDistrict",
+      "position": [
+        497,
+        -1.053846,
+        -135
+      ],
+      "yaw": 45,
+      "scale": [
+        1.2,
+        1,
+        1.2
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_FreightDistrict_Detail.unity"
+    },
+    {
+      "name": "FreightDistrict_warehouse_loading_dock_03",
+      "prefab": "LongBarracks",
+      "category": "previous-native",
+      "district": "FreightDistrict",
+      "position": [
+        603,
+        -1.053846,
+        -135
+      ],
+      "yaw": 45,
+      "scale": [
+        1.2,
+        1,
+        1.2
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_FreightDistrict_Detail.unity"
+    },
+    {
+      "name": "FreightDistrict_garage_apartment_04",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "FreightDistrict",
+      "position": [
+        495,
+        -1.053846,
+        -208
+      ],
+      "yaw": 0.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_FreightDistrict_Detail.unity"
+    },
+    {
+      "name": "FreightDistrict_two_bedroom_garage_house_05",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "FreightDistrict",
+      "position": [
+        602,
+        -1.053846,
+        -208
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0827310925312055,
+        1,
+        1.0827310925312055
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_FreightDistrict_Detail.unity"
+    },
+    {
+      "name": "FreightDistrict_OpenDetached_Random_01",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "FreightDistrict",
+      "position": [
+        545,
+        -1.053846,
+        -204
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_FreightDistrict_Detail.unity"
+    },
+    {
+      "name": "FreightDistrict_OpenDetached_Random_02",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "FreightDistrict",
+      "position": [
+        575,
+        -1.053846,
+        -202
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_FreightDistrict_Detail.unity"
+    },
+    {
+      "name": "FreightDistrict_OpenDetached_Random_03",
+      "prefab": "BrokenPavilion",
+      "category": "previous-native",
+      "district": "FreightDistrict",
+      "position": [
+        541,
+        -1.053846,
+        -162
+      ],
+      "yaw": 90.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_FreightDistrict_Detail.unity"
+    },
+    {
+      "name": "HighlandObservatory_pitched_roof_cottage_02",
+      "prefab": "CourtyardHouse",
+      "category": "previous-native",
+      "district": "HighlandObservatory",
+      "position": [
+        522,
+        23.776774,
+        -605
+      ],
+      "yaw": 0.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_HighlandObservatory_Detail.unity"
+    },
+    {
+      "name": "HighlandObservatory_detached_two_storey_house_03",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "HighlandObservatory",
+      "position": [
+        618,
+        23.776774,
+        -605
+      ],
+      "yaw": 0.0,
+      "scale": [
+        0.9199643184667533,
+        1,
+        0.9199643184667533
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_HighlandObservatory_Detail.unity"
+    },
+    {
+      "name": "HighlandObservatory_garage_apartment_04",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "HighlandObservatory",
+      "position": [
+        522,
+        23.776774,
+        -673.4
+      ],
+      "yaw": 180.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_HighlandObservatory_Detail.unity"
+    },
+    {
+      "name": "HighlandObservatory_two_bedroom_garage_house_05",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "HighlandObservatory",
+      "position": [
+        618,
+        23.776774,
+        -673.4
+      ],
+      "yaw": 90,
+      "scale": [
+        1.0827310925312055,
+        1,
+        1.0827310925312055
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_HighlandObservatory_Detail.unity"
+    },
+    {
+      "name": "HighlandObservatory_OpenDetached_06",
+      "prefab": "BrokenPavilion",
+      "category": "previous-native",
+      "district": "HighlandObservatory",
+      "position": [
+        569,
+        23.776774,
+        -632
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_HighlandObservatory_Detail.unity"
+    },
+    {
+      "name": "HighlandObservatory_OpenDetached_Random_01",
+      "prefab": "CourtyardHouse",
+      "category": "previous-native",
+      "district": "HighlandObservatory",
+      "position": [
+        598,
+        23.776774,
+        -582
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_HighlandObservatory_Detail.unity"
+    },
+    {
+      "name": "HighlandObservatory_OpenDetached_Random_02",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "HighlandObservatory",
+      "position": [
+        565,
+        23.776774,
+        -666
+      ],
+      "yaw": 270.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_HighlandObservatory_Detail.unity"
+    },
+    {
+      "name": "HighlandObservatory_OpenDetached_Random_03",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "HighlandObservatory",
+      "position": [
+        551,
+        23.776774,
+        -586
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_HighlandObservatory_Detail.unity"
+    },
+    {
+      "name": "LakesideHamlet_pitched_roof_cottage_01",
+      "prefab": "CourtyardHouse",
+      "category": "previous-native",
+      "district": "LakesideHamlet",
+      "position": [
+        -720,
+        -2.640852,
+        90
+      ],
+      "yaw": 0.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_LakesideHamlet_Detail.unity"
+    },
+    {
+      "name": "LakesideHamlet_a_frame_cabin_02",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "LakesideHamlet",
+      "position": [
+        -761.6,
+        -2.640852,
+        90
+      ],
+      "yaw": 0.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_LakesideHamlet_Detail.unity"
+    },
+    {
+      "name": "LakesideHamlet_bungalow_house_03",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "LakesideHamlet",
+      "position": [
+        -678.4,
+        -2.640852,
+        90
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0790141577859527,
+        1,
+        1.0790141577859527
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_LakesideHamlet_Detail.unity"
+    },
+    {
+      "name": "LakesideHamlet_pitched_roof_cottage_04",
+      "prefab": "CourtyardHouse",
+      "category": "previous-native",
+      "district": "LakesideHamlet",
+      "position": [
+        -761.6,
+        -2.640852,
+        30.9
+      ],
+      "yaw": 180.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_LakesideHamlet_Detail.unity"
+    },
+    {
+      "name": "LakesideHamlet_detached_two_storey_house_05",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "LakesideHamlet",
+      "position": [
+        -678.4,
+        -2.640852,
+        30.9
+      ],
+      "yaw": 180.0,
+      "scale": [
+        0.9199643184667533,
+        1,
+        0.9199643184667533
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_LakesideHamlet_Detail.unity"
+    },
+    {
+      "name": "LakesideHamlet_OpenDetached_Random_01",
+      "prefab": "BrokenPavilion",
+      "category": "previous-native",
+      "district": "LakesideHamlet",
+      "position": [
+        -714,
+        -2.640852,
+        64
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_LakesideHamlet_Detail.unity"
+    },
+    {
+      "name": "LakesideHamlet_OpenDetached_Random_02",
+      "prefab": "CourtyardHouse",
+      "category": "previous-native",
+      "district": "LakesideHamlet",
+      "position": [
+        -741,
+        -2.640852,
+        85
+      ],
+      "yaw": 135,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_LakesideHamlet_Detail.unity"
+    },
+    {
+      "name": "LakesideHamlet_OpenDetached_Random_03",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "LakesideHamlet",
+      "position": [
+        -717,
+        -2.640852,
+        29
+      ],
+      "yaw": 90.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_LakesideHamlet_Detail.unity"
+    },
+    {
+      "name": "NorthernRidgeTown_detached_two_storey_house_01",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "NorthernRidgeTown",
+      "position": [
+        300,
+        -30.816404,
+        675
+      ],
+      "yaw": 0.0,
+      "scale": [
+        0.9199643184667533,
+        1,
+        0.9199643184667533
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_NorthernRidgeTown_Detail.unity"
+    },
+    {
+      "name": "NorthernRidgeTown_garage_apartment_02",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "NorthernRidgeTown",
+      "position": [
+        242.4,
+        -30.816404,
+        675
+      ],
+      "yaw": 0.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_NorthernRidgeTown_Detail.unity"
+    },
+    {
+      "name": "NorthernRidgeTown_two_bedroom_garage_house_03",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "NorthernRidgeTown",
+      "position": [
+        357.6,
+        -30.816404,
+        675
+      ],
+      "yaw": 180,
+      "scale": [
+        1.0827310925312055,
+        1,
+        1.0827310925312055
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_NorthernRidgeTown_Detail.unity"
+    },
+    {
+      "name": "NorthernRidgeTown_row_three_townhouses_04",
+      "prefab": "LongBarracks",
+      "category": "previous-native",
+      "district": "NorthernRidgeTown",
+      "position": [
+        242.4,
+        -30.816404,
+        603.5
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1.0852229367395878,
+        1,
+        1.0852229367395878
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_NorthernRidgeTown_Detail.unity"
+    },
+    {
+      "name": "NorthernRidgeTown_a_frame_cabin_05",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "NorthernRidgeTown",
+      "position": [
+        357.6,
+        -30.816404,
+        603.5
+      ],
+      "yaw": 180.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_NorthernRidgeTown_Detail.unity"
+    },
+    {
+      "name": "NorthernRidgeTown_garage_apartment_06",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "NorthernRidgeTown",
+      "position": [
+        300,
+        -30.816404,
+        603.5
+      ],
+      "yaw": 180.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_NorthernRidgeTown_Detail.unity"
+    },
+    {
+      "name": "NorthernRidgeTown_OpenDetached_07",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "NorthernRidgeTown",
+      "position": [
+        276,
+        -30.816404,
+        651
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_NorthernRidgeTown_Detail.unity"
+    },
+    {
+      "name": "NorthernRidgeTown_OpenDetached_Random_01",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "NorthernRidgeTown",
+      "position": [
+        347,
+        -30.816404,
+        703
+      ],
+      "yaw": 270.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_NorthernRidgeTown_Detail.unity"
+    },
+    {
+      "name": "NorthernRidgeTown_OpenDetached_Random_02",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "NorthernRidgeTown",
+      "position": [
+        267,
+        -30.816404,
+        682
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_NorthernRidgeTown_Detail.unity"
+    },
+    {
+      "name": "NorthernRidgeTown_OpenDetached_Random_03",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "NorthernRidgeTown",
+      "position": [
+        325,
+        -30.816404,
+        594
+      ],
+      "yaw": 90.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_NorthernRidgeTown_Detail.unity"
+    },
+    {
+      "name": "OldVillage_HanokVillage_01",
+      "prefab": "BrokenPavilion",
+      "category": "previous-native",
+      "district": "OldVillage",
+      "position": [
+        -530,
+        1.729533,
+        -565
+      ],
+      "yaw": 90,
+      "scale": [
+        1.2,
+        1,
+        1.2
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_OldVillage_Detail.unity"
+    },
+    {
+      "name": "OldVillage_two_bedroom_garage_house_02",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "OldVillage",
+      "position": [
+        -587.6,
+        1.729533,
+        -565
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0827310925312055,
+        1,
+        1.0827310925312055
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_OldVillage_Detail.unity"
+    },
+    {
+      "name": "OldVillage_row_three_townhouses_03",
+      "prefab": "LongBarracks",
+      "category": "previous-native",
+      "district": "OldVillage",
+      "position": [
+        -472.4,
+        1.729533,
+        -565
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0852229367395878,
+        1,
+        1.0852229367395878
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_OldVillage_Detail.unity"
+    },
+    {
+      "name": "OldVillage_a_frame_cabin_04",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "OldVillage",
+      "position": [
+        -587.6,
+        1.729533,
+        -633.4
+      ],
+      "yaw": 180.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_OldVillage_Detail.unity"
+    },
+    {
+      "name": "OldVillage_bungalow_house_05",
+      "prefab": "RidgeHouse",
+      "category": "previous-native",
+      "district": "OldVillage",
+      "position": [
+        -472.4,
+        1.729533,
+        -633.4
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1.0790141577859527,
+        1,
+        1.0790141577859527
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_OldVillage_Detail.unity"
+    },
+    {
+      "name": "OldVillage_garage_apartment_06",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "OldVillage",
+      "position": [
+        -530,
+        1.729533,
+        -633.4
+      ],
+      "yaw": 180.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_OldVillage_Detail.unity"
+    },
+    {
+      "name": "OldVillage_OpenDetached_Random_01",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "OldVillage",
+      "position": [
+        -499,
+        1.729533,
+        -546
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_OldVillage_Detail.unity"
+    },
+    {
+      "name": "OldVillage_OpenDetached_Random_02",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "OldVillage",
+      "position": [
+        -575,
+        1.729533,
+        -540
+      ],
+      "yaw": 90.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_OldVillage_Detail.unity"
+    },
+    {
+      "name": "OldVillage_OpenDetached_Random_03",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "OldVillage",
+      "position": [
+        -499,
+        1.729533,
+        -636
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_OldVillage_Detail.unity"
+    },
+    {
+      "name": "SouthernAirfield_Airfield_01",
+      "prefab": "LongBarracks",
+      "category": "previous-native",
+      "district": "SouthernAirfield",
+      "position": [
+        180,
+        24.973139,
+        -395
+      ],
+      "yaw": 90.0,
+      "scale": [
+        1.2,
+        1,
+        1.2
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_SouthernAirfield_Detail.unity"
+    },
+    {
+      "name": "SouthernAirfield_warehouse_loading_dock_02",
+      "prefab": "LongBarracks",
+      "category": "previous-native",
+      "district": "SouthernAirfield",
+      "position": [
+        75,
+        24.973139,
+        -388
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.2,
+        1,
+        1.2
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_SouthernAirfield_Detail.unity"
+    },
+    {
+      "name": "SouthernAirfield_garage_apartment_03",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "SouthernAirfield",
+      "position": [
+        284,
+        24.973139,
+        -388
+      ],
+      "yaw": 0.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_SouthernAirfield_Detail.unity"
+    },
+    {
+      "name": "ValleySettlement_row_three_townhouses_01",
+      "prefab": "LongBarracks",
+      "category": "previous-native",
+      "district": "ValleySettlement",
+      "position": [
+        -420,
+        15.426661,
+        -185
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0852229367395878,
+        1,
+        1.0852229367395878
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ValleySettlement_Detail.unity"
+    },
+    {
+      "name": "ValleySettlement_pitched_roof_cottage_02",
+      "prefab": "CourtyardHouse",
+      "category": "previous-native",
+      "district": "ValleySettlement",
+      "position": [
+        -474.4,
+        15.426661,
+        -185
+      ],
+      "yaw": 0.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ValleySettlement_Detail.unity"
+    },
+    {
+      "name": "ValleySettlement_detached_two_storey_house_03",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "ValleySettlement",
+      "position": [
+        -365.6,
+        15.426661,
+        -185
+      ],
+      "yaw": 0.0,
+      "scale": [
+        0.9199643184667533,
+        1,
+        0.9199643184667533
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ValleySettlement_Detail.unity"
+    },
+    {
+      "name": "ValleySettlement_garage_apartment_04",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "ValleySettlement",
+      "position": [
+        -474.4,
+        15.426661,
+        -256.5
+      ],
+      "yaw": 180.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ValleySettlement_Detail.unity"
+    },
+    {
+      "name": "ValleySettlement_two_bedroom_garage_house_05",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "ValleySettlement",
+      "position": [
+        -365.6,
+        15.426661,
+        -256.5
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1.0827310925312055,
+        1,
+        1.0827310925312055
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ValleySettlement_Detail.unity"
+    },
+    {
+      "name": "ValleySettlement_garage_apartment_06",
+      "prefab": "CoastalHouse",
+      "category": "previous-native",
+      "district": "ValleySettlement",
+      "position": [
+        -420,
+        15.426661,
+        -256.5
+      ],
+      "yaw": 180.0,
+      "scale": [
+        0.79,
+        1,
+        0.79
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ValleySettlement_Detail.unity"
+    },
+    {
+      "name": "ValleySettlement_OpenDetached_07",
+      "prefab": "CourtyardHouse",
+      "category": "previous-native",
+      "district": "ValleySettlement",
+      "position": [
+        -391,
+        15.426661,
+        -209
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ValleySettlement_Detail.unity"
+    },
+    {
+      "name": "ValleySettlement_OpenDetached_Random_01",
+      "prefab": "BrokenPavilion",
+      "category": "previous-native",
+      "district": "ValleySettlement",
+      "position": [
+        -449,
+        15.426661,
+        -206
+      ],
+      "yaw": 90.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ValleySettlement_Detail.unity"
+    },
+    {
+      "name": "ValleySettlement_OpenDetached_Random_02",
+      "prefab": "TerraceHouse",
+      "category": "previous-native",
+      "district": "ValleySettlement",
+      "position": [
+        -448,
+        15.426661,
+        -158
+      ],
+      "yaw": 90.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ValleySettlement_Detail.unity"
+    },
+    {
+      "name": "ValleySettlement_OpenDetached_Random_03",
+      "prefab": "CourtyardHouse",
+      "category": "previous-native",
+      "district": "ValleySettlement",
+      "position": [
+        -388,
+        15.426661,
+        -176
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1.0,
+        1,
+        1.0
+      ],
+      "chunk": "Assets/AarisWorld/Scenes/Chunks/Aaris_District_ValleySettlement_Detail.unity"
+    },
+    {
+      "name": "ARX_01_OldVillage_detached",
+      "prefab": "TerraceHouse",
+      "category": "previous-expansion",
+      "district": "OldVillage",
+      "position": [
+        -495.4,
+        1.7265,
+        -528.2
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "ARX_02_OldVillage_bungalow",
+      "prefab": "RidgeHouse",
+      "category": "previous-expansion",
+      "district": "OldVillage",
+      "position": [
+        -557.4,
+        1.7265,
+        -538.2
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "ARX_03_ValleySettlement_detached",
+      "prefab": "TerraceHouse",
+      "category": "previous-expansion",
+      "district": "ValleySettlement",
+      "position": [
+        -445.1,
+        15.4237,
+        -139.5
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "ARX_04_ValleySettlement_detached",
+      "prefab": "TerraceHouse",
+      "category": "previous-expansion",
+      "district": "ValleySettlement",
+      "position": [
+        -389.1,
+        15.4237,
+        -154.5
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "ARX_05_ClockTowerTown_detached",
+      "prefab": "TerraceHouse",
+      "category": "previous-expansion",
+      "district": "ClockTowerTown",
+      "position": [
+        380.3,
+        -11.9218,
+        290.9
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "ARX_06_ClockTowerTown_bungalow",
+      "prefab": "RidgeHouse",
+      "category": "previous-expansion",
+      "district": "ClockTowerTown",
+      "position": [
+        324.3,
+        -11.9218,
+        290.9
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "ARX_07_CoastalHamlet_detached",
+      "prefab": "TerraceHouse",
+      "category": "previous-expansion",
+      "district": "CoastalHamlet",
+      "position": [
+        673.5,
+        -18.1966,
+        701.8
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "ARX_08_NorthernRidgeTown_detached",
+      "prefab": "TerraceHouse",
+      "category": "previous-expansion",
+      "district": "NorthernRidgeTown",
+      "position": [
+        270.6,
+        -30.8194,
+        705.5
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "ARX_09_LakesideHamlet_cottage",
+      "prefab": "CourtyardHouse",
+      "category": "previous-expansion",
+      "district": "LakesideHamlet",
+      "position": [
+        -743.9,
+        -2.6439,
+        104.7
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "ARX_10_CanalMarket_cottage",
+      "prefab": "CourtyardHouse",
+      "category": "previous-expansion",
+      "district": "CanalMarket",
+      "position": [
+        -84.8,
+        -31.0636,
+        701.8
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "ARX_11_EasternPort_cottage",
+      "prefab": "CourtyardHouse",
+      "category": "previous-expansion",
+      "district": "EasternPort",
+      "position": [
+        824.1,
+        -31.0636,
+        417.2
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "ARX_12_FreightDistrict_cottage",
+      "prefab": "CourtyardHouse",
+      "category": "previous-expansion",
+      "district": "FreightDistrict",
+      "position": [
+        576.6,
+        -1.0568,
+        -104.5
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "ARX_18_OldVillage_cottage",
+      "prefab": "CourtyardHouse",
+      "category": "previous-expansion",
+      "district": "OldVillage",
+      "position": [
+        -559.02,
+        1.7265,
+        -580.83
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "ARX_19_NorthernRidgeTown_bungalow",
+      "prefab": "RidgeHouse",
+      "category": "previous-expansion",
+      "district": "NorthernRidgeTown",
+      "position": [
+        273.22,
+        -30.8194,
+        668.17
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "ARX_20_ValleySettlement_cottage",
+      "prefab": "CourtyardHouse",
+      "category": "previous-expansion",
+      "district": "ValleySettlement",
+      "position": [
+        -448.02,
+        15.4237,
+        -191.83
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "ARX_21_CoastalHamlet_detached",
+      "prefab": "TerraceHouse",
+      "category": "previous-expansion",
+      "district": "CoastalHamlet",
+      "position": [
+        639.19,
+        -18.1966,
+        656.22
+      ],
+      "yaw": 0.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "AiryScatter_Tower_01_SoutheastLighthouse",
+      "prefab": "RidgeHouse",
+      "category": "tower",
+      "district": "SoutheastLighthouse",
+      "position": [
+        843.23,
+        40.0589,
+        -717.3
+      ],
+      "yaw": 45.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0244
+    },
+    {
+      "name": "AiryScatter_Tower_02_SouthernAirfield",
+      "prefab": "CoastalHouse",
+      "category": "tower",
+      "district": "SouthernAirfield",
+      "position": [
+        217.72,
+        24.9701,
+        -353.54
+      ],
+      "yaw": 90.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "AiryScatter_Tower_03_SouthernAirfield",
+      "prefab": "BrokenPavilion",
+      "category": "tower",
+      "district": "SouthernAirfield",
+      "position": [
+        84.08,
+        24.9701,
+        -364.63
+      ],
+      "yaw": 135.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "AiryScatter_Tower_04_HighlandObservatory",
+      "prefab": "RidgeHouse",
+      "category": "tower",
+      "district": "HighlandObservatory",
+      "position": [
+        654.54,
+        23.7738,
+        -607.74
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0488
+    },
+    {
+      "name": "AiryScatter_Tower_05_HighlandObservatory",
+      "prefab": "CoastalHouse",
+      "category": "tower",
+      "district": "HighlandObservatory",
+      "position": [
+        569.41,
+        23.7738,
+        -548.78
+      ],
+      "yaw": 225.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.2879
+    },
+    {
+      "name": "AiryScatter_Tower_06_FreightDistrict",
+      "prefab": "BrokenPavilion",
+      "category": "tower",
+      "district": "FreightDistrict",
+      "position": [
+        628.93,
+        -1.0568,
+        -160.44
+      ],
+      "yaw": 270.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0
+    },
+    {
+      "name": "AiryScatter_Tower_07_SouthernAirfield",
+      "prefab": "RidgeHouse",
+      "category": "tower",
+      "district": "SouthernAirfield",
+      "position": [
+        88.58,
+        24.9946,
+        -516.95
+      ],
+      "yaw": 315.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.0244
+    },
+    {
+      "name": "AiryScatter_Hill_01_NorthernRidgeTown",
+      "prefab": "CourtyardHouse",
+      "category": "hill",
+      "district": "NorthernRidgeTown",
+      "position": [
+        200.82,
+        -22.5914,
+        448.48
+      ],
+      "yaw": 45.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.4151
+    },
+    {
+      "name": "AiryScatter_Hill_02_OldVillage",
+      "prefab": "RidgeHouse",
+      "category": "hill",
+      "district": "OldVillage",
+      "position": [
+        -656.79,
+        -9.6594,
+        -463.77
+      ],
+      "yaw": 135.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.1979
+    },
+    {
+      "name": "AiryScatter_Hill_03_SouthernAirfield",
+      "prefab": "TerraceHouse",
+      "category": "hill",
+      "district": "SouthernAirfield",
+      "position": [
+        166.75,
+        7.5121,
+        -259.51
+      ],
+      "yaw": 315.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.4155
+    },
+    {
+      "name": "AiryScatter_Hill_04_ValleySettlement",
+      "prefab": "CourtyardHouse",
+      "category": "hill",
+      "district": "ValleySettlement",
+      "position": [
+        -270.21,
+        -6.3573,
+        -319.81
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.2413
+    },
+    {
+      "name": "AiryScatter_Hill_05_SouthernAirfield",
+      "prefab": "RidgeHouse",
+      "category": "hill",
+      "district": "SouthernAirfield",
+      "position": [
+        -79.13,
+        7.875,
+        -487.2
+      ],
+      "yaw": 225.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.3749
+    },
+    {
+      "name": "AiryScatter_Hill_06_ValleySettlement",
+      "prefab": "TerraceHouse",
+      "category": "hill",
+      "district": "ValleySettlement",
+      "position": [
+        -253.69,
+        -11.4823,
+        -148.26
+      ],
+      "yaw": 45.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.3995
+    },
+    {
+      "name": "AiryScatter_Hill_07_FreightDistrict",
+      "prefab": "CourtyardHouse",
+      "category": "hill",
+      "district": "FreightDistrict",
+      "position": [
+        749.05,
+        -4.671,
+        -135.56
+      ],
+      "yaw": 90.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.3656
+    },
+    {
+      "name": "AiryScatter_Forest_01_CanalMarket",
+      "prefab": "RidgeHouse",
+      "category": "forest",
+      "district": "CanalMarket",
+      "position": [
+        45.0,
+        -28.2181,
+        597.5
+      ],
+      "yaw": 45.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.4039
+    },
+    {
+      "name": "AiryScatter_Forest_02_NorthernRidgeTown",
+      "prefab": "BrokenPavilion",
+      "category": "forest",
+      "district": "NorthernRidgeTown",
+      "position": [
+        425.74,
+        -30.8926,
+        657.76
+      ],
+      "yaw": 90.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.293
+    },
+    {
+      "name": "AiryScatter_Forest_03_CoastalHamlet",
+      "prefab": "LongBarracks",
+      "category": "forest",
+      "district": "CoastalHamlet",
+      "position": [
+        505.86,
+        -27.1729,
+        805.08
+      ],
+      "yaw": 225.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.405
+    },
+    {
+      "name": "AiryScatter_Forest_04_FreightDistrict",
+      "prefab": "TerraceHouse",
+      "category": "forest",
+      "district": "FreightDistrict",
+      "position": [
+        564.66,
+        -6.9642,
+        2.27
+      ],
+      "yaw": 180.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.3186
+    },
+    {
+      "name": "AiryScatter_Forest_05_ClockTowerTown",
+      "prefab": "RidgeHouse",
+      "category": "forest",
+      "district": "ClockTowerTown",
+      "position": [
+        490.96,
+        -11.6032,
+        99.46
+      ],
+      "yaw": 225.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.2453
+    },
+    {
+      "name": "AiryScatter_Forest_06_SouthernAirfield",
+      "prefab": "BrokenPavilion",
+      "category": "forest",
+      "district": "SouthernAirfield",
+      "position": [
+        354.32,
+        25.2069,
+        -362.5
+      ],
+      "yaw": 270.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.2612
+    },
+    {
+      "name": "AiryScatter_Forest_07_SouthernAirfield",
+      "prefab": "LongBarracks",
+      "category": "forest",
+      "district": "SouthernAirfield",
+      "position": [
+        246.63,
+        5.3186,
+        -138.96
+      ],
+      "yaw": 270.0,
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "footprint_height_delta_m": 0.3937
+    }
+  ]
+}

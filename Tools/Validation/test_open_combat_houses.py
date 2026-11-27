@@ -37,7 +37,7 @@ def guarded_body(source, guard):
 
 
 class OpenCombatHouseContracts(unittest.TestCase):
-    def test_four_modular_sites_have_empty_openings_by_default(self):
+    def test_previous_interactive_sites_are_baked_doorless(self):
         modular = MODULAR.read_text(encoding="utf-8")
         expansion = EXPANSION.read_text(encoding="utf-8")
         plan = json.loads(PLAN.read_text(encoding="utf-8"))
@@ -50,13 +50,10 @@ class OpenCombatHouseContracts(unittest.TestCase):
         self.assertIn("!Prepare(originalPrefab, includePanels)", modular)
         self.assertIn("Front(t,width,depth,h,player,includePanels);", modular)
         self.assertIn("Back(t,width,depth,h,includePanels);", modular)
-        self.assertIn("AarisModularHouse.Create(position, rotation", expansion)
-        # The four intentionally interactive houses must instantiate a
-        # real physical leaf in a genuine wall hole. The default Create()
-        # path for other doorless combat homes stays unchanged.
-        self.assertIn("transform, interactionTarget, prefab,", expansion)
-        self.assertIn("includePanels: true)", expansion)
-        self.assertNotIn("transform, interactionTarget, prefab, true)", expansion)
+        self.assertTrue(all(s.get("baked") for s in interactive))
+        self.assertIn("if (site != null && site.baked) continue;", expansion)
+        self.assertIn("catalog.ResolveOpen(site.prefabKey)", expansion)
+        self.assertNotIn("AarisModularHouse.Create", expansion)
 
         window = modular.split("private static void Window(", 1)[1].split(
             "private static void Front(", 1)[0]
@@ -146,10 +143,12 @@ class OpenCombatHouseContracts(unittest.TestCase):
                 text = prefab.read_text(encoding="utf-8")
                 self.assertTrue(text.startswith("%YAML"))
                 self.assertNotIn("version https://git-lfs", text)
-                self.assertEqual(text.count("MeshRenderer:"), 1)
-                self.assertEqual(text.count("MeshFilter:"), 1)
+                self.assertEqual(text.count("MeshRenderer:"), 3)
+                self.assertEqual(text.count("MeshFilter:"), 3)
                 self.assertEqual(text.count("MeshCollider:"), 1)
                 self.assertIn("m_Convex: 0", text)
+                self.assertIn("m_Name: WalkRoute", text)
+                self.assertIn("m_Name: LootSpawnSockets", text)
                 self.assertNotIn("RealDoorLeaf", text)
                 self.assertNotIn("ShootableGlass", text)
                 meta = (PREFABS / (name + ".prefab.meta")).read_text()

@@ -49,6 +49,13 @@ namespace Aaris.MapReview
         private Vector3 previewPlayerPosition, previewCameraPosition, previewLook;
 
         public int Count => carriedWalls;
+        internal bool TryCollectWallCharge()
+        {
+            if (!isActiveAndEnabled || carriedWalls >= 15) return false;
+            carriedWalls++;
+            return true;
+        }
+
         public bool Aiming => aiming;
         public bool CanUse
         {

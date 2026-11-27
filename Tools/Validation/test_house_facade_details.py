@@ -19,15 +19,10 @@ class HouseFacadeDetails(unittest.TestCase):
         self.assertEqual(len(homes), 16)
         self.assertEqual(sum(bool(s.get("interactive")) for s in homes), 4)
         self.assertEqual(sum(s["prefabKey"] == "watchtower" for s in PLAN["sites"]), 5)
-        self.assertIn("AarisHouseFacadeTrim.Install(instance,", EXPANSION)
-        self.assertIn("site.width, site.depth, site.height", EXPANSION)
-        # Register the authored house first; the optional Android facade is
-        # installed in a separately admitted frame without changing its type guard.
-        guard = EXPANSION.split("if (site.prefabKey == \"cottage\"", 1)[1].split(
-            "AarisHouseFacadeTrim.Install(instance,", 1)[0]
-        self.assertIn('site.prefabKey == "bungalow"', guard)
-        self.assertIn('site.prefabKey == "detached"', guard)
-        self.assertNotIn('site.prefabKey == "watchtower"', guard)
+        self.assertTrue(all(s.get("baked") for s in homes))
+        self.assertFalse(any(s.get("baked") for s in PLAN["sites"] if s["prefabKey"] == "watchtower"))
+        self.assertIn("if (site != null && site.baked) continue;", EXPANSION)
+        self.assertNotIn("AarisHouseFacadeTrim.Install(instance,", EXPANSION)
 
     def test_one_combined_mesh_and_no_new_collider_or_gameplay_tick(self):
         self.assertIn("mesh.SetVertices(vertices);", FACADE)
@@ -70,10 +65,10 @@ class HouseFacadeDetails(unittest.TestCase):
         self.assertIn("Destroy(sharedStucco);", FACADE)
         self.assertIn("house.GetComponentInChildren<AarisHouseFacadeTrim>()", FACADE)
 
-    def test_native_original_prefabs_and_saved_scene_untouched(self):
+    def test_native_house_facades_share_three_baked_lods(self):
         for name in ("OpenCottage", "OpenBungalow", "OpenDetached"):
             content = (ROOT / f"Assets/Resources/AarisBuildings/{name}.prefab").read_text()
-            self.assertEqual(content.count("MeshRenderer:"), 1)
+            self.assertEqual(content.count("MeshRenderer:"), 3)
             self.assertEqual(content.count("MeshCollider:"), 1)
 
 

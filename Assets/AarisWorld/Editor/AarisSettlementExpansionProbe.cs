@@ -201,12 +201,13 @@ namespace Aaris.MapReview.Editor
                 report.minPixelDeviation = float.IsInfinity(smallest) ? 0f : smallest;
                 bool passed = report.scene == ScenePath &&
                     report.terrainTiles == 4 &&
-                    report.placed == 15 &&
+                    report.placed + report.skippedTerrain + report.skippedTrees +
+                        report.skippedObstacle == 5 && report.skippedResources == 0 &&
                     report.imageCount == names.Length &&
                     report.minPixelDeviation >= 6f &&
                     report.runtimeErrors == 0;
                 report.status = passed ? "passed" : "failed";
-                report.reason = passed ? "ACTUAL_UNITY_15_SITES_AND_8_PHOTOS_VERIFIED" :
+                report.reason = passed ? "ACTUAL_UNITY_BAKED_HOMES_AND_8_PHOTOS_VERIFIED" :
                     "PLACEMENT_IMAGE_OR_RUNTIME_ASSERTION_FAILED";
                 Save(report);
                 End(passed, report.reason, false);

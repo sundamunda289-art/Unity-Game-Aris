@@ -132,8 +132,13 @@ class NativeDistrictPartitionTests(unittest.TestCase):
                     migrated += 1
                 self.assertTrue(persistent)
                 path = CHUNKS / f"Aaris_District_{name}_Detail.unity"
-                cell = WorldScene(path.read_text())
-                self.assertEqual(len(cell.names), 3 * len(persistent))
+                text = path.read_text()
+                cell = WorldScene(text)
+                prefab_roots = [block for block in cell.blocks.values() if block.kind == 1001]
+                self.assertEqual(len(cell.names) + 3 * len(prefab_roots), 3 * len(persistent))
+                for prefab in prefab_roots:
+                    self.assertIn("m_RemovedComponents:", prefab.body)
+                    self.assertIn("m_SourcePrefab: {fileID: 100100000, guid:", prefab.body)
                 for root in (x for x in cell.names if cell.parent_go[x] is None):
                     self.assertEqual(cell.component_types[root], {33, 23, 205})
                     self.assertEqual(len(cell.descendants(root)), 3)

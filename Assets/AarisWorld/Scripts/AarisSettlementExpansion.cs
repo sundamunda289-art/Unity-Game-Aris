@@ -23,7 +23,7 @@ namespace Aaris.MapReview
         public string name;
         public string district;
         public string prefabKey;
-        public bool interactive;
+        public bool interactive, baked;
         public float x, z, groundReferenceY, yaw;
         public float width, depth, height;
     }
@@ -192,18 +192,16 @@ namespace Aaris.MapReview
             // Inspect its already cached bounds without re-enabling physics.
             nearbyColliderBounds = FindFirstObjectByType<AarisNearbyColliders>();
 
-            var player = FindFirstObjectByType<AarisThirdPersonPlayer>();
-            Transform interactionTarget = player != null ? player.transform : null;
             // Sites require multiple terrain/tree/physics probes and some expensive
-            // prefab imports. Doing all 21 in one Start() causes a startup spike
+            // prefab imports. Doing all sites in one Start() causes a startup spike
             // on budget Android CPUs. Preserve placement/order, but spread the
             // work over frames without touching authored terrain or scene assets.
-            StartCoroutine(PlaceSitesAcrossFrames(plan, catalog, terrains, interactionTarget));
+            StartCoroutine(PlaceSitesAcrossFrames(plan, catalog, terrains));
         }
 
         private IEnumerator PlaceSitesAcrossFrames(
             AarisExpansionPlan plan, AarisExpansionCatalog catalog,
-            Terrain[] terrains, Transform interactionTarget)
+            Terrain[] terrains)
         {
             var names = new HashSet<string>(StringComparer.Ordinal);
             int examinedThisFrame = 0;
@@ -269,6 +267,7 @@ namespace Aaris.MapReview
                 }
                 foreach (var site in plan.sites)
                 {
+                    if (site != null && site.baked) continue;
                     // Budget attempted sites, not just successful instantiations:
                     // unsuccessful tree/physics relocation probes also cost CPU.
                     // Android yields the opening frame; desktop keeps its two-site budget.
@@ -284,15 +283,9 @@ namespace Aaris.MapReview
                         skippedResources++;
                         continue;
                     }
-                    // Preserve the four proven interactive modular sites and the
-                    // original watchtowers. Only the noninteractive house variants
-                    // are replaced with prefabs baked into core project assets.
-                    bool replaceClosedHouse = !site.interactive &&
-                        (site.prefabKey == "cottage" || site.prefabKey == "bungalow" ||
-                         site.prefabKey == "detached");
-                    GameObject prefab = replaceClosedHouse
-                        ? catalog.ResolveOpen(site.prefabKey)
-                        : catalog.Resolve(site.prefabKey);
+                    GameObject prefab = site.prefabKey == "watchtower"
+                        ? catalog.Resolve(site.prefabKey)
+                        : catalog.ResolveOpen(site.prefabKey);
                     if (prefab == null)
                     {
                         skippedResources++;
@@ -354,44 +347,14 @@ namespace Aaris.MapReview
 #endif
                     Vector3 position = new Vector3(site.x, y - 0.025f, site.z);
                     Quaternion rotation = Quaternion.Euler(0f, site.yaw, 0f);
-                    // Original vendor houses have ONE fused mesh/collider; an
-                    // animated door pasted on top would stay physically blocked.
-                    // Only marked, tested new sites use true modular wall holes.
-                    GameObject instance = site.interactive
-                        ? AarisModularHouse.Create(position, rotation, site.width,
-                            site.depth, site.height, transform, interactionTarget, prefab,
-                            includePanels: true)
-                        : Instantiate(prefab, position, rotation, transform);
+                    GameObject instance = Instantiate(prefab, position, rotation, transform);
                     if (instance == null)
                     {
                         skippedResources++;
                         continue;
                     }
                     instance.name = site.name;
-                    // Register the complete authored house immediately. A later
-                    // optional cosmetic pass must never lose it on cancellation.
                     placed.Add(instance);
-                    // Reuse ONE shared URP Lit material and ONE combined mesh per
-                    // house for roof fascia, foundation plinth and corner trim.
-                    // No extra colliders, so door and window apertures stay open.
-                    if (site.prefabKey == "cottage" ||
-                        site.prefabKey == "bungalow" ||
-                        site.prefabKey == "detached")
-                    {
-#if UNITY_ANDROID && !UNITY_EDITOR
-                        // Instantiating a house and uploading its additional
-                        // combined facade mesh in ONE frame stacks native CPU/GPU
-                        // integration costs. Preserve every mesh and texture but
-                        // defer the optional trim until a DIFFERENT admitted frame.
-                        yield return null;
-                        while (isActiveAndEnabled && instance != null &&
-                            !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
-                            yield return null;
-                        if (!isActiveAndEnabled || instance == null) yield break;
-#endif
-                        AarisHouseFacadeTrim.Install(instance,
-                            site.width, site.depth, site.height);
-                    }
                 }
             }
             finally
@@ -600,7 +563,7 @@ namespace Aaris.MapReview
             treeInterestCells.Clear();
             foreach (AarisExpansionSite site in plan.sites)
             {
-                if (site == null || !CoordinatesValid(site)) continue;
+                if (site == null || site.baked || !CoordinatesValid(site)) continue;
                 FootprintHalfExtents(site, VegetationMargin,
                     out float halfX, out float halfZ);
                 // Existing relocation tries +/-18m and +/-26m along each
