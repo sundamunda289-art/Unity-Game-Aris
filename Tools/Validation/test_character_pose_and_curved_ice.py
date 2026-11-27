@@ -164,7 +164,7 @@ assert 'AlignFootToSupport(foot, supportNormal, finalWeight, 32f, 0.85f);' in vi
 assert 'UprightPlantEnterGapMetres = 0.065f' in visual
 assert 'UprightPlantReleaseGapMetres = 0.115f' in visual
 assert 'UprightPlantBreakDistanceMetres = 0.18f' in visual
-assert 'plantWorld - foot.position, transform.up' in visual
+assert 'plantWorld - authoredFootPosition, transform.up' in visual
 assert 'PlantLegToTarget(thigh, shin, foot, targetFoot, kneeForward,' in visual
 # Standing's IK must bend along the imported skeleton rather than the
 # CharacterController forward (the Bamen/Tactical pelvis can be yaw-offset).
@@ -228,9 +228,12 @@ assert 'ProneAnkleClearanceMetres' in visual
 # but only near the floor so an authored swing foot is never pinned.
 assert 'private void PlantUprightContact(' in visual
 assert 'private const float UprightAnkleClearanceMetres = 0.075f;' in visual
-assert 'float supportY = coarseSupport.foot == foot &&' in visual
-assert 'coarseSupport.footPosition.Equals(foot.position)' in visual
-assert ': SupportedAnkleY(foot, UprightAnkleClearanceMetres, out supportNormal);' in visual
+ankle_sample = visual[visual.index('private AnkleSupportSample SampleUprightAnkle('):
+                      visual.index('private void PlantUprightContact(')]
+assert 'coarse.foot == foot && coarse.footPosition.Equals(footPosition)' in ankle_sample
+assert 'return coarse;' in ankle_sample
+assert ankle_sample.count('SupportedAnkleY(foot, UprightAnkleClearanceMetres,') == 1
+assert 'float supportY = support.height;' in visual
 assert 'UprightAnkleClearanceMetres, out Vector3 supportNormal);' in visual
 assert 'supportNormal' in visual
 assert 'Mathf.InverseLerp(0.025f, 0.14f, gap)' in visual
@@ -801,8 +804,11 @@ assert 'Finish("JUMP_FAILED");' in pose_probe
 
 # Native textured tactical-soldier primary plus fail-safe fallback hierarchy.
 tactical_path=ROOT / "Assets/Resources/AarisCharacters/Primary/TacticalSoldier/TacticalSoldier.fbx"
-assert tactical_path.is_file() and 5_000_000 < tactical_path.stat().st_size < 9_000_000
+assert tactical_path.is_file()
 tactical_raw=tactical_path.read_bytes()
+assert tactical_raw.startswith(b"Kaydara FBX Binary")
+# Accept the current optimized native mesh while rejecting LFS pointers and bloated imports.
+assert 1_000_000 < len(tactical_raw) < 9_000_000
 for bone in (b"mixamorig:Hips", b"mixamorig:LeftHand", b"mixamorig:RightHand",
              b"mixamorig:LeftFoot", b"mixamorig:RightFoot"):
     assert bone in tactical_raw
@@ -846,7 +852,7 @@ assert 'visual.transform.localScale *= scale;' in visual
 # A valid Human rig with pathological bind-space render bounds must be able
 # to fit from its measured Head/Foot skeleton, without accepting arbitrary
 # malformed renderer data.
-assert 'private bool TryFitHumanoidBonesToController()' in visual
+assert 'private bool TryFitHumanoidBonesToController(bool fitTacticalBoots = false)' in visual
 assert '!animator.avatar.isValid || !animator.avatar.isHuman' in visual
 assert 'animator.GetBoneTransform(HumanBodyBones.Head)' in visual
 assert 'animator.GetBoneTransform(HumanBodyBones.LeftFoot)' in visual
@@ -859,7 +865,7 @@ assert 'visual.transform.Find("Icosphere")' in visual
 assert 'helperRenderer.enabled = false;' in visual
 assert 'helper.gameObject.SetActive(false);' in visual
 assert 'FitVisualToController(resourcePath)' in visual
-assert 'if (resourcePath == PrimaryModel && TryFitHumanoidBonesToController())' in visual
+assert 'if (resourcePath == PrimaryModel && TryFitHumanoidBonesToController(fitTacticalBoots: true))' in visual
 assert 'Vector3 footAnchor = (leftFoot.position + rightFoot.position) * 0.5f;' in visual
 assert 'footAnchor.y = Mathf.Min(leftFoot.position.y, rightFoot.position.y);' in visual
 assert 'Vector3 targetFootAnchor = transform.position +' in visual

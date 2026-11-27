@@ -10,7 +10,7 @@ namespace Aaris.MapReview
     {
         private struct Entry
         {
-            internal Transform root, visual, leftFoot, rightFoot;
+            internal Transform root, visual, leftFoot, rightFoot, leftToe, rightToe;
             internal CharacterController capsule;
             internal AarisVehicleMotor vehicle;
             internal Vector2 size;
@@ -39,7 +39,7 @@ namespace Aaris.MapReview
         internal static void Register(Transform root, Vector2 size, float clearance,
             float range, CharacterController capsule = null, Transform visual = null,
             float anchorOffset = 0f, Transform leftFoot = null, Transform rightFoot = null,
-            AarisVehicleMotor vehicle = null)
+            AarisVehicleMotor vehicle = null, Transform leftToe = null, Transform rightToe = null)
         {
             if (!Application.isPlaying || !SystemInfo.supportsInstancing || root==null) return;
             if (instance==null)
@@ -58,7 +58,8 @@ namespace Aaris.MapReview
             instance.entries[free]=new Entry {
                 root = root, visual = visual, capsule = capsule, size = size,
                 range = range, clearance = clearance, anchorOffset = anchorOffset,
-                leftFoot = leftFoot, rightFoot = rightFoot, vehicle = vehicle
+                leftFoot = leftFoot, rightFoot = rightFoot, leftToe = leftToe, rightToe = rightToe,
+                vehicle = vehicle
             };
         }
 
@@ -190,8 +191,8 @@ namespace Aaris.MapReview
                 bool prone = e.capsule != null && e.capsule.height < .85f;
                 if (!prone && e.leftFoot != null && e.rightFoot != null)
                 {
-                    PlaceFootContact(ref e, e.leftFoot.position, rotation, fade);
-                    PlaceFootContact(ref e, e.rightFoot.position, rotation, fade);
+                    PlaceFootContact(ref e, e.leftFoot.position, e.leftToe, rotation, fade);
+                    PlaceFootContact(ref e, e.rightFoot.position, e.rightToe, rotation, fade);
                 }
                 else
                 {
@@ -231,8 +232,20 @@ namespace Aaris.MapReview
                 normal.z * (position.z - point.z)) / normal.y;
         }
 
-        private void PlaceFootContact(ref Entry e, Vector3 foot, Quaternion rotation, float fade)
+        private void PlaceFootContact(ref Entry e, Vector3 foot, Transform toe,
+            Quaternion rotation, float fade)
         {
+            // The ankle sits behind the centre of the planted boot.
+            // Reorient the existing quad using the same sampled support plane.
+            if (toe != null)
+            {
+                Vector3 forefoot = Vector3.ProjectOnPlane(toe.position - foot, e.normal);
+                if (forefoot.sqrMagnitude > .001f)
+                {
+                    rotation = Quaternion.LookRotation(forefoot, e.normal);
+                    foot += forefoot * .36f;
+                }
+            }
             float floor = PlaneHeight(e.sample, e.normal, foot);
             float height = foot.y - floor;
             if (height < -.10f) return;
