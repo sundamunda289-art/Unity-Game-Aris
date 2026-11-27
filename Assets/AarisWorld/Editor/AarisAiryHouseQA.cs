@@ -33,6 +33,7 @@ namespace Aaris.MapReview.Editor
         private const int ExpectedNativeHomes = 91;
         private const int ExpectedExpansionHomes = 16;
         private const int ExpectedScatterHomes = 21;
+        private const int ResolverProbeCalls = 10000;
         private static readonly string[] OriginalHomeNames =
         {
             "a_frame_cabin", "bungalow_house", "pitched_roof_cottage",
@@ -141,6 +142,9 @@ namespace Aaris.MapReview.Editor
             public int roofSockets;
             public int manifestSockets;
             public int manifestsWithPhysicalSupport;
+            public int resolverProbeCalls;
+            public long resolverAllocatedBytes = -1;
+            public string resolverProbeIssue;
             public bool sameSeedReproduced;
             public int changedSocketPositions;
             public int changedItemsAtSharedPositions;
@@ -157,6 +161,8 @@ namespace Aaris.MapReview.Editor
             public int stockedSockets;
             public int[] itemCounts;
         }
+
+        private delegate bool ResolveSocket<T>(T socket, out Pose placement);
 
         [Serializable]
         private sealed class NativeHomeResult
@@ -572,6 +578,7 @@ namespace Aaris.MapReview.Editor
             MethodInfo resolve = plannerType.GetMethod("TryResolve", BindingFlags.Static | BindingFlags.NonPublic);
             var stableIds = new HashSet<int>();
             var origins = new Dictionary<string, int>(StringComparer.Ordinal);
+            object supportedSocket = null;
             foreach (object socket in sockets)
             {
                 string name = (string)origin.GetValue(socket);
@@ -580,7 +587,10 @@ namespace Aaris.MapReview.Editor
                 origins.TryGetValue(name, out int prior);
                 origins[name] = prior + 1;
                 if ((bool)resolve.Invoke(null, new[] { socket, (object)default(Pose) }))
+                {
                     report.manifestsWithPhysicalSupport++;
+                    if (supportedSocket == null) supportedSocket = socket;
+                }
                 else report.issues.Add("Production loot support check failed for " + name);
             }
             foreach (NativeHomeResult home in report.homes)
@@ -591,6 +601,7 @@ namespace Aaris.MapReview.Editor
             }
             if (origins.Count != report.homes.Count)
                 report.issues.Add("The loot manifest has a different number of named houses.");
+            MeasureResolver(report, resolve, socketType, supportedSocket);
 
             ConstructorInfo planner = plannerType.GetConstructor(member, null,
                 new[] { sockets.GetType(), typeof(uint) }, null);
@@ -621,6 +632,49 @@ namespace Aaris.MapReview.Editor
             if (!report.sameSeedReproduced || report.changedSocketPositions == 0 ||
                 report.changedItemsAtSharedPositions == 0)
                 report.issues.Add("Seeded socket selection did not reproduce or vary correctly.");
+        }
+
+        private static void MeasureResolver(NativeMapReport report, MethodInfo resolve,
+            Type socketType, object supportedSocket)
+        {
+            if (supportedSocket == null)
+            {
+                report.resolverProbeIssue = "No physically supported manifest socket was available.";
+                return;
+            }
+
+            try
+            {
+                MethodInfo measure = typeof(AarisAiryHouseQA).GetMethod(
+                    nameof(MeasureWarmedResolver), BindingFlags.Static | BindingFlags.NonPublic);
+                report.resolverAllocatedBytes = (long)measure.MakeGenericMethod(socketType)
+                    .Invoke(null, new[] { resolve, supportedSocket });
+                report.resolverProbeCalls = ResolverProbeCalls;
+                Debug.Log("AARIS_AIRY_HOUSE_SOCKET_GC probes=" + report.resolverProbeCalls +
+                    " managedBytes=" + report.resolverAllocatedBytes);
+            }
+            catch (Exception error)
+            {
+                report.resolverProbeIssue = error.GetBaseException().GetType().Name;
+            }
+        }
+
+        private static long MeasureWarmedResolver<T>(MethodInfo method, object supportedSocket)
+        {
+            var resolve = (ResolveSocket<T>)Delegate.CreateDelegate(typeof(ResolveSocket<T>), method);
+            T socket = (T)supportedSocket;
+            for (int i = 0; i < 128; i++)
+                if (!resolve(socket, out _))
+                    throw new InvalidOperationException("The selected socket stopped resolving during warmup.");
+
+            int succeeded = 0;
+            long start = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < ResolverProbeCalls; i++)
+                if (resolve(socket, out _)) succeeded++;
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
+            if (succeeded != ResolverProbeCalls)
+                throw new InvalidOperationException("The selected socket stopped resolving during measurement.");
+            return allocated;
         }
 
         private static int[] PlanSeed(ConstructorInfo constructor, FieldInfo items, Array sockets, uint seed)

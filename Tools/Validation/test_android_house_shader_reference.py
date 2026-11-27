@@ -22,12 +22,12 @@ class HouseShaderReference(unittest.TestCase):
         self.assertIn("foreach (Material material in source.sharedMaterials)", prepare)
         self.assertIn('material.shader.name == "Universal Render Pipeline/Lit"', prepare)
         self.assertIn("shader = material.shader;", prepare)
-        self.assertIn('if (shader == null)\n                shader = Shader.Find("Universal Render Pipeline/Lit");', prepare)
+        self.assertIn('if (shader == null)\n                shader = AarisShaderCache.Find("Universal Render Pipeline/Lit");', prepare)
         self.assertLess(prepare.index("shader = material.shader;"),
-                        prepare.index('Shader.Find("Universal Render Pipeline/Lit")'))
+                        prepare.index('AarisShaderCache.Find("Universal Render Pipeline/Lit")'))
         self.assertIn("if (shader == null) return false;", prepare)
 
-    def test_house_geometry_and_materials_unchanged(self):
+    def test_legacy_authoring_and_shared_runtime_materials(self):
         self.assertIn("!Prepare(originalPrefab, includePanels)) return null;", SOURCE)
         self.assertIn("new Material(shader) { name = name, enableInstancing = true }", SOURCE)
         self.assertIn('m.SetColor("_BaseColor", tint);', SOURCE)
@@ -35,7 +35,13 @@ class HouseShaderReference(unittest.TestCase):
         self.assertIn("wall = Match(originalPrefab,", SOURCE)
         self.assertIn("roof = Match(originalPrefab,", SOURCE)
         self.assertIn("trim = Match(originalPrefab,", SOURCE)
-        self.assertIn("AarisModularHouse.Create(position, rotation", EXPANSION)
+        self.assertIn("catalog.ResolveOpen(site.prefabKey)", EXPANSION)
+        house_materials = sorted((ROOT / "Assets/AarisWorld/Models/AiryHouses").glob("*.mat"))
+        self.assertEqual(len(house_materials), 6)
+        for path in house_materials:
+            material = path.read_text()
+            self.assertIn("guid: 8d2bb70cbf9db8d4da26e15b26e74248", material)
+            self.assertIn("m_EnableInstancingVariants: 1", material)
         self.assertIn("public GameObject openCottage;", CATALOG)
         self.assertIn("public GameObject openBungalow;", CATALOG)
         self.assertIn("public GameObject openDetached;", CATALOG)

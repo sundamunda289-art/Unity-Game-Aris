@@ -47,9 +47,12 @@ RESOURCE_TYPE = {"OpenBungalow":"RidgeHouse", "OpenCottage":"CourtyardHouse", "O
 COMPOUND_YAWS = dict(zip(("CanalMarket","ClockTowerTown","CoastalHamlet","EasternPort",
                           "FreightDistrict","HighlandObservatory","LakesideHamlet",
                           "NorthernRidgeTown","OldVillage"), (90,45,135,180,45,90,135,180,90)))
-# CanalTown's former pivot straddles a 1.24 m break in grade. This anchor
-# stays on the same district pad with a flush external stair approach.
-FLAT_PAD_ANCHORS = {"CanalMarket_CanalTown_01": (-120,691)}
+# Keep a flush approach on the same district pad. CanalTown's old footprint
+# crossed a break in grade, and EasternPort's crossed the saved pier deck.
+FLAT_PAD_ANCHORS = {
+    "CanalMarket_CanalTown_01": (-120,691),
+    "EasternPort_two_bedroom_garage_house_03": (881.6,388),
+}
 
 
 def unity_doc(kind, ident, name, data, stripped=False):
