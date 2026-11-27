@@ -698,9 +698,10 @@ namespace Aaris.MapReview
 
         private void OnDisable()
         {
-            SetGrassVector(GrassInteractorId, Vector4.zero, ref lastGrassInteractor);
-            SetGrassVector(GrassVehicleId, Vector4.zero, ref lastGrassVehicle);
-            SetGrassVector(GrassVehicleShapeId, Vector4.zero, ref lastGrassVehicleShape);
+            Shader.SetGlobalVector(GrassInteractorId, Vector4.zero);
+            Shader.SetGlobalVector(GrassVehicleId, Vector4.zero);
+            Shader.SetGlobalVector(GrassVehicleShapeId, Vector4.zero);
+            lastGrassInteractor = lastGrassVehicle = lastGrassVehicleShape = Vector4.zero;
             CancelDrivingInput();
         }
     }

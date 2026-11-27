@@ -115,7 +115,7 @@ def check_interaction():
     assert "FindMovingGrassInteractor(transform.position)" in session
     assert "GetGrassContact(out vehicle, out shape)" in session
     for prop in ("GrassInteractorId", "GrassVehicleId", "GrassVehicleShapeId"):
-        assert f"SetGrassVector({prop}, Vector4.zero," in session
+        assert f"Shader.SetGlobalVector({prop}, Vector4.zero);" in session
     assert "position.y = lerp(position.y, rest.y * 0.28, pressure)" in shader
     assert "float2 normalizedSq = local * local * _AarisGrassVehicleShape.zw" in shader
 
