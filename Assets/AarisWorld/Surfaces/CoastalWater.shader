@@ -4,15 +4,20 @@ Shader "Aaris/URP Coastal Water"
     {
         _BaseColor("Water", Color) = (0.03, 0.22, 0.28, 1)
         _Smoothness("Smoothness", Range(0, 1)) = 0.82
+        [NoScaleOffset] _RippleNormal("Ripple normal", 2D) = "bump" {}
+        _RippleStrength("Ripple strength", Range(0, 1)) = 0.38
     }
     SubShader
     {
         Tags { "RenderPipeline"="UniversalPipeline" "RenderType"="Opaque" "Queue"="Geometry-10" }
         HLSLINCLUDE
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+        TEXTURE2D(_RippleNormal);
+        SAMPLER(sampler_RippleNormal);
         CBUFFER_START(UnityPerMaterial)
             float4 _BaseColor;
             float _Smoothness;
+            float _RippleStrength;
         CBUFFER_END
         struct WaterAttributes { float4 positionOS : POSITION; };
         struct WaterVaryings
@@ -77,8 +82,19 @@ Shader "Aaris/URP Coastal Water"
                 InputData lighting = (InputData)0;
                 lighting.positionWS = input.positionWS;
                 lighting.positionCS = input.positionCS;
-                lighting.normalWS = normalize(input.normalWS);
                 lighting.viewDirectionWS = GetWorldSpaceNormalizeViewDir(input.positionWS);
+                float3 rippleEyeOffset = GetCameraPositionWS() - input.positionWS;
+                float rippleDistanceSquared = dot(rippleEyeOffset, rippleEyeOffset);
+                half nearbyRipples = saturate((1444.0 - rippleDistanceSquared) / 1299.0);
+                half rippleVisibility = smoothstep(0.09h, 0.48h, abs(lighting.viewDirectionWS.y)) * nearbyRipples;
+                // A single scrolling, mipmapped normal works on both the
+                // coarse ocean mesh and the nearly flat inland canal.
+                float2 rippleUV = input.positionWS.xz * float2(0.071, 0.052)
+                    + _Time.y * float2(0.014, -0.009);
+                half2 ripple = UnpackNormalScale(
+                    SAMPLE_TEXTURE2D(_RippleNormal, sampler_RippleNormal, rippleUV),
+                    _RippleStrength * rippleVisibility).xy;
+                lighting.normalWS = normalize(input.normalWS + half3(ripple.x, 0, ripple.y));
                 lighting.shadowCoord = TransformWorldToShadowCoord(input.positionWS);
                 lighting.fogCoord = input.fogFactor;
                 lighting.bakedGI = max(SampleSH(lighting.normalWS), half3(0, 0, 0));

@@ -53,7 +53,7 @@ echo REVIEW_793_AUTHENTIC_LFS_ASSETS_VERIFIED
 test -s Assets/AarisWorld/Editor/AarisDaylightFogReview.cs || {
   echo REVIEW_CSHARP_TEST_MISSING; exit 19;
 }
-grep -q '^  m_Fog: 0$' Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity || {
+grep -q '^  m_Fog: 1$' Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity || {
   echo REVIEW_FOG_CORE_CHANGE_MISSING; exit 20;
 }
 bash .devcontainer/start_screen.sh >/dev/null || { echo REVIEW_XVFB_FAILED; exit 21; }
@@ -83,7 +83,8 @@ from pathlib import Path
 p=Path(sys.argv[1])
 d=json.loads((p/"daylight-report.json").read_text())
 assert d.get("status")=="passed" and d.get("terrainTiles")==4
-assert d.get("nativeFogDisabled") and d.get("sunIntensity",0)>=1.3
+assert not d.get("nativeFogDisabled") and 0 < d.get("nativeFogDensity",0) <= .001
+assert d.get("sunIntensity",0)>=1.3
 shots=d.get("shots",[])
 assert len(shots)==2
 for shot in shots:
