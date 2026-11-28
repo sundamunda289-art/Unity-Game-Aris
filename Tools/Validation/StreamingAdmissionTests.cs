@@ -776,6 +776,26 @@ internal static class StreamingAdmissionTests
         Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
             "Aircraft overlap fence blocked later visual streaming");
 
+        Configure(6144, "Adreno 610");
+        Frame(70);
+        Check(AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialRig() &&
+              AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialAircraft(),
+            "Both startup operations must be able to reserve the same upcoming frame");
+        Check(!AarisMobileStreamingFrameGate.TryDeferEssentialRigOnAircraftFrame(),
+            "A future aircraft reservation must not move the rig prematurely");
+        Frame(71);
+        Check(AarisMobileStreamingFrameGate.TryDeferEssentialRigOnAircraftFrame(),
+            "Move rig integration off the due aircraft frame");
+        Check(!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Moving the rig must preserve the aircraft frame fence");
+        Frame(72);
+        Check(!AarisMobileStreamingFrameGate.TryDeferEssentialRigOnAircraftFrame() &&
+              !AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "The rig must integrate on its next free reserved frame");
+        Frame(73);
+        Check(AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild(),
+            "Optional work must recover immediately after both integrations");
+
         Configure(8192, "Adreno 730");
         Check(!AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialRig(), "Fast rig delayed");
         Check(!AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialAircraft(),

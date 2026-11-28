@@ -41,6 +41,8 @@ namespace Aaris.MapReview
         // Only speculative, not currently needed, scenes are capped on budget Android.
         // The near/visible authored cells and their bootstrap silhouette proxies stay intact.
         [SerializeField, Min(0f)] private int maxSpeculativeResidentCells = 2;
+        // Enable only in a bootstrap scene with persistent district silhouettes.
+        [SerializeField] private bool useBootstrapProxiesDuringFlight;
 
         private struct State
         {
@@ -74,6 +76,8 @@ namespace Aaris.MapReview
 #endif
         private bool previousSampleValid;
         private AarisThirdPersonPlayer playerMotor;
+        private AarisOfflineDrop drop;
+        private float nextDropLookupAt;
         private Camera previousViewCamera;
         private Vector3 previousViewForward;
         private float previousViewAt;
@@ -151,6 +155,7 @@ namespace Aaris.MapReview
         {
             nextPollAt = 0f;
             nextMovementSampleAt = 0f;
+            nextDropLookupAt = 0f;
             previousSampleValid = false;
             sampledVelocity = default(Vector2);
             previousViewCamera = null;
@@ -237,6 +242,11 @@ namespace Aaris.MapReview
             // a missing cell while this one-time warmup is still in progress.
             BuildSpatialIndexSlice();
             if (now < nextPollAt) return;
+            // X/Z alone makes the aircraft appear to enter every district
+            // beneath it. Let the bootstrap show those districts from above.
+            // Keep settling operations already in flight and keep the poll
+            // due so detail admission resumes as soon as the player ejects.
+            if (ShouldUseBootstrapProxies(now)) return;
             if (now < nextTransitionAt)
             {
                 // Wake at the end of the native cooldown. A check just
@@ -435,6 +445,18 @@ namespace Aaris.MapReview
                 if (inFlight != null && loadCell == viewCell) cameraWarmCell = loadCell;
 #endif
             }
+        }
+
+        private bool ShouldUseBootstrapProxies(float now)
+        {
+            if (!useBootstrapProxiesDuringFlight) return false;
+            // The offline drop can attach after the streamer's Awake.
+            if (drop == null && now >= nextDropLookupAt)
+            {
+                nextDropLookupAt = now + 1f;
+                drop = player.GetComponent<AarisOfflineDrop>();
+            }
+            return drop != null && drop.IsRidingAircraft;
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR

@@ -667,13 +667,32 @@ namespace Aaris.MapReview
             return false;
         }
 
+        // Aircraft creation owns the opening view and provides EJECT. If both
+        // essential operations are due, retain the old fence and move the rig
+        // to the next frame; never make the aircraft wait for the rig.
+        internal static bool TryDeferEssentialRigOnAircraftFrame()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return IsEssentialAircraftFrame() && ReserveNextFrameForEssentialRig();
+#else
+            return false;
+#endif
+        }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private static bool IsEssentialAircraftFrame()
+        {
+            return Time.frameCount == essentialAircraftFrame ||
+                   Time.frameCount == previousEssentialAircraftFrame;
+        }
+#endif
+
         private static bool IsEssentialRigFrame()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             return Time.frameCount == essentialRigFrame ||
                    Time.frameCount == previousEssentialRigFrame ||
-                   Time.frameCount == essentialAircraftFrame ||
-                   Time.frameCount == previousEssentialAircraftFrame;
+                   IsEssentialAircraftFrame();
 #else
             return false;
 #endif

@@ -118,6 +118,11 @@ namespace Aaris.MapReview
         public bool IsInAir { get; set; }
     }
 
+    public sealed class AarisOfflineDrop
+    {
+        public bool IsRidingAircraft { get; set; }
+    }
+
     // The real Android governor uses JNI. The chunk streaming host-engine
     // fixture intentionally models only its cached policy (no Java runtime).
     internal static class AarisAndroidThermalGovernor
@@ -224,6 +229,54 @@ internal static class AdditiveChunkStreamingTests
         Time.unscaledTime = time;
         player.position = new Vector3 { x = x, z = 0 };
         Invoke(manager, "Update");
+    }
+
+    private static void CheckAircraftProxies()
+    {
+        ResetScene();
+        var drop = new AarisOfflineDrop { IsRidingAircraft = true };
+        var target = new Transform { component = drop };
+        var manager = Make(target);
+        Set(manager, "useBootstrapProxiesDuringFlight", true);
+
+        Frame(manager, target, 1f, 0f);
+        Frame(manager, target, 1.3f, 30f);
+        Check(SceneManager.loadCount == 0 && SceneManager.unloadCount == 0,
+            "overflight must use the bootstrap without new district transitions");
+        drop.IsRidingAircraft = false;
+        Frame(manager, target, 1.31f, 30f);
+        Check(SceneManager.loadCount == 1,
+            "nearby detail must start at the first admission opportunity after ejection");
+
+        drop.IsRidingAircraft = true;
+        SceneManager.Finish();
+        Frame(manager, target, 1.32f, 30f);
+        Check(ResidentCount(manager) == 1,
+            "an operation already in flight must still reconcile its ownership");
+        Frame(manager, target, 2f, 900f);
+        Check(SceneManager.unloadCount == 0,
+            "aircraft hold must not start a district retirement");
+        drop.IsRidingAircraft = false;
+        Frame(manager, target, 2.01f, 900f);
+        Check(SceneManager.unloadCount == 1,
+            "normal district retirement must resume after ejection");
+
+        ResetScene();
+        drop.IsRidingAircraft = true;
+        manager = Make(target);
+        Frame(manager, target, 3f, 0f);
+        Check(SceneManager.loadCount == 1,
+            "a scene without authored proxies keeps the original admission policy");
+
+        ResetScene();
+        target.component = null;
+        manager = Make(target);
+        Set(manager, "useBootstrapProxiesDuringFlight", true);
+        Frame(manager, target, 4f, 800f);
+        target.component = drop;
+        Frame(manager, target, 5.1f, 0f);
+        Check(SceneManager.loadCount == 0,
+            "a late-attached drop must become eligible for the aircraft hold");
     }
 
     private static void CheckCameraPrefetch()
@@ -830,6 +883,7 @@ internal static class AdditiveChunkStreamingTests
         Check(SceneManager.unloadCount == 0,
             "an external scene must never be unloaded by this streamer");
 
+        CheckAircraftProxies();
         Console.WriteLine("PASS: " + checks + " checked assertions (real production sources)");
         return 0;
     }

@@ -57,6 +57,16 @@ class AimSpatialFilter(unittest.TestCase):
                 if is_valid:
                     self.assertFalse(would_skip, (i,limit,real,cached))
 
+    def test_fallback_requires_a_full_primary_shortlist(self):
+        line_of_sight = MAIN.index("MuzzlePathOpenTo(shooter, candidate.transform, closestPoint)")
+        guard = MAIN.index("if (third == null) return false;")
+        fallback = MAIN.index("return TryAcquireAimFallback(")
+        self.assertLess(line_of_sight, guard)
+        self.assertLess(guard, fallback)
+        self.assertIn("float a1 = minimumDot, a2 = minimumDot, a3 = minimumDot;", MAIN)
+        self.assertIn("float threshold = a3;", MAIN)
+        self.assertIn("used < AimBudget ? minimumDot", FALLBACK)
+
     def test_teleported_visible_actor_bypasses_stale_dormant_cache(self):
         real=(1.3,0.,25.)
         stale=(900.,0.,900.)
