@@ -449,9 +449,11 @@ namespace Aaris.MapReview
             // draw and bandwidth budget on tile-based mobile GPUs. Keep
             // nearby buildings and foliage grounded by real shadows, but
             // avoid drawing shadow casters for most of the distant map.
-            // Keep the 4 native cascades / atlas and all source assets intact.
+            // One near cascade is the authored mobile budget. Keep a tighter
+            // fallback here too, so switching URP quality cannot restore the
+            // old 120 m/two-cascade cost on the same Adreno 610 device.
             originalShadowDistance = androidPipeline.shadowDistance;
-            float mobileShadowDistance = constrainedGraphics ? 120f : 240f;
+            float mobileShadowDistance = constrainedGraphics ? 45f : 240f;
             appliedShadowDistance = Mathf.Min(originalShadowDistance, mobileShadowDistance);
             if (appliedShadowDistance < originalShadowDistance)
             {
@@ -460,11 +462,11 @@ namespace Aaris.MapReview
             }
             if (constrainedGraphics)
             {
-                // Four cascades render distant shadow casters repeatedly. Keep
-                // two near-camera cascades with real shadows for players,
+                // Cascades render shadow casters repeatedly. Keep
+                // one near-camera cascade with real shadows for players,
                 // buildings and foliage, with no edits to the URP source asset.
                 originalShadowCascades = androidPipeline.shadowCascadeCount;
-                appliedShadowCascades = Mathf.Min(originalShadowCascades, 2);
+                appliedShadowCascades = Mathf.Min(originalShadowCascades, 1);
                 if (appliedShadowCascades < originalShadowCascades)
                 {
                     androidPipeline.shadowCascadeCount = appliedShadowCascades;
@@ -655,10 +657,11 @@ namespace Aaris.MapReview
                 originalBillboardDistances[i] = tile.treeBillboardDistance;
                 originalTreeDistances[i] = tile.treeDistance;
                 originalFullLodTreeCounts[i] = tile.treeMaximumFullLODCount;
-                // Keep all grass within 80 m, but avoid processing small
-                // vegetation on the outer 80-100 m ring of each camera view.
-                appliedDetailDistances[i] = Mathf.Min(originalDetailDistances[i], 80f);
-                appliedBillboardDistances[i] = Mathf.Min(originalBillboardDistances[i], 85f);
+                // Small alpha-tested detail is expensive on Adreno 610. Keep
+                // nearby cover and move trees to their existing billboards
+                // outside the combat neighborhood; native colliders stay intact.
+                appliedDetailDistances[i] = Mathf.Min(originalDetailDistances[i], 45f);
+                appliedBillboardDistances[i] = Mathf.Min(originalBillboardDistances[i], 60f);
                 // 850m draw reach means far tree billboards are still submitted
                 // across most of the 2km world. Bound only weak Android GPUs,
                 // keep the full authored forest close to the player and all
@@ -724,7 +727,7 @@ namespace Aaris.MapReview
                       SystemInfo.graphicsDeviceName + " tiles=" + count +
                       " grass_wind_disabled=" + suppressedGrassTiles +
                       " wind_zones_disabled=" + suppressedWindZones +
-                      " details_max_m=80 tree_billboards_m=85 tree_full_lod_cap=" +
+                      " details_max_m=45 tree_billboards_m=60 tree_full_lod_cap=" +
                       LowMemoryFullLodTreeLimit +
                       " shadow_max_m=" + appliedShadowDistance +
                       " cascades=" + appliedShadowCascades);
@@ -766,7 +769,7 @@ namespace Aaris.MapReview
                     tile.treeDistance = trees;
                     appliedTreeDistances[i] = trees;
                 }
-                float details = ScopedVegetationDistance(80f, originalDetailDistances[i], desired);
+                float details = ScopedVegetationDistance(45f, originalDetailDistances[i], desired);
                 if (!Mathf.Approximately(details, appliedDetailDistances[i]) &&
                     Mathf.Approximately(tile.detailObjectDistance, appliedDetailDistances[i]))
                 {

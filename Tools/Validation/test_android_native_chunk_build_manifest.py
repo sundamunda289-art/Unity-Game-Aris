@@ -12,25 +12,38 @@ CODE = (ROOT / "Assets/AarisWorld/Editor/AarisExplorerBuild.cs").read_text()
 BUILDER = (ROOT / "Assets/AarisWorld/Editor/AarisCodespaceAndroidBuild.cs").read_text()
 SHELL = (ROOT / "Tools/Codespaces/android_apk.sh").read_text()
 SETTINGS = (ROOT / "ProjectSettings/EditorBuildSettings.asset").read_text()
+MAIN = ROOT / "Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity"
 
 
 class AndroidNativeChunkBuildManifestTests(unittest.TestCase):
-    def test_project_has_bootstrap_plus_native_forest_cell(self):
+    def test_project_packages_exact_saved_native_partition(self):
         paths = re.findall(r"(?m)^\s*- enabled: 1\s*\n\s+path: (Assets/[^\n]+\.unity)\s*$", SETTINGS)
         self.assertGreaterEqual(len(paths), 2)
         self.assertEqual(paths[0],
                          "Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity")
-        self.assertEqual(paths[1],
-                         "Assets/AarisWorld/Scenes/Chunks/Aaris_ForestLookout_Detail.unity")
         self.assertEqual(len(paths), len(set(paths)))
         self.assertTrue(all((ROOT / p).is_file() for p in paths))
-        for p in paths[2:]:
-            self.assertRegex(p, r"^Assets/AarisWorld/Scenes/Chunks/Aaris_District_\w+_Detail\.unity$")
+        if "/Aaris_Cell_" in paths[1]:
+            for p in paths[1:]:
+                self.assertRegex(p, r"^Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_[mp]\d+_[mp]\d+_Detail\.unity$")
+        else:
+            self.assertEqual(paths[1],
+                             "Assets/AarisWorld/Scenes/Chunks/Aaris_ForestLookout_Detail.unity")
+            for p in paths[2:]:
+                self.assertRegex(p, r"^Assets/AarisWorld/Scenes/Chunks/Aaris_District_\w+_Detail\.unity$")
+        registered = re.findall(r"(?m)^  - scenePath: ([^\r\n]+)$", MAIN.read_text())
+        self.assertEqual(len(registered), len(set(registered)))
+        self.assertEqual(set(paths[1:]), set(registered))
 
     def test_common_build_config_preserves_native_scene_manifest(self):
         self.assertIn("internal static string[] VerifiedBuildScenes()", CODE)
         self.assertIn('paths[0] != ScenePath', CODE)
         self.assertIn('paths[1] != forest', CODE)
+        self.assertIn("SavedChunkScenePaths()", CODE)
+        self.assertIn("SetEquals(paths.Skip(1))", CODE)
+        self.assertIn("NATIVE_CHUNK_BUILD_STREAMER_MANIFEST_MISMATCH", CODE)
+        self.assertIn("streamerCount != 1 || paths.Count == 0", CODE)
+        self.assertIn("File.ReadLines(ScenePath)", CODE)
         self.assertIn("paths.Distinct(StringComparer.Ordinal).Count()", CODE)
         self.assertIn("EditorBuildSettings.scenes.Length == 0", CODE)
         self.assertIn("if (EditorBuildSettings.scenes == null ||", CODE)

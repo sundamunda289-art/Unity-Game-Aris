@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -37,6 +38,9 @@ namespace Aaris.MapReview
         private readonly List<Drop> drops = new List<Drop>(100);
         private readonly Stack<Drop> unusedDrops = new Stack<Drop>(100);
         private readonly Stack<GameObject> unusedVisuals = new Stack<GameObject>(MaxVisuals);
+        private readonly Dictionary<GameObject, Transform> visualBeams =
+            new Dictionary<GameObject, Transform>(MaxVisuals);
+        private bool visualPrewarmStarted, lowMemoryObserved;
         private Transform player;
         // The authoritative capsule changes height during standing, crouch
         // and prone transitions. Cache the component, not its old height.
@@ -58,6 +62,7 @@ namespace Aaris.MapReview
             instance = this;
             // One logical record per rival; no Drop allocation on normal deaths.
             for (int i = 0; i < 100; i++) unusedDrops.Push(new Drop());
+            Application.lowMemory += OnLowMemory;
         }
 
         private void RecycleDrop(Drop drop)
@@ -78,6 +83,47 @@ namespace Aaris.MapReview
             playerMotor = target != null
                 ? target.GetComponent<AarisThirdPersonPlayer>() : null;
             nextPoll = 0f;
+            if (player != null && !visualPrewarmStarted)
+            {
+                visualPrewarmStarted = true;
+                StartCoroutine(PrewarmVisuals());
+            }
+        }
+
+        private IEnumerator PrewarmVisuals()
+        {
+            yield return null;
+            while (!lowMemoryObserved && liveVisuals + unusedVisuals.Count < MaxVisuals)
+            {
+                while (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                {
+                    if (lowMemoryObserved) yield break;
+                    yield return null;
+                }
+                if (lowMemoryObserved) yield break;
+                // Gameplay may have filled the pool while this coroutine
+                // waited for the shared construction budget.
+                if (liveVisuals + unusedVisuals.Count >= MaxVisuals) yield break;
+                GameObject visual = CreateVisual();
+                if (visual == null) yield break;
+                visual.SetActive(false);
+                unusedVisuals.Push(visual);
+                yield return null;
+            }
+        }
+
+        private void OnLowMemory()
+        {
+            // Do not immediately rebuild a pool the OS asked us to release.
+            // Real drops and live loot remain owned by their existing records.
+            lowMemoryObserved = true;
+            while (unusedVisuals.Count > 0)
+            {
+                GameObject visual = unusedVisuals.Pop();
+                if (visual == null) continue;
+                visualBeams.Remove(visual);
+                Destroy(visual);
+            }
         }
 
         internal void Spawn(Vector3 position, AarisWeaponSpec gun,
@@ -418,7 +464,7 @@ namespace Aaris.MapReview
             if (view == null) return;
             chosen.visual = view;
             // Cache only when assigning a pooled visual: never Find in Update.
-            chosen.beamPose = view.transform.Find("Vertical loot marker");
+            visualBeams.TryGetValue(view, out chosen.beamPose);
             if (chosen.beamPose != null)
                 chosen.beamPose.localScale = chosen.HasContent
                     ? Vector3.one : new Vector3(.48f, .48f, .48f);
@@ -431,9 +477,13 @@ namespace Aaris.MapReview
         {
             if (drop.visual == null) return;
             drop.visual.SetActive(false);
-            if (unusedVisuals.Count < MaxVisuals)
+            if (!lowMemoryObserved && unusedVisuals.Count < MaxVisuals)
                 unusedVisuals.Push(drop.visual);
-            else Destroy(drop.visual);
+            else
+            {
+                visualBeams.Remove(drop.visual);
+                Destroy(drop.visual);
+            }
             drop.visual = null;
             drop.beamPose = null;
             liveVisuals = Mathf.Max(0, liveVisuals - 1);
@@ -513,11 +563,13 @@ namespace Aaris.MapReview
             shellRenderer.sharedMaterials = new[] { shell, edge };
             shellRenderer.shadowCastingMode = ShadowCastingMode.Off;
             shellRenderer.receiveShadows = false;
+            Transform markerPose = null;
             if (glow != null)
             {
                 var beam = new GameObject("Vertical loot marker",
                     typeof(MeshFilter), typeof(MeshRenderer));
                 beam.transform.SetParent(root.transform, false);
+                markerPose = beam.transform;
                 beam.transform.localPosition = new Vector3(0f, .50f, 0f);
                 beam.GetComponent<MeshFilter>().sharedMesh = BeamGeometry();
                 var render = beam.GetComponent<MeshRenderer>();
@@ -526,11 +578,14 @@ namespace Aaris.MapReview
                 render.receiveShadows = false;
             }
             AarisSubjectContacts.Register(root.transform,new Vector2(.84f,.66f),.4f,28f);
+            visualBeams[root] = markerPose;
             return root;
         }
 
         private void OnDestroy()
         {
+            Application.lowMemory -= OnLowMemory;
+            visualBeams.Clear();
             if (instance == this) instance = null;
         }
     }

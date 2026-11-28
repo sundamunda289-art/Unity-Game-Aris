@@ -18,10 +18,12 @@ class VisibleFarCentralSleepTests(unittest.TestCase):
                       "nextDormantProximityProbe = nextCameraProbe;"):
             self.assertIn(token, eligible)
         self.assertIn("dormantVisibleFarVirtual);", u)
-        # Changing the update dispatcher must never remove the stationary
-        # player-bullet hit receiver or turn far combat into per-frame physics.
-        self.assertIn("cameraRelevant && HasVisibleBody &&", u)
-        self.assertIn("capsule.enabled = needsPhysicalReceiver;", u)
+        # The native receiver is removed, but the same real health remains
+        # reachable through analytical hit testing; far AI stays time sliced.
+        self.assertIn("bool needsPhysicalReceiver = !virtualBody;", u)
+        self.assertIn("internal bool HasLogicalHitReceiver => IsAlive &&", bot)
+        self.assertIn("TryRaycastVirtualRival", director)
+        self.assertIn("SetPhysicalReceiverEnabled(needsPhysicalReceiver);", u)
         self.assertIn("TickVirtualCombat(now, dt, playerPosition);", u)
         self.assertIn("bool simulationDue = !farSimulation || now >= nextFarSimulation;", u)
         self.assertLess(u.index("SetCentralDormancy("),
@@ -63,7 +65,7 @@ class VisibleFarCentralSleepTests(unittest.TestCase):
     def test_onscreen_far_receiver_and_mathematical_kills_still_authoritative(self):
         self.assertIn("TickRival(now, playerPosition);", bot)
         self.assertIn("now >= bot.NextDormantWakeTime", director)
-        self.assertIn("bool needsPhysicalReceiver = !virtualBody ||", bot)
+        self.assertIn("bool needsPhysicalReceiver = !virtualBody;", bot)
         self.assertIn("targetHealth.ApplyDamage(damage, gameObject);", bot)
         self.assertIn("owner.ReportRivalElimination(attacker, gameObject);", bot)
         self.assertIn("private const float FarSimulationInterval = 0.35f;", bot)

@@ -30,7 +30,8 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
         self.assertEqual(guns["Sniper"]["headshotMultiplier"], 2.25)
         self.assertLess(guns["SMG"]["headshotMultiplier"],
                         guns["DMR"]["headshotMultiplier"])
-        self.assertIn("ApplyDamage(target.collider, spec.damage, owner, target.point,", GUN)
+        self.assertIn("ApplyCombatDamage(target, spec.damage, owner,", GUN)
+        self.assertIn("ApplyDamage(hit.collider, amount, attacker, hit.point, headshotMultiplier)", GUN)
         self.assertIn("spec.headshotMultiplier);", GUN)
         self.assertIn("victim.ApplyHitDamage(damage, attacker, headshot)", GUN)
 
@@ -149,7 +150,9 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
             "private void Release(", 1)[0]
         self.assertIn("drop.beamPose.localScale", scan)
         self.assertIn("Mathf.Sin(Time.time * 2.8f)", scan)
-        self.assertIn('view.transform.Find("Vertical loot marker")', scan)
+        self.assertIn("visualBeams.TryGetValue(view, out chosen.beamPose);", scan)
+        self.assertIn("visualBeams[root] = markerPose;", CRATE)
+        self.assertNotIn(".Find(", scan)
         self.assertIn("chosen.HasContent", scan)
         self.assertIn("drop.beamPose = null;", CRATE)
         self.assertNotIn("new Material(", scan)
@@ -224,7 +227,9 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
         self.assertIn("slot.tracer.widthMultiplier = .008f;",FX)
         self.assertIn("casing.pose.Rotate(casing.spin * dt, Space.World);",FX)
         self.assertIn("owner.ShowRivalGunfire(transform, shotHit.point, carriedGun);",RIVAL)
-        self.assertIn("shotHit.point, carriedGun.headshotMultiplier);",RIVAL)
+        self.assertIn("AarisEquippedGun.ApplyCombatDamage(shotHit, damage,",RIVAL)
+        self.assertIn("gameObject, carriedGun.headshotMultiplier);",RIVAL)
+        self.assertIn("ApplyDamage(hit.collider, amount, attacker, hit.point, headshotMultiplier)", GUN)
         self.assertIn("AarisEquippedGun.SharedMuzzleFlameMesh()",FX)
         self.assertNotIn("ShowRivalGunfire",RIVAL.split("private void TickVirtualCombat",1)[1])
 
@@ -282,11 +287,23 @@ class ProGunplayAndDeathCrate(unittest.TestCase):
     def test_bot_death_spawns_crate_before_destruction(self):
         death=RIVAL.split("private void OnDied(AarisOfflineHealth defeated)",1)[1].split(
             "private void OnDestroy()",1)[0]
-        for item in ("if (capsule != null) capsule.enabled = false;",
+        for item in ("SetPhysicalReceiverEnabled(false);",
                      "owner.DropRivalLoot(transform.position, carriedGun,",
                      "carriedMagazine, carriedReserve, medkits, remoteLootSeed);",
                      "owner.RivalDefeated(this);","Destroy(gameObject, 1.2f);"):
             self.assertIn(item,death)
+        receiver=RIVAL.split("private void SetPhysicalReceiverEnabled(bool needsPhysicalReceiver)",1)[1].split(
+            "private void RetireUnusedPhysicalReceiver(",1)[0]
+        self.assertRegex(receiver,r"if \(capsule == null\)\s*\{\s*nativeReceiverReady = false;\s*return;")
+        invalidate="if (!needsPhysicalReceiver || capsule.enabled != needsPhysicalReceiver)\n" \
+                   "                nativeReceiverReady = false;"
+        self.assertIn(invalidate,receiver)
+        self.assertIn("if (capsule.enabled != needsPhysicalReceiver)\n"
+                      "                capsule.enabled = needsPhysicalReceiver;",receiver)
+        self.assertLess(receiver.index(invalidate),
+                        receiver.index("capsule.enabled = needsPhysicalReceiver;"))
+        self.assertLess(death.index("SetPhysicalReceiverEnabled(false);"),
+                        death.index("owner.DropRivalLoot("))
         self.assertLess(death.index("owner.DropRivalLoot("),
                         death.index("Destroy(gameObject, 1.2f);"))
         self.assertIn("private const int MaxVisuals = 16;",CRATE)

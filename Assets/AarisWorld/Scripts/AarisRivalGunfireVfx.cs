@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -45,6 +46,7 @@ namespace Aaris.MapReview
         private Transform observer;
         private AarisThirdPersonPlayer observerMotor;
         private int nextSlot, nextCasingSlot;
+        private bool prewarmStarted;
         // Physical bot gunfire is rare: no empty pooled-VFX Update or native
         // component dispatch is needed between nearby encounters.
         private void Awake() { enabled = false; }
@@ -94,6 +96,38 @@ namespace Aaris.MapReview
             // Cache once; never search for the player component while firing.
             observerMotor = player != null
                 ? player.GetComponent<AarisThirdPersonPlayer>() : null;
+            if (observer != null && !prewarmStarted)
+            {
+                prewarmStarted = true;
+                StartCoroutine(PrewarmPresentation());
+            }
+        }
+
+        private IEnumerator PrewarmPresentation()
+        {
+            // A single match-wide pool, not one pool per rival. Build only
+            // one slot per admitted frame, before the first close firefight.
+            // All renderers stay disabled; coroutine progress is independent
+            // of this component's dormant Update dispatch.
+            yield return null;
+            for (int i = 0; i < MaximumSlots + MaximumCasingSlots; i++)
+            {
+                while (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                    yield return null;
+                if (i < MaximumSlots)
+                {
+                    if (slots[i] == null) slots[i] = CreateSlot();
+                }
+                else
+                {
+                    int index = i - MaximumSlots;
+                    if (casings[index] == null) casings[index] = CreateCasingSlot();
+                }
+                yield return null;
+            }
+            while (!AarisMobileStreamingFrameGate.TryClaimOptionalModelBuild())
+                yield return null;
+            MaterialFor(true, true); // Warm the alternate shotgun casing once.
         }
 
         // Damage and ammo are resolved by the director. Cull only optional
@@ -192,7 +226,8 @@ namespace Aaris.MapReview
 
         private CasingSlot CreateCasingSlot()
         {
-            // Construct only on a real nearby shot, never for all 100 bots.
+            // A bounded shared prewarm creates this before nearby shots.
+            // An immediate encounter retains the same lazy fallback.
             // A casing carries no Rigidbody, collider or separate Update.
             var casing = new GameObject("Aaris Bot Reused Independent Ejected Casing",
                 typeof(MeshFilter), typeof(MeshRenderer));

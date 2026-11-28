@@ -76,6 +76,10 @@ namespace Aaris.MapReview
         // Start early enough to fill the nearby area during the final glide.
         internal bool ShouldDeferGroundLoot => controlsSuspended &&
             (IsRidingAircraft || sampledGroundClearance > 70f) && !HasLanded;
+        // Begin the landing zone's native detail while still under canopy;
+        // higher flight keeps only the macro terrain/last-LOD skyline.
+        internal bool ShouldDeferWorldDetail => controlsSuspended &&
+            (IsRidingAircraft || sampledGroundClearance > 180f) && !HasLanded;
         public bool IsUnderCanopy => phase == DropPhase.Opening || phase == DropPhase.Gliding;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]

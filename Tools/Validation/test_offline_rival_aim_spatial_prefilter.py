@@ -32,8 +32,15 @@ class AimSpatialFilter(unittest.TestCase):
                             section.index("if (!bot.HasVisibleBody) continue;"))
             self.assertGreater(section.index("if (!bot.HasVisibleBody) continue;"),
                                section.index("Vector3 delta = bot.transform.position"))
-        self.assertIn("MuzzlePathOpenTo(shooter, candidate.transform, closestPoint)", MAIN)
-        self.assertIn("MuzzlePathOpenTo(shooter, bot.transform, point)", FALLBACK)
+        self.assertIn("AimRayReachesRival(candidateRay, distance + .5f, shooter, candidate.transform)", MAIN)
+        self.assertIn("AimRayReachesRival(candidateRay, aimRanges[attempt] + .5f,", FALLBACK)
+        self.assertIn("shooter, bot.transform)", FALLBACK)
+        sight = SRC.split("private static bool AimRayReachesRival(", 1)[1].split(
+            "private void RefreshStatus(", 1)[0]
+        for gate in ("TryFirstCombatHit(ray, distance, shooter, out AarisCombatHit hit)",
+                     "hit.BelongsTo(rival)", "!StreamedCoverBlocks(ray, hit.distance)",
+                     "MuzzlePathOpenTo(shooter, rival, hit.point)"):
+            self.assertIn(gate, sight)
 
     def test_range_parity_under_time_sliced_movement_and_camera_height(self):
         randomizer = random.Random(120261123)
@@ -58,7 +65,7 @@ class AimSpatialFilter(unittest.TestCase):
                     self.assertFalse(would_skip, (i,limit,real,cached))
 
     def test_fallback_requires_a_full_primary_shortlist(self):
-        line_of_sight = MAIN.index("MuzzlePathOpenTo(shooter, candidate.transform, closestPoint)")
+        line_of_sight = MAIN.index("AimRayReachesRival(candidateRay, distance + .5f, shooter, candidate.transform)")
         guard = MAIN.index("if (third == null) return false;")
         fallback = MAIN.index("return TryAcquireAimFallback(")
         self.assertLess(line_of_sight, guard)

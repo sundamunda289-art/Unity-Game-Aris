@@ -21,8 +21,12 @@ class DormantPoseBudget(unittest.TestCase):
             getter = section.index("Vector3 delta = bot.transform.position")
             self.assertLess(gate, getter)
             self.assertLess(getter, section.index("if (!bot.HasVisibleBody) continue;"))
-        self.assertIn("MuzzlePathOpenTo(shooter, candidate.transform, closestPoint)", MAIN)
-        self.assertIn("MuzzlePathOpenTo(shooter, bot.transform, point)", FALLBACK)
+        self.assertIn("AimRayReachesRival(candidateRay, distance + .5f, shooter, candidate.transform)", MAIN)
+        self.assertIn("AimRayReachesRival(candidateRay, aimRanges[attempt] + .5f,", FALLBACK)
+        sight = MAIN.split("private static bool AimRayReachesRival(", 1)[1]
+        self.assertIn("MuzzlePathOpenTo(shooter, rival, hit.point)", sight)
+        self.assertIn("hit.BelongsTo(rival)", sight)
+        self.assertIn("!StreamedCoverBlocks(ray, hit.distance)", sight)
 
     def test_100_bot_visible_aim_parity(self):
         rng = random.Random(20261123)

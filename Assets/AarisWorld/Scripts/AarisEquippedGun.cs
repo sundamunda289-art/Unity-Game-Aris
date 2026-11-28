@@ -1142,8 +1142,8 @@ namespace Aaris.MapReview
                 Vector3 look = Quaternion.AngleAxis(spread.x, camera.transform.up) *
                     Quaternion.AngleAxis(-spread.y, camera.transform.right) * shotForward;
                 Ray aim = new Ray(camera.transform.position, look);
-                RaycastHit target = closeCover;
-                bool targetFound = muzzleBlocked || FirstExternalHit(aim, spec.rangeMetres,
+                AarisCombatHit target = AarisCombatHit.Physical(closeCover);
+                bool targetFound = muzzleBlocked || FirstExternalCombatHit(aim, spec.rangeMetres,
                     owner.transform, out target);
                 Vector3 destination = targetFound ? target.point : aim.GetPoint(spec.rangeMetres);
                 // The first physical muzzle surface controls damage and VFX.
@@ -1155,9 +1155,9 @@ namespace Aaris.MapReview
                 if (!muzzleBlocked && distance > 0.025f)
                 {
                     Ray muzzleRay = new Ray(muzzle, path / distance);
-                    bool muzzleHitFound = FirstExternalHit(
+                    bool muzzleHitFound = FirstExternalCombatHit(
                         muzzleRay, distance + 0.05f,
-                        owner.transform, out RaycastHit muzzleHit);
+                        owner.transform, out AarisCombatHit muzzleHit);
                     // A camera-only ray hit must never award physical damage.
                     targetFound = muzzleHitFound;
                     if (muzzleHitFound)
@@ -1200,7 +1200,7 @@ namespace Aaris.MapReview
                 }
                 if (targetFound)
                 {
-                    ApplyDamage(target.collider, spec.damage, owner, target.point,
+                    ApplyCombatDamage(target, spec.damage, owner,
                         spec.headshotMultiplier);
                 }
             }
@@ -1231,6 +1231,44 @@ namespace Aaris.MapReview
                     return true;
             }
             return false;
+        }
+
+        private bool FirstExternalCombatHit(Ray ray, float range, Transform owner,
+            out AarisCombatHit nearest)
+        {
+            bool found = FirstExternalHit(ray, range, owner, out RaycastHit physical);
+            nearest = found ? AarisCombatHit.Physical(physical) : default;
+            float limit = found ? Mathf.Max(0f, physical.distance - .0001f) : range;
+            if (AarisOfflineBRDirector.TryRaycastVirtualRival(ray, limit, owner,
+                out AarisCombatHit logical) && (!found || logical.distance < physical.distance))
+            { nearest = logical; found = true; }
+            return found;
+        }
+
+        internal static bool ApplyCombatDamage(AarisCombatHit hit, float amount,
+            GameObject attacker, float headshotMultiplier = 1.75f)
+        {
+            if (hit.logicalRival == null)
+                return headshotMultiplier <= 1f
+                    ? ApplyDamage(hit.collider, amount, attacker)
+                    : ApplyDamage(hit.collider, amount, attacker, hit.point, headshotMultiplier);
+            AarisOfflineRival rival = hit.logicalRival;
+            if (!(amount > 0f) || float.IsInfinity(amount) || !rival.IsAlive ||
+                (attacker != null && rival.transform.IsChildOf(attacker.transform))) return false;
+            rival.GetLogicalCapsule(out Vector3 feet, out float height, out _);
+            bool headshot = hit.point.y >= feet.y + height * .79f && headshotMultiplier > 1f;
+            float damage = headshot ? amount * Mathf.Clamp(headshotMultiplier, 1f, 4f) : amount;
+            AarisOfflineHealth victim = rival.Health;
+            float before = victim.CurrentHealth;
+            victim.ApplyHitDamage(damage, attacker, headshot);
+            float loss = Mathf.Max(0f, before - victim.CurrentHealth);
+            if (loss <= 0f) return false;
+            if (attacker != null)
+            {
+                AarisCombatFeedbackHUD.NotifyOutgoingDamage(attacker, loss, headshot, hit.point);
+                AarisWeaponHUD.NotifyHit(attacker, headshot);
+            }
+            return true;
         }
 
         internal static bool ApplyDamage(Collider collider, float amount, GameObject attacker)

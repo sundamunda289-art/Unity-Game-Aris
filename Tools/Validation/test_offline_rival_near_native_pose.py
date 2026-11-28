@@ -34,7 +34,7 @@ class NativeNearPose(unittest.TestCase):
             "Vector3 realTravel = afterMove - beforeMove;",
             "IsPostMoveShotInRangeAndFacing(afterMove, transform.forward,",
             "owner.MayAttackPlayer(this)",
-            "TryGetSightHit(target, out RaycastHit shotHit)",
+            "TryGetCombatSightHit(target, out AarisCombatHit shotHit)",
             "MuzzlePathClear(target)",
             "targetCapsule = target == playerTarget ? playerTargetCapsule",
             "canSee = HasSight();",

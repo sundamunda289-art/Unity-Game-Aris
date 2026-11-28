@@ -55,7 +55,7 @@ class RivalRetaliationTests(unittest.TestCase):
             "private void UpdateAnimationBlend", 1)[0]
         self.assertIn("canSee = target != null && targetHealth != null", update)
         self.assertIn("HasSight();", update)
-        self.assertIn("TryGetSightHit(target, out RaycastHit shotHit)", update)
+        self.assertIn("TryGetCombatSightHit(target, out AarisCombatHit shotHit)", update)
         self.assertIn("MuzzlePathClear(target)", update)
         self.assertIn("owner.TryFindVisibleRivalAlternative", update)
 

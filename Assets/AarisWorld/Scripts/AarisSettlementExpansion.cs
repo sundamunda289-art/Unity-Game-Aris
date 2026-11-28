@@ -348,6 +348,7 @@ namespace Aaris.MapReview
                     Vector3 position = new Vector3(site.x, y - 0.025f, site.z);
                     Quaternion rotation = Quaternion.Euler(0f, site.yaw, 0f);
                     GameObject instance = Instantiate(prefab, position, rotation, transform);
+                    AarisWorldSectorRuntime.RegisterRuntimeStaticRoot(instance);
                     if (instance == null)
                     {
                         skippedResources++;

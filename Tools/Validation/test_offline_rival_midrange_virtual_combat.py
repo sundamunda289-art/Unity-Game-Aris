@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""90-155 m unseen virtualization / non-physical combat safety contract.
+"""90-120 m unseen virtualization / non-physical combat safety contract.
 Source + deterministic policy model; not a native or Android profiler test.
 """
 from pathlib import Path
@@ -15,7 +15,7 @@ VIRTUAL = RIVAL.split("private void TickVirtualCombat(", 1)[1].split(
 
 
 def virtual(distance, on_camera):
-    return distance >= 155 or (distance >= 90 and not on_camera)
+    return distance >= 120 or (distance >= 90 and not on_camera)
 
 
 def abstract_damage_allowed(shooter_distance, victim_distance,
@@ -35,17 +35,20 @@ class MidrangeVirtualCombat(unittest.TestCase):
         self.assertEqual(sum(d < 485 and False for d in remote), 0)
         self.assertEqual(sum(virtual(d, False) for d in near), 0)
 
-    def test_90_155_offscreen_transition_preserves_visible_hit_receivers(self):
+    def test_90_120_transition_preserves_analytical_far_hit_receivers(self):
         self.assertFalse(virtual(89.9, False))
         self.assertTrue(virtual(90., False))
-        self.assertTrue(virtual(150., False))
-        self.assertFalse(virtual(150., True))
-        self.assertTrue(virtual(155., True))
+        self.assertTrue(virtual(110., False))
+        self.assertFalse(virtual(110., True))
+        self.assertTrue(virtual(120., True))
         self.assertTrue(virtual(300., True))
         self.assertIn("bool shouldVirtualize =", UPDATE)
         self.assertIn("bool shouldRestorePhysics =", UPDATE)
         self.assertIn("if (!simulationDue) return;", UPDATE)
-        self.assertIn("bool needsPhysicalReceiver = !virtualBody ||", UPDATE)
+        self.assertIn("bool needsPhysicalReceiver = !virtualBody;", UPDATE)
+        self.assertIn("internal bool HasLogicalHitReceiver => IsAlive &&", RIVAL)
+        self.assertIn("(capsule == null || !capsule.enabled || !nativeReceiverReady);", RIVAL)
+        self.assertIn("TryRaycastVirtualRival", SOURCE)
 
     def test_abstract_damage_respects_physical_mode_and_cover_independently_of_camera(self):
         self.assertTrue(abstract_damage_allowed(130, 140, True, False))

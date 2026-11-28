@@ -23,12 +23,12 @@ class RemoteBotBudget(unittest.TestCase):
     def test_3_zone_representation_is_independent_of_fights(self):
         for token in (
             "private const float FarSimulationDistance = 90f;",
-            "private const float DetailedDistance = 155f;",
+            "private const float DetailedDistance = 120f;",
             "internal const float FarVisualDistance = 485f;",
             "lastCameraRelevant && virtualBody",
             "visualRoot.SetActive(false);",
             "farVisualRoot.SetActive(false);",
-            "capsule.enabled = false;",
+            "SetPhysicalReceiverEnabled(false);",
             "graph.Stop();",
             "WakeDormantRivalsNearPlayer(playerPosition, now);",
             "bot.ForceDormantProximityProbe();",

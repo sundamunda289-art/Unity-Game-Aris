@@ -4,6 +4,7 @@ Never treats source-only assertions as an Editor build or phone FPS measurement.
 import unittest
 from pathlib import Path
 import sys
+import re
 from collections import Counter
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,6 +16,10 @@ PARTITIONER = ROOT / "Assets/AarisWorld/Editor/AarisDistrictWorldPartitionBatch.
 META = ROOT / "Assets/AarisWorld/Editor/AarisDistrictWorldPartitionBatch.cs.meta"
 BUILD = ROOT / "ProjectSettings/EditorBuildSettings.asset"
 CHUNKS = ROOT / "Assets/AarisWorld/Scenes/Chunks"
+ULTRA = ROOT / "Assets/AarisWorld/Editor/AarisUltraSectorBake.cs"
+# Original saved MobileRuntime/AarisNearbyColliders script identity. Keep the
+# authoritative collider owner separate from new presentation-only references.
+NEARBY_COLLIDERS_GUID = "f99aebde001f56119c583c593f64c271"
 
 DISTRICTS = (
     "CanalMarket", "ClockTowerTown", "CoastalHamlet", "EasternPort",
@@ -22,6 +27,35 @@ DISTRICTS = (
     "NorthernRidgeTown", "OldVillage", "SoutheastLighthouse",
     "SouthernAirfield", "ValleySettlement",
 )
+
+
+def validated_cohort_presentation_links(scene, root):
+    """Allow only proven cohort source-renderer links, never collider owners.
+
+    The shared structural gate verifies exact source/mesh/material ownership,
+    generated outputs, saved roots, active fallback scenes and native assets
+    before any incoming reference is classified as presentation-only.
+    """
+    from test_world_partition_readiness import baked_static_inventory
+    generated, _ = baked_static_inventory(root)
+    if not generated:
+        return set()
+    metadata = root / 'Assets/AarisWorld/Scripts/AarisBakedStaticBatch.cs.meta'
+    match = re.search(r'(?m)^guid: ([0-9a-f]{32})$', metadata.read_text())
+    assert match, 'Missing presentation controller script identity'
+    script = '{fileID: 11500000, guid: ' + match[1] + ', type: 3}'
+    links = set()
+    for uid, block in scene.blocks.items():
+        if block.kind != 114 or not re.search(
+                r'(?m)^  m_Script: ' + re.escape(script) + '$', block.body):
+            continue
+        for target in re.findall(r'(?m)^  - renderer: \{fileID: (-?\d+)\}$', block.body):
+            target = int(target)
+            assert target in scene.blocks and scene.blocks[target].kind == 23, \
+                'Presentation controller must not acquire a collider reference'
+            links.add((uid, target))
+    assert links, 'Generated cohorts have no validated source-renderer references'
+    return links
 
 
 class NativeDistrictPartitionTests(unittest.TestCase):
@@ -81,6 +115,8 @@ class NativeDistrictPartitionTests(unittest.TestCase):
 
     def test_exact_migrations_protect_original_gameplay_references(self):
         scene = WorldScene(MAIN.read_text())
+        presentation_links = validated_cohort_presentation_links(scene, ROOT)
+        grid_paths = re.findall(r"(?m)^\s+path: (Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_[^\r\n]+\.unity)$", BUILD.read_text())
         total_candidates = 0
         migrated = 0
         all_chunks_exist = all((CHUNKS / f"Aaris_District_{name}_Detail.unity").is_file()
@@ -128,7 +164,14 @@ class NativeDistrictPartitionTests(unittest.TestCase):
                     self.assertEqual(scene.component_types[silhouettes[0]], {33, 23})
                     outgoing, incoming = scene.semantic_cross_refs(subs)
                     self.assertFalse(outgoing)
-                    self.assertEqual(len(incoming), 1)
+                    gameplay_links = incoming - presentation_links
+                    self.assertEqual(len(gameplay_links), 1, 'Persistent collider must retain exactly one gameplay owner')
+                    owner, collider = next(iter(gameplay_links))
+                    self.assertEqual(scene.blocks[collider].kind, 64)
+                    self.assertEqual(scene.owner[collider], go)
+                    self.assertEqual(scene.blocks[owner].kind, 114)
+                    self.assertIn('m_Script: {fileID: 11500000, guid: ' + NEARBY_COLLIDERS_GUID + ', type: 3}',
+                                  scene.blocks[owner].body)
                     migrated += 1
                 self.assertTrue(persistent)
                 path = CHUNKS / f"Aaris_District_{name}_Detail.unity"
@@ -144,11 +187,16 @@ class NativeDistrictPartitionTests(unittest.TestCase):
                     self.assertEqual(len(cell.descendants(root)), 3)
                 meta = (path.parent / (path.name + ".meta"))
                 self.assertTrue(meta.is_file())
-                import re
                 guid = re.search(r"(?m)^guid: ([0-9a-f]{32})$", meta.read_text())
                 self.assertIsNotNone(guid)
-                self.assertIn(guid.group(1), BUILD.read_text())
-                self.assertEqual(BUILD.read_text().count(path.relative_to(ROOT).as_posix()), 1)
+                if grid_paths:
+                    # The original district scenes remain byte-preserved
+                    # source archives; only the repackaged cells ship active.
+                    self.assertNotIn(guid.group(1), BUILD.read_text())
+                    self.assertNotIn(path.relative_to(ROOT).as_posix(), BUILD.read_text())
+                else:
+                    self.assertIn(guid.group(1), BUILD.read_text())
+                    self.assertEqual(BUILD.read_text().count(path.relative_to(ROOT).as_posix()), 1)
         if none_exist:
             self.assertGreaterEqual(total_candidates, 90)
         else:
@@ -157,6 +205,36 @@ class NativeDistrictPartitionTests(unittest.TestCase):
         self.assertIsNotNone(scene.find_unique("ForestLookout"))
         self.assertIsNotNone(scene.find_unique("Terrain_2x2"))
         self.assertIsNotNone(scene.find_unique("RoadNetwork"))
+        if grid_paths:
+            registered = re.findall(r"(?m)^  - scenePath: ([^\r\n]+)$", MAIN.read_text())
+            fallback_paths = re.findall(r"(?m)^  chunkScenePath: ([^\r\n]+)$", MAIN.read_text())
+            self.assertEqual(set(grid_paths), set(registered))
+            self.assertEqual(len(grid_paths), len(set(grid_paths)))
+            self.assertTrue(set(fallback_paths).issubset(set(grid_paths)))
+            for path in grid_paths:
+                self.assertTrue((ROOT / path).is_file())
+                self.assertTrue((ROOT / (path + ".meta")).is_file())
+
+    def test_sector_repack_requires_unchanged_collision_and_source_archives(self):
+        s = ULTRA.read_text()
+        self.assertLess(s.index('"unsaved-scene-work"'),
+                        s.index("EditorSceneManager.OpenScene(Main, OpenSceneMode.Single)"))
+        self.assertIn("SceneManager.MoveGameObjectToScene(item.root, scene);", s)
+        self.assertIn("item.geometryFingerprint == GeometryFingerprint(item.root)", s)
+        self.assertIn("FileHash(original.Key) == original.Value", s)
+        self.assertIn("persistentBefore == PersistentFingerprint(bootstrap)", s)
+        self.assertIn("changed-paths.txt", s)
+        self.assertIn("public static void VerifySaved()", s)
+        self.assertIn("EditorSceneManager.OpenScene(cell.scenePath, OpenSceneMode.Additive)", s)
+        self.assertIn("GeometryFingerprint(found) == record.geometryFingerprint", s)
+        self.assertIn("LodFingerprint(found) == record.lodFingerprint", s)
+        self.assertIn("packaged.SetEquals(registered)", s)
+        self.assertIn("FileHash(archive.path) == archive.sha256", s)
+        self.assertIn('"verification-wrote-project-file"', s)
+        self.assertIn("GlobalObjectId.GetGlobalObjectIdSlow(value)", s)
+        self.assertNotIn("AssetDatabase.SaveAssets", s)
+        self.assertNotIn("TerrainData.SetHeights", s)
+        self.assertNotIn("DestroyImmediate", s)
 
 
 if __name__ == "__main__":

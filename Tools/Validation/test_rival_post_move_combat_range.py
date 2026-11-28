@@ -74,7 +74,7 @@ class PostMovementBotShot(unittest.TestCase):
         self.assertIn("(carriedGun == null || settledForShot)", shot)
         self.assertIn("(target != playerTarget || owner.MayAttackPlayer(this))", shot)
         self.assertIn("Time.time >= nextAttack", shot)
-        self.assertIn("TryGetSightHit(target, out RaycastHit shotHit)", shot)
+        self.assertIn("TryGetCombatSightHit(target, out AarisCombatHit shotHit)", shot)
         self.assertIn("MuzzlePathClear(target)", shot)
         self.assertNotRegex(shot, r"\bdistance(?:Sqr)?\s*(?:<=|>=|<|>)")
         self.assertIn("Vector3 delta = to - from;", SHOT_ADMISSION)

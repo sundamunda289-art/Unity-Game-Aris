@@ -9,43 +9,88 @@ EditorBuildSettings:
     path: Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene.unity
     guid: 9a18cc5d35536fd428eb6e90b3402589
   - enabled: 1
-    path: Assets/AarisWorld/Scenes/Chunks/Aaris_ForestLookout_Detail.unity
-    guid: afbb452a5ed2cbf729b4ecb43ed5b331
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_m1_p4_Detail.unity
+    guid: 5b9009622dd2d8c3eaec265843fa5942
   - enabled: 1
-    path: Assets/AarisWorld/Scenes/Chunks/Aaris_District_CanalMarket_Detail.unity
-    guid: 471f0a8a35bca2a1387feb53e92535c5
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_m2_p4_Detail.unity
+    guid: 6948fd12f80ab8759a11b052449192e5
   - enabled: 1
-    path: Assets/AarisWorld/Scenes/Chunks/Aaris_District_ClockTowerTown_Detail.unity
-    guid: 55244eed9a47324e6a0e42c47111b95e
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_m3_m2_Detail.unity
+    guid: d00c8d000d7d9723db6dfeec5f5356b7
   - enabled: 1
-    path: Assets/AarisWorld/Scenes/Chunks/Aaris_District_CoastalHamlet_Detail.unity
-    guid: 5a381318b8bdba515a61965ceba637c7
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_m4_m2_Detail.unity
+    guid: 8d6c6454291afa84fad9ccb2f20f61d1
   - enabled: 1
-    path: Assets/AarisWorld/Scenes/Chunks/Aaris_District_EasternPort_Detail.unity
-    guid: f18c117994a28aaa6936a2fbf541dfbc
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_m4_m4_Detail.unity
+    guid: 34d258e128d9929c093bb850e4c1165b
   - enabled: 1
-    path: Assets/AarisWorld/Scenes/Chunks/Aaris_District_FreightDistrict_Detail.unity
-    guid: 2219d7fdc4eb4878db3af40aec1a6cbc
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_m4_m5_Detail.unity
+    guid: b0b0352096817caea91b710f6152dffd
   - enabled: 1
-    path: Assets/AarisWorld/Scenes/Chunks/Aaris_District_HighlandObservatory_Detail.unity
-    guid: 953189433357c0deba17f01e25aae646
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_m5_m1_Detail.unity
+    guid: 9863b7838b0b1fd51ae9ac4f999418cb
   - enabled: 1
-    path: Assets/AarisWorld/Scenes/Chunks/Aaris_District_LakesideHamlet_Detail.unity
-    guid: 43740c64e0b67968b8b705caeafd4278
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_m5_p0_Detail.unity
+    guid: a40634709cfce0849b0fd6b9e84c871f
   - enabled: 1
-    path: Assets/AarisWorld/Scenes/Chunks/Aaris_District_NorthernRidgeTown_Detail.unity
-    guid: 604935ea52a6d3bca92b4434d0d65c11
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_m6_p0_Detail.unity
+    guid: 2f13a4f69bbe63133a4224b905f4657d
   - enabled: 1
-    path: Assets/AarisWorld/Scenes/Chunks/Aaris_District_OldVillage_Detail.unity
-    guid: c0b9a81c4a4c67f4bbbf101f1b4d9dc8
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p0_m3_Detail.unity
+    guid: ae7d8e9ab85f499c89d4adefa57f29a1
   - enabled: 1
-    path: Assets/AarisWorld/Scenes/Chunks/Aaris_District_SoutheastLighthouse_Detail.unity
-    guid: 1bae1779101a8861280b0dd65063bb69
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p1_m3_Detail.unity
+    guid: 86b3b01b6e4a7f883978a6b837e93a30
   - enabled: 1
-    path: Assets/AarisWorld/Scenes/Chunks/Aaris_District_SouthernAirfield_Detail.unity
-    guid: 4243f9e9b7cc2c23792c6c87e2aea8da
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p1_p1_Detail.unity
+    guid: 5c3a15fd027e857e9b8aeb1e05654379
   - enabled: 1
-    path: Assets/AarisWorld/Scenes/Chunks/Aaris_District_ValleySettlement_Detail.unity
-    guid: 7b7b5de71313d00c4946f70dee7897ce
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p1_p4_Detail.unity
+    guid: 012fa762dd6d301b48641b5dc0cdd2f6
+  - enabled: 1
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p2_p1_Detail.unity
+    guid: 5fffc515d28ac8bd5adc346aa1690a19
+  - enabled: 1
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p2_p3_Detail.unity
+    guid: a73a27ea21101269487bae023c1d93b4
+  - enabled: 1
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p2_p4_Detail.unity
+    guid: e69dec1a10e8f635b9e28530a91b3dec
+  - enabled: 1
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p3_m1_Detail.unity
+    guid: 84071d550a4ddb67db05fff9d205023d
+  - enabled: 1
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p3_m2_Detail.unity
+    guid: 1ed48de4bd2f973a397c73ba475c58f2
+  - enabled: 1
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p3_m4_Detail.unity
+    guid: e3a78dfaa48b08c17af18f55182daccc
+  - enabled: 1
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p3_m5_Detail.unity
+    guid: 7f427d3d87504646e878daffeaa967df
+  - enabled: 1
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p4_m1_Detail.unity
+    guid: 51c42ed985eca8d53b0f4177b81b375f
+  - enabled: 1
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p4_m2_Detail.unity
+    guid: 3064874e92f947cf99f2bd6f9c9fa1ae
+  - enabled: 1
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p4_m5_Detail.unity
+    guid: 3c5276e345f756e82b8404dce48eecd3
+  - enabled: 1
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p4_p3_Detail.unity
+    guid: c90ddf5ad46e0edb8a92310c0ed60157
+  - enabled: 1
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p4_p4_Detail.unity
+    guid: 50253eb89574edc679b441cfc1051611
+  - enabled: 1
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p5_m5_Detail.unity
+    guid: 05ae4144c53aab37c91774541fe7acc8
+  - enabled: 1
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p5_p1_Detail.unity
+    guid: dda161ccf89f6fc01bc216a317cee684
+  - enabled: 1
+    path: Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_p5_p2_Detail.unity
+    guid: a53761933c71e3cdb829f46b20736e3d
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0

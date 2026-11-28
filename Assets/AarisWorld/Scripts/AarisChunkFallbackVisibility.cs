@@ -21,6 +21,7 @@ namespace Aaris.MapReview
         private static readonly Dictionary<int, ChunkVisuals> loadedScenes =
             new Dictionary<int, ChunkVisuals>();
         private ChunkVisuals registeredChunk;
+        internal static event Action<Renderer> SilhouetteVisibilityChanged;
 
         private sealed class ChunkVisuals
         {
@@ -39,6 +40,7 @@ namespace Aaris.MapReview
             SceneManager.sceneUnloaded -= HandleSceneUnloaded;
             chunks.Clear();
             loadedScenes.Clear();
+            SilhouetteVisibilityChanged = null;
         }
 
         private void OnEnable()
@@ -131,8 +133,27 @@ namespace Aaris.MapReview
             {
                 Renderer renderer = silhouetteRenderers[i];
                 if (renderer != null && renderer.enabled != visible)
+                {
                     renderer.enabled = visible;
+                    SilhouetteVisibilityChanged?.Invoke(renderer);
+                }
             }
+        }
+
+        internal bool OwnsSectorBatchRenderer(Renderer renderer, string scenePath)
+        {
+            if (chunkScenePath != scenePath || silhouetteRenderers == null) return false;
+            for (int i = 0; i < silhouetteRenderers.Length; i++)
+                if (silhouetteRenderers[i] == renderer) return true;
+            return false;
+        }
+
+        internal void CollectSectorBatchRenderers(List<MeshRenderer> destination)
+        {
+            if (destination == null || silhouetteRenderers == null) return;
+            for (int i = 0; i < silhouetteRenderers.Length; i++)
+                if (silhouetteRenderers[i] is MeshRenderer renderer)
+                    destination.Add(renderer);
         }
     }
 }

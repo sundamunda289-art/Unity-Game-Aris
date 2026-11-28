@@ -97,6 +97,7 @@ namespace Aaris.MapReview
 #endif
         private readonly Collider[] overlaps = new Collider[96];
         private readonly RaycastHit[] rays = new RaycastHit[48];
+        private readonly AarisOfflineRival[] logicalBlastCandidates = new AarisOfflineRival[100];
         private readonly Dictionary<IAarisDamageable, (float amount, Collider collider)> blastTargets =
             new Dictionary<IAarisDamageable, (float amount, Collider collider)>();
         private readonly List<MonoBehaviour> damageableScratch = new List<MonoBehaviour>(8);
@@ -280,6 +281,27 @@ namespace Aaris.MapReview
                 if (!HasBlastLineOfSight(blast, near, targetComponent.transform)) continue;
                 blastTargets[target] = (amount, collider);
             }
+            // Tier-3 opponents have no PhysX collider. Include their exact
+            // mathematical capsule in the same exposure snapshot, including
+            // off-camera actors. Pending native admission can overlap both
+            // representations; the shared Health-keyed dictionary applies
+            // damage only once to that opponent.
+            int logicalCount = AarisOfflineBRDirector.CopyLogicalBlastCandidates(
+                blast, blastRadius, logicalBlastCandidates);
+            for (int i = 0; i < logicalCount; i++)
+            {
+                AarisOfflineRival rival = logicalBlastCandidates[i];
+                logicalBlastCandidates[i] = null;
+                if (rival == null || !rival.IsAlive ||
+                    (damageMask.value & (1 << rival.gameObject.layer)) == 0) continue;
+                Vector3 near = rival.ClosestLogicalPoint(blast);
+                float distance = Vector3.Distance(blast, near);
+                if (distance > blastRadius ||
+                    !HasBlastLineOfSight(blast, near, rival.transform)) continue;
+                float t = Mathf.Clamp01(distance / blastRadius);
+                float amount = centerDamage * (1f - t * t);
+                if (amount > .05f) blastTargets[rival.Health] = (amount, null);
+            }
             // Snapshot exposure before applying any damage: destroying cover during
             // notification must not change who was exposed to this same explosion.
             foreach (var entry in blastTargets)
@@ -321,6 +343,8 @@ namespace Aaris.MapReview
             // Damage candidates may be filtered by damageMask, but solid world cover
             // must still occlude the blast even when it is not damageable.
             Ray ray = new Ray(origin, delta / length);
+            if (AarisOfflineBRDirector.StreamedWorldBlocks(ray, Mathf.Max(0f, length - .02f)))
+                return false;
             int hits = Physics.RaycastNonAlloc(ray, rays, length, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
             RaycastHit[] candidates = rays;
             // Do not treat a full (unsorted) buffer as proof of cover. Retrieve
