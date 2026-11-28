@@ -19,7 +19,7 @@ namespace Aaris.MapReview.Editor
     [Serializable]
     internal sealed class AarisVehicleStudioRecord
     {
-        public string id, drivetrain;
+        public string id, drivetrain, wheelResource;
         public float referenceWidthMetres, referenceLengthMetres;
         public float maxSpeedMetres, massKg, tyreGripScale;
         public float suspensionScale, steeringScale, suspensionTravelScale;
@@ -31,25 +31,12 @@ namespace Aaris.MapReview.Editor
     /// </summary>
     public static class AarisVehiclePhotoStudio
     {
-        private static readonly string[] Names =
-        {
-            "sedan", "suv", "sports", "premium-gt",
-            "hatchback", "pickup", "van", "buggy"
-        };
-        private static readonly string[] VehicleIds =
-        {
-            "Sedan", "SUV", "Sports", "GT",
-            "Hatchback", "Utility", "Van", "Buggy"
-        };
+        private static readonly string[] Names = { "premium-gt", "suv", "buggy" };
+        private static readonly string[] VehicleIds = { "GT", "SUV", "Buggy" };
         private static readonly string[] Paths =
         {
-            "Assets/Resources/AarisVehicles/Authored/CivilianSedan.prefab",
-            "Assets/Resources/AarisVehicles/Authored/1990s-suv.fbx",
-            "Assets/Resources/AarisVehicles/Authored/1990s-sports-car.fbx",
             "Assets/Resources/AarisVehicles/PremiumRoadGT/AarisRoadGT.prefab",
-            "Assets/Resources/AarisVehicles/Authored/1990s-hatchback.fbx",
-            "Assets/Resources/AarisVehicles/Authored/1990s-pickup-truck.fbx",
-            "Assets/Resources/AarisVehicles/Authored/1980s-van.fbx",
+            "Assets/Resources/AarisVehicles/Authored/1990s-suv.fbx",
             "Assets/Resources/AarisVehicles/Authored/AarisBuggy.obj"
         };
 
@@ -185,29 +172,20 @@ namespace Aaris.MapReview.Editor
                             new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
                         if (!VisibleBounds(instance, out bounds))
                             throw new InvalidOperationException("Vehicle recenter failed: " + Paths[i]);
-                        if (VehicleIds[i] == "Sedan")
+                        if (type.id == "Buggy")
                         {
-                            // Sedan art contains a body only. Recreate the
-                            // 4 actual game wheel visuals so the comparison
-                            // cannot show an incorrectly wheel-less car.
-                            wheelRig = new GameObject("Studio Sedan Wheels");
+                            wheelRig = new GameObject("Studio Buggy Wheels");
                             wheelRig.transform.position = new Vector3(0f, .49f, 0f);
                             var motor = wheelRig.AddComponent<AarisVehicleMotor>();
-                            motor.Configure("Sedan", 24f, 1250f);
+                            motor.Configure(type.id, type.maxSpeedMetres, type.massKg);
                             motor.FitShellAndWheelbase(
                                 new Bounds(new Vector3(0f, .48f, 0f), bounds.size));
                             studioWheelMat = new Material(shader);
-                            var atlas = Resources.Load<Texture2D>(
-                                "AarisVehicles/Models/colormap");
-                            if (atlas == null) throw new InvalidOperationException(
-                                "Missing actual Kenney wheel UV palette.");
-                            studioWheelMat.SetTexture("_BaseMap", atlas);
-                            studioWheelMat.SetColor("_BaseColor", Color.white);
-                            studioWheelMat.SetFloat("_Metallic", 0f);
+                            studioWheelMat.SetColor("_BaseColor", new Color(.08f, .085f, .09f));
                             studioWheelMat.SetFloat("_Smoothness", .18f);
                             if (!motor.AttachWheelModels(Resources.Load<GameObject>(
-                                    "AarisVehicles/Models/wheel-default"), studioWheelMat))
-                                throw new InvalidOperationException("Sedan wheel art unavailable.");
+                                    type.wheelResource), studioWheelMat))
+                                throw new InvalidOperationException("Buggy wheel art unavailable.");
                         }
                         Vector3 target = bounds.center + new Vector3(0f, .1f, 0f);
                         camera.transform.position = target + new Vector3(4.15f, 2.45f, 6.9f);
@@ -233,8 +211,8 @@ namespace Aaris.MapReview.Editor
                     Environment.NewLine +
                     "These are not in-game spawn, handling, real match lighting, or Android FPS proof." +
                     Environment.NewLine + string.Join(Environment.NewLine, saved));
-                if (saved.Count != 8)
-                    throw new InvalidOperationException("Expected all 8 current vehicle models.");
+                if (saved.Count != VehicleIds.Length)
+                    throw new InvalidOperationException("A drivable catalogue model was missed.");
                 Debug.Log("AARIS_VEHICLE_STUDIO_PASS " + saved.Count + " genuine Unity photos");
             }
             finally

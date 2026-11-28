@@ -27,7 +27,7 @@ class BikeRetirementFrame(unittest.TestCase):
         guard = body.index("if (unloaded > 0 && parkedVictim == null &&")
         reserve = body.index("AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();", guard)
         next_probe = body.index("nearest.nextProbe = now + 3f;", guard)
-        placement = body.index("TryParkingSpot(nearest.point, out Vector3 spot)", next_probe)
+        placement = body.index("TryParkingSpot(nearest.point, out Vector3 spot, out Vector3 normal)", next_probe)
         new_model = body.index("CreateBike(nearest.point, spot)", placement)
         self.assertLess(retire, guard)
         self.assertLess(guard, reserve)

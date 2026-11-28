@@ -15,9 +15,8 @@ CATALOG = json.loads((ROOT / "Assets/Resources/AarisVehicles/vehicle_catalog.jso
 class AutomotiveRefinement(unittest.TestCase):
     def test_catalog_has_distinct_stroke_profiles_and_safe_bounds(self):
         ride = {v["id"]: v["suspensionTravelScale"] for v in CATALOG["vehicles"]}
-        self.assertEqual(len(ride), 8)
-        self.assertLess(ride["Sports"], ride["Sedan"])
-        self.assertGreater(ride["SUV"], ride["Sedan"])
+        self.assertEqual(set(ride), {"GT", "SUV", "Buggy"})
+        self.assertLess(ride["GT"], ride["SUV"])
         self.assertGreater(ride["Buggy"], ride["SUV"])
         self.assertLessEqual(max(ride.values()), 1.25)
         for factor in ride.values():

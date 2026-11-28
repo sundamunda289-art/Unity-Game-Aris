@@ -50,7 +50,7 @@ class BikePaintLayoutCache(unittest.TestCase):
             "private const float PrewarmRadius = 110f;",
             "private const float UnloadRadius = 66f;",
             "AarisVehicles/Authored/AarisRoadBike",
-            "int[] fallbackOrder = {1,2,3,4,0,7,5,6};",
+            "int[] fallbackOrder = {1,2,3,4,0,7,5,8,6,9};",
             "StablePaintIndex(point.id)",
             "kind == 0 ? paintVariants[paint] : surfaces[kind]",
             "new LOD(.012f, renderers)",

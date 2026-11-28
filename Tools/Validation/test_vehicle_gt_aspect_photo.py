@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guard source-authored GT geometry and all-eight catalog-scale screenshots."""
+"""Guard source-authored GT geometry and catalog-scale screenshots."""
 import json
 import re
 import unittest
@@ -12,12 +12,11 @@ CATALOG = json.loads((ROOT / "Assets/Resources/AarisVehicles/vehicle_catalog.jso
 LAYOUT = json.loads((ROOT / "Docs/MAP_LAYOUT.json").read_text())
 
 class BalancedGtAndFleet(unittest.TestCase):
-    def test_actual_map_widths_and_eight_catalog_classes(self):
+    def test_actual_map_widths_and_current_drivable_classes(self):
         self.assertEqual(LAYOUT["size_m"], [2000, 2000])
         self.assertEqual(sorted({road["width"] for road in LAYOUT["roads"]}), [7, 8])
         names = {item["id"] for item in CATALOG["vehicles"]}
-        self.assertEqual(names, {"Sedan", "SUV", "Sports", "GT", "Hatchback",
-                                 "Van", "Utility", "Buggy"})
+        self.assertEqual(names, {"SUV", "GT", "Buggy"})
         for item in CATALOG["vehicles"]:
             self.assertGreater(item["referenceWidthMetres"], 1.65)
             self.assertLessEqual(item["referenceWidthMetres"], 2.10)
@@ -56,13 +55,11 @@ class BalancedGtAndFleet(unittest.TestCase):
         self.assertNotIn("1.95f / Mathf.Max", PHOTO)
         self.assertIn("AARIS_VEHICLE_STUDIO_PASS", PHOTO)
 
-    def test_sedan_wheel_review_uses_actual_game_materials(self):
-        self.assertIn("Studio Sedan Wheels", PHOTO)
-        self.assertIn('"AarisVehicles/Models/colormap"', PHOTO)
+    def test_buggy_wheel_review_uses_the_catalogue_wheel(self):
+        self.assertIn("Studio Buggy Wheels", PHOTO)
         self.assertIn("AttachWheelModels(", PHOTO)
-        self.assertIn('"AarisVehicles/Models/wheel-default"', PHOTO)
+        self.assertIn("type.wheelResource", PHOTO)
         self.assertIn('studioWheelMat.SetFloat("_Smoothness", .18f)', PHOTO)
-        self.assertNotIn("new Material(shader) { name = \"Temporary Sedan Wheel\" }", PHOTO)
 
 if __name__ == "__main__":
     unittest.main()

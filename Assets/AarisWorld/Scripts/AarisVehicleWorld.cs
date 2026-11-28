@@ -204,11 +204,13 @@ namespace Aaris.MapReview
         // exact instances; never allocate one material for every vehicle.
         private Material headlampGlassMaterial, headlampOnMaterial;
         private Material taillampGlassMaterial, brakeLampMaterial;
+        private Material clearOpticalCover, redOpticalCover;
+        private AarisVehicleWheelhouseKit wheelhouses;
         private Material reverseLampMaterial;
         // One chamfered mesh + one dark bezel material for the entire match.
         // Individual car lenses use MeshFilter.sharedMesh rather than toy
         // cubes (with default Colliders) or per-instance mesh allocations.
-        private Mesh sharedLampLensMesh;
+        private Mesh sharedLampLensMesh, sharedCurvedLampMesh;
         private Material lampBezelMaterial;
         // One scene-owned URP mark material shared by both rear trails on
         // every streamed car, instead of allocating one material per wheel.
@@ -600,7 +602,7 @@ namespace Aaris.MapReview
             if (file == null || file.schema != 1 || file.sizeMetres != 2000 ||
                 file.hubCount != 45 || file.candidates == null ||
                 file.candidates.Length < 70 || definitions == null ||
-                definitions.vehicles == null || definitions.vehicles.Length < 3)
+                definitions.vehicles == null || definitions.vehicles.Length != 3)
             {
                 Debug.LogError("Aaris vehicles: source data does not match the 2km authored world.");
                 return false;
@@ -623,20 +625,23 @@ namespace Aaris.MapReview
                 var item = vehicleTypes[i];
                 if (item == null || item.weight <= 0 || item.maxSpeedMetres < 8f ||
                     item.maxSpeedMetres > 28f) continue;
-                prefabs[i] = Resources.Load<GameObject>(item.modelResource);
-                wheelPrefabs[i] = Resources.Load<GameObject>(item.wheelResource);
-                // Do not load multi-megabyte authored FBXs here. The small
-                // legacy body/wheel pair proves the type is spawnable and stays
-                // as a fail-safe; authoredBodyResolved is completed by the
-                // proximity prewarmer before the first visible spawn.
-                authoredBodyResolved[i] =
-                    string.IsNullOrEmpty(item.authoredModelResource);
+                bool hasLocalBody = !string.IsNullOrEmpty(item.modelResource);
+                bool hasAuthoredBody = !string.IsNullOrEmpty(item.authoredModelResource);
+                if (!hasLocalBody && !hasAuthoredBody) continue;
+                if (hasLocalBody)
+                    prefabs[i] = Resources.Load<GameObject>(item.modelResource);
+                if (hasLocalBody && !string.IsNullOrEmpty(item.wheelResource))
+                    wheelPrefabs[i] = Resources.Load<GameObject>(item.wheelResource);
+                // Some vehicles have only one production model. Its real mesh
+                // still loads near a spawn through the existing prewarm budget.
+                authoredBodyResolved[i] = !hasAuthoredBody;
                 // A valid GameObject without a usable mesh is not a drivable
                 // 3D model. Remove both references so weighted selection
                 // cannot plan an invisible car for an entire map sector.
-                if (prefabs[i] == null || wheelPrefabs[i] == null ||
-                    prefabs[i].GetComponentInChildren<Renderer>(true) == null ||
-                    wheelPrefabs[i].GetComponentInChildren<Renderer>(true) == null)
+                if (hasLocalBody && (wheelPrefabs[i] == null ||
+                    wheelPrefabs[i].GetComponentInChildren<Renderer>(true) == null ||
+                    prefabs[i] == null ||
+                    prefabs[i].GetComponentInChildren<Renderer>(true) == null))
                 {
                     prefabs[i] = null;
                     wheelPrefabs[i] = null;
@@ -645,7 +650,7 @@ namespace Aaris.MapReview
 
                 // A Standard/pink/missing material must never silently ship as
                 // a realistic car. Fail this *type* closed, not the full match.
-                if (item.preserveAuthoredUrpMaterials &&
+                if (hasLocalBody && item.preserveAuthoredUrpMaterials &&
                     (!HasCompatibleUrpMaterials(prefabs[i]) ||
                      !HasCompatibleUrpMaterials(wheelPrefabs[i])))
                 {
@@ -654,8 +659,16 @@ namespace Aaris.MapReview
                     wheelPrefabs[i] = null;
                     continue;
                 }
-                safeBodyPrefabs[i] = prefabs[i];
-                safeWheelPrefabs[i] = wheelPrefabs[i];
+                if (hasLocalBody && item.modelResource == item.authoredModelResource)
+                {
+                    CommitAuthoredBody(i, prefabs[i]);
+                    authoredBodyResolved[i] = true;
+                }
+                else if (hasLocalBody)
+                {
+                    safeBodyPrefabs[i] = prefabs[i];
+                    safeWheelPrefabs[i] = wheelPrefabs[i];
+                }
                 availableWeight += item.weight;
                 validModels++;
             }
@@ -693,6 +706,7 @@ namespace Aaris.MapReview
             paletteMaterial.SetFloat("_Smoothness", .60f);
             paletteMaterial.enableInstancing = true;
 
+            wheelhouses = new AarisVehicleWheelhouseKit(shader);
             wheelPaletteMaterial = new Material(shader) { name = "Aaris CC0 Kenney Wheel Rubber" };
             wheelPaletteMaterial.SetTexture("_BaseMap", palette);
             wheelPaletteMaterial.SetColor("_BaseColor", Color.white);
@@ -711,6 +725,15 @@ namespace Aaris.MapReview
             reverseLampMaterial = CreateLampMaterial(shader, "Reverse Lamps",
                 new Color(.90f, .97f, 1f), new Color(1.7f, 1.85f, 2f));
             sharedLampLensMesh = BuildLampLensMesh();
+            Shader optics = AarisShaderCache.Find("Aaris/Automotive Glazing");
+            if (optics != null && optics.isSupported)
+            {
+                clearOpticalCover = CreateOpticalCover(optics, "SUV clear lens",
+                    new Color(.37f, .45f, .50f, .17f));
+                redOpticalCover = CreateOpticalCover(optics, "SUV red lens",
+                    new Color(.65f, .045f, .028f, .34f));
+                sharedCurvedLampMesh = BuildCurvedLampMesh(sharedLampLensMesh);
+            }
             lampBezelMaterial = CreateLampMaterial(shader, "Lamp Dark Bezels",
                 new Color(.035f, .045f, .052f), Color.black);
             skidMarkMaterial = CreateSkidMarkMaterial(shader);
@@ -783,6 +806,35 @@ namespace Aaris.MapReview
             lens.RecalculateNormals();
             lens.RecalculateBounds();
             return lens;
+        }
+
+        private static Mesh BuildCurvedLampMesh(Mesh outline)
+        {
+            Vector3[] vertices = outline.vertices;
+            Array.Resize(ref vertices, vertices.Length + 1);
+            int centre = vertices.Length - 1;
+            vertices[centre] = Vector3.forward * .013f;
+            var triangles = new int[centre * 3];
+            for (int edge = 0; edge < centre; edge++)
+            {
+                triangles[edge * 3] = centre;
+                triangles[edge * 3 + 1] = edge;
+                triangles[edge * 3 + 2] = (edge + 1) % centre;
+            }
+            var curved = new Mesh { name = "Aaris shared curved automotive lens" };
+            curved.vertices = vertices;
+            curved.triangles = triangles;
+            curved.RecalculateNormals();
+            curved.RecalculateBounds();
+            curved.UploadMeshData(true);
+            return curved;
+        }
+
+        private static Material CreateOpticalCover(Shader shader, string name, Color tint)
+        {
+            var cover = new Material(shader) { name = name, enableInstancing = true };
+            cover.SetColor("_BaseColor", tint);
+            return cover;
         }
 
         // URP Lit is already validated at scene startup. Keeping the emission
@@ -943,7 +995,7 @@ namespace Aaris.MapReview
             if (float.IsNaN(size.sqrMagnitude) ||
                 float.IsInfinity(size.sqrMagnitude) ||
                 targetWidth <= 0f || targetLength <= 0f) return false;
-            // Height limits admit the low GT coupe and tall utility/van.
+            // Height limits admit the low GT coupe and tall SUV.
             // A substantial fraction of each class's 7/8m-road footprint
             // must be visible, not squeezed into a toy-sized body.
             return size.x >= targetWidth * .74f &&
@@ -1060,9 +1112,13 @@ namespace Aaris.MapReview
                 cached != null) return cached;
             string label = source.name.ToLowerInvariant();
             bool gtHeadlampCover = label == "aarisroadgt_clearlens";
+            bool gtTaillampCover = label == "aarisroadgt_redlens";
             // These windows have separate geometry and complete cabins.
             // The GT headlamp also has a reflector behind its separate lens.
-            if (gtHeadlampCover || label == "aarisroadgt_glass" ||
+            bool clearCover = label.Contains("aarislampclearcover");
+            bool redCover = label.Contains("aarislampredcover");
+            if (gtHeadlampCover || gtTaillampCover || clearCover || redCover ||
+                label == "aarisroadgt_glass" ||
                 label.Contains("_window_glass_x"))
             {
                 Shader glazing = AarisShaderCache.Find("Aaris/Automotive Glazing");
@@ -1075,6 +1131,9 @@ namespace Aaris.MapReview
                     };
                     Color tint = new Color(.075f, .12f, .16f, .41f);
                     if (gtHeadlampCover) tint = new Color(.30f, .36f, .40f, .39f);
+                    else if (clearCover) tint = new Color(.30f, .37f, .42f, .23f);
+                    else if (gtTaillampCover || redCover)
+                        tint = new Color(.63f, .025f, .017f, .53f);
                     else if (label == "aarisroadgt_glass") tint.a = .40f;
                     window.SetColor("_BaseColor", tint);
                     authoredMaterialCache[source] = window;
@@ -1085,7 +1144,8 @@ namespace Aaris.MapReview
             // Their separate paint/glazing material slots can be polished,
             // but never change an asset or clear-coat a mixed tyre/paint
             // atlas. One source material gets at most one scene-owned copy.
-            if (source.shader != null &&
+            bool originalWheelFinish = label == "aaristyre" || label == "aarisalloy";
+            if (!originalWheelFinish && source.shader != null &&
                 source.shader.name == "Universal Render Pipeline/Lit")
             {
                 string sourceLabel = source.name.ToLowerInvariant();
@@ -1427,6 +1487,7 @@ namespace Aaris.MapReview
                 item.convertAuthoredBodyMaterials = false;
                 return;
             }
+            if (string.IsNullOrEmpty(item.modelResource)) return;
             if (!string.IsNullOrEmpty(item.authoredWheelResource))
             {
                 // The Android prewarmer integrates this separate mesh on a
@@ -1590,6 +1651,16 @@ namespace Aaris.MapReview
             }
         }
 
+        private bool CanPlanVehicleType(int index)
+        {
+            var type = vehicleTypes[index];
+            if (type == null || type.weight <= 0 || type.maxSpeedMetres < 8f ||
+                type.maxSpeedMetres > 28f) return false;
+            return (prefabs[index] != null && wheelPrefabs[index] != null) ||
+                (string.IsNullOrEmpty(type.modelResource) &&
+                 !string.IsNullOrEmpty(type.authoredModelResource) && !authoredBodyResolved[index]);
+        }
+
         private bool AddPlan(AarisVehiclePoint point, float minimumSeparation)
         {
             foreach (var prior in plans)
@@ -1600,14 +1671,13 @@ namespace Aaris.MapReview
             }
             int total = 0;
             for (int i = 0; i < vehicleTypes.Length; i++)
-                if (prefabs[i] != null && wheelPrefabs[i] != null)
-                    total += vehicleTypes[i].weight;
+                if (CanPlanVehicleType(i)) total += vehicleTypes[i].weight;
             // No remainder by zero even if future catalog validation changes.
             if (total <= 0) return false;
             int pick = (int)(Next() % (uint)total), which = -1;
             for (int i = 0; i < vehicleTypes.Length; i++)
             {
-                if (prefabs[i] == null || wheelPrefabs[i] == null) continue;
+                if (!CanPlanVehicleType(i)) continue;
                 pick -= vehicleTypes[i].weight;
                 if (pick < 0) { which = i; break; }
             }
@@ -1745,8 +1815,7 @@ namespace Aaris.MapReview
             // Clearance is above the supporting ground so TerrainCollider
             // will not be counted as a vehicle-sized wall.
             Vector3 center = new Vector3(x, y + 1.15f, z);
-            bool tallBody = record.type.id == "SUV" ||
-                record.type.id == "Van" || record.type.id == "Utility";
+            bool tallBody = record.type.id == "SUV";
             Vector3 halfExtents = new Vector3(
                 Mathf.Max(1.14f, widthMetres * .55f),
                 tallBody ? .94f : .64f,
@@ -1824,6 +1893,8 @@ namespace Aaris.MapReview
 
         private static int StablePaintVariant(string pointId, string vehicleId)
         {
+            if (vehicleId == "GT") return 3;
+            if (vehicleId == "SUV") return 5;
             // String.GetHashCode is not a persistence key. FNV-1a produces the
             // same colour after streaming out/in and across game launches.
             unchecked
@@ -1882,15 +1953,9 @@ namespace Aaris.MapReview
                 case "Buggy":
                     targetMetallic = .23f; targetSmoothness = .47f;
                     paintClearCoat = .08f; break;
-                case "Sports":
-                    targetMetallic = .40f; targetSmoothness = .69f;
-                    paintClearCoat = .42f; break;
                 case "GT":
                     targetMetallic = .45f; targetSmoothness = .63f;
                     paintClearCoat = .43f; break;
-                case "Hatchback": targetMetallic = .29f; targetSmoothness = .59f; break;
-                case "Van": targetMetallic = .21f; targetSmoothness = .49f; break;
-                case "Utility": targetMetallic = .21f; targetSmoothness = .50f; break;
             }
             var block = new MaterialPropertyBlock();
             foreach (var renderer in model.GetComponentsInChildren<Renderer>(true))
@@ -1942,11 +2007,17 @@ namespace Aaris.MapReview
 
         private void FallBackToVerifiedModel(int index, string reason)
         {
-            if (index < 0 || safeBodyPrefabs == null ||
-                safeWheelPrefabs == null ||
-                safeBodyPrefabs[index] == null || safeWheelPrefabs[index] == null ||
+            if (index < 0 || safeBodyPrefabs == null || safeWheelPrefabs == null ||
                 ReferenceEquals(prefabs[index], safeBodyPrefabs[index]))
                 return;
+            if (safeBodyPrefabs[index] == null || safeWheelPrefabs[index] == null)
+            {
+                prefabs[index] = null;
+                wheelPrefabs[index] = null;
+                Debug.LogWarning("Aaris vehicles: disabling " + vehicleTypes[index].id +
+                    " because its production model failed " + reason + ".");
+                return;
+            }
             prefabs[index] = safeBodyPrefabs[index];
             wheelPrefabs[index] = safeWheelPrefabs[index];
             vehicleTypes[index].useEmbeddedAuthoredWheels = false;
@@ -2409,7 +2480,8 @@ namespace Aaris.MapReview
             bool wheelsAttached = record.type.useEmbeddedAuthoredWheels
                 ? motor.AttachEmbeddedWheelModels(mesh.transform)
                 : motor.AttachWheelModels(wheelSource, wheelPaletteMaterial,
-                    record.type.preserveAuthoredUrpMaterials);
+                    record.type.preserveAuthoredUrpMaterials,
+                    record.type.id == "Buggy" ? ApplyAuthoredMaterials : null);
             if (!wheelsAttached)
             {
                 FallBackToVerifiedModel(typeIndex, "wheel attachment");
@@ -2420,21 +2492,33 @@ namespace Aaris.MapReview
             // real wheel renderers have already been detached to Rigidbody
             // space by AttachEmbeddedWheelModels. This keeps tire contact and
             // physics fixed while headlights/exhaust follow the body itself.
+            float lowering = record.type.id == "Buggy" ? .12f :
+                record.type.id == "SUV" ? .055f : .046f;
+            motor.SetParkedRideHeight(mesh.transform, lowering);
             motor.ConfigureBodyDynamics(mesh.transform);
+            motor.AttachWheelhouses(wheelhouses, source, record.type.id == "SUV");
+            bounds.center -= Vector3.up * lowering;
             // Do this only after the body was reoriented, scaled, and the
             // authored wheel set passed inspection. Lamp placement is in the
             // same fitted local chassis space as the physical wheelbase.
             Bounds lampBounds = bounds;
+            bool hasMeasuredLampBody = false;
             if (record.type.useEmbeddedAuthoredWheels &&
                 TryGetAuthoredLampBodyBounds(root.transform, mesh.transform,
                     lampBounds, out Bounds bodyOnly))
+            {
                 lampBounds = bodyOnly;
+                hasMeasuredLampBody = true;
+            }
             if (record.type.id == "GT") ConfigureGtLampSlots(motor, mesh);
             motor.ConfigureExteriorLights(lampBounds,
                 headlampGlassMaterial, headlampOnMaterial,
                 taillampGlassMaterial, brakeLampMaterial,
                 reverseLampMaterial, sharedLampLensMesh, lampBezelMaterial,
                 player, importedCar);
+            if (record.type.id == "SUV" && hasMeasuredLampBody)
+                motor.ConfigureSuvOpticalCovers(lampBounds, sharedCurvedLampMesh,
+                    clearOpticalCover, redOpticalCover);
             motor.ConfigureRearTyreTraces(skidMarkMaterial);
             motor.ConfigureExhaust(exhaustMaterial, bounds);
             motor.RestoreStreamedDamage(record.damage01);
@@ -2720,7 +2804,9 @@ namespace Aaris.MapReview
                     if (distanceSq > nearestDistanceSq ||
                         (distanceSq == nearestDistanceSq && record != null)) continue;
                     int pendingType = TypeIndex(pending.type);
-                    if (pendingType >= 0 && !authoredBodyResolved[pendingType]) continue;
+                    if (pendingType < 0 || !authoredBodyResolved[pendingType] ||
+                        prefabs[pendingType] == null || wheelPrefabs[pendingType] == null)
+                        continue;
                     nearestDistanceSq = distanceSq;
                     record = pending;
                 }
@@ -2832,6 +2918,10 @@ namespace Aaris.MapReview
             if (headlampOnMaterial != null) Destroy(headlampOnMaterial);
             if (taillampGlassMaterial != null) Destroy(taillampGlassMaterial);
             if (brakeLampMaterial != null) Destroy(brakeLampMaterial);
+            if (clearOpticalCover != null) Destroy(clearOpticalCover);
+            if (redOpticalCover != null) Destroy(redOpticalCover);
+            if (sharedCurvedLampMesh != null) Destroy(sharedCurvedLampMesh);
+            wheelhouses?.Dispose();
             if (reverseLampMaterial != null) Destroy(reverseLampMaterial);
             if (lampBezelMaterial != null) Destroy(lampBezelMaterial);
             if (sharedLampLensMesh != null) Destroy(sharedLampLensMesh);

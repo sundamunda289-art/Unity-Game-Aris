@@ -13,7 +13,7 @@ namespace Aaris.MapReview
             internal Transform root, visual, leftFoot, rightFoot, leftToe, rightToe;
             internal CharacterController capsule;
             internal AarisVehicleMotor vehicle;
-            internal Vector2 size;
+            internal Vector2 size, parkedTyreOffset;
             internal float range, clearance, anchorOffset, nextProbe;
             internal Vector3 sample, normal, frameAnchor;
             internal bool valid, wheelPlane;
@@ -40,7 +40,8 @@ namespace Aaris.MapReview
         internal static void Register(Transform root, Vector2 size, float clearance,
             float range, CharacterController capsule = null, Transform visual = null,
             float anchorOffset = 0f, Transform leftFoot = null, Transform rightFoot = null,
-            AarisVehicleMotor vehicle = null, Transform leftToe = null, Transform rightToe = null)
+            AarisVehicleMotor vehicle = null, Transform leftToe = null, Transform rightToe = null,
+            Vector2 parkedTyreOffset = default)
         {
             if (!Application.isPlaying || !SystemInfo.supportsInstancing || root==null) return;
             if (instance==null)
@@ -60,7 +61,7 @@ namespace Aaris.MapReview
                 root = root, visual = visual, capsule = capsule, size = size,
                 range = range, clearance = clearance, anchorOffset = anchorOffset,
                 leftFoot = leftFoot, rightFoot = rightFoot, leftToe = leftToe, rightToe = rightToe,
-                vehicle = vehicle
+                vehicle = vehicle, parkedTyreOffset = parkedTyreOffset
             };
         }
 
@@ -196,6 +197,17 @@ namespace Aaris.MapReview
                 if (forward.sqrMagnitude < .01f) continue;
 
                 Quaternion rotation = Quaternion.LookRotation(forward, n);
+                if (e.parkedTyreOffset.y > 0f && distance < 16f)
+                {
+                    float stampFade = Mathf.Clamp01((16f - distance) / 5f);
+                    for (int side = -1; side <= 1; side += 2)
+                    {
+                        Vector3 tyre = e.root.TransformPoint(e.parkedTyreOffset.x, 0f,
+                            side * e.parkedTyreOffset.y);
+                        tyre.y = PlaneHeight(s, n, tyre);
+                        AddContact(tyre, n, rotation, .15f * stampFade, .28f * stampFade);
+                    }
+                }
                 bool prone = e.capsule != null && e.capsule.height < .85f;
                 if (!prone && e.leftFoot != null && e.rightFoot != null)
                 {

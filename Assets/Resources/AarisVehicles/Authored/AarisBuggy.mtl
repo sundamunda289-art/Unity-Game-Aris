@@ -34,3 +34,13 @@ newmtl AarisTaillight
 Kd 0.600 0.040 0.027
 Ks .30 .30 .30
 Ns 180
+
+newmtl AarisLampClearCover
+Kd 0.640 0.720 0.780
+Ks .30 .30 .30
+Ns 180
+
+newmtl AarisLampRedCover
+Kd 0.680 0.055 0.030
+Ks .30 .30 .30
+Ns 180

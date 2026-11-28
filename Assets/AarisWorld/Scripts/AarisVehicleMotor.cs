@@ -660,7 +660,8 @@ namespace Aaris.MapReview
         /// No duplicated physics colliders exist on the visible wheels.
         /// </summary>
         public bool AttachWheelModels(GameObject wheelPrefab, Material palette,
-            bool preserveAuthoredUrpMaterials = false)
+            bool preserveAuthoredUrpMaterials = false,
+            Action<IReadOnlyList<Renderer>> convertMaterials = null)
         {
             if (wheelPrefab == null ||
                 (!preserveAuthoredUrpMaterials && palette == null)) return false;
@@ -692,7 +693,9 @@ namespace Aaris.MapReview
                         Destroy(instance);
                         return false;
                     }
-                    if (!preserveAuthoredUrpMaterials)
+                    if (convertMaterials != null)
+                        convertMaterials(wheelPrefabRenderers);
+                    else if (!preserveAuthoredUrpMaterials)
                     {
                         foreach (var renderer in wheelPrefabRenderers)
                         {
@@ -1010,6 +1013,33 @@ namespace Aaris.MapReview
             RefreshExteriorLights();
         }
 
+        internal void ConfigureSuvOpticalCovers(Bounds body, Mesh lens,
+            Material clearGlass, Material redGlass)
+        {
+            if (lampDetailRoot == null || lens == null ||
+                clearGlass == null || redGlass == null) return;
+            // The reflector textures are embedded in the 1990s SUV atlas.
+            // Place thin curved covers over those measured lens islands.
+            float frontHeight = body.min.y + body.size.y * .299f;
+            float rearHeight = body.min.y + body.size.y * .343f;
+            Vector3 frontSize = new Vector3(body.size.x * .109f,
+                body.size.y * .050f, 1f);
+            Vector3 rearSize = new Vector3(body.size.x * .064f,
+                body.size.y * .133f, 1f);
+            for (int sign = -1; sign <= 1; sign += 2)
+            {
+                var front = CreateLampLens(lampDetailRoot.transform, "SUV curved headlamp glass",
+                    new Vector3(body.center.x + sign * body.size.x * .277f, frontHeight,
+                        body.max.z - body.size.z * .010f),
+                    frontSize, clearGlass, lens, false);
+                front.transform.localRotation = Quaternion.Euler(0f, sign * 10f, 0f);
+                CreateLampLens(lampDetailRoot.transform, "SUV curved rear lens",
+                    new Vector3(body.center.x + sign * body.size.x * .356f, rearHeight,
+                        body.min.z + body.size.z * .011f),
+                    rearSize, redGlass, lens, true);
+            }
+        }
+
         // A sleeping parked car still needs to restore details when the
         // player walks back. Sampling is time-sliced and allocation-free.
         private void UpdateLampDetailLod()
@@ -1157,6 +1187,24 @@ namespace Aaris.MapReview
                 Vector3.zero;
             hasPreviousPhysicsVelocity = body != null;
             visualPitchTarget = visualRollTarget = visualJounceTarget = 0f;
+        }
+
+        internal void SetParkedRideHeight(Transform bodyModel, float lowering)
+        {
+            bodyModel.localPosition -= Vector3.up * lowering;
+            var shell = GetComponent<BoxCollider>();
+            if (shell == null) return;
+            // Preserve underbody impact clearance at kerbs. The visual
+            // drop closes the arch without changing the four contact patches.
+            float clearance = shell.center.y - shell.size.y * .5f + .32f;
+            float safeLowering = Mathf.Clamp(clearance, 0f, lowering);
+            shell.center -= Vector3.up * safeLowering;
+        }
+
+        internal void AttachWheelhouses(AarisVehicleWheelhouseKit kit, GameObject source, bool needsRotor)
+        {
+            if (visualBodyPivot == null || kit == null) return;
+            kit.Attach(source, visualBodyPivot, wheels, wheelShadowContacts[0].width, needsRotor);
         }
 
         private void SampleBodyDynamics()

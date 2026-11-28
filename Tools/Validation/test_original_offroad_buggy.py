@@ -17,7 +17,8 @@ class OriginalBuggyTests(unittest.TestCase):
         self.assertTrue(900<=len(faces)<=2400)
         self.assertTrue(all(len(t.split())==4 for t in faces))
         self.assertEqual(mats,{"AarisPaint","AarisDark","AarisMetal",
-            "AarisSeat","AarisGlass","AarisHeadlight","AarisTaillight"})
+            "AarisSeat","AarisGlass","AarisHeadlight","AarisTaillight",
+            "AarisLampClearCover","AarisLampRedCover"})
         self.assertLess(max(abs(v[0]) for v in verts),1.05)
         self.assertLess(max(abs(v[2]) for v in verts),1.85)
         self.assertTrue(min(v[1] for v in verts)>.19)
@@ -38,14 +39,13 @@ class OriginalBuggyTests(unittest.TestCase):
 
     def test_catalog_physics_paint_and_urp_clearcoat_contracts(self):
         cars=json.loads((R/"Assets/Resources/AarisVehicles/vehicle_catalog.json").read_text())["vehicles"]
-        # New vehicle types are welcome; protect the original fleet and unique IDs.
-        self.assertGreaterEqual(len(cars), 7)
+        self.assertEqual({v["id"] for v in cars}, {"GT", "SUV", "Buggy"})
         ids = [v["id"] for v in cars]
         self.assertEqual(len(ids), len(set(ids)))
         buggy=next(v for v in cars if v["id"]=="Buggy")
         self.assertEqual(buggy["authoredModelResource"],"AarisVehicles/Authored/AarisBuggy")
-        self.assertEqual(buggy["modelResource"],"AarisVehicles/Models/truck-flat")
-        self.assertEqual(buggy["wheelResource"],"AarisVehicles/Models/wheel-truck")
+        self.assertEqual(buggy["modelResource"],"AarisVehicles/Authored/AarisBuggy")
+        self.assertEqual(buggy["wheelResource"],"AarisVehicles/Authored/AarisBuggyWheel")
         self.assertEqual(buggy["drivetrain"],"AWD")
         self.assertTrue(8<=buggy["maxSpeedMetres"]<=28)
         source=(R/"Assets/AarisWorld/Scripts/AarisVehicleWorld.cs").read_text()
@@ -60,7 +60,8 @@ class OriginalBuggyTests(unittest.TestCase):
         self.assertIn("_ClearCoatMask: 0.28",mat)
         self.assertIn("_ClearCoatSmoothness: 0.72",mat)
         importer=(R/"Assets/AarisWorld/Editor/AarisVehicleImportValidation.cs").read_text()
-        self.assertIn('"AarisVehicles/Authored/AarisBuggy"',importer)
+        self.assertIn('"Authored/AarisBuggy"',importer)
+        self.assertIn('"Authored/AarisBuggyWheel"',importer)
 
 if __name__=="__main__":
     unittest.main()

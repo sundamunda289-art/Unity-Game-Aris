@@ -8,9 +8,7 @@ W=(R/'Assets/AarisWorld/Scripts/AarisVehicleWorld.cs').read_text()
 C=json.loads((R/'Assets/Resources/AarisVehicles/vehicle_catalog.json').read_text())
 class TestHandlingProfiles(unittest.TestCase):
  def test_catalog_and_drivetrain(self):
-  expected={'Sedan':'FWD','SUV':'AWD','Sports':'RWD','GT':'RWD',
-            'Hatchback':'FWD','Van':'RWD','Utility':'AWD',
-            'Buggy':'AWD'}
+  expected={'SUV':'AWD','GT':'RWD','Buggy':'AWD'}
   self.assertEqual({v['id'] for v in C['vehicles']},set(expected))
   for v in C['vehicles']:
    self.assertEqual(v['drivetrain'],expected[v['id']])
@@ -36,7 +34,7 @@ class TestHandlingProfiles(unittest.TestCase):
  def test_paint_is_only_on_verified_body_panels(self):
   paint=W.split('private static void PaintVerifiedBodySlots(',1)[1].split(
    'private void FallBackToVerifiedModel(',1)[0]
-  for label in ('case "SUV"','case "Sports"','case "Utility"',
+  for label in ('case "SUV"','case "GT"','case "Buggy"',
                 'if (separatePaint || civilianPaint)',
                 'renderer.GetPropertyBlock(block, slot);',
                 'renderer.SetPropertyBlock(block, slot);'):

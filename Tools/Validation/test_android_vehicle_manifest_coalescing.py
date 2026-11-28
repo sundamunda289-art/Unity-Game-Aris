@@ -106,7 +106,7 @@ class AndroidVehicleManifestCoalescing(unittest.TestCase):
         self.assertIn("private const float PrewarmRadius = 110f;", BIKES)
         self.assertIn("private const int TargetVehicles = 44;", CARS)
         self.assertIn("private const int MaximumNearbyVehicles = 10;", CARS)
-        self.assertIn("TryParkingSpot(nearest.point, out Vector3 spot)", BIKES)
+        self.assertIn("TryParkingSpot(nearest.point, out Vector3 spot, out Vector3 normal)", BIKES)
         self.assertNotIn("QualitySettings", BIKES)
         self.assertNotIn("TerrainData.SetTreeInstances", CARS)
 

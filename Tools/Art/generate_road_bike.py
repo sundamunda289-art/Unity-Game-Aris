@@ -13,6 +13,7 @@ PALETTE = {
  "Rim": (.53,.58,.64), "Engine": (.17,.19,.22),
  "Seat": (.058,.063,.071), "Headlamp": (.95,.91,.74),
  "TailLamp": (.76,.055,.038), "Amber": (.92,.45,.04),
+ "ClearCover": (.67,.74,.80), "RedCover": (.74,.08,.06),
 }
 verts=[]
 faces=defaultdict(list)
@@ -21,13 +22,15 @@ def add(material, points, triangles):
  verts.extend(points)
  faces[material].extend(tuple(start+n for n in face) for face in triangles)
 
-def ring(material, cy, cz, major, minor, sides=32, profile=6, shift_x=0):
+def ring(material, cy, cz, major, minor, sides=32, profile=6, shift_x=0, tread=False):
  points=[]
  for u in range(sides):
   angle=2*pi*u/sides
   for v in range(profile):
    section=2*pi*v/profile
-   radial=major+minor*cos(section)
+   crown = cos(section)
+   groove = .0055 if tread and .32 < crown < .98 and (u + (v if v < profile / 2 else -v)) % 4 == 0 else 0
+   radial=major+minor*crown-groove
    points.append((shift_x+minor*sin(section),
                   cy+radial*cos(angle), cz+radial*sin(angle)))
  tris=[]
@@ -92,68 +95,109 @@ def ellipsoid(material,center,radii,longitude=20,latitude=8):
    tris.extend(((a,c,b),(b,c,d)))
  add(material,points,tris)
 
-# Separate front and rear tyre/rim assemblies with disc and spokes.
+def brake_ring(x, cy, cz, outer, inner, segments=28):
+ points=[]
+ for i in range(segments):
+  a=2*pi*i/segments
+  throat=inner+(.008 if i%4==2 else 0)
+  for axial in (x-.004,x+.004):
+   for radius in (outer,throat):
+    points.append((axial,cy+radius*cos(a),cz+radius*sin(a)))
+ tris=[]
+ for i in range(segments):
+  a=i*4;b=(i+1)%segments*4
+  tris.extend(((a,a+1,b),(a+1,b+1,b),
+               (a+2,b+2,a+3),(a+3,b+2,b+3),
+               (a,b,a+2),(a+2,b,b+2),
+               (a+1,a+3,b+1),(a+3,b+3,b+1)))
+ add("Rim",points,tris)
+
+# Axle assemblies. The cut tread is part of the tyre mesh, while open
+# spokes leave the stamped steel rotors and fixed calipers visible.
 for z in (-.78,.78):
- ring('Tyre',.36,z,.29,.065)
- ring('Rim',.36,z,.225,.021,32,6)
- tube('Rim',(-.055,.36,z),(.055,.36,z),.065,20)
- for i in range(10):
-  angle=2*pi*i/10
-  y=.36+.215*cos(angle);wz=z+.215*sin(angle)
-  tube('Rim',(0,.36,z),(0,y,wz),.009,6)
- ring('Rim',.36,z,.17,.009,24,5,shift_x=.083)
+ ring("Tyre",.36,z,.29,.065,48,10,tread=True)
+ for side in (-1,1):
+  ring("Tyre",.36,z,.265,.003,32,4,shift_x=side*.058)
+  ring("Rim",.36,z,.226,.014,28,5,shift_x=side*.032)
+ tube("Rim",(-.055,.36,z),(.055,.36,z),.060,16)
+ for i in range(7):
+  angle=2*pi*i/7
+  y=.36+.217*cos(angle);wz=z+.217*sin(angle)
+  tube("Rim",(0,.36+.025*cos(angle+.5),z+.025*sin(angle+.5)),(.012,y,wz),.013,6)
+ disc_side = -.092 if z > 0 else .092
+ brake_ring(disc_side,.36,z,.164 if z > 0 else .134,.105 if z > 0 else .088)
+ tube("Engine",(disc_side-.008,.36,z),(disc_side+.008,.36,z),.067,16)
+ for i in range(5):
+  angle=2*pi*i/5
+  y=.36+.049*cos(angle);wz=z+.049*sin(angle)
+  tube("Rim",(disc_side-.010,y,wz),(disc_side+.010,y,wz),.009,5)
+ ellipsoid("Engine",(disc_side,.40,z-.14 if z > 0 else z+.109),
+           (.032,.049,.027),10,5)
 
-# Steel chassis, front forks and twin-cylinder engine.
+# Trellis chassis, telescoping front fork and air-cooled twin.
 for sign in (-1,1):
- x=sign*.18
- tube('Rim',(x,.57,-.65),(x,.98,-.12),.025)
- tube('Engine',(x,.98,-.12),(x,.67,.29),.036)
- tube('Engine',(x,.67,.29),(x,.57,-.65),.026)
- tube('Rim',(x,.36,.78),(x,1.36,.54),.038,12)
- tube('Engine',(x,.53,-.13),(x,.70,-.10),.11,18)
- tube('Engine',(x,.53,-.22),(x,.53,-.05),.11,16)
- tube('Seat',(x,.47,-.44),(x,.54,-.79),.05)
-ellipsoid('Engine',(0,.67,-.11),(.26,.23,.29))
-ellipsoid('Paint',(0,1.065,-.14),(.28,.215,.43))
-ellipsoid('Paint',(0,.965,.31),(.24,.18,.24))
-ellipsoid('Seat',(0,1.153,-.53),(.245,.085,.38))
-ellipsoid('Paint',(0,1.085,-.84),(.17,.115,.22))
-box('Engine',(0,.72,-.55),(.3,.095,.54))
-
-# Suspension, handlebars, brake lights, turn signals and fairing panels.
-tube('Rim',(-.42,1.35,.56),(.42,1.35,.56),.027,14)
-for sign in (-1,1):
- tube('Seat',(sign*.40,1.35,.56),(sign*.48,1.35,.56),.037)
- tube('Rim',(sign*.17,1.30,.56),(sign*.29,1.38,.56),.012,8)
- ellipsoid('Amber',(sign*.38,1.19,.69),(.085,.055,.05),12,7)
- ellipsoid('Amber',(sign*.29,1.07,-.99),(.066,.049,.055),12,7)
- ellipsoid('Paint',(sign*.205,.90,.34),(.07,.17,.31),12,8)
- tube('Rim',(sign*.11,.59,-.25),(sign*.29,.52,-.58),.035)
- tube('Rim',(sign*.19,.60,-.48),(sign*.36,.66,-.82),.065,10)
-ellipsoid('Headlamp',(0,1.15,.70),(.18,.105,.065),18,9)
-ellipsoid('Engine',(0,1.34,.52),(.18,.19,.059),18,9)
-ellipsoid('TailLamp',(0,1.105,-1.01),(.14,.052,.055),14,7)
-tube('Rim',(-.16,.49,-.21),(-.40,.07,-.30),.018,8)
-tube('Engine',(.24,.62,-.34),(.28,.46,-.81),.068,12)
-tube('Rim',(.28,.46,-.81),(.27,.51,-1.00),.046,12)
-
-# Close-range original detail using EXISTING surfaces/submeshes, not extra
-# material slots/draw calls. Less expensive curved segment defaults above
-# compensate for visual brake discs, mirrors and compact rear shocks.
-for z in (-.78,.78):
- ring('Rim',.36,z,.146,.009,24,5,shift_x=-.082)
- for sign in (-1,1):
-  tube('Rim',(sign*.081,.36,z),(sign*.082,.36,z+.086),.018,6)
-for sign in (-1,1):
- # Each mirror has an alloy stalk, dark case and silver back face.
- tube('Rim',(sign*.40,1.35,.56),(sign*.49,1.46,.49),.014,7)
- ellipsoid('Engine',(sign*.48,1.465,.48),(.095,.067,.029),12,6)
- ellipsoid('Rim',(sign*.48,1.465,.452),(.088,.049,.006),12,6)
- # Raised spring collars at the rear shock are visual-only.
+ x=sign*.16
+ tube("Rim",(x,.46,-.73),(x,.76,-.15),.033,8)
+ tube("Engine",(x,.97,-.16),(x,.67,.29),.033,8)
+ tube("Engine",(x,.64,.27),(x,.47,-.42),.033,8)
+ tube("Engine",(x,.36,.78),(x,.69,.73),.043,12)
+ tube("Rim",(x,.62,.74),(x,1.20,.61),.029,12)
+ tube("Engine",(x,.99,.655),(x,1.30,.58),.045,12)
+ tube("Rim",(x,.53,-.17),(x,.75,-.09),.10,14)
+ tube("Engine",(x,.53,-.20),(x,.53,-.05),.105,14)
+ for n in range(6):
+  box("Engine",(x,.64+n*.031,-.002+n*.01),(.205,.012,.247))
+ tube("Rim",(sign*.235,.62,-.70),(sign*.217,.90,-.55),.032,8)
+ for n in range(5):
+  t=n/5
+  tube("Engine",(sign*(.235-.018*t),.64+.229*t,-.69+.13*t),
+                (sign*(.234-.018*t),.657+.229*t,-.68+.13*t),.039,7)
+ box("Seat",(sign*.27,1.032,-.03),(.026,.102,.22))
  for n in range(4):
-  t=n/4.0
-  tube('Rim',(sign*(.24+.02*t),.57+.17*t,-.66+.07*t),
-             (sign*(.24+.02*t),.59+.17*t,-.66+.07*t),.036,6)
+  tube("Engine",(sign*.288,1.01+n*.020,-.11),(sign*.288,1.023+n*.020,.048),.003,5)
+
+ellipsoid("Engine",(0,.59,-.12),(.22,.15,.25),16,6)
+ellipsoid("Paint",(0,1.075,.02),(.279,.192,.43),24,11)
+ellipsoid("Paint",(0,.985,.35),(.225,.12,.208),16,7)
+ellipsoid("Seat",(0,1.123,-.48),(.222,.077,.33),20,8)
+ellipsoid("Seat",(0,1.155,-.73),(.173,.063,.193),16,7)
+ellipsoid("Paint",(0,1.069,-.77),(.174,.089,.29),16,7)
+for i in range(5):
+ z=-.39-i*.057
+ tube("Engine",(-.096,1.192,z),(.096,1.192,z),.0035,5)
+box("Engine",(0,.71,-.54),(.24,.095,.44))
+
+# Rider controls, mirror stalks, fork clamps and optical housings.
+tube("Engine",(-.187,1.13,.61),(.187,1.13,.61),.034,8)
+tube("Rim",(-.39,1.35,.525),(.39,1.35,.525),.021,12)
+for sign in (-1,1):
+ tube("Seat",(sign*.34,1.35,.525),(sign*.445,1.35,.515),.031,8)
+ tube("Rim",(sign*.33,1.34,.58),(sign*.435,1.33,.603),.007,6)
+ tube("Rim",(sign*.31,1.35,.55),(sign*.45,1.51,.51),.010,7)
+ ellipsoid("Engine",(sign*.45,1.51,.50),(.078,.044,.025),12,6)
+ ellipsoid("Rim",(sign*.45,1.51,.477),(.066,.032,.006),12,6)
+ ellipsoid("Amber",(sign*.28,1.151,.676),(.057,.023,.031),10,5)
+ ellipsoid("Amber",(sign*.206,1.081,-1.008),(.049,.024,.025),10,5)
+ tube("Engine",(sign*.19,.68,-.35),(sign*.326,.68,-.35),.014,8)
+tube("Engine",(0,1.17,.58),(0,1.17,.74),.138,24)
+ellipsoid("Rim",(0,1.17,.736),(.122,.122,.047),24,8)
+ellipsoid("Headlamp",(0,1.17,.766),(.037,.037,.022),12,6)
+ellipsoid("ClearCover",(0,1.17,.754),(.125,.125,.048),24,9)
+tube("Engine",(0,1.24,.47),(0,1.33,.43),.100,18)
+ellipsoid("Seat",(0,1.328,.423),(.084,.013,.074),16,6)
+tube("Rim",(-.052,1.342,.438),(.035,1.342,.408),.0038,5)
+ellipsoid("TailLamp",(0,1.083,-1.017),(.127,.037,.031),18,7)
+ellipsoid("RedCover",(0,1.083,-1.037),(.131,.041,.021),20,8)
+
+# Stainless header and tapered can with a recessed outlet.
+tube("Rim",(.15,.68,.12),(.13,.48,.31),.030,10)
+tube("Rim",(.13,.48,.31),(.28,.39,-.25),.030,10)
+tube("Rim",(.28,.39,-.25),(.268,.50,-.65),.040,10)
+tube("Rim",(.268,.50,-.65),(.267,.59,-.99),.065,14)
+tube("Engine",(.267,.59,-.994),(.267,.591,-1.004),.040,12)
+# Side stand and welded foot sit on the same plane as the tyres when parked.
+tube("Engine",(.14,.57,-.24),(.39,.054,-.30),.014,8)
+box("Engine",(.39,.053,-.30),(.054,.009,.071))
 
 OUT.mkdir(parents=True,exist_ok=True)
 obj=OUT/(NAME+'.obj')

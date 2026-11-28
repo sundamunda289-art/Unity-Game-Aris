@@ -65,7 +65,7 @@ namespace Aaris.MapReview
         private Material[][][] cachedBikePaintLayouts;
         private Material[][] cachedBikePrefabMaterials;
         private readonly List<Material> bikeSourceScratch = new List<Material>(8);
-        private readonly Material[] surfaces = new Material[8];
+        private readonly Material[] surfaces = new Material[10];
         private readonly Material[] paintVariants = new Material[4];
 
         internal Fixture()
@@ -74,7 +74,7 @@ namespace Aaris.MapReview
                 surfaces[i] = new Material(i);
             paintVariants[0] = surfaces[0];
             for (int i = 1; i < paintVariants.Length; i++)
-                paintVariants[i] = new Material(8 + i);
+                paintVariants[i] = new Material(10 + i);
         }
 
         private static int SurfaceIndex(Material material, int fallback)
@@ -92,7 +92,7 @@ namespace Aaris.MapReview
             {
                 if (palette[paint][0].Length != sourceCount)
                     throw new Exception("Source slots changed");
-                int[] kinds = {1,2,3,4,0,7,5,6};
+                int[] kinds = {1,2,3,4,0,7,5,8,6,9};
                 for (int slot = 0; slot < sourceCount; slot++)
                 {
                     Material expected = kinds[slot] == 0
@@ -106,13 +106,13 @@ namespace Aaris.MapReview
         public static void Main()
         {
             var fixture = new Fixture();
-            int[] kinds = {1,2,3,4,0,7,5,6};
+            int[] kinds = {1,2,3,4,0,7,5,8,6,9};
             Material[] original = new Material[kinds.Length];
             for (int i = 0; i < kinds.Length; i++)
                 original[i] = new Material(kinds[i]);
             var first = new Renderer(original);
             var baseline = fixture.GetBikePaintLayouts(new[] { first });
-            fixture.ExpectPalette(baseline, 8);
+            fixture.ExpectPalette(baseline, 10);
             if (first.arrayGetterCalls != 1)
                 throw new Exception("Unexpected source array reads");
 
@@ -129,7 +129,7 @@ namespace Aaris.MapReview
             var fallback = fixture.GetBikePaintLayouts(new[] { variant });
             if (ReferenceEquals(fallback, baseline))
                 throw new Exception("Different imported prefab wrongly reused cache");
-            fixture.ExpectPalette(fallback, 8);
+            fixture.ExpectPalette(fallback, 10);
             if (ReferenceEquals(fixture.GetBikePaintLayouts(
                 new[] { new Renderer(original) }), fallback))
                 throw new Exception("Divergent clone poisoned original cache");

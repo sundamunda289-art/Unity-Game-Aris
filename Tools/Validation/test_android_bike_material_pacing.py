@@ -90,7 +90,7 @@ class BikeMaterialPacingContract(unittest.TestCase):
             self.assertIn(token, BIKE)
         # Exactly one material factory for palette slots and one paint-variant clone.
         self.assertEqual(BIKE.count("new Material("), 2)
-        self.assertIn("new Material(i == 0 || i == 2 ? coatShader : shader)", BIKE)
+        self.assertIn("i >= 8 ? glazing : i == 0 || i == 2 ? coatShader : shader", BIKE)
         self.assertEqual(BIKE.count("new Material(surfaces[0])"), 1)
         self.assertNotIn("QualitySettings.masterTextureLimit =", BIKE)
         self.assertNotIn("renderScale =", BIKE)
