@@ -14,10 +14,10 @@ OcclusionCullingSettings:
 RenderSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 10
-  m_Fog: 0
-  m_FogColor: {r: 0.69, g: 0.79, b: 0.84, a: 1}
+  m_Fog: 1
+  m_FogColor: {r: 0.63, g: 0.73, b: 0.83, a: 1}
   m_FogMode: 3
-  m_FogDensity: 0.00018
+  m_FogDensity: 0.00016
   m_LinearFogStart: 650
   m_LinearFogEnd: 4000
   m_AmbientSkyColor: {r: 0.69, g: 0.7, b: 0.65, a: 1}
@@ -161,7 +161,7 @@ Light:
   m_Enabled: 1
   serializedVersion: 12
   m_Type: 1
-  m_Color: {r: 1, g: 0.973, b: 0.925, a: 1}
+  m_Color: {r: 1, g: 0.957, b: 0.89, a: 1}
   m_Intensity: 1.35
   m_Range: 10
   m_SpotAngle: 30
@@ -171,7 +171,7 @@ Light:
     m_Type: 2
     m_Resolution: -1
     m_CustomResolution: -1
-    m_Strength: 0.55
+    m_Strength: 0.62
     m_Bias: 0.05
     m_NormalBias: 0.25
     m_NearPlane: 0.2
@@ -19010,7 +19010,7 @@ MeshRenderer:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 13392}
-  m_Enabled: 1
+  m_Enabled: 0
   m_CastShadows: 1
   m_ReceiveShadows: 1
   m_DynamicOccludee: 1

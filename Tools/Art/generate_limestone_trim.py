@@ -27,6 +27,7 @@ for scale, amplitude in ((2,7.4), (4,5.1), (8,2.5), (16,1.3), (32,.7)):
         if not kx and not ky: kx = 1
         harmonics.append((kx, ky, rng.random()*2*math.pi, amplitude/6))
 colors = []
+height = []
 for y in range(SIZE):
     for x in range(SIZE):
         grain = 0.0
@@ -37,7 +38,17 @@ for y in range(SIZE):
         seam = -4.5 if joint < 1.5 else (-1.2 if joint < 4 else 0.0)
         veining = 2.0*math.sin(2*math.pi*(x*3+y*.25)/SIZE)
         base = max(192, min(244, round(220 + grain + seam + veining)))
-        colors.append((min(255,base+5), min(255,base+2), max(0,base-5)))
+        height.append((base+5+base+2+base-5)/3.0)
+        # Rain tracks follow the long axis of the surface. Keep coloration
+        # separate from stone relief so stains do not create raised edges.
+        angle_x = 2*math.pi*x/SIZE
+        angle_y = 2*math.pi*y/SIZE
+        streak = max(0.0, math.sin(5*angle_x + .27*math.sin(2*angle_y) +
+                                    .63*math.cos(3*angle_x))) ** 3
+        runoff = 5.0*streak*(.65+.35*math.cos(angle_y+angle_x))
+        soot = 2.1 * (1 + math.cos(3*angle_x-angle_y))
+        tones = (base+5-runoff*.79-soot, base+2-runoff-soot, base-5-runoff*1.08-soot*.73)
+        colors.append(tuple(round(max(0,min(255,v))) for v in tones))
 
 ASSET.parent.mkdir(parents=True,exist_ok=True)
 picture = Image.new("RGB", (SIZE,SIZE))
@@ -48,7 +59,6 @@ picture.save(ASSET,optimize=True)
 # the same stone height variation. It is one 128px texture for every
 # architectural trim mesh, not a per-building material or runtime bake.
 normal_asset = ASSET.with_name("ArchitecturalLimestoneNormal.png")
-height = [sum(rgb)/3.0 for rgb in colors]
 normal_pixels=[]
 for py in range(SIZE):
     for px in range(SIZE):

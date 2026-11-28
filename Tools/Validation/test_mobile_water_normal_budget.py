@@ -24,7 +24,11 @@ class MobileWaterNormalBudgetTests(unittest.TestCase):
         forward = source.split("half4 WaterFragment(", 1)[1]
         self.assertIn("half3 normalWS : TEXCOORD2;", source)
         self.assertIn("output.normalWS = WaterNormalWS(output.positionWS);", vertex)
-        self.assertIn("lighting.normalWS = normalize(input.normalWS);", forward)
+        self.assertIn(
+            "lighting.normalWS = normalize(input.normalWS + half3(ripple.x, 0, ripple.y));",
+            forward,
+        )
+        self.assertIn("_RippleStrength * rippleVisibility", forward)
         self.assertNotIn("WaterNormalWS(", forward)
         self.assertNotIn("cos(", forward)
         self.assertLess(

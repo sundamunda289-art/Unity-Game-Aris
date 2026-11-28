@@ -31,7 +31,7 @@ namespace Aaris.MapReview.Editor
         {
             public string status, reason, scene, unityVersion, graphicsDevice;
             public bool nativeFogDisabled;
-            public float sunIntensity, ambientIntensity;
+            public float sunIntensity, ambientIntensity, nativeFogDensity;
             public int terrainTiles;
             public ShotReport[] shots;
         }
@@ -74,8 +74,7 @@ namespace Aaris.MapReview.Editor
                     throw new InvalidOperationException("SAVED_AMBIENT_TOO_DIM");
                 previousFog = RenderSettings.fog;
                 report.nativeFogDisabled = !previousFog;
-                if (previousFog)
-                    throw new InvalidOperationException("REVIEW_SCENE_FOG_STILL_ENABLED");
+                report.nativeFogDensity = RenderSettings.fogDensity;
                 changedFog = true;
                 tempCamera = new GameObject("__AarisDaylightComparisonCamera");
                 tempCamera.hideFlags = HideFlags.HideAndDontSave;
