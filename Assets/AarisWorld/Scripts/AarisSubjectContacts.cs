@@ -205,7 +205,8 @@ namespace Aaris.MapReview
                 else
                 {
                     AddContact(new Vector3(p.x, y, p.z), n, rotation,
-                        e.size.x * fade, (prone ? 1.5f : e.size.y) * fade);
+                        e.size.x * fade, (prone ? 1.5f : e.size.y) * fade,
+                        e.vehicle != null ? 2f : 1f);
                 }
             }
             if (LastDrawCount == 0) return;
@@ -269,6 +270,7 @@ namespace Aaris.MapReview
             float width, float length, float receiverMode = 1f)
         {
             // The quad lies in XZ. Y scale encodes a body/foot quad (1),
+            // a deeper undercarriage quad (2),
             // an exact tyre receiver (-1) or terrain under a raised road (-2).
             matrices[LastDrawCount++] = Matrix4x4.TRS(position + normal * .018f,
                 rotation, new Vector3(width, receiverMode, length));

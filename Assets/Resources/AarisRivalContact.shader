@@ -53,7 +53,9 @@ Shader "Aaris/Rival Soft Contact"
                 }
                 output.uv = input.uv * 2.0h - 1.0h;
                 output.fog = ComputeFogFactor(output.positionCS.z);
-                output.strength = tyre ? min(0.44h, _Opacity * 1.55h) : _Opacity;
+                half vehicleBody = receiver > 1.35 ? 1.45h : 1.0h;
+                output.strength = tyre ? min(0.52h, _Opacity * 1.78h) :
+                    _Opacity * vehicleBody;
                 return output;
             }
             half4 Frag(Varyings input) : SV_Target

@@ -156,6 +156,67 @@ def save_materials(output):
                       "illum 2", ""))
     (output/"AarisRoadGT.mtl").write_text("\n".join(lines)+"\n")
 
+
+def add_wheelhouse_shells(body):
+    """A low-poly, closed liner behind each measured GT fender opening."""
+    # The front outer return tapers inwards around the crown. These are the
+    # measured lip stations from the body OBJ at ten-degree intervals.
+    front = (.916, .922, .918, .910, .900, .874, .836, .804, .772, .742,
+             .736, .753, .783, .819, .847, .875, .894, .901, .905, .907, .901)
+    rear = (.951, .970, .972, .973, .972, .968, .961, .953, .948, .947,
+            .946, .947, .954, .960, .967, .974, .977, .976, .969, .967, .947)
+    trim = body["f"][0]  # Existing dark trim submesh and shadow pass.
+
+    def vertex(p, normal):
+        body["v"].append(p)
+        body["vn"].append(normal)
+        return len(body["v"])
+
+    def face(a, b, c, normal):
+        pa, pb, pc = (body["v"][i - 1] for i in (a, b, c))
+        u = tuple(bi - ai for ai, bi in zip(pa, pb))
+        v = tuple(ci - ai for ai, ci in zip(pa, pc))
+        cross = (u[1] * v[2] - u[2] * v[1],
+                 u[2] * v[0] - u[0] * v[2],
+                 u[0] * v[1] - u[1] * v[0])
+        if sum(a * b for a, b in zip(cross, normal)) < 0:
+            b, c = c, b
+        trim.append((a, b, c))
+        body["count"] += 1
+
+    for cy, cz, inner, lip_radius, inner_radius, rim in (
+            (.344, 1.270, .50, .389, .410, front),
+            (.362, -1.430, .61, .407, .423, rear)):
+        for side in (-1, 1):
+            cap_normal = (side, 0.0, 0.0)
+            middle = vertex((side * inner, cy - .06, cz), cap_normal)
+            outside, inside, back, normals = [], [], [], []
+            for i, x in enumerate(rim):
+                theta = math.radians(i * 10.0 - 10.0)
+                sy, sz = math.sin(theta), math.cos(theta)
+                n = (0.0, -sy, -sz)
+                outer = (side * x, cy + lip_radius * sy, cz + lip_radius * sz)
+                inward = (side * inner, cy + inner_radius * sy, cz + inner_radius * sz)
+                outside.append(vertex(outer, n))
+                inside.append(vertex(inward, n))
+                back.append(vertex(inward, cap_normal))
+                normals.append(n)
+            for i, n in enumerate(normals[:-1]):
+                j = i + 1
+                face(outside[i], inside[i], inside[j], n)
+                face(outside[i], inside[j], outside[j], n)
+                face(middle, back[i], back[j], cap_normal)
+            # Continue the inboard wall below the visible horizontal lip.
+            # This closes the light path behind the lower fore/aft shoulders.
+            fender_front = vertex((side * inner, cy - .215, cz + inner_radius * .98),
+                                  cap_normal)
+            fender_rear = vertex((side * inner, cy - .215, cz - inner_radius * .98),
+                                 cap_normal)
+            face(back[0], fender_front, fender_rear, cap_normal)
+            face(back[0], fender_rear, back[-1], cap_normal)
+            face(middle, back[-1], back[0], cap_normal)
+
+
 def convert(input_glb, output, budget=70000):
     doc,bin_chunk=parse_glb(input_glb)
     if len(doc.get("materials",[])) != len(MATS): raise ValueError("Material count changed")
@@ -259,6 +320,9 @@ def convert(input_glb, output, budget=70000):
         newfaces=len(faces)-before
         part["count"]+=newfaces
         added_rim_triangles+=newfaces
+    before_liners = data["body"]["count"]
+    add_wheelhouse_shells(data["body"])
+    liner_triangles = data["body"]["count"] - before_liners
     tris=sum(part["count"] for part in data.values())
     if counts["raw"]!=104282 or tris>budget or tris<50000:
         raise ValueError("Unexpected geometry budget: "+str(counts))
@@ -288,6 +352,7 @@ def convert(input_glb, output, budget=70000):
         "proceduralAlloySpokeTriangles":added_rim_triangles,
         "wheelTriangles":{k:data[k]["count"] for k in GROUPS[1:]},
         "bodyTriangles":data["body"]["count"],
+        "wheelhouseTriangles":liner_triangles,
         "originalTextureCount":12,
         "originalTextureResolution":"2048x2048",
         "newGpuTextureCount":0,

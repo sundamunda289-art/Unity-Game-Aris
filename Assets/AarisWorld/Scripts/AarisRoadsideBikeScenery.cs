@@ -198,7 +198,7 @@ namespace Aaris.MapReview
                     i == 0 ? .48f : i == 2 ? .82f :
                     i == 3 ? .43f : .03f);
                 surfaces[i].SetFloat("_Smoothness",
-                    i == 0 ? .65f : i == 1 ? .14f :
+                    i == 0 ? .69f : i == 1 ? .18f :
                     i == 2 ? .72f : i == 3 ? .37f :
                     i == 4 ? .16f : .67f);
                 // Parked, switched-off motorcycles are NOT floodlights.
@@ -215,7 +215,7 @@ namespace Aaris.MapReview
             // the four bike colours all reuse this one lit shader variant.
             if (surfaces[0].HasProperty("_ClearCoatMask"))
             {
-                surfaces[0].SetFloat("_ClearCoatMask", .27f);
+                surfaces[0].SetFloat("_ClearCoatMask", .36f);
                 if (surfaces[0].HasProperty("_ClearCoatSmoothness"))
                     surfaces[0].SetFloat("_ClearCoatSmoothness", .75f);
                 surfaces[0].EnableKeyword("_CLEARCOAT");

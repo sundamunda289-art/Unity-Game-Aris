@@ -54,6 +54,16 @@ void AarisLitPassFragment(
 #endif
 
     InitializeBakedGIData(input, inputData);
+#if defined(_AARIS_VEHICLE_BODY)
+    // A thin road-dust gradient runs along the rockers and lower bumpers.
+    // The existing normal map and metallic/smoothness texture stay in use.
+    half height = (half)(input.positionWS.y - GetObjectToWorldMatrix()[1][3]);
+    half dust = (1.0h - smoothstep(0.10h, 0.54h, height)) *
+        (1.0h - saturate(abs(inputData.normalWS.y))) * 0.22h;
+    surfaceData.albedo = lerp(surfaceData.albedo,
+        surfaceData.albedo * 0.86h + half3(0.10h, 0.075h, 0.045h), dust);
+    surfaceData.smoothness *= 1.0h - 0.62h * dust;
+#endif
 #if defined(_AARIS_ICE_ARMOR)
     // Broad frozen strata follow the mesh. The opaque face writes depth
     // normally and needs neither a refraction sample nor a layered shell.
@@ -86,9 +96,14 @@ void AarisLitPassFragment(
         abs(frac(longitudinalPhase) - 0.5))) * (1.0h - smoothstep(0.18, 0.46, grooveWidth));
     half3 axle = TransformObjectToWorldDir(float3(1.0, 0.0, 0.0));
     half crown = 1.0h - smoothstep(0.46h, 0.86h, abs(dot(axle, inputData.normalWS)));
-    half exposed = max(treadCut * 0.75h, longitudinal) * crown;
-    surfaceData.albedo *= 1.0h - 0.36h * exposed;
-    surfaceData.smoothness *= 1.0h - 0.44h * exposed;
+    half exposed = max(treadCut * 0.88h, longitudinal) * crown;
+    float sidewallRadius = length(tyre.yz);
+    float sidewallWidth = max(fwidth(sidewallRadius), 0.001);
+    half bead = (1.0h - smoothstep(0.0025, 0.0025 + sidewallWidth,
+        min(abs(sidewallRadius - 0.292), abs(sidewallRadius - 0.314))))
+        * (1.0h - crown) * (1.0h - smoothstep(0.003, 0.012, sidewallWidth));
+    surfaceData.albedo *= 1.0h - 0.47h * exposed + 0.19h * bead;
+    surfaceData.smoothness *= 1.0h - 0.54h * exposed;
 #endif
 #if defined(_AARIS_AIRFRAME)
     // The transport mesh is authored in metres. Paint moves with the airframe.
