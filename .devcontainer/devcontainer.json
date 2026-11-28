@@ -4,7 +4,8 @@
   "remoteUser": "vscode",
   "workspaceFolder": "/workspaces/Unity-Game-Aris",
   "containerEnv": {
-    "DISPLAY": ":99"
+    "DISPLAY": ":99",
+    "GIT_LFS_SKIP_SMUDGE": "1"
   },
   "postCreateCommand": "bash .devcontainer/finalize.sh",
   "postStartCommand": "bash .devcontainer/start_screen.sh",
@@ -15,3 +16,4 @@
   },
   "onCreateCommand": "bash .devcontainer/prebuild.sh"
 }
+

@@ -14,7 +14,7 @@ else
   echo 'AARIS_BOOTSTRAP_PACKAGES_DEFERRED'
 fi
 if command -v git-lfs >/dev/null 2>&1 || command -v git >/dev/null 2>&1; then
-  git lfs install --local || echo 'AARIS_BOOTSTRAP_LFS_INIT_DEFERRED'
+  git lfs install --local --skip-smudge || echo 'AARIS_BOOTSTRAP_LFS_INIT_DEFERRED'
 fi
 # Desktop/OpenGL are optional for an operable SSH shell; retry via CS DEPS.
 if bash Tools/Codespaces/unity_gui_deps.sh; then
@@ -28,3 +28,4 @@ else
   echo 'AARIS_BOOTSTRAP_DISPLAY_DEFERRED'
 fi
 echo 'AARIS_BOOTSTRAP_COMPLETED_WITH_DEFERRED_STEPS_POSSIBLE'
+

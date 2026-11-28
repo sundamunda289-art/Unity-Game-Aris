@@ -8,9 +8,11 @@ GitHub commit-per-command polling are used.
 """
 from __future__ import annotations
 import base64
+import fcntl
 import json
 import os
 from pathlib import Path
+import pwd
 import re
 import selectors
 import signal
@@ -26,12 +28,57 @@ PROJECT_ROOT = Path("/workspaces")
 SENSITIVE_ENV = ("TOKEN", "SECRET", "PASSWORD", "API_KEY", "CREDENTIAL", "AUTH", "LICENSE", "COOKIE", "PRIVATE_KEY")
 MAX_OUTPUT_BYTES = 8 * 1024 * 1024
 MAX_ACTIVE = 2
+TX_RE = re.compile(r"^[a-f0-9]{32}$")
+
+
+class ProtocolConflict(RuntimeError):
+    """A definite server refusal, never a reason to replay a whole switch."""
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def singleton_lock(path):
+    path = Path(path)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    if os.fstat(fd).st_uid != os.getuid() or os.fstat(fd).st_mode & 0o077:
+        os.close(fd)
+        raise SystemExit("AARIS_AGENT_LOCK_UNSAFE")
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        raise SystemExit("AARIS_AGENT_ALREADY_RUNNING")
+    return fd  # Hold the descriptor for the whole process; never unlink its inode.
+
+
+def write_status(path, phase, active_jobs=0, transaction_id=""):
+    if not path:
+        return
+    target = Path(path)
+    start_ticks = Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split()[19]
+    payload = {"pid": os.getpid(), "start_ticks": start_ticks, "protocol": 1, "phase": phase, "active_jobs": active_jobs,
+               "transaction_id": transaction_id, "updated_at": int(time.time())}
+    temporary = target.with_name(target.name + "." + str(os.getpid()) + ".tmp")
+    with open(temporary, "w", encoding="utf-8") as stream:
+        os.chmod(temporary, 0o600)
+        json.dump(payload, stream, sort_keys=True)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, target)
 
 
 def scrub_env():
-    return {k: v for k, v in os.environ.items()
+    result = {k: v for k, v in os.environ.items()
             if not any(fragment in k.upper() for fragment in SENSITIVE_ENV)
             and k not in {"AARIS_ENDPOINT", "AARIS_TOKEN_FILE"}}
+    # Codespaces SSH may inherit /root as HOME for a non-root account. Scope
+    # correction to this child environment; never change the caller's globals.
+    result["HOME"] = pwd.getpwuid(os.geteuid()).pw_dir
+    return result
 
 
 def validate_job(job):
@@ -71,6 +118,9 @@ class Bridge:
         if not NAME_RE.fullmatch(self.machine):
             raise ValueError("machine")
         self.transport = "direct"
+        self.opener = urllib.request.build_opener(NoRedirect())
+        self.pending_reports = []
+        self.report_lock = threading.Lock()
 
     def _check_result(self, operation, result):
         if not isinstance(result, dict):
@@ -82,7 +132,7 @@ class Bridge:
         return result
 
     def post(self, operation, payload=None):
-        if operation not in {"ping", "next", "chunk", "done"}:
+        if operation not in {"ping", "next", "chunk", "done", "transaction", "control"}:
             raise ValueError("operation")
         b = json.dumps(payload or {}, ensure_ascii=False).encode("utf-8")
         if self.transport == "direct":
@@ -93,7 +143,7 @@ class Bridge:
                          "User-Agent": self.USER_AGENT},
                 method="POST")
             try:
-                with urllib.request.urlopen(req, timeout=12) as response:
+                with self.opener.open(req, timeout=12) as response:
                     return self._check_result(operation, json.loads(response.read(65536)))
             except urllib.error.HTTPError as exc:
                 if exc.code == 403:
@@ -101,6 +151,10 @@ class Bridge:
                     self.transport = "health"
                 elif exc.code == 401:
                     raise PermissionError("session_expired") from None
+                elif exc.code == 409:
+                    raise ProtocolConflict("transaction_conflict") from None
+                elif 300 <= exc.code < 400:
+                    raise ProtocolConflict("authenticated_redirect_refused") from None
                 else:
                     raise ConnectionError("remote_http_" + str(exc.code)) from None
         # The same authenticated Durable Object operations, routed through one
@@ -114,12 +168,80 @@ class Bridge:
                      "X-Aaris-Machine": self.machine, "X-Aaris-Token": self.token,
                      "X-Aaris-Payload": blob})
         try:
-            with urllib.request.urlopen(req, timeout=12) as response:
+            with self.opener.open(req, timeout=12) as response:
                 return self._check_result(operation, json.loads(response.read(65536)))
         except urllib.error.HTTPError as exc:
             if exc.code == 401:
                 raise PermissionError("session_expired") from None
+            if exc.code == 409:
+                raise ProtocolConflict("transaction_conflict") from None
+            if 300 <= exc.code < 400:
+                raise ProtocolConflict("authenticated_redirect_refused") from None
             raise ConnectionError("fallback_http_" + str(exc.code)) from None
+
+    def transaction(self, transaction_id, operation, **payload):
+        if not TX_RE.fullmatch(transaction_id):
+            raise ValueError("transaction_id")
+        return self.post("transaction", {"transaction_id": transaction_id,
+                                         "operation": operation, **payload})
+
+    def prepare_probe(self, transaction_id):
+        challenge = self.transaction(transaction_id, "probe")
+        nonce = challenge.get("nonce", "")
+        if not TX_RE.fullmatch(nonce):
+            raise ValueError("probe_nonce")
+        # This is the sole process allowed by a pending grant. No public input is
+        # evaluated and the ordinary command queue is never polled here.
+        result = subprocess.run([sys.executable, "-c",
+                                 "print('AARIS_TRANSACTION_PROBE=" + nonce + "')"],
+                                stdin=subprocess.DEVNULL, capture_output=True,
+                                timeout=20, cwd="/workspaces/Unity-Game-Aris",
+                                env=scrub_env(), check=False)
+        expected = "AARIS_TRANSACTION_PROBE=" + nonce + "\n"
+        if result.returncode != 0 or result.stdout.decode("ascii") != expected or result.stderr:
+            raise ValueError("candidate_probe_failed")
+        return self.transaction(transaction_id, "probe-result", nonce=nonce,
+                                exit_code=result.returncode, output=expected)
+
+    @staticmethod
+    def stop_job_group(proc, grace=3.0):
+        """Stop only this command's unreaped session, including grandchildren.
+
+        The unreaped session leader reserves its PID. Calling poll()/wait()
+        before killing its group can otherwise hide surviving descendants and
+        eventually let PID reuse target an unrelated process.
+        """
+        if proc.returncode is not None:
+            return
+
+        def running():
+            for entry in Path("/proc").iterdir():
+                if not entry.name.isdecimal():
+                    continue
+                try:
+                    fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+                    if fields[0] != "Z" and int(fields[2]) == proc.pid and int(fields[3]) == proc.pid:
+                        return True
+                except (OSError, ValueError, IndexError):
+                    continue
+            return False
+
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            proc.wait()
+            return
+        deadline = time.monotonic() + grace
+        while running() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if running():
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        while running():
+            time.sleep(0.05)
+        proc.wait()
 
     def stream_job(self, job):
         job_id = str(job.get("id", ""))[:128]
@@ -130,8 +252,19 @@ class Bridge:
             if not text:
                 return
             for off in range(0, len(text), 3000):
-                self.post("chunk", {"id": job_id, "seq": seq, "kind": kind,
-                                    "text": text[off:off + 3000]})
+                payload={"id":job_id,"seq":seq,"kind":kind,"text":text[off:off+3000]}
+                backoff=0.5
+                while True:
+                    try:
+                        self.post("chunk",payload)
+                        break
+                    except PermissionError:
+                        raise
+                    except (OSError,ConnectionError):
+                        if time.monotonic()>=started+timeout:
+                            raise
+                        time.sleep(min(backoff,max(0.01,started+timeout-time.monotonic())))
+                        backoff=min(5.0,backoff*1.8)
                 seq += 1
 
         try:
@@ -141,6 +274,7 @@ class Bridge:
             return
         exit_code, problem = 127, ""
         started = time.monotonic()
+        proc = None
         try:
             proc = subprocess.Popen(argv, cwd=cwd, env=scrub_env(),
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -152,11 +286,6 @@ class Bridge:
                 selector.register(proc.stderr, selectors.EVENT_READ, "stderr")
                 while selector.get_map():
                     if time.monotonic() - started > timeout:
-                        os.killpg(proc.pid, signal.SIGTERM)
-                        try:
-                            proc.wait(timeout=3)
-                        except subprocess.TimeoutExpired:
-                            os.killpg(proc.pid, signal.SIGKILL)
                         exit_code, problem = 124, "TIMEOUT"
                         break
                     for key, _ in selector.select(timeout=0.2):
@@ -171,20 +300,41 @@ class Bridge:
                             send("stderr", "\n[AARIS_OUTPUT_LIMIT_REACHED]\n")
                             truncated = True
             if not problem:
-                exit_code = proc.wait(timeout=5)
+                exit_code = proc.wait(timeout=max(0.01, timeout-(time.monotonic()-started)))
         except FileNotFoundError:
             problem = "EXECUTABLE_NOT_FOUND"
+        except PermissionError:
+            problem = "SESSION_REVOKED"
+        except ProtocolConflict:
+            problem = "PROTOCOL_REFUSED"
         except (OSError, subprocess.TimeoutExpired) as exc:
             problem = type(exc).__name__.upper()
-        except PermissionError:
-            # Session revoked; stop the agent. Do not allow an unauthenticated retry.
-            raise
+        except Exception:
+            problem = "COMMAND_PROCESS_FAILED"
         finally:
+            # The job is not drained until its owned child is stopped and reaped.
+            # This also covers upload failures and proc.wait() exceptions.
+            if proc is not None and problem:
+                self.stop_job_group(proc)
+            if proc is not None:
+                for stream in (proc.stdout, proc.stderr):
+                    if stream is not None:
+                        stream.close()
+            report={"id":job_id,"exit_code":max(-255,min(255,exit_code)),"error":problem}
             try:
-                self.post("done", {"id": job_id, "exit_code": max(-255, min(255, exit_code)),
-                                   "error": problem})
-            except (OSError, ConnectionError, PermissionError):
-                pass
+                self.post("done",report)
+            except (OSError,ConnectionError,ProtocolConflict):
+                with self.report_lock:
+                    self.pending_reports.append(report)
+
+    def flush_reports(self):
+        with self.report_lock:
+            reports=list(self.pending_reports)
+        for report in reports:
+            self.post("done",report)
+            with self.report_lock:
+                if report in self.pending_reports:
+                    self.pending_reports.remove(report)
 
 
 def selftest():
@@ -215,22 +365,66 @@ def main():
         raise SystemExit("AARIS_TOKEN_FILE_PERMISSIONS_INVALID")
     token = token_file.read_text(encoding="ascii").strip()
     bridge = Bridge(endpoint, token)
+    transaction_id = os.environ.get("AARIS_TRANSACTION_ID", "")
+    if "--prepare-probe" in sys.argv:
+        bridge.prepare_probe(transaction_id)
+        print("TURBO_CANDIDATE_NONCE_PROBE_PASS", flush=True)
+        return
+    lock_fd = singleton_lock(os.environ.get("AARIS_AGENT_LOCK", str(Path(pwd.getpwuid(os.geteuid()).pw_dir)/".config/aaris-turbo/agent.lock")))
+    status_file = os.environ.get("AARIS_AGENT_STATUS_FILE", "")
+    stop = threading.Event()
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    write_status(status_file, "ACTIVATING" if transaction_id else "STARTING", transaction_id=transaction_id)
+    if transaction_id:
+        if not TX_RE.fullmatch(transaction_id):
+            raise SystemExit("AARIS_TRANSACTION_ID_INVALID")
+        backoff = 1.0
+        while not stop.is_set():
+            try:
+                result = bridge.transaction(transaction_id, "status")
+                if result.get("state") == "draining":
+                    result = bridge.transaction(transaction_id, "commit")
+                if result.get("state") not in {"committed", "ready"}:
+                    raise SystemExit("AARIS_TRANSACTION_NOT_COMMITTABLE")
+                break
+            except (PermissionError, ProtocolConflict):
+                write_status(status_file, "RECONCILE_REQUIRED", transaction_id=transaction_id)
+                raise SystemExit("AARIS_TRANSACTION_RECONCILE_REQUIRED")
+            except (OSError, ConnectionError, ValueError, json.JSONDecodeError):
+                write_status(status_file, "WAITING_FOR_NETWORK", transaction_id=transaction_id)
+                stop.wait(backoff)
+                backoff = min(30.0, backoff * 1.8)
+        if stop.is_set():
+            return
     print("AARIS_TURBO_AGENT_STARTED", flush=True)
+    write_status(status_file, "RUNNING", transaction_id=transaction_id)
     workers = set()
     last_heartbeat = 0.0
     backoff = 1.0
+    last_status = None
     while True:
         try:
             now = time.monotonic()
             workers = {thread for thread in workers if thread.is_alive()}
+            bridge.flush_reports()
+            state = (stop.is_set(), len(workers))
+            if state != last_status:
+                write_status(status_file, "DRAINING" if stop.is_set() else "RUNNING",
+                             len(workers), transaction_id)
+                last_status = state
+            if stop.is_set() and not workers and not bridge.pending_reports:
+                write_status(status_file, "STOPPED", transaction_id=transaction_id)
+                os.close(lock_fd)
+                return
             if now - last_heartbeat > 25:
                 bridge.post("ping")
                 last_heartbeat = now
-            if len(workers) < MAX_ACTIVE:
+            if not stop.is_set() and len(workers) < MAX_ACTIVE:
                 response = bridge.post("next")
                 job = response.get("job")
                 if job:
-                    thread = threading.Thread(target=bridge.stream_job, args=(job,), daemon=True)
+                    thread = threading.Thread(target=bridge.stream_job, args=(job,), daemon=False)
                     thread.start()
                     workers.add(thread)
             backoff = 1.0
@@ -246,3 +440,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

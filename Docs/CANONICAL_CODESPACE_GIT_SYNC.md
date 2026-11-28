@@ -1,28 +1,56 @@
 # Canonical Git bridge for rotating Codespaces
 
+**Current account-switch guide (2026-11-28):**
+[TERMUX_ACCOUNT_SWITCH.md](TERMUX_ACCOUNT_SWITCH.md) documents the one-time
+Termux installer, `CCF` / `CF` / `cf`, `CD`, detached provisioning and
+`CD --status`. The current [AGENTS.md policy](../AGENTS.md) supersedes
+historical manual switch/recovery snippets. This document remains the
+reference for the repository-only deploy key and lower-level Git helper.
+
 Canonical game source: https://github.com/sundamunda289-art/Unity-Game-Aris (main).
 A Codespace can belong to a different GitHub account/fork. Never assume origin
 points to the permanent game repository.
 
+A new minimal Codespace is now created directly from this canonical public
+repository using the selected hosting user's token and the runtime's
+reviewed commit. It is owned by that hosting user; no new fork is required.
+The Git bridge supports both this direct-canonical case and an existing
+verified canonical fork, while keeping the owner token on the phone.
+
 ## One Termux command for account rotation
 
-The existing Termux switch command automatically dispatches the Cloudflare
-Turbo bootstrap and then runs the canonical Git bridge:
+After the one-time command installation, switch/setup with:
 
-    bash "$HOME/aaris-switch.sh"
+    CD
 
 Reuse the current account:
 
-    bash "$HOME/aaris-switch.sh" --resume
+    CD --resume
 
-For an older local switch script, refresh it once:
+Inspect progress:
 
-    curl -fsSL https://raw.githubusercontent.com/sundamunda289-art/Unity-Game-Aris/main/Tools/Codespaces/termux_switch.sh -o "$HOME/aaris-switch.sh"
+    CD --status
 
-If the Codespace was not Available when the switch finished, retry ONLY the
-deploy-key setup (no second GitHub Actions bootstrap):
+The refreshed `termux_switch.sh` compatibility entry point delegates to the
+same controller. Do not run an old independent switch/bootstrap in parallel
+with an unfinished `CD` operation. The controller first verifies and commits
+the private bridge, then runs/revalidates Git-key setup and detached
+provisioning. Repeat the original command to resume its recorded operation;
+an unknown remote result is reconciled before another request.
 
-    bash "$HOME/aaris-git-bridge.sh"
+The operation separately pins the installed runtime `SOURCE_SHA` and the
+game `project_sha` resolved from canonical `main`. The provisioner receives
+the latter as its `--source-sha`. It verifies/installs Unity Editor first,
+then fetches required target LFS objects with one transfer at a time before
+a safe fast-forward and explicit checkout. Every target payload is checked
+against its declared size and SHA256. Same-machine Unity licensing may run
+in parallel only after the Editor is ready.
+
+Dirty tracked source, divergent history, hidden tracked-file flags or file
+collisions pause automatic synchronization. Existing work is preserved;
+`merge --ff-only --no-overwrite-ignore` protects ignored untracked collisions.
+The setup does not reset, clean, stash, force checkout or create a worktree.
+See the current guide for disk budgeting and readiness/validation limits.
 
 The switch script authenticates the permanent master account and the selected
 hosting account using separate GitHub CLI profiles on the phone. The Git
@@ -85,3 +113,4 @@ Security: Do not upload Codespace SSH private keys, GitHub tokens or Unity
 licenses to GitHub commits, Actions logs, Cloudflare command output or public
 Issues. Revoke a retired Codespace's key under the canonical repository
 Settings -> Deploy keys.
+

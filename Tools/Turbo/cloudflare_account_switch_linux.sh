@@ -1,227 +1,461 @@
 #!/usr/bin/env bash
-# Runs ONLY on the owner's authorized Linux Codespace over GitHub SSH.
-# Never run Wrangler natively on Android Termux.
+# Private Linux deployment runner, including the dedicated Termux PRoot guest.
+# No Codespace, GitHub credential, Unity process, or project is required.
 set -euo pipefail
 umask 077
-: "${AARIS_SOURCE_SHA:?source commit required}"
-: "${AARIS_WATCH_HASH:?private viewer SHA-256 digest required}"
-[[ "$AARIS_SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 20
-[[ "$AARIS_WATCH_HASH" =~ ^[a-f0-9]{64}$ ]] || exit 21
-: "${AARIS_CF_SESSION_ID:?random account-switch login session required}"
-[[ "$AARIS_CF_SESSION_ID" =~ ^[a-f0-9]{16}$ ]] || { echo AARIS_CF_INVALID_SESSION_ID; exit 32; }
-[[ "${AARIS_REUSE_LOGIN:-0}" =~ ^[01]$ ]] || exit 22
-if [[ -n "${AARIS_CF_ACCOUNT_ID:-}" ]] &&
-   [[ ! "$AARIS_CF_ACCOUNT_ID" =~ ^[a-f0-9]{32}$ ]]; then
-  echo AARIS_CF_INVALID_ACCOUNT_ID
-  exit 23
-fi
-for bin in curl python3 tar sha256sum; do
-  command -v "$bin" >/dev/null || {
-    echo "AARIS_CF_MISSING_LINUX_TOOL=$bin"
-    exit 24
-  }
-done
-TMP="$(mktemp -d)"
-# A detached device code must be readable by a separate authorized SSH
-# session, because gh codespace ssh may buffer its original stdout.
-AUTH_LOG_DIR="$HOME/.config/aaris-turbo"
-mkdir -p "$AUTH_LOG_DIR"
-chmod 700 "$AUTH_LOG_DIR"
-AUTH_LOG="$AUTH_LOG_DIR/cf-login-$AARIS_CF_SESSION_ID.log"
-: > "$AUTH_LOG"
-chmod 600 "$AUTH_LOG"
-trap 'rm -rf "$TMP"; rm -f "$AUTH_LOG"' EXIT
-# Minimal Ubuntu Codespaces may not ship with Node. Install a verified, user-local
-# LTS binary only when needed, without sudo, global npm changes, or Unity restart.
-NODE_MAJOR=0
-if command -v node >/dev/null 2>&1; then
-  NODE_MAJOR="$(node -p "parseInt(process.versions.node.split('.')[0],10)")"
-fi
-if ((NODE_MAJOR<20)) || ! command -v npx >/dev/null 2>&1; then
-  [[ "$(uname -m)" == x86_64 ]] || { echo AARIS_CF_NODE_ARCH_UNSUPPORTED; exit 25; }
-  NODE_ROOT="$HOME/.local/share/aaris-turbo-node/v22.16.0"
-  if [[ ! -x "$NODE_ROOT/bin/node" || ! -x "$NODE_ROOT/bin/npx" ]]; then
-    mkdir -p "$HOME/.local/share/aaris-turbo-node"
-    NODE_ARCHIVE="node-v22.16.0-linux-x64.tar.gz"
-    curl -fsSL --retry 3 --max-time 150 \
-      "https://nodejs.org/dist/v22.16.0/$NODE_ARCHIVE" -o "$TMP/$NODE_ARCHIVE"
-    (cd "$TMP"; printf '%s  %s\n' \
-      fb870226119d47378fa9c92c4535389c72dae14fcc7b47e6fdcc82c43de5a547 "$NODE_ARCHIVE" |
-      sha256sum -c --status)
-    tar -xzf "$TMP/$NODE_ARCHIVE" -C "$TMP"
-    mv "$TMP/node-v22.16.0-linux-x64" "$NODE_ROOT"
-    echo AARIS_CF_LOCAL_NODE22_SHA256_VERIFIED
-  fi
-  export PATH="$NODE_ROOT/bin:$PATH"
-fi
-command -v node >/dev/null && command -v npx >/dev/null || exit 25
-if [[ -n "${CLOUDFLARE_API_TOKEN:-}" || -n "${CLOUDFLARE_API_KEY:-}" ]]; then
-  echo AARIS_CF_ENV_TOKEN_CONFLICT
-  exit 26
-fi
-for name in worker.mjs watch_page.mjs wrangler.jsonc wrangler_auth_diag.py; do
-  curl -fsSL --retry 3 --max-time 40 \
-    "https://raw.githubusercontent.com/sundamunda289-art/Unity-Game-Aris/$AARIS_SOURCE_SHA/Tools/Turbo/$name" \
-    -o "$TMP/$name"
-  test -s "$TMP/$name"
-done
-cd "$TMP"
-WRANGLER=(npx --yes wrangler@4.119.0)
-# Log in with official OAuth device flow. Nothing is saved in GitHub.
-# Existing local Wrangler authentication is not used after logout.
-if [[ "${AARIS_REUSE_LOGIN:-0}" != 1 ]]; then
-  "${WRANGLER[@]}" logout >/dev/null 2>&1 || true
-  echo 'AARIS_CF_DEVICE_OAUTH_STARTED'
-  # Run Wrangler in a pseudo-TTY and flush every byte to a private,
-  # session-specific 0600 log. Another authenticated SSH connection reads
-  # that log immediately, even if this gh codespace ssh call buffers stdout.
-  OAUTH_STATUS=0
-  python3 - "$AUTH_LOG" "${WRANGLER[@]}" login --device --browser=false <<'PYOAUTH' || OAUTH_STATUS=$?
-import errno, os, pty, subprocess, sys
-log_path = sys.argv[1]
-master, slave = pty.openpty()
-proc = subprocess.Popen(sys.argv[2:], stdin=subprocess.DEVNULL,
-                        stdout=slave, stderr=slave, start_new_session=True)
-os.close(slave)
-with open(log_path, "ab", buffering=0) as log:
-    while True:
-        try:
-            chunk = os.read(master, 8192)
-        except OSError as exc:
-            if exc.errno == errno.EIO:
-                break
-            raise
-        if not chunk:
-            break
-        log.write(chunk)
-os.close(master)
-sys.exit(proc.wait())
-PYOAUTH
-  if ((OAUTH_STATUS!=0)); then
-    echo "AARIS_CF_DEVICE_LOGIN_COMMAND_FAILED_EXIT_$OAUTH_STATUS"
-    python3 "$TMP/wrangler_auth_diag.py" --log "$AUTH_LOG" || echo AARIS_CF_LOGIN_DIAGNOSTIC_UNAVAILABLE
-    exit "$OAUTH_STATUS"
-  fi
-  echo AARIS_CF_DEVICE_LOGIN_COMMAND_PASS
-fi
-if ! "${WRANGLER[@]}" whoami --json > "$TMP/whoami.json"; then
-  echo AARIS_CF_WHOAMI_AFTER_LOGIN_FAILED
-  python3 "$TMP/wrangler_auth_diag.py" --latest || true
-  exit 34
-fi
-python3 - "$TMP/whoami.json" <<'PY'
-import json,sys
-obj=json.load(open(sys.argv[1]))
-accounts=obj.get("accounts",[])
-if not obj.get("loggedIn") or not isinstance(accounts,list) or not accounts:
-    raise SystemExit("AARIS_CF_NO_AUTHORIZED_ACCOUNTS")
-for account in accounts:
-    aid=account.get("id","")
-    label=account.get("name","")
-    if len(aid)==32 and all(x in "0123456789abcdef" for x in aid):
-        print("AARIS_CF_ACCOUNT_OPTION="+aid+" "+str(label)[:60])
-PY
-echo AARIS_CF_WHOAMI_AUTHENTICATED
-mapfile -t IDS < <(python3 - "$TMP/whoami.json" <<'PY'
-import json,sys,re
-obj=json.load(open(sys.argv[1]))
-print("\n".join(a["id"] for a in obj.get("accounts",[])
-      if isinstance(a,dict) and re.fullmatch("[0-9a-f]{32}",str(a.get("id","")))))
-PY
-)
-if (("${#IDS[@]}" == 0)); then
-  echo AARIS_CF_AUTHENTICATED_ACCOUNT_MISSING
-  exit 27
-fi
-if [[ -n "${AARIS_CF_ACCOUNT_ID:-}" ]]; then
-  valid=0
-  for i in "${IDS[@]}"; do [[ "$i" == "$AARIS_CF_ACCOUNT_ID" ]] && valid=1; done
-  if ((valid==0)); then
-    echo AARIS_CF_ACCOUNT_NOT_AUTHORIZED
-    exit 28
-  fi
-elif (("${#IDS[@]}" == 1)); then
-  AARIS_CF_ACCOUNT_ID="${IDS[0]}"
-else
-  echo AARIS_CF_ACCOUNT_CHOICE_REQUIRED
-  exit 42
-fi
-export CLOUDFLARE_ACCOUNT_ID="$AARIS_CF_ACCOUNT_ID"
-echo "AARIS_CF_DEPLOY_ACCOUNT=$CLOUDFLARE_ACCOUNT_ID"
-"${WRANGLER[@]}" deploy --config "$TMP/wrangler.jsonc" 2>&1 | tee "$TMP/deploy.log"
-URL="$(grep -Eo 'https://[a-zA-Z0-9.-]+\.workers\.dev' "$TMP/deploy.log" | head -n 1 || true)"
-if [[ ! "$URL" =~ ^https://[a-z0-9.-]+\.workers\.dev$ ]]; then
-  echo AARIS_CF_WORKER_URL_NOT_FOUND
-  exit 29
-fi
-# A viewer key, if supplied by the owner on their phone, stays on the phone.
-# Only its SHA-256 digest reaches this remote Linux session and the Worker.
-printf '%s' "$AARIS_WATCH_HASH" |
-  "${WRANGLER[@]}" secret put WATCH_TOKEN_HASH --config "$TMP/wrangler.jsonc" >/dev/null
-# A brand-new workers.dev hostname may require DNS and TLS edge propagation.
-# Never disable certificate verification (-k), and never mark a deployment
-# active until its HTTPS health endpoint returns the expected application JSON.
-echo AARIS_CF_HTTPS_HEALTH_VERIFY_START
-HEALTH_READY=0
-for ATTEMPT in $(seq 1 18); do
-  CURL_RC=0
-  STATUS="$(curl -sS --connect-timeout 8 --max-time 18 "$URL/health" 2>"$TMP/health-curl.err")" || CURL_RC=$?
-  if ((CURL_RC==0)) && python3 -c 'import json,sys; obj=json.loads(sys.argv[1]); assert obj.get("service")=="aaris-turbo" and obj.get("status")=="ready"' "$STATUS" >/dev/null 2>&1; then
-    HEALTH_READY=1
-    echo AARIS_CF_HTTPS_HEALTH_VALIDATED
-    break
-  fi
-  if ((CURL_RC==60)); then
-    echo AARIS_CF_HTTPS_CERTIFICATE_VERIFICATION_FAILED
-    exit 36
-  fi
-  case "$CURL_RC" in
-    0|6|7|28|35|52|56) ;; # transient DNS, TLS, transport or not-yet-live response
-    *) echo "AARIS_CF_HEALTH_NONRETRYABLE_CURL_EXIT=$CURL_RC"; exit "$CURL_RC" ;;
-  esac
-  if ((ATTEMPT==1 || ATTEMPT%4==0)); then
-    echo "AARIS_CF_HTTPS_HEALTH_NOT_READY_ATTEMPT=$ATTEMPT CURL_EXIT=$CURL_RC"
-  fi
-  if ((ATTEMPT<18)); then sleep 10; fi
-done
-if ((HEALTH_READY!=1)); then
-  echo AARIS_CF_HTTPS_HEALTH_NOT_READY_AFTER_BOUNDED_RETRIES
-  echo AARIS_CF_DEPLOYED_BUT_NOT_ACTIVATED_KEEP_OLD_GITHUB_BROKER
-  exit 35
-fi
-# These are read-only unauthorized probes. Keep the exact 401 requirement;
-# transient HTTPS connection failures may also occur across Cloudflare edges.
-cf_unauthorized_probe() {
-  local endpoint="$1" data="$2" attempt code rc
-  for attempt in $(seq 1 6); do
-    rc=0
-    code="$(curl -sS --connect-timeout 8 --max-time 18 -o /dev/null -w '%{http_code}' \
-      -X POST "$URL/$endpoint" -H 'Content-Type: application/json' -d "$data" \
-      2>"$TMP/security-curl.err")" || rc=$?
-    if ((rc==0)); then
-      [[ "$code" == 401 ]] || {
-        echo "AARIS_CF_UNSAFE_$endpoint" >&2
-        return 30
-      }
-      echo "$code"
-      return 0
-    fi
-    if ((rc==60)); then
-      echo AARIS_CF_HTTPS_CERTIFICATE_VERIFICATION_FAILED >&2
-      return 36
-    fi
-    case "$rc" in
-      6|7|28|35|52|56) ;;
-      *) echo "AARIS_CF_SECURITY_PROBE_NONRETRYABLE_CURL_EXIT=$rc" >&2; return "$rc" ;;
-    esac
-    if ((attempt<6)); then sleep 7; fi
-  done
-  echo AARIS_CF_HTTPS_SECURITY_PROBE_NOT_READY >&2
-  return 37
+exec python3 - "$@" <<'AARIS_CF_LINUX_PY'
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+NODE_VERSION = '22.16.0'
+# Reviewed https://nodejs.org/dist/v22.16.0/SHASUMS256.txt, not runtime trust.
+NODE_RELEASES = {
+    'x86_64': ('x64', 'fb870226119d47378fa9c92c4535389c72dae14fcc7b47e6fdcc82c43de5a547'),
+    'aarch64': ('arm64', '1725602e9fb150eb8b8220a899085190e1c04d1a5f3862b01c3dc1dfce0157f9'),
 }
-HTTP="$(cf_unauthorized_probe bootstrap '{"machine":"aaris-invalid-test"}')"
-[[ "$HTTP" == 401 ]] || { echo "AARIS_CF_UNSAFE_BOOTSTRAP_STATUS=$HTTP"; exit 30; }
-HTTP="$(cf_unauthorized_probe agent/aaris-invalid-test/next '{}')"
-[[ "$HTTP" == 401 ]] || { echo "AARIS_CF_UNSAFE_AGENT_STATUS=$HTTP"; exit 31; }
-echo AARIS_CF_WORKER_HEALTH_PASS
-echo "AARIS_CF_BROKER=$URL"
+REPOSITORY = 'sundamunda289-art/Unity-Game-Aris'
+WORKER_NAME = 'aaris-turbo-terminal'
+WRANGLER_VERSION = '4.119.0'
+OP_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{7,79}\Z')
+HEX40 = re.compile(r'[0-9a-f]{40}\Z')
+HEX64 = re.compile(r'[0-9a-f]{64}\Z')
+HEX32 = re.compile(r'[0-9a-f]{32}\Z')
+ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
+
+class RunnerError(Exception):
+    def __init__(self, category, code=1):
+        super().__init__(category)
+        self.category, self.code = category, code
+
+class Interrupted(RunnerError):
+    pass
+
+def event(name):
+    if not re.fullmatch(r'[A-Z0-9_]+', name):
+        raise ValueError('invalid internal event')
+    print('AARIS_CF_' + name, flush=True)
+
+def private_directory(path):
+    path = Path(path)
+    if path.is_symlink():
+        raise RunnerError('UNSAFE_PRIVATE_DIRECTORY', 20)
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if not path.is_dir():
+        raise RunnerError('UNSAFE_PRIVATE_DIRECTORY', 20)
+    path.chmod(0o700)
+    return path
+
+def atomic_json(path, data):
+    path = Path(path)
+    private_directory(path.parent)
+    if path.is_symlink():
+        raise RunnerError('UNSAFE_RECEIPT_FILE', 20)
+    fd, tmp = tempfile.mkstemp(prefix='.' + path.name + '-', dir=path.parent)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as out:
+            json.dump(data, out, sort_keys=True)
+            out.write('\n')
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(tmp, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+def json_document(raw, expected_type):
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(raw):
+        if char not in '[{':
+            continue
+        try:
+            value, end = decoder.raw_decode(raw[index:])
+        except ValueError:
+            continue
+        if isinstance(value, expected_type) and not raw[index + end:].strip():
+            return value
+    raise RunnerError('INVALID_WRANGLER_RESPONSE', 21)
+
+def device_authorization(raw):
+    clean = ANSI.sub('', raw)
+    for candidate in re.findall(r'https://dash\.cloudflare\.com/oauth2/device\?[^\s<>"\x1b]+', clean):
+        parsed = urllib.parse.urlsplit(candidate)
+        code = urllib.parse.parse_qs(parsed.query).get('user_code', [''])[0]
+        if parsed.hostname == 'dash.cloudflare.com' and re.fullmatch(r'[A-Za-z0-9-]{4,40}', code):
+            return 'https://dash.cloudflare.com/oauth2/device?user_code=' + urllib.parse.quote(code), code
+    return None
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        raise RunnerError('UNEXPECTED_HTTP_REDIRECT', 22)
+
+def request_json(url, *, token=None, method='GET', body=None):
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme != 'https' or parsed.username or parsed.password:
+        raise RunnerError('UNSAFE_HTTPS_ENDPOINT', 22)
+    headers = {'Accept': 'application/json', 'User-Agent': 'aaris-cf-switch/1'}
+    if token:
+        if parsed.hostname != 'api.cloudflare.com':
+            raise RunnerError('UNSAFE_CREDENTIAL_DESTINATION', 22)
+        headers['Authorization'] = 'Bearer ' + token
+    encoded = None
+    if body is not None:
+        encoded = json.dumps(body).encode()
+        headers['Content-Type'] = 'application/json'
+    req = urllib.request.Request(url, encoded, headers, method=method)
+    try:
+        with urllib.request.build_opener(NoRedirect()).open(req, timeout=30) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as exc:
+        try:
+            value = json.loads(exc.read(65536))
+        except ValueError:
+            value = {}
+        value['_http_status'] = exc.code
+        return value
+    except (OSError, ValueError, urllib.error.URLError):
+        raise RunnerError('NETWORK_REQUEST_FAILED', 23) from None
+
+class LinuxRunner:
+    def __init__(self, env):
+        self.operation = env.get('AARIS_CF_OPERATION_ID', env.get('AARIS_CF_SESSION_ID', ''))
+        self.source = env.get('AARIS_SOURCE_SHA', '')
+        self.watch_hash = env.get('AARIS_WATCH_HASH', '')
+        self.probe_hash = env.get('AARIS_PROBE_HASH', '')
+        self.account = env.get('AARIS_CF_ACCOUNT_ID', '')
+        if not (OP_RE.fullmatch(self.operation) and HEX40.fullmatch(self.source)
+                and HEX64.fullmatch(self.watch_hash) and HEX64.fullmatch(self.probe_hash)):
+            raise RunnerError('INVALID_RUNNER_INPUT', 2)
+        if self.account and not HEX32.fullmatch(self.account):
+            raise RunnerError('INVALID_ACCOUNT_ID', 2)
+        self.base = private_directory(env.get('AARIS_CF_RUNNER_STATE', str(Path.home() / '.local/share/aaris-cf-runner')))
+        self.op = private_directory(self.base / 'operations' / self.operation)
+        self.profile = private_directory(self.op / 'profile')
+        self.logs = private_directory(self.op / 'private-logs')
+        self.result, self.receipt = self.op / 'result.json', self.op / 'phase.json'
+        self.plan = {'operation_id': self.operation, 'source_sha': self.source,
+                     'watch_hash': self.watch_hash, 'probe_hash': self.probe_hash}
+        plan_path = self.op / 'plan.json'
+        if plan_path.exists() and json.loads(plan_path.read_text()) != self.plan:
+            raise RunnerError('OPERATION_INPUT_CHANGED', 24)
+        atomic_json(plan_path, self.plan)
+        self.child, self.tmp, self.broker_url = None, None, None
+        self.resume = env.get('AARIS_CF_RESUME', '0') == '1'
+        self.environment = dict(env)
+        # 4.119.0 has no WRANGLER_HOME override. Legacy ~/.wrangler wins over
+        # XDG, so refuse it instead of touching an unrelated current login.
+        if (Path.home() / '.wrangler').exists():
+            raise RunnerError('LEGACY_WRANGLER_PROFILE_REQUIRES_PRIVATE_RUNNER', 25)
+        for name in list(self.environment):
+            if name.startswith(('GH_', 'GITHUB_', 'UNITY_')):
+                self.environment.pop(name, None)
+        for name in ('CLOUDFLARE_API_TOKEN', 'CF_API_TOKEN', 'CLOUDFLARE_API_KEY', 'CF_API_KEY',
+                     'CLOUDFLARE_EMAIL', 'CF_EMAIL', 'CLOUDFLARE_ACCOUNT_ID', 'CF_ACCOUNT_ID',
+                     'CLOUDFLARE_API_BASE_URL', 'WRANGLER_API_ENVIRONMENT', 'CLOUDFLARE_PROFILE',
+                     'CF_PROFILE', 'NODE_OPTIONS', 'WRANGLER_HOME'):
+            self.environment.pop(name, None)
+        self.environment.update({'XDG_CONFIG_HOME': str(self.profile),
+                                 'XDG_CACHE_HOME': str(private_directory(self.base / 'cache')),
+                                 'WRANGLER_LOG_PATH': str(self.logs / 'wrangler.log'),
+                                 'WRANGLER_SEND_METRICS': 'false', 'NO_COLOR': '1',
+                                 'CI': 'true', 'npm_config_update_notifier': 'false'})
+
+    def phase(self, state, **fields):
+        atomic_json(self.receipt, {**self.plan, 'state': state, 'account_id': self.account,
+                                  'broker_url': self.broker_url, **fields})
+
+    def stop_child(self):
+        child = self.child
+        if child is None or child.returncode is not None:
+            return
+        # Keep the group leader unreaped until all owned group members stop.
+        # poll() here could reap an exited leader and miss a live descendant.
+        def group_running():
+            for entry in Path('/proc').iterdir():
+                if not entry.name.isdecimal():
+                    continue
+                try:
+                    fields = (entry / 'stat').read_text().rsplit(')', 1)[1].split()
+                    if fields[0] != 'Z' and int(fields[2]) == child.pid and int(fields[3]) == child.pid:
+                        return True
+                except (OSError, ValueError, IndexError):
+                    continue
+            return False
+        try:
+            os.killpg(child.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            child.wait()
+            return
+        deadline = time.monotonic() + 10
+        while group_running() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if group_running():
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        child.wait()
+
+    def run(self, stage, argv, *, stdin=None, oauth=False):
+        event(stage + '_STARTED')
+        logfile = self.logs / (stage.lower() + '.log')
+        fd = os.open(logfile, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        seen_auth, captured = set(), bytearray()
+        process = None
+        try:
+            with os.fdopen(fd, 'wb', buffering=0) as log:
+                self.child = subprocess.Popen(argv, cwd=self.tmp, env=self.environment,
+                                              stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+                                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                              start_new_session=True)
+                process = self.child
+                if stdin is not None:
+                    self.child.stdin.write(stdin)
+                    self.child.stdin.close()
+                while True:
+                    chunk = os.read(self.child.stdout.fileno(), 8192)
+                    if not chunk:
+                        break
+                    log.write(chunk)
+                    captured.extend(chunk)
+                    if len(captured) > 2 * 1024 * 1024:
+                        del captured[:-1024 * 1024]
+                    if oauth:
+                        details = device_authorization(captured.decode('utf-8', 'replace'))
+                        if details and details[1] not in seen_auth:
+                            seen_auth.add(details[1])
+                            # Phone-only, never included in shareable event tails.
+                            print('AARIS_CF_AUTH_URL=' + details[0], flush=True)
+                            print('AARIS_CF_AUTH_CODE=' + details[1], flush=True)
+                status = self.child.wait()
+                self.child = None
+        except BaseException:
+            self.stop_child()
+            raise
+        finally:
+            if process is not None:
+                if process.stdout is not None:
+                    process.stdout.close()
+                if process.stdin is not None:
+                    process.stdin.close()
+        if status:
+            event(stage + '_FAILED')
+            raise RunnerError(stage + '_FAILED', status if 0 < status < 256 else (128 - status if -127 < status < 0 else 1))
+        event(stage + '_PASSED')
+        return captured.decode('utf-8', 'replace')
+
+    def download(self, url, target, expected=None):
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(url, timeout=45) as response, open(target, 'wb') as out:
+                    if urllib.parse.urlsplit(response.url).scheme != 'https':
+                        raise RunnerError('INSECURE_DOWNLOAD_REDIRECT', 26)
+                    shutil.copyfileobj(response, out)
+                if expected and hashlib.sha256(Path(target).read_bytes()).hexdigest() != expected:
+                    raise RunnerError('DOWNLOAD_CHECKSUM_FAILED', 26)
+                return
+            except (OSError, urllib.error.URLError):
+                if attempt == 2:
+                    raise RunnerError('DOWNLOAD_NETWORK_FAILED', 23) from None
+                event('DOWNLOAD_RETRY')
+                time.sleep(2 ** (attempt + 1))
+
+    def node(self):
+        architecture = os.uname().machine
+        if architecture not in NODE_RELEASES:
+            raise RunnerError('LINUX_ARCHITECTURE_UNSUPPORTED', 27)
+        arch, checksum = NODE_RELEASES[architecture]
+        root = self.base / ('node-' + NODE_VERSION + '-' + arch)
+        if not (root / 'bin/node').is_file():
+            archive = self.tmp / 'node.tar.gz'
+            event('NODE_DOWNLOAD_STARTED')
+            self.download('https://nodejs.org/dist/v' + NODE_VERSION + '/node-v' + NODE_VERSION + '-linux-' + arch + '.tar.gz', archive, checksum)
+            with tarfile.open(archive) as package:
+                package.extractall(self.tmp / 'unpack', filter='data')
+            staging = self.base / ('.node-' + self.operation)
+            if staging.exists():
+                shutil.rmtree(staging)
+            shutil.move(str(self.tmp / 'unpack' / ('node-v' + NODE_VERSION + '-linux-' + arch)), staging)
+            os.replace(staging, root)
+            event('NODE_SHA256_VERIFIED')
+        self.environment['PATH'] = str(root / 'bin') + ':' + self.environment.get('PATH', '/usr/bin:/bin')
+        self.wrangler = [str(root / 'bin/npx'), '--yes', 'wrangler@' + WRANGLER_VERSION]
+        version = self.run('NODE_VERIFY', [str(root / 'bin/node'), '--version']).strip()
+        if version != 'v' + NODE_VERSION:
+            raise RunnerError('NODE_VERSION_MISMATCH', 27)
+        self.run('WRANGLER_VERIFY', self.wrangler + ['--version'])
+
+    def auth(self):
+        auth_path = self.profile / '.wrangler/config/default.toml'
+        if not (self.resume and auth_path.is_file()):
+            self.run('BROWSER_LOGIN', self.wrangler + ['login', '--device', '--browser=false'], oauth=True)
+        identity = json_document(self.run('IDENTITY_VERIFY', self.wrangler + ['whoami', '--json']), dict)
+        accounts = [a for a in identity.get('accounts', []) if isinstance(a, dict) and HEX32.fullmatch(str(a.get('id', '')))]
+        if not identity.get('loggedIn') or not accounts:
+            raise RunnerError('NO_AUTHORIZED_CLOUDFLARE_ACCOUNT', 28)
+        if self.account:
+            if self.account not in {a['id'] for a in accounts}:
+                raise RunnerError('ACCOUNT_NOT_AUTHORIZED', 28)
+        elif len(accounts) == 1:
+            self.account = accounts[0]['id']
+        else:
+            options = [{'id': a['id'], 'name': re.sub(r'[^A-Za-z0-9 ._@+-]', '?', str(a.get('name', '')))[:60]} for a in accounts]
+            atomic_json(self.result, {**self.plan, 'state': 'CF_ACCOUNT_SELECTION_REQUIRED', 'account_options': options})
+            raise RunnerError('ACCOUNT_SELECTION_REQUIRED', 42)
+        account_path = self.op / 'account.json'
+        if account_path.exists() and json.loads(account_path.read_text()).get('account_id') != self.account:
+            raise RunnerError('OPERATION_ACCOUNT_CHANGED', 24)
+        atomic_json(account_path, {'account_id': self.account})
+        self.environment['CLOUDFLARE_ACCOUNT_ID'] = self.account
+        import tomllib
+        if auth_path.is_symlink():
+            raise RunnerError('UNSAFE_AUTH_PROFILE', 29)
+        auth_path.chmod(0o600)
+        self.oauth_token = tomllib.loads(auth_path.read_text()).get('oauth_token')
+        if not isinstance(self.oauth_token, str) or not self.oauth_token:
+            raise RunnerError('STAGED_OAUTH_CREDENTIAL_UNAVAILABLE', 29)
+
+    def api(self, suffix, **kwargs):
+        return request_json('https://api.cloudflare.com/client/v4/accounts/' + self.account + suffix,
+                            token=self.oauth_token, **kwargs)
+
+    def resolve_broker(self):
+        data = self.api('/workers/subdomain')
+        errors = {e.get('code') for e in data.get('errors', []) if isinstance(e, dict)}
+        if not data.get('success') and 10007 in errors:
+            self.phase('SUBDOMAIN_REGISTER_REQUESTED')
+            self.api('/workers/subdomain', method='PUT', body={'subdomain': 'aaris-' + self.account[:12]})
+            data = self.api('/workers/subdomain')
+        subdomain = (data.get('result') or {}).get('subdomain')
+        if not data.get('success') or not isinstance(subdomain, str) or not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', subdomain):
+            raise RunnerError('WORKERS_SUBDOMAIN_NOT_READY', 30)
+        self.broker_url = 'https://' + WORKER_NAME + '.' + subdomain + '.workers.dev'
+
+    def health_matches(self):
+        try:
+            data = request_json(self.broker_url + '/health')
+        except Interrupted:
+            raise
+        except RunnerError:
+            return False
+        return (data.get('service') == 'aaris-turbo' and data.get('status') == 'ready'
+                and data.get('transaction_protocol') == 1
+                and data.get('deployment_operation') == self.operation
+                and data.get('source_sha') == self.source)
+
+    def prepare(self):
+        self.lock_fd = os.open(self.base / 'linux-runner.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        try:
+            fcntl.flock(self.lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(self.lock_fd)
+            raise RunnerError('ANOTHER_RUNNER_IS_ACTIVE', 75)
+        self.tmp = Path(tempfile.mkdtemp(prefix='aaris-cf-' + self.operation + '-', dir='/tmp'))
+        try:
+            self.node()
+            for name in ('worker.mjs', 'watch_page.mjs', 'wrangler.jsonc'):
+                self.download('https://raw.githubusercontent.com/' + REPOSITORY + '/' + self.source + '/Tools/Turbo/' + name, self.tmp / name)
+            config = json.loads((self.tmp / 'wrangler.jsonc').read_text())
+            if config.get('name') != WORKER_NAME or config.get('main') != './worker.mjs':
+                raise RunnerError('CANONICAL_WORKER_CONFIG_MISMATCH', 31)
+            self.run('DEPLOY_PREFLIGHT', self.wrangler + ['deploy', '--dry-run', '--config', str(self.tmp / 'wrangler.jsonc')])
+            self.auth()
+            self.resolve_broker()
+            previous = json.loads(self.receipt.read_text()) if self.receipt.exists() else {}
+            deploy_started = previous.get('state') in {
+                'DEPLOY_REQUESTED', 'DEPLOY_CONFIRMED', 'WATCH_SECRET_REQUESTED',
+                'PROBE_SECRET_REQUESTED', 'CF_DEPLOYED_DO_PROBE_PENDING'}
+            already_deployed = (self.resume or deploy_started) and self.health_matches()
+            # A failed later step must not let an old operation overwrite a
+            # newer deployment, or blindly replay a write whose outcome is lost.
+            if deploy_started and not already_deployed:
+                raise RunnerError('DEPLOY_OUTCOME_UNKNOWN_RETRY_STATUS', 76)
+            if not already_deployed:
+                self.phase('DEPLOY_REQUESTED')
+                try:
+                    self.run('DEPLOY', self.wrangler + ['deploy', '--config', str(self.tmp / 'wrangler.jsonc'),
+                             '--keep-vars', '--var', 'AARIS_DEPLOY_OPERATION:' + self.operation,
+                             '--var', 'AARIS_SOURCE_SHA:' + self.source])
+                except Interrupted:
+                    raise
+                except RunnerError:
+                    if not self.health_matches():
+                        raise RunnerError('DEPLOY_OUTCOME_UNKNOWN_RETRY_STATUS', 76) from None
+            for attempt in range(18):
+                if self.health_matches():
+                    break
+                if attempt == 17:
+                    raise RunnerError('DEPLOY_OUTCOME_UNKNOWN_RETRY_STATUS', 76)
+                event('HTTPS_PROPAGATION_PENDING')
+                time.sleep(10)
+            self.phase('DEPLOY_CONFIRMED')
+            secrets = json_document(self.run('SECRET_NAMES_VERIFY', self.wrangler + ['secret', 'list', '--format', 'json', '--config', str(self.tmp / 'wrangler.jsonc')]), list)
+            names = {item.get('name') for item in secrets if isinstance(item, dict)}
+            watch_installed = bool(previous.get('watch_key_installed')) and 'WATCH_TOKEN_HASH' in names
+            if 'WATCH_TOKEN_HASH' not in names:
+                self.phase('WATCH_SECRET_REQUESTED')
+                self.run('WATCH_KEY_INSTALL', self.wrangler + ['secret', 'put', 'WATCH_TOKEN_HASH', '--config', str(self.tmp / 'wrangler.jsonc')], stdin=self.watch_hash.encode())
+                watch_installed = True
+            else:
+                event('EXISTING_WATCH_KEY_PRESERVED')
+            self.phase('PROBE_SECRET_REQUESTED', watch_key_installed=watch_installed)
+            self.run('PROBE_KEY_INSTALL', self.wrangler + ['secret', 'put', 'BROKER_PROBE_HASH', '--config', str(self.tmp / 'wrangler.jsonc')], stdin=self.probe_hash.encode())
+            result = {'operation_id': self.operation, 'source_sha': self.source, 'account_id': self.account,
+                      'broker_url': self.broker_url, 'state': 'CF_DEPLOYED_DO_PROBE_PENDING',
+                      'watch_key_installed': watch_installed, 'runner': 'termux-proot', 'transaction_protocol': 1}
+            atomic_json(self.result, result)
+            self.phase('CF_DEPLOYED_DO_PROBE_PENDING', watch_key_installed=watch_installed)
+            event('DEPLOYED_AUTHENTICATED_STORAGE_CHECK_REQUIRED')
+            return result
+        finally:
+            self.stop_child()
+            if self.tmp:
+                shutil.rmtree(self.tmp, ignore_errors=True)
+            os.close(self.lock_fd)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--node-info', choices=list(NODE_RELEASES))
+    args = parser.parse_args()
+    if args.node_info:
+        arch, checksum = NODE_RELEASES[args.node_info]
+        print(json.dumps({'version': NODE_VERSION, 'architecture': arch, 'sha256': checksum}))
+        return 0
+    def interrupted(signum, frame):
+        raise Interrupted('CANCELLED' if signum == signal.SIGINT else 'TERMINATED', 128 + signum)
+    signal.signal(signal.SIGINT, interrupted)
+    signal.signal(signal.SIGTERM, interrupted)
+    try:
+        LinuxRunner(os.environ).prepare()
+        return 0
+    except RunnerError as exc:
+        event(exc.category)
+        return exc.code
+    except Exception:
+        event('PRIVATE_RUNNER_FAILED')
+        return 1
+
+if __name__ == '__main__':
+    sys.exit(main())
+AARIS_CF_LINUX_PY
+
