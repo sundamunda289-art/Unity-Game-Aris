@@ -228,7 +228,7 @@ class OfflineCombatAssetChecks(unittest.TestCase):
         self.assertIn("private bool HasSightTo(Transform victim)", br)
         self.assertIn("closest.transform.IsChildOf(victim)", br)
         self.assertIn("HasPlayerSightForSelection()", br)
-        self.assertIn("AarisEquippedGun.ApplyDamage(shotHit.collider, damage,", br)
+        self.assertIn("AarisEquippedGun.ApplyCombatDamage(shotHit, damage,", br)
         self.assertIn("private void OnDied(AarisOfflineHealth defeated)", br)
         self.assertIn("spawnComplete && spawnedRivals > 0 && activeRivals == 0", br)
         self.assertIn("matchEnd.WinMatch();", br)
@@ -673,7 +673,7 @@ class OfflineCombatAssetChecks(unittest.TestCase):
                       "lastGrounded = Time.unscaledTime;",
                       "lastJumpStarted = jumpUntil = -10f;"):
             self.assertIn(token, before_reset)
-    
+
     def test_world_y_includes_native_terrain_origin_for_drop_altitude(self):
         source = (SCRIPTS / "AarisOfflineDrop.cs").read_text(encoding="utf-8")
         self.assertIn("p.y + terrain.SampleHeight(new Vector3(x, 0f, z))", source)

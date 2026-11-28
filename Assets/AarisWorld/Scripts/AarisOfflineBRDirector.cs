@@ -126,6 +126,69 @@ namespace Aaris.MapReview
 
         private static RaycastHit[] assistHits = new RaycastHit[32];
         private static RaycastHit[] muzzleAssistHits = new RaycastHit[48];
+        // Tier-3 hit testing lives in managed data, not stationary native
+        // CharacterControllers. Physical cover always wins equal distances.
+        internal static bool TryRaycastVirtualRival(Ray ray, float maximumDistance,
+            Transform shooter, out AarisCombatHit hit, bool visibleOnly = true)
+        {
+            hit = default;
+            AarisOfflineBRDirector director = activeDirector;
+            if (director == null || !(maximumDistance >= 0f)) return false;
+            float nearest = maximumDistance;
+            bool found = false;
+            Ray normalized = new Ray(ray.origin, ray.direction.normalized);
+            for (int i = 0; i < RivalCount; i++)
+            {
+                AarisOfflineRival rival = director.rivals[i];
+                if (rival == null || !rival.HasLogicalHitReceiver ||
+                    (visibleOnly && !rival.HasVisibleBody) ||
+                    (shooter != null && (rival.transform.IsChildOf(shooter) ||
+                        shooter.IsChildOf(rival.transform))) ||
+                    (Physics.DefaultRaycastLayers & (1 << rival.gameObject.layer)) == 0) continue;
+                rival.GetLogicalCapsule(out Vector3 feet, out float height, out float radius);
+                if (!AarisRivalHitMath.RaycastVerticalCapsule(normalized, feet, height,
+                    radius, nearest, out float distance, out Vector3 normal) ||
+                    (found && distance >= nearest)) continue;
+                nearest = distance;
+                found = true;
+                hit = new AarisCombatHit { logicalRival = rival, distance = distance,
+                    point = normalized.GetPoint(distance), normal = normal };
+            }
+            return found;
+        }
+
+        internal static bool TryFirstCombatHit(Ray ray, float range, Transform shooter,
+            out AarisCombatHit hit, bool visibleOnly = true)
+        {
+            bool found = FirstMuzzleExternalHit(ray, range, shooter, out RaycastHit physical);
+            hit = found ? AarisCombatHit.Physical(physical) : default;
+            float limit = found ? Mathf.Max(0f, physical.distance - 0.0001f) : range;
+            if (TryRaycastVirtualRival(ray, limit, shooter, out AarisCombatHit logical, visibleOnly) &&
+                (!found || logical.distance < physical.distance))
+            { hit = logical; found = true; }
+            return found;
+        }
+
+        internal static int CopyLogicalBlastCandidates(Vector3 position, float range,
+            AarisOfflineRival[] results)
+        {
+            AarisOfflineBRDirector director = activeDirector;
+            if (director == null || results == null || !(range > 0f)) return 0;
+            int used = 0;
+            float squared = range * range;
+            for (int i = 0; i < RivalCount && used < results.Length; i++)
+            {
+                AarisOfflineRival rival = director.rivals[i];
+                if (rival != null && rival.HasLogicalHitReceiver &&
+                    (rival.ClosestLogicalPoint(position) - position).sqrMagnitude <= squared)
+                    results[used++] = rival;
+            }
+            return used;
+        }
+
+        internal static bool StreamedWorldBlocks(Ray ray, float distance) =>
+            activeDirector != null && StreamedCoverBlocks(ray, distance);
+
         // Preallocated main-thread Red-Lock shortlist: never scan PhysX for all 100 actors.
         private const int AimBudget = 3;
         // Cache follows all authored physical and virtual rival moves.
@@ -315,7 +378,13 @@ namespace Aaris.MapReview
             // the heap replaces a full 100-slot roster scan with O(log 100)
             // rescheduling and performs no allocation or Unity search.
             int processed = 0;
-            while (dormantRivalHeapCount != 0 && processed < RivalCount)
+            // A camera pivot can make the complete roster due at once. Bound
+            // the burst while preserving oldest-deadline-first fairness. At
+            // very low frame rates raise the cap to avoid losing simulation
+            // time to the existing 460ms movement clamp.
+            int callbackBudget = Mathf.Clamp(Mathf.CeilToInt(
+                24f * Mathf.Max(1f, Time.unscaledDeltaTime * 60f)), 24, RivalCount);
+            while (dormantRivalHeapCount != 0 && processed < callbackBudget)
             {
                 int slot = dormantRivalHeap[0];
                 if (dormantRivalWakeTimes[slot] > now) break;
@@ -1924,8 +1993,8 @@ namespace Aaris.MapReview
             float distance = to.magnitude;
             if (distance <= 0.025f) return false;
             Ray ray = new Ray(muzzle, to / distance);
-            return FirstMuzzleExternalHit(ray, distance + 0.05f, shooter,
-                out RaycastHit first) && first.collider.transform.IsChildOf(victim) &&
+            return TryFirstCombatHit(ray, distance + 0.05f, shooter,
+                out AarisCombatHit first) && first.BelongsTo(victim) &&
                 !StreamedCoverBlocks(ray, first.distance);
         }
 
@@ -1977,11 +2046,11 @@ namespace Aaris.MapReview
             var centerRay = new Ray(origin, cameraForward);
             // A physical hit under the crosshair takes priority over snapping
             // to a rival's torso. This also handles intentionally aimed headshots.
-            if (FirstMuzzleExternalHit(centerRay, range, shooter, out RaycastHit direct))
+            if (TryFirstCombatHit(centerRay, range, shooter, out AarisCombatHit direct))
             {
                 // Optional authored child hitboxes belong to the same rival.
-                AarisOfflineRival directRival =
-                    direct.collider.GetComponentInParent<AarisOfflineRival>();
+                AarisOfflineRival directRival = direct.logicalRival != null
+                    ? direct.logicalRival : direct.collider.GetComponentInParent<AarisOfflineRival>();
                 if (directRival != null && directRival.IsAlive && directRival.HasVisibleBody &&
                     !StreamedCoverBlocks(centerRay, direct.distance) &&
                     MuzzlePathOpenTo(shooter, directRival.transform, direct.point))
@@ -2056,22 +2125,7 @@ namespace Aaris.MapReview
                 Vector3 direction = attempt == 0 ? d1 : attempt == 1 ? d2 : d3;
                 float distance = attempt == 0 ? r1 : attempt == 1 ? r2 : r3;
                 Ray candidateRay = new Ray(origin, direction);
-                int count = AarisPhysicsHitBuffer.Raycast(candidateRay,
-                    distance + .5f, Physics.DefaultRaycastLayers, ref assistHits, 256,
-                    out RaycastHit[] hits);
-                float nearest = float.PositiveInfinity;
-                Collider closest = null;
-                Vector3 closestPoint = Vector3.zero;
-                for (int i = 0; i < count; i++)
-                {
-                    Collider collider = hits[i].collider;
-                    if (collider == null || collider.transform.IsChildOf(shooter)) continue;
-                    if (hits[i].distance < nearest)
-                    { nearest = hits[i].distance; closest = collider; closestPoint = hits[i].point; }
-                }
-                if (closest != null && closest.transform.IsChildOf(candidate.transform) &&
-                    !StreamedCoverBlocks(candidateRay, nearest) &&
-                    MuzzlePathOpenTo(shooter, candidate.transform, closestPoint))
+                if (AimRayReachesRival(candidateRay, distance + .5f, shooter, candidate.transform))
                 {
                     aimedDirection = direction;
                     lockedRival = candidate;
@@ -2110,8 +2164,8 @@ namespace Aaris.MapReview
         private static bool AimRayReachesRival(Ray ray, float distance, Transform shooter,
             Transform rival)
         {
-            return FirstMuzzleExternalHit(ray, distance, shooter, out RaycastHit hit) &&
-                hit.collider.transform.IsChildOf(rival) &&
+            return TryFirstCombatHit(ray, distance, shooter, out AarisCombatHit hit) &&
+                hit.BelongsTo(rival) &&
                 !StreamedCoverBlocks(ray, hit.distance) &&
                 MuzzlePathOpenTo(shooter, rival, hit.point);
         }
@@ -2207,24 +2261,8 @@ namespace Aaris.MapReview
                 if (bot == null || !bot.IsAlive || !bot.HasVisibleBody) continue;
                 Vector3 direction = aimDirs[attempt];
                 Ray candidateRay = new Ray(origin, direction);
-                int count = AarisPhysicsHitBuffer.Raycast(candidateRay,
-                    aimRanges[attempt] + .5f, Physics.DefaultRaycastLayers,
-                    ref assistHits, 256, out RaycastHit[] hits);
-                float nearest = float.PositiveInfinity;
-                Collider closest = null;
-                Vector3 point = Vector3.zero;
-                for (int i = 0; i < count; i++)
-                {
-                    Collider hit = hits[i].collider;
-                    if (hit == null || hit.transform.IsChildOf(shooter) ||
-                        hits[i].distance >= nearest) continue;
-                    nearest = hits[i].distance;
-                    closest = hit;
-                    point = hits[i].point;
-                }
-                if (closest != null && closest.transform.IsChildOf(bot.transform) &&
-                    !StreamedCoverBlocks(candidateRay, nearest) &&
-                    MuzzlePathOpenTo(shooter, bot.transform, point))
+                if (AimRayReachesRival(candidateRay, aimRanges[attempt] + .5f,
+                    shooter, bot.transform))
                 {
                     aimedDirection = direction;
                     lockedRival = bot;
@@ -2398,13 +2436,18 @@ namespace Aaris.MapReview
         private AarisOfflineHealth health, targetHealth;
         private Transform target;
         private CharacterController capsule;
+        // Enabling a new/reused CCT does not guarantee that PhysX queries can
+        // already see it. Keep the analytical receiver until ordinary movement
+        // has produced a natively queryable body; never infer readiness from
+        // Collider.enabled alone.
+        private bool nativeReceiverReady;
 #if UNITY_ANDROID && !UNITY_EDITOR
         // Avoid bulk native PhysX allocations when the camera turns.
         private static int lastReceiverBuildFrame = -1;
 #endif
         // Receivers admitted for one scoped glimpse must not accumulate
         // for the entire two-kilometre match after their native body is idle.
-        private const float ReceiverRetireDistance = 190f;
+        private const float ReceiverRetireDistance = 150f;
         private const float ReceiverRetireAfterSeconds = 6f;
         private float receiverUnusedSince = -1f;
         private static int lastReceiverRetireFrame = -1;
@@ -2590,20 +2633,23 @@ namespace Aaris.MapReview
         }
 
         private float nextDormantProximityProbe;
-        // A separate low-triangle visual keeps 4x targets visible beyond 155 m
+        // A separate low-triangle visual keeps 4x targets visible beyond 120 m
         // without loading distant Humanoid rigs or changing close-up quality.
         private GameObject farVisualRoot;
         private static Mesh sharedFarVisualMesh;
         private static Material sharedFarVisualMaterial;
         internal const float FarVisualDistance = 485f;
-        private const float DetailedDistance = 155f;
-        private const float PhysicalReturnDistance = 145f;
+        private const float DetailedDistance = 120f;
+        private const float PhysicalReturnDistance = 110f;
+        private const float FullAnimationDistance = 45f;
+        private const float MidAnimationInterval = 1f / 30f;
+        private float lastAnimationSampleAt = -1f, animationPendingTime;
         private bool visualBuilt;
         private float nextVisualCheck, staggeredVisualDelay;
         // A hidden close Humanoid still retains its skinned meshes and
         // PlayableGraph. Retire it after sustained distance and rebuild the
         // SAME authored rig on return; the shared far LOD stays visible.
-        private const float RigRetireDistance = 190f;
+        private const float RigRetireDistance = 150f;
         private const float RigRetireAfterSeconds = 5f;
         private float rigFarSince = -1f;
         private static int lastRigRetireFrame = -1;
@@ -2650,6 +2696,30 @@ namespace Aaris.MapReview
         internal bool HasVisibleBody =>
             (visualRoot != null && visualRoot.activeInHierarchy) ||
             (farVisualRoot != null && farVisualRoot.activeInHierarchy);
+        // Admission can defer a nearby native receiver for a frame. Keep the
+        // same analytical fallback during that gap so visibility never grants
+        // temporary invulnerability; only a queryable native body excludes it.
+        internal bool HasLogicalHitReceiver => IsAlive &&
+            (capsule == null || !capsule.enabled || !nativeReceiverReady);
+
+        internal void GetLogicalCapsule(out Vector3 feet, out float height, out float radius)
+        {
+            Vector3 scale = transform.lossyScale;
+            radius = 0.31f * Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.z));
+            height = Mathf.Max(1.8f * Mathf.Abs(scale.y), radius * 2f);
+            Vector3 center = transform.TransformPoint(new Vector3(0f, 0.9f, 0f));
+            feet = center - Vector3.up * (height * 0.5f);
+        }
+
+        internal Vector3 ClosestLogicalPoint(Vector3 point)
+        {
+            GetLogicalCapsule(out Vector3 feet, out float height, out float radius);
+            Vector3 axis = new Vector3(feet.x,
+                Mathf.Clamp(point.y, feet.y + radius, feet.y + height - radius), feet.z);
+            Vector3 delta = point - axis;
+            float squared = delta.sqrMagnitude;
+            return squared <= radius * radius ? point : axis + delta * (radius / Mathf.Sqrt(squared));
+        }
         // Only centrally dormant, off-camera bots can trust their cached
         // coordinates for early aim rejection. Live/visible actors may be
         // teleported by gameplay or QA and must use their actual Transform.
@@ -2683,6 +2753,7 @@ namespace Aaris.MapReview
             playerTargetHealth = victimHealth;
             playerTargetCapsule = victim != null ? victim.GetComponent<CharacterController>() : null;
             capsule = GetComponent<CharacterController>();
+            nativeReceiverReady = false;
             health.Died += OnDied;
             health.Damaged += OnDamaged;
             turnOffset = UnityEngine.Random.Range(-12f, 12f);
@@ -2703,7 +2774,7 @@ namespace Aaris.MapReview
             // only to turn them off on the next scheduled simulation tick.
             float spawnDistanceSqr = (transform.position - victim.position).sqrMagnitude;
             wasWithinDetailedDistance = spawnDistanceSqr < DetailedDistance * DetailedDistance;
-            // Offscreen 90-155m rivals spawn math-only; nearby visible
+            // Offscreen 90-120m rivals spawn math-only; nearby visible
             // rivals keep a real collision receiver for hitscan and cover.
             bool spawnCameraRelevant = spawnDistanceSqr >=
                 FarSimulationDistance * FarSimulationDistance &&
@@ -2715,7 +2786,7 @@ namespace Aaris.MapReview
                  !spawnCameraRelevant))
             {
                 virtualBody = true;
-                if (capsule != null) capsule.enabled = false;
+                SetPhysicalReceiverEnabled(false);
             }
             else
             {
@@ -2736,10 +2807,11 @@ namespace Aaris.MapReview
         }
 
         // Retain a native collision body only once an actor is physically
-        // nearby or camera-visible within the scoped rifle hit range.
+        // nearby near enough to require authoritative physical movement.
         private CharacterController EnsurePhysicalReceiver()
         {
             if (capsule != null) return capsule;
+            nativeReceiverReady = false;
             capsule = gameObject.AddComponent<CharacterController>();
             capsule.height = 1.8f;
             capsule.radius = 0.31f;
@@ -2748,6 +2820,40 @@ namespace Aaris.MapReview
             capsule.skinWidth = 0.05f;
             capsule.slopeLimit = 43f;
             return capsule;
+        }
+
+        // One broadphase self-query only while an admitted receiver is pending.
+        // This runs after the normal collision-authoritative Move, never as a
+        // synthetic physics tick. Stable receivers do no additional work.
+        private void ConfirmNativeReceiverAfterMove()
+        {
+            if (nativeReceiverReady || capsule == null || !capsule.enabled)
+                return;
+            Bounds bounds = capsule.bounds;
+            if (bounds.extents.x <= 0f || bounds.extents.y <= 0f)
+                return;
+            float reach = bounds.extents.x + 0.1f;
+            Ray probe = new Ray(bounds.center + Vector3.right * reach, Vector3.left);
+            // A direct Collider.Raycast can bypass broadphase publication.
+            // Use the same native world-query path as weapon hits; a nearer
+            // same-layer collider conservatively keeps the fallback pending.
+            nativeReceiverReady = Physics.Raycast(probe, out RaycastHit contact, reach * 2f,
+                1 << gameObject.layer, QueryTriggerInteraction.Ignore) &&
+                contact.collider == capsule;
+        }
+
+        // All presentation/physics transitions use this one invalidation path.
+        private void SetPhysicalReceiverEnabled(bool needsPhysicalReceiver)
+        {
+            if (capsule == null)
+            {
+                nativeReceiverReady = false;
+                return;
+            }
+            if (!needsPhysicalReceiver || capsule.enabled != needsPhysicalReceiver)
+                nativeReceiverReady = false;
+            if (capsule.enabled != needsPhysicalReceiver)
+                capsule.enabled = needsPhysicalReceiver;
         }
 
         // Destroy only a disabled, distant, off-camera hit receiver after
@@ -2769,6 +2875,7 @@ namespace Aaris.MapReview
             lastReceiverRetireFrame = Time.frameCount;
             CharacterController retired = capsule;
             capsule = null;
+            nativeReceiverReady = false;
             receiverUnusedSince = -1f;
 #if UNITY_ANDROID && !UNITY_EDITOR
             AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();
@@ -2919,10 +3026,15 @@ namespace Aaris.MapReview
             if (animator.avatar == null || !animator.avatar.isValid ||
                 !animator.avatar.isHuman || idle == null || run == null) return;
             graph = PlayableGraph.Create("Aaris Offline Rival");
-            graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
+            graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
             animations = AnimationMixerPlayable.Create(graph, 2);
-            graph.Connect(AnimationClipPlayable.Create(graph, idle), 0, animations, 0);
+            AnimationClipPlayable idlePlayable = AnimationClipPlayable.Create(graph, idle);
+            idlePlayable.SetApplyFootIK(false);
+            idlePlayable.SetApplyPlayableIK(false);
+            graph.Connect(idlePlayable, 0, animations, 0);
             runPlayable = AnimationClipPlayable.Create(graph, run);
+            runPlayable.SetApplyFootIK(false);
+            runPlayable.SetApplyPlayableIK(false);
             graph.Connect(runPlayable, 0, animations, 1);
             runPlaybackSpeed = -1f;
             visualBlend = 0f;
@@ -2931,11 +3043,13 @@ namespace Aaris.MapReview
             AnimationPlayableOutput.Create(graph, "Local rival animation", animator)
                 .SetSourcePlayable(animations);
             hasAnimations = true;
+            lastAnimationSampleAt = Time.time;
+            animationPendingTime = 0f;
         }
 
         // Called only on the existing 0.55s staggered visual tick.
         // Never retire a visible rig, or one lacking its far LOD in the
-        // 155-485m visual band. At most one native hierarchy per frame.
+        // 120-485m visual band. At most one native hierarchy per frame.
         private void RetireHiddenRig(float now, float playerDistanceSqr)
         {
             if (visualRoot == null || visualRoot.activeSelf ||
@@ -3130,6 +3244,24 @@ namespace Aaris.MapReview
                 playerTarget == null || playerTargetHealth == null || playerTargetHealth.IsDead)
                 return;
             TickRival(now, playerTarget.position);
+            TickAnimation(now, (playerTarget.position - transform.position).sqrMagnitude);
+        }
+
+        private void TickAnimation(float now, float playerDistanceSqr)
+        {
+            float elapsed = lastAnimationSampleAt < 0f ? 0f :
+                Mathf.Clamp(now - lastAnimationSampleAt, 0f, 0.12f);
+            lastAnimationSampleAt = now;
+            if (!hasAnimations || !graph.IsValid() || !graph.IsPlaying() ||
+                detailedRenderingSuppressed || visualRoot == null || !visualRoot.activeInHierarchy)
+            { animationPendingTime = 0f; return; }
+            animationPendingTime += elapsed;
+            if (playerDistanceSqr >= FullAnimationDistance * FullAnimationDistance &&
+                animationPendingTime + 0.0001f < MidAnimationInterval) return;
+            // Manual time ownership guarantees there is no second automatic
+            // Animator/PlayableGraph evaluation on the skipped render frames.
+            graph.Evaluate(animationPendingTime);
+            animationPendingTime = 0f;
         }
 
         private void TickRival(float now, Vector3 playerPosition)
@@ -3184,7 +3316,7 @@ namespace Aaris.MapReview
                             FarSimulationDistance * FarSimulationDistance)
                             virtualBody = true;
                         if (virtualBody && capsule != null && capsule.enabled)
-                            capsule.enabled = false;
+                            SetPhysicalReceiverEnabled(false);
                     }
                     lastCameraRelevant = cameraRelevant;
                 }
@@ -3208,7 +3340,7 @@ namespace Aaris.MapReview
                 // damage tick, and unregister a stale far bullet receiver.
                 virtualBody = true;
                 if (capsule != null && capsule.enabled)
-                    capsule.enabled = false;
+                    SetPhysicalReceiverEnabled(false);
                 lastCameraRelevant = false;
             }
             // Throttle 90-485m hidden, virtual, receiver-free rivals only.
@@ -3219,7 +3351,7 @@ namespace Aaris.MapReview
                 (farVisualRoot == null || !farVisualRoot.activeSelf) &&
                 (capsule == null || !capsule.enabled);
             // On-camera actors beyond the detailed band are still abstract fighters.
-            // Their shared unskinned LOD and stationary bullet receiver do
+            // Their shared unskinned LOD and analytic hit receiver do
             // not require a MonoBehaviour.Update every rendered frame.
             // Reuse the existing 120ms camera/proximity and 350ms AI clocks.
             // Nearby physical combat remains fully frame-driven.
@@ -3251,7 +3383,7 @@ namespace Aaris.MapReview
             // The independent simulationDue gate below still owns all AI.
             bool presentationRetryDue = cameraRelevant &&
                 now >= nextVisualCheck && now >= staggeredVisualDelay &&
-                (!HasVisibleBody || capsule == null || !capsule.enabled);
+                (!HasVisibleBody || (!virtualBody && (capsule == null || !capsule.enabled)));
             if (farSimulation && now < nextFarSimulation && !justEnteredCamera &&
                 !crossedDetailedBand && !presentationRetryDue) return;
             // Near the player use the actual shared floor pickup record.
@@ -3330,7 +3462,7 @@ namespace Aaris.MapReview
                 }
                 if (visualRoot != null)
                 {
-                    // Near threats remain fully detailed; unseen 55-155m
+                    // Near threats remain fully detailed; unseen 55-120m
                     // rivals have no mesh, shadow pass or active animation graph.
                     // Camera entry forces an immediate visual check above.
                     bool visible = withinDetailedDistance &&
@@ -3342,7 +3474,7 @@ namespace Aaris.MapReview
                     }
                     if (visible) SetDetailedRenderVisibility(cameraRelevant);
                 }
-                // The real rig is never replaced inside its current 155 m
+                // The real rig is never replaced inside its current 120 m
                 // quality band. Beyond it, a single shared unskinned mesh
                 // remains visible within the longest 480 m 4x rifle range.
                 // Keep this check on the existing 0.55 s staggered visual tick.
@@ -3370,8 +3502,8 @@ namespace Aaris.MapReview
             // Simulation LOD must be independent of camera visibility.
             // Beyond the detailed band, even on-screen 4x targets use abstract movement/combat,
             // not CharacterController.Move or per-rival physical sight rays.
-            // Retain a stationary capsule ONLY for a camera-visible long-range
-            // physical bullet receiver; outside the view it is unregistered.
+            // Use a managed capsule intersection for long-range hits; no
+            // native receiver is registered merely because a scope sees it.
             // A 10m return margin prevents repeated physics transitions.
             bool shouldVirtualize = playerDistanceSqr >= DetailedDistance * DetailedDistance ||
                 (playerDistanceSqr >= FarSimulationDistance * FarSimulationDistance &&
@@ -3387,9 +3519,7 @@ namespace Aaris.MapReview
                 virtualBody = false;
                 verticalSpeed = -1.5f;
             }
-            bool needsPhysicalReceiver = !virtualBody ||
-                (cameraRelevant && HasVisibleBody &&
-                 playerDistanceSqr < FarVisualDistance * FarVisualDistance);
+            bool needsPhysicalReceiver = !virtualBody;
             if (needsPhysicalReceiver && capsule == null)
             {
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -3404,7 +3534,7 @@ namespace Aaris.MapReview
 #endif
             }
             if (capsule != null && capsule.enabled != needsPhysicalReceiver)
-                capsule.enabled = needsPhysicalReceiver;
+                SetPhysicalReceiverEnabled(needsPhysicalReceiver);
             // The one-per-frame native receiver budget may also be denied
             // on camera entry. Do not leave a visible model unhittable
             // until the normal 550ms presentation deadline.
@@ -3563,6 +3693,7 @@ namespace Aaris.MapReview
             Vector3 beforeMove = transform.position;
             CollisionFlags hit = capsule.Move(displacement +
                 Vector3.up * (verticalSpeed * dt));
+            ConfirmNativeReceiverAfterMove();
             // Snapshot the authoritative post-collision pose ONCE for spatial
             // registration, animation travel and real firing admission.
             Vector3 afterMove = transform.position;
@@ -3635,7 +3766,7 @@ namespace Aaris.MapReview
                 IsPostMoveShotInRangeAndFacing(afterMove, transform.forward,
                     target.position, FireRange) &&
                 (target != playerTarget || owner.MayAttackPlayer(this)) &&
-                Time.time >= nextAttack && TryGetSightHit(target, out RaycastHit shotHit) &&
+                Time.time >= nextAttack && TryGetCombatSightHit(target, out AarisCombatHit shotHit) &&
                 MuzzlePathClear(target))
             {
                 // Physical loot changes the bot's magazine, fire interval,
@@ -3668,11 +3799,11 @@ namespace Aaris.MapReview
                 // The unpositioned receiver still reports real body HP loss
                 // and its pooled damage number at the victim bounds center.
                 if (carriedGun != null)
-                    AarisEquippedGun.ApplyDamage(shotHit.collider, damage,
-                        gameObject, shotHit.point, carriedGun.headshotMultiplier);
+                    AarisEquippedGun.ApplyCombatDamage(shotHit, damage,
+                        gameObject, carriedGun.headshotMultiplier);
                 else
-                    AarisEquippedGun.ApplyDamage(shotHit.collider, damage,
-                        gameObject);
+                    AarisEquippedGun.ApplyCombatDamage(shotHit, damage,
+                        gameObject, 1f);
             }
         }
 
@@ -3803,7 +3934,7 @@ namespace Aaris.MapReview
                     FarSimulationDistance * FarSimulationDistance)
                 return;
             // Camera visibility affects presentation only. A distant LOD with
-            // a stationary scope receiver still participates in remote combat.
+            // an analytic scope receiver still participates in remote combat.
             // Check the victim's simulation mode on each shot; this cached
             // component identity does not confer permission to deal damage.
             if (cachedVirtualDamageTarget != target ||
@@ -3873,7 +4004,7 @@ namespace Aaris.MapReview
         private void UpdateAnimationBlend(float wanted, float dt)
         {
             float next = Mathf.MoveTowards(visualBlend, wanted, dt * 4f);
-            // Graph time and clip animation keep running every frame. Only
+            // Graph time is advanced by the separate tiered evaluation. Only
             // skip the two native mixer writes when their exact value holds.
             if (next == visualBlend) return;
             visualBlend = next;
@@ -3928,7 +4059,25 @@ namespace Aaris.MapReview
             // one of just two player-attack slots and freeze behind cover.
             // The short RaycastNonAlloc reuses this bot's existing hit array.
             return victim != null && MuzzlePathClear(victim) &&
-                TryGetSightHit(victim, out RaycastHit ignored);
+                TryGetCombatSightHit(victim, out AarisCombatHit ignored);
+        }
+
+        private bool TryGetCombatSightHit(Transform victim, out AarisCombatHit shotHit)
+        {
+            shotHit = default;
+            if (victim == null) return false;
+            Vector3 eye = transform.position + transform.forward * .48f + Vector3.up * 1.28f;
+            CharacterController body = victim == playerTarget ? playerTargetCapsule :
+                victim == target ? targetCapsule : null;
+            Vector3 point = body != null ? victim.TransformPoint(body.center) :
+                victim.position + Vector3.up * 1.07f;
+            Vector3 delta = point - eye;
+            float distance = delta.magnitude;
+            if (distance < .1f) return false;
+            Ray ray = new Ray(eye, delta / distance);
+            return AarisOfflineBRDirector.TryFirstCombatHit(ray, distance,
+                transform, out shotHit, visibleOnly: false) && shotHit.BelongsTo(victim) &&
+                (owner == null || !owner.HasInactiveRivalShotCover(ray, shotHit.distance));
         }
 
         private bool TryGetSightHit(Transform victim, out RaycastHit shotHit)
@@ -4145,7 +4294,7 @@ namespace Aaris.MapReview
             // Unregister dead opponents before destruction delay.
             if (owner != null) owner.ClearRivalContact(spatialSlot);
             if (centrallyDormant) SetCentralDormancy(false);
-            if (capsule != null) capsule.enabled = false;
+            SetPhysicalReceiverEnabled(false);
             if (owner != null)
             {
                 owner.DropRivalLoot(transform.position, carriedGun,

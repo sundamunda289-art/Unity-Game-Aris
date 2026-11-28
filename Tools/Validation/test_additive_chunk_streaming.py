@@ -37,12 +37,13 @@ assert 'maxSpeculativeResidentCells = 2;' in streamer
 assert 'speculativeResidentCount >= speculativeLimit' in streamer
 assert 'speculativeResidentCount == speculativeLimit' in streamer
 assert 'bool loadIsUrgent = false;' in streamer
-assert 'bool urgent = distance <= entrySquared;' in streamer
+assert 'bool urgent = activeRing || distance <= entrySquared;' in streamer
+assert 'AarisWorldSectorPolicy.IntersectsActiveRing(' in streamer
 assert 'loadIsUrgent = urgent;' in streamer
 assert 'if (unloadCell >= 0 && (loadCell < 0 || !loadIsUrgent))' in streamer
 assert 'bool speculativeLoadBlocked = !loadIsUrgent &&' in streamer
 assert 'nearestLoad > entrySquared' not in streamer
 assert 'AarisMobileStreamingFrameGate.IsConstrainedDevice()' in streamer
 assert 'AarisMobileStreamingFrameGate.ReservePhysicsStreamingFrame();' in streamer
-assert streamer.count('AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();') == 2
+assert streamer.count('AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();') == 3
 print('PASS: opt-in additive streaming safety/source contracts')

@@ -37,14 +37,14 @@ class StreamedRivalTargetGates(unittest.TestCase):
         self.assertNotIn("CreatePrimitive", far)
         self.assertNotIn("Instantiate(", far)
         # Explicit model guarantees: the original near rig wins in the
-        # 155 m band; shared lightweight art renders at 156-480 m.
+        # 120 m band; shared lightweight art renders at 120-480 m.
         def lod(distance, rig_built):
-            near = rig_built and distance < 155
+            near = rig_built and distance < 120
             far_enabled = distance < 485 and not near
             return near, far_enabled
-        for distance in (0, 105, 154.9):
+        for distance in (0, 105, 119.9):
             self.assertEqual(lod(distance, True), (True, False))
-        self.assertEqual(lod(155, True), (False, True))
+        self.assertEqual(lod(120, True), (False, True))
         self.assertEqual(lod(480, True), (False, True))
         self.assertEqual(lod(485, True), (False, False))
         self.assertEqual(lod(300, False), (False, True))
@@ -71,7 +71,9 @@ class StreamedRivalTargetGates(unittest.TestCase):
     def test_red_lock_skips_unrendered_opponents(self):
         target_search = SOURCE.split("internal static bool TryAcquireAimTarget", 1)[1].split("private void RefreshStatus", 1)[0]
         self.assertIn("!bot.HasVisibleBody", target_search)
-        self.assertIn("closest.transform.IsChildOf(candidate.transform)", target_search)
+        self.assertIn("AimRayReachesRival(candidateRay, distance + .5f, shooter, candidate.transform)", target_search)
+        self.assertIn("hit.BelongsTo(rival)", target_search)
+        self.assertIn("!StreamedCoverBlocks(ray, hit.distance)", target_search)
 
     def test_stale_slot_cannot_authorize_invisible_or_dead_attacker(self):
         slot = SOURCE.split("internal bool MayAttackPlayer(", 1)[1].split(

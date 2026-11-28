@@ -14,8 +14,8 @@ required=(
     "if (carriedReserve <= 0)",
     "int refill = Mathf.Min(carriedGun.magazineSize, carriedReserve);",
     "carriedReserve -= refill;",
-    "AarisEquippedGun.ApplyDamage(shotHit.collider, damage,",
-    "TryGetSightHit(target, out RaycastHit shotHit)",
+    "AarisEquippedGun.ApplyCombatDamage(shotHit, damage,",
+    "TryGetCombatSightHit(target, out AarisCombatHit shotHit)",
 )
 for r in required:
     assert r in s, "Missing combat contract: "+r

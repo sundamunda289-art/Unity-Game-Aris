@@ -26,7 +26,13 @@ def fixture_source():
     assert drop.index(drop_reset[0]) > drop.index('if (!activeDrop)')
     assert engine.index(engine_reset[0]) > engine.index('if (car == null)')
     assert 'visualBlend = 0f;\n            animations.SetInputWeight(0, 1f);' in rival
-    assert 'graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);' in rival
+    assert 'graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);' in rival
+    assert 'graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);' not in rival
+    animation_tick = braced(rival, 'private void TickAnimation(')
+    assert 'detailedRenderingSuppressed' in animation_tick
+    assert 'animationPendingTime + 0.0001f < MidAnimationInterval' in animation_tick
+    assert 'graph.Evaluate(animationPendingTime);' in animation_tick
+    assert animation_tick.index('MidAnimationInterval') < animation_tick.index('graph.Evaluate(')
     assert 'UpdateAnimationBlend(wanted, dt);' in rival
     template = (ROOT / 'Tools/Validation/IdleAudioAnimationTests.cs').read_text()
     items = {

@@ -71,17 +71,25 @@ class FarRivalBudget(unittest.TestCase):
         self.assertIn("playerDistanceSqr < 55f * 55f || cameraRelevant", update)
         self.assertIn("if (visible) SetDetailedRenderVisibility(cameraRelevant);", update)
         self.assertIn("if (!visible && hasAnimations && graph.IsValid()) graph.Stop();", update)
-        # A 4x-visible, 300m bot needs a stationary physical hit receiver,
-        # but MUST remain a math-only combat agent (no capsule.Move).
+        # A 4x-visible, 300m bot uses an analytical hit receiver and remains
+        # a math-only combat agent (no native receiver or capsule.Move).
         self.assertIn("bool shouldVirtualize = playerDistanceSqr >= DetailedDistance * DetailedDistance ||", update)
         self.assertNotIn(
             "playerDistanceSqr >= DetailedDistance * DetailedDistance && !cameraRelevant", update)
-        self.assertIn("private const float PhysicalReturnDistance = 145f;", bot)
+        self.assertIn("private const float DetailedDistance = 120f;", bot)
+        self.assertIn("private const float PhysicalReturnDistance = 110f;", bot)
         self.assertIn("PhysicalReturnDistance * PhysicalReturnDistance &&", update)
         self.assertIn("else if (virtualBody && shouldRestorePhysics)", update)
-        self.assertIn("bool needsPhysicalReceiver = !virtualBody ||", update)
-        self.assertIn("cameraRelevant && HasVisibleBody &&", update)
-        self.assertIn("capsule.enabled = needsPhysicalReceiver;", update)
+        self.assertIn("bool needsPhysicalReceiver = !virtualBody;", update)
+        self.assertIn("internal bool HasLogicalHitReceiver => IsAlive &&", bot)
+        self.assertIn("(capsule == null || !capsule.enabled || !nativeReceiverReady);", bot)
+        self.assertIn("SetPhysicalReceiverEnabled(needsPhysicalReceiver);", update)
+        admission = bot.split("private void SetPhysicalReceiverEnabled(", 1)[1].split(
+            "private void RetireUnusedPhysicalReceiver(", 1)[0]
+        self.assertLess(admission.index("nativeReceiverReady = false;"),
+                        admission.index("capsule.enabled = needsPhysicalReceiver;"))
+        self.assertGreater(update.index("ConfirmNativeReceiverAfterMove();"),
+                           update.index("capsule.Move("))
         self.assertLess(update.index("TickVirtualCombat(now, dt, playerPosition);"),
                         update.index("capsule.Move("))
         self.assertIn("hasAnimations && visualRoot != null && visualRoot.activeSelf", update)
@@ -92,17 +100,17 @@ class FarRivalBudget(unittest.TestCase):
         # Control-plane model for the two independent LODs. The 485m
         # visual band is deliberately not claimed to cost zero GPU.
         def lod(distance, on_camera):
-            virtual = distance >= 155 or (distance >= 90 and not on_camera)
-            full = distance < 155 and (distance < 55 or on_camera)
+            virtual = distance >= 120 or (distance >= 90 and not on_camera)
+            full = distance < 120 and (distance < 55 or on_camera)
             far_mesh = distance < 485 and on_camera and not full
-            collider = not virtual or (on_camera and distance < 485)
+            collider = not virtual
             return virtual, full, far_mesh, collider
 
         self.assertEqual(lod(1000, False), (True, False, False, False))
         self.assertEqual(lod(300, False), (True, False, False, False))
-        self.assertEqual(lod(300, True), (True, False, True, True))
-        self.assertEqual(lod(155, True), (True, False, True, True))
-        self.assertEqual(lod(154.9, True), (False, True, False, True))
+        self.assertEqual(lod(300, True), (True, False, True, False))
+        self.assertEqual(lod(120, True), (True, False, True, False))
+        self.assertEqual(lod(119.9, True), (False, True, False, True))
         self.assertEqual(lod(100, False), (True, False, False, False))
         self.assertEqual(lod(100, True), (False, True, False, True))
         self.assertEqual(lod(30, False), (False, True, False, True))
@@ -189,7 +197,7 @@ class FarRivalBudget(unittest.TestCase):
         self.assertIn("if (hasAnimations && graph.IsValid()) graph.Stop();", exit_block)
         self.assertIn("farVisualRoot.SetActive(false);", exit_block)
         self.assertIn("if (virtualBody && capsule != null && capsule.enabled)", exit_block)
-        self.assertIn("capsule.enabled = false;", exit_block)
+        self.assertIn("SetPhysicalReceiverEnabled(false);", exit_block)
         self.assertNotIn("new ", exit_block)
         self.assertLess(update.index("if (!cameraRelevant && playerDistanceSqr >= 55f * 55f)"),
                         update.index("if (farSimulation && now < nextFarSimulation && !justEnteredCamera &&"))
@@ -211,7 +219,7 @@ class FarRivalBudget(unittest.TestCase):
             "graph.Stop();",
             "farVisualRoot.SetActive(false);",
             "virtualBody = true;",
-            "capsule.enabled = false;",
+            "SetPhysicalReceiverEnabled(false);",
             "lastCameraRelevant = false;",
         ):
             self.assertIn(required, outside)
@@ -245,7 +253,7 @@ class FarRivalBudget(unittest.TestCase):
             update.index("bool farSimulation = playerDistanceSqr >="))
         self.assertIn("if (visible) SetDetailedRenderVisibility(cameraRelevant);", update)
         self.assertIn("!detailedRenderingSuppressed", update)
-        self.assertIn("bool needsPhysicalReceiver = !virtualBody ||", update)
+        self.assertIn("bool needsPhysicalReceiver = !virtualBody;", update)
         self.assertIn("capsule.Move(", update)
         self.assertIn("TickVirtualCombat(now, dt, playerPosition);", update)
 
@@ -254,7 +262,7 @@ class FarRivalBudget(unittest.TestCase):
         update = update.split("private void Update()", 1)[1]
         update = update.split("private void TickVirtualCombat", 1)[0]
         retry = update.index("bool presentationRetryDue = cameraRelevant")
-        self.assertIn("!HasVisibleBody || capsule == null || !capsule.enabled", update)
+        self.assertIn("!HasVisibleBody || (!virtualBody && (capsule == null || !capsule.enabled))", update)
         self.assertIn("!presentationRetryDue) return;", update)
         self.assertIn("if (cameraRelevant && !HasVisibleBody)", update)
         self.assertIn("nextVisualCheck = now + 0.12f;", update)

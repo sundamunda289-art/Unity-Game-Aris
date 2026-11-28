@@ -48,7 +48,7 @@ class BotCoverReloadTests(unittest.TestCase):
     def test_reload_does_not_bypass_muzzle_and_two_attacker_gates(self):
         self.assertIn("MuzzlePathClear(target)", RIVAL_UPDATE)
         self.assertIn("owner.MayAttackPlayer(this)", RIVAL_UPDATE)
-        self.assertIn("AarisEquippedGun.ApplyDamage(", RIVAL_UPDATE)
+        self.assertIn("AarisEquippedGun.ApplyCombatDamage(", RIVAL_UPDATE)
         self.assertIn("if (canSee && !retreat && !seekingCover",
                       RIVAL_UPDATE)
 

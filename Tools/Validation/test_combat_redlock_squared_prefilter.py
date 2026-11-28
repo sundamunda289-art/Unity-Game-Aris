@@ -17,12 +17,18 @@ class RedLockSquaredPrefilterTests(unittest.TestCase):
                       "sqrDistance = delta.sqrMagnitude",
                       "projected * projected <= threshold * threshold * sqrDistance",
                       "Mathf.Sqrt(sqrDistance)",
-                      "closest.transform.IsChildOf(candidate.transform)",
+                      "AimRayReachesRival(candidateRay, distance + .5f, shooter, candidate.transform)",
                       "for (int attempt = 0; attempt < 3; attempt++)"):
             self.assertIn(token, src)
         self.assertLess(src.index("projected * projected <="),
                         src.index("Mathf.Sqrt(sqrDistance)"))
         self.assertNotIn("delta.magnitude", src)
+        sight = BOTS.split("private static bool AimRayReachesRival(", 1)[1].split(
+            "private void RefreshStatus(", 1)[0]
+        self.assertIn("TryFirstCombatHit(ray, distance, shooter, out AarisCombatHit hit)", sight)
+        self.assertIn("hit.BelongsTo(rival)", sight)
+        self.assertIn("!StreamedCoverBlocks(ray, hit.distance)", sight)
+        self.assertIn("MuzzlePathOpenTo(shooter, rival, hit.point)", sight)
 
     def test_same_candidates_for_all_scope_cones(self):
         rng = random.Random(112211)

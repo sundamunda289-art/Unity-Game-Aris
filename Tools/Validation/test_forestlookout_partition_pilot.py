@@ -3,6 +3,7 @@
 These do not replace a real Unity Editor compile, scene reopen or Android FPS QA.
 """
 from pathlib import Path
+import re
 import sys
 import unittest
 
@@ -70,7 +71,24 @@ class ForestLookoutPilotSourceTests(unittest.TestCase):
             self.assertEqual(scene.children[proxy], [far])
             self.assertEqual(scene.component_types[proxy], {64, 114})
             self.assertEqual(scene.component_types[far], {33, 23})
-            detail = WorldScene(chunk.read_text())
+            build_settings = (ROOT / "ProjectSettings/EditorBuildSettings.asset").read_text()
+            active_grid = re.findall(
+                r"(?m)^\s+path: (Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_[^\r\n]+\.unity)$",
+                build_settings)
+            detail_path = chunk
+            if active_grid:
+                # The pilot remains a protected source archive after native
+                # repacking. Its persistent fallback must point to the one
+                # active cell that now owns the same full-detail tower.
+                fallback = [block.body for uid, block in scene.blocks.items()
+                            if block.kind == 114 and scene.owner.get(uid) == proxy]
+                self.assertEqual(len(fallback), 1)
+                rebound = re.search(r"(?m)^  chunkScenePath: ([^\r\n]+)$", fallback[0])
+                self.assertIsNotNone(rebound)
+                self.assertIn(rebound.group(1), active_grid)
+                detail_path = ROOT / rebound.group(1)
+                self.assertNotIn(chunk.relative_to(ROOT).as_posix(), build_settings)
+            detail = WorldScene(detail_path.read_text())
             tower = detail.find_unique("ForestLookout_watchtower_01")
             self.assertEqual(len(detail.descendants(tower)), 3)
             self.assertEqual(detail.component_types[tower], {33, 23, 205})
@@ -78,13 +96,11 @@ class ForestLookoutPilotSourceTests(unittest.TestCase):
                                 for c in detail.children[tower]))
             source_for_lod = detail
             collider_owner = proxy
-            meta = (chunk.parent / (chunk.name + ".meta")).read_text()
-            build_settings = (ROOT / "ProjectSettings/EditorBuildSettings.asset").read_text()
-            import re
+            meta = Path(str(detail_path) + ".meta").read_text()
             guid = re.search(r"(?m)^guid: ([0-9a-f]{32})$", meta)
             self.assertIsNotNone(guid)
             self.assertIn(guid.group(1), build_settings)
-            self.assertEqual(build_settings.count(str(chunk.relative_to(ROOT))), 1)
+            self.assertEqual(build_settings.count(detail_path.relative_to(ROOT).as_posix()), 1)
         else:
             tower = scene.find_unique("ForestLookout_watchtower_01")
             self.assertEqual(scene.children[district], [tower])
@@ -142,7 +158,8 @@ class ForestLookoutPilotSourceTests(unittest.TestCase):
         self.assertIn("internal static bool TryClaimUrgentSceneLoad()", gate)
         self.assertIn("return TryClaimOptionalModelBuild(true);", gate)
         self.assertIn("if (!urgentScene && thermalGap > 0", gate)
-        self.assertIn("bool urgent = distance <= entrySquared;", streamer)
+        self.assertIn("bool urgent = activeRing || distance <= entrySquared;", streamer)
+        self.assertIn("AarisWorldSectorPolicy.IntersectsActiveRing", streamer)
         self.assertIn("loadIsUrgent = urgent;", streamer)
         self.assertIn("if (!AarisMobileStreamingFrameGate.TryClaimUrgentSceneLoad())", streamer)
         self.assertIn("AarisAndroidThermalGovernor.SuspendSpeculativePrefetch", streamer)

@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
@@ -113,17 +115,55 @@ namespace Aaris.MapReview.Editor
                 throw new BuildFailedException("NATIVE_CHUNK_BUILD_SCENE_MANIFEST_INVALID");
             const string directory = "Assets/AarisWorld/Scenes/Chunks/";
             const string forest = directory + "Aaris_ForestLookout_Detail.unity";
-            if (paths[1] != forest || !File.Exists(forest))
-                throw new BuildFailedException("FORESTLOOKOUT_CHUNK_NOT_REGISTERED");
-            for (int i = 2; i < paths.Length; i++)
+            bool sectors = paths[1].StartsWith(directory + "Aaris_Cell_", StringComparison.Ordinal);
+            if (!sectors && paths[1] != forest)
+                throw new BuildFailedException("NATIVE_WORLD_PARTITION_NOT_REGISTERED");
+            for (int i = 1; i < paths.Length; i++)
             {
                 string path = paths[i];
-                if (!path.StartsWith(directory + "Aaris_District_", StringComparison.Ordinal) ||
-                    !path.EndsWith("_Detail.unity", StringComparison.Ordinal) ||
-                    !File.Exists(path))
+                bool supported = sectors
+                    ? Regex.IsMatch(path, @"^Assets/AarisWorld/Scenes/Chunks/Aaris_Cell_[mp]\d+_[mp]\d+_Detail\.unity$")
+                    : path == forest ||
+                      Regex.IsMatch(path, @"^Assets/AarisWorld/Scenes/Chunks/Aaris_District_\w+_Detail\.unity$");
+                if (!supported || !File.Exists(path))
                     throw new BuildFailedException("UNEXPECTED_ANDROID_WORLD_SCENE_" + i);
             }
+            // A valid filename alone does not prove that a streamed cell made
+            // it into the APK. Compare with the saved bootstrap component, not
+            // an unsaved open scene, and reject omitted or unrelated cells.
+            string[] registered = SavedChunkScenePaths();
+            if (registered.Length != paths.Length - 1 ||
+                registered.Distinct(StringComparer.Ordinal).Count() != registered.Length ||
+                !new HashSet<string>(registered, StringComparer.Ordinal).SetEquals(paths.Skip(1)))
+                throw new BuildFailedException("NATIVE_CHUNK_BUILD_STREAMER_MANIFEST_MISMATCH");
             return paths;
+        }
+
+        private static string[] SavedChunkScenePaths()
+        {
+            string guid = AssetDatabase.AssetPathToGUID(
+                "Assets/AarisWorld/Scripts/AarisAdditiveChunkStreamer.cs");
+            if (string.IsNullOrEmpty(guid))
+                throw new BuildFailedException("NATIVE_CHUNK_STREAMER_SCRIPT_MISSING");
+            var paths = new List<string>();
+            bool streamer = false;
+            int streamerCount = 0;
+            const string pathPrefix = "  - scenePath: ";
+            foreach (string line in File.ReadLines(ScenePath))
+            {
+                if (line.StartsWith("--- !u!", StringComparison.Ordinal)) streamer = false;
+                if (line.StartsWith("  m_Script: ", StringComparison.Ordinal) &&
+                    line.Contains("guid: " + guid + ","))
+                {
+                    streamer = true;
+                    streamerCount++;
+                }
+                else if (streamer && line.StartsWith(pathPrefix, StringComparison.Ordinal))
+                    paths.Add(line.Substring(pathPrefix.Length).Trim());
+            }
+            if (streamerCount != 1 || paths.Count == 0)
+                throw new BuildFailedException("SAVED_NATIVE_CHUNK_STREAMER_MANIFEST_MISSING");
+            return paths.ToArray();
         }
 
         public static void ValidateSavedScene()

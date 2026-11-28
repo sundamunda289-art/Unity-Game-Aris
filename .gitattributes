@@ -397,3 +397,4 @@ Assets/AarisWorld/Surfaces/AsphaltRelief.png !filter !diff !merge -text
 Assets/AarisWorld/Surfaces/ConcreteRelief.png !filter !diff !merge -text
 Assets/AarisWorld/Surfaces/WaterRipples.png !filter !diff !merge -text
 Assets/AarisWorld/Surfaces/WeatheredGravel.asset !filter !diff !merge -text
+"Assets/TerrainDemoScene_URP/Scenes/TerrainDemoScene/OcclusionCullingData.asset" filter=lfs diff=lfs merge=lfs -text

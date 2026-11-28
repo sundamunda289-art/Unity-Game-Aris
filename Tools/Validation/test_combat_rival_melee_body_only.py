@@ -19,22 +19,32 @@ class RivalMeleeDamageRoute(unittest.TestCase):
         attack = attack.split("private void UpdateAnimationBlend(", 1)[0]
         self.assertRegex(
             attack,
-            r"if \(carriedGun != null\)\s+AarisEquippedGun\.ApplyDamage"
-            r"\(shotHit\.collider, damage,\s+gameObject, shotHit\.point,\s+carriedGun\.headshotMultiplier\);",
+            r"if \(carriedGun != null\)\s+AarisEquippedGun\.ApplyCombatDamage"
+            r"\(shotHit, damage,\s+gameObject, carriedGun\.headshotMultiplier\);",
         )
+        # The unified receiver keeps the actual physical hit point; logical
+        # receivers use the same explicit hit data without fabricated colliders.
+        route = GUN.split("internal static bool ApplyCombatDamage(", 1)[1].split(
+            "internal static bool ApplyDamage(", 1)[0]
+        self.assertIn("ApplyDamage(hit.collider, amount, attacker, hit.point, headshotMultiplier)", route)
 
     def test_rival_unarmed_punch_uses_body_only_damage_route(self):
         attack = RIVAL.split("// Keep the same physical LOS for guns and punches.", 1)[1]
         attack = attack.split("private void UpdateAnimationBlend(", 1)[0]
         self.assertRegex(
             attack,
-            r"else\s+AarisEquippedGun\.ApplyDamage"
-            r"\(shotHit\.collider, damage,\s+gameObject\);",
+            r"else\s+AarisEquippedGun\.ApplyCombatDamage"
+            r"\(shotHit, damage,\s+gameObject, 1f\);",
         )
         # The LOS/muzzle guards are in the conditional immediately ABOVE
         # the damage branch; keep their production authority unchanged.
-        self.assertIn("TryGetSightHit(target, out RaycastHit shotHit)", RIVAL)
+        self.assertIn("TryGetCombatSightHit(target, out AarisCombatHit shotHit)", RIVAL)
         self.assertIn("MuzzlePathClear(target)", RIVAL)
+        route = GUN.split("internal static bool ApplyCombatDamage(", 1)[1].split(
+            "internal static bool ApplyDamage(", 1)[0]
+        self.assertIn("headshotMultiplier <= 1f", route)
+        self.assertIn("? ApplyDamage(hit.collider, amount, attacker)", route)
+        self.assertIn("height * .79f && headshotMultiplier > 1f", route)
 
     def test_unpositioned_damage_cannot_create_headshot(self):
         self.assertIn("if (hitPosition.HasValue)", GUN)

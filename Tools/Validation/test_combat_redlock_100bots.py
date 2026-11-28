@@ -14,14 +14,19 @@ HP = read("AarisOfflineHealth.cs")
 HUD = read("AarisCombatFeedbackHUD.cs")
 LOOT = read("AarisWeaponLootWorld.cs")
 CAT = json.loads((ROOT / "Assets/Resources/AarisWeapons/weapon_catalog.json").read_text())
+SIGHT = BOTS.split("private static bool AimRayReachesRival(", 1)[1].split(
+    "private void RefreshStatus(", 1)[0]
 
 
 class CombatEndToEndContract(unittest.TestCase):
     def test_red_lock_uses_physical_muzzle_path(self):
-        self.assertIn("MuzzlePathOpenTo(shooter, candidate.transform, closestPoint)", BOTS)
+        self.assertIn("AimRayReachesRival(candidateRay, distance + .5f, shooter, candidate.transform)", BOTS)
+        self.assertIn("MuzzlePathOpenTo(shooter, rival, hit.point)", SIGHT)
+        self.assertIn("!StreamedCoverBlocks(ray, hit.distance)", SIGHT)
         self.assertIn("new Ray(anchor, shooter.forward), 0.24f", BOTS)
         self.assertIn("new Ray(muzzle, to / distance)", BOTS)
-        self.assertIn("first.collider.transform.IsChildOf(victim)", BOTS)
+        self.assertIn("first.BelongsTo(victim)", BOTS)
+        self.assertIn("!StreamedCoverBlocks(ray, first.distance)", BOTS)
         self.assertIn("ref muzzleAssistHits, 256", BOTS)
         self.assertIn("collider.transform.IsChildOf(shooter)", BOTS)
         # Camera peeks over 1.4m wall, but the 1m barrel hits it.
@@ -42,7 +47,8 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("AarisOfflineBRDirector.TryAcquireAimTarget", GUN)
         self.assertIn("TryAcquireAimLock(aimCamera, transform", HUD)
         self.assertIn("CanKeepAimLock(aimCamera, transform, lockedRival", HUD)
-        self.assertIn("if (closest != null && closest.transform.IsChildOf(candidate.transform) &&", BOTS)
+        self.assertIn("hit.BelongsTo(rival)", SIGHT)
+        self.assertIn("TryFirstCombatHit(ray, distance, shooter, out AarisCombatHit hit)", SIGHT)
         self.assertIn("shotForward = assisted;", GUN)
         self.assertNotIn("Vector3.Slerp(shotForward, assisted, .82f)", GUN)
         # Old 82% angular correction leaves a 0.252-degree error at the
@@ -62,8 +68,8 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("hitFadeUntil = Time.unscaledTime + .35f;", HUD)
         self.assertIn('"HIT RIGHT"', HUD)
         self.assertIn("victim.ApplyHitDamage(damage, attacker, headshot)", GUN)
-        self.assertIn("AarisEquippedGun.ApplyDamage(shotHit.collider, damage,", BOTS)
-        self.assertIn("TryGetSightHit(target, out RaycastHit shotHit)", BOTS)
+        self.assertIn("AarisEquippedGun.ApplyCombatDamage(shotHit, damage,", BOTS)
+        self.assertIn("TryGetCombatSightHit(target, out AarisCombatHit shotHit)", BOTS)
         self.assertIn("shotHit = hit;", BOTS)
         self.assertIn("AarisCombatFeedbackHUD.NotifyOutgoingDamage", GUN)
         self.assertIn("if (headshot) damage *= Mathf.Clamp(headshotMultiplier, 1f, 4f);", GUN)
@@ -86,7 +92,9 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertNotIn("SameTarget", muzzle)
         self.assertLess(muzzle.index("target = muzzleHit;"),
                         muzzle.index("targetFound = true;"))
-        self.assertIn("ApplyDamage(target.collider, spec.damage, owner, target.point,", firing)
+        self.assertIn("ApplyCombatDamage(target, spec.damage, owner,", firing)
+        self.assertIn("ApplyDamage(hit.collider, amount, attacker, hit.point, headshotMultiplier)", GUN)
+        self.assertIn("hit.point.y >= feet.y + height * .79f", GUN)
         self.assertIn("spec.headshotMultiplier);", firing)
         self.assertIn("headshot = IsAuthoredHeadHit(collider, node) ||", GUN)
         self.assertIn("bounds.size.y > .28f && hitPosition.Value.y >=", GUN)
@@ -102,7 +110,7 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("14f / Mathf.Max(1f, spec.rangeMetres)", GUN)
         self.assertIn("spec.pellets > 1 ? spec.spreadDegrees * 0.65f", GUN)
         self.assertIn("Vector2.ClampMagnitude(spread, 1f) * shotSpreadDegrees", GUN)
-        self.assertIn("ApplyDamage(target.collider, spec.damage, owner, target.point,", GUN)
+        self.assertIn("ApplyCombatDamage(target, spec.damage, owner,", GUN)
         for weapon in CAT["weapons"]:
             full = float(weapon["spreadDegrees"])
             assisted = (full * 0.65 if weapon["pellets"] > 1 else
@@ -216,8 +224,13 @@ class CombatEndToEndContract(unittest.TestCase):
         # Existing hit-marker originates from real HP reduction, not from
         # whether a floating label had screen coordinates.
         self.assertIn("AarisWeaponHUD.NotifyHit(attacker, headshot);", GUN)
-        self.assertLess(GUN.index("canRegister = actualLoss > 0f;"),
-                        GUN.index("AarisWeaponHUD.NotifyHit(attacker, headshot);"))
+        physical = GUN.split("internal static bool ApplyDamage(Collider collider, float amount, GameObject attacker,", 1)[1]
+        self.assertLess(physical.index("canRegister = actualLoss > 0f;"),
+                        physical.index("AarisWeaponHUD.NotifyHit(attacker, headshot);"))
+        logical = GUN.split("internal static bool ApplyCombatDamage(", 1)[1].split(
+            "internal static bool ApplyDamage(", 1)[0]
+        self.assertLess(logical.index("if (loss <= 0f) return false;"),
+                        logical.index("AarisWeaponHUD.NotifyHit(attacker, headshot);"))
 
     def test_damage_number_visibility_bounds_model(self):
         # Front/behind, on-/offscreen, and phone safe-area edge cases.
@@ -325,8 +338,9 @@ class CombatEndToEndContract(unittest.TestCase):
         self.assertIn("AarisOfflineRival first = null, second = null, third = null;", redlock)
         self.assertIn("float threshold = a3;", redlock)
         self.assertIn("third = second; d3 = d2; r3 = r2; a3 = a2;", redlock)
-        self.assertIn("closest.transform.IsChildOf(candidate.transform)", redlock)
-        self.assertIn("MuzzlePathOpenTo(shooter, candidate.transform, closestPoint)", redlock)
+        self.assertIn("AimRayReachesRival(candidateRay, distance + .5f, shooter, candidate.transform)", redlock)
+        self.assertIn("hit.BelongsTo(rival)", SIGHT)
+        self.assertIn("MuzzlePathOpenTo(shooter, rival, hit.point)", SIGHT)
         self.assertNotIn("rejectedFirst", redlock)
 
     def test_unarmed_bots_use_contact_melee_without_phantom_gunfire(self):

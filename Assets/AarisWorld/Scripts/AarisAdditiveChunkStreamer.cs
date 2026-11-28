@@ -246,7 +246,11 @@ namespace Aaris.MapReview
             // beneath it. Let the bootstrap show those districts from above.
             // Keep settling operations already in flight and keep the poll
             // due so detail admission resumes as soon as the player ejects.
-            if (ShouldUseBootstrapProxies(now)) return;
+            if (ShouldUseBootstrapProxies(now))
+            {
+                RetireOneFlightDetail(now);
+                return;
+            }
             if (now < nextTransitionAt)
             {
                 // Wake at the end of the native cooldown. A check just
@@ -296,14 +300,15 @@ namespace Aaris.MapReview
                 float distance = AarisChunkStreamingPolicy.OutsideDistanceSquared(
                     current.x, current.z, cell.center.x, cell.center.y,
                     cell.halfExtents.x, cell.halfExtents.y);
-                if (distance > entrySquared && distance <= exitSquared)
+                bool activeRing = InActiveSectorRing(cell, current);
+                if (!activeRing && distance > entrySquared && distance <= exitSquared)
                     speculativeResidentCount++;
 #if UNITY_ANDROID && !UNITY_EDITOR
                 if (i == cameraWarmCell)
                 {
                     // Once it has served as required detail it gets the same
                     // retention as every other district the player visited.
-                    if (distance <= entrySquared) cameraWarmCell = -1;
+                    if (activeRing || distance <= entrySquared) cameraWarmCell = -1;
                     else if (distance <= exitSquared)
                     {
                         bool keepWarm = distance <= cameraRetirementMargin * cameraRetirementMargin ||
@@ -313,7 +318,7 @@ namespace Aaris.MapReview
                     }
                 }
 #endif
-                if (distance > exitSquared &&
+                if (!activeRing && distance > exitSquared &&
                     (distance > farthestUnload ||
                      (distance == farthestUnload && i < unloadCell)))
                 { unloadCell = i; farthestUnload = distance; }
@@ -333,7 +338,8 @@ namespace Aaris.MapReview
             // Thus one current-position broad-phase query cannot omit a load.
             // Invalid/extreme query bounds fail open to the original full scan.
             int nearby = spatialReady
-                ? spatialIndex.Query(current.x, current.z, exitMargin) : -1;
+                ? spatialIndex.Query(current.x, current.z,
+                    Mathf.Max(exitMargin, AarisWorldSectorPolicy.CellMetres * 2f)) : -1;
             int count = nearby >= 0 ? nearby : chunks.Length;
             for (int ordinal = 0; ordinal < count; ordinal++)
             {
@@ -344,8 +350,9 @@ namespace Aaris.MapReview
                 float distance = AarisChunkStreamingPolicy.OutsideDistanceSquared(
                     current.x, current.z, cell.center.x, cell.center.y,
                     cell.halfExtents.x, cell.halfExtents.y);
-                if (distance > exitSquared) continue;
-                bool urgent = distance <= entrySquared;
+                bool activeRing = InActiveSectorRing(cell, current);
+                if (!activeRing && distance > exitSquared) continue;
+                bool urgent = activeRing || distance <= entrySquared;
                 float priority = urgent ? distance : AarisChunkStreamingPolicy.FirstApproach(
                     current.x, current.z, stepX, stepZ,
                     cell.center.x, cell.center.y, cell.halfExtents.x, cell.halfExtents.y, loadMargin);
@@ -456,7 +463,31 @@ namespace Aaris.MapReview
                 nextDropLookupAt = now + 1f;
                 drop = player.GetComponent<AarisOfflineDrop>();
             }
-            return drop != null && drop.IsRidingAircraft;
+            return drop != null && drop.ShouldDeferWorldDetail;
+        }
+
+        private static bool InActiveSectorRing(Chunk cell, Vector3 position) =>
+            AarisWorldSectorPolicy.IntersectsActiveRing(cell.center.x, cell.center.y,
+                cell.halfExtents.x, cell.halfExtents.y, position.x, position.z);
+
+        private void RetireOneFlightDetail(float now)
+        {
+            if (now < nextTransitionAt) return;
+            // Full-detail scenes contain visual roots only. Their original
+            // floor/cover meshes and last-LOD silhouettes stay in bootstrap.
+            // Never retire scenes owned by another manager.
+            for (int i = 0; i < trackedResidentCount; i++)
+            {
+                int index = trackedResidentIndices[i];
+                if (!states[index].valid || states[index].externallyOwned ||
+                    !states[index].loadedByThisStreamer) continue;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                if (!AarisMobileStreamingFrameGate.TryClaimSceneRetirement()) return;
+                AarisMobileStreamingFrameGate.ReserveNativeTeardownFrame();
+#endif
+                StartOperation(index, false);
+                return;
+            }
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR

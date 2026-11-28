@@ -29,7 +29,7 @@ class RemoteDamageCache(unittest.TestCase):
         self.assertLess(R.index("owner.IsVirtualShotBlocked(selfPosition, targetPosition)"),
                         R.index("targetHealth.ApplyDamage(damage, gameObject);"))
         self.assertIn("target != playerTarget",R)
-        self.assertIn("TryGetSightHit(target, out RaycastHit shotHit)",S)
+        self.assertIn("TryGetCombatSightHit(target, out AarisCombatHit shotHit)",S)
         self.assertIn("MuzzlePathClear(target)",S)
 
     def test_100_bot_target_switches_and_live_combat_parity(self):

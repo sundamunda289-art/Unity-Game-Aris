@@ -20,7 +20,7 @@ def permitted_distant_mesh(distance, on_camera, full_rig=False):
 
 
 def virtual_physics(distance, on_camera, has_visible_body):
-    return distance >= 155 and not (on_camera and has_visible_body and distance < 485)
+    return distance >= 120 or (distance >= 90 and not on_camera)
 
 
 class RemoteCameraFailClosed(unittest.TestCase):
@@ -68,11 +68,11 @@ class RemoteCameraFailClosed(unittest.TestCase):
         self.assertIn("if (spawnDistanceSqr >= DetailedDistance * DetailedDistance ||", init)
         self.assertIn("!spawnCameraRelevant))", init)
         self.assertIn("virtualBody = true;", init)
-        self.assertIn("if (capsule != null) capsule.enabled = false;", init)
+        self.assertIn("SetPhysicalReceiverEnabled(false);", init)
         self.assertIn("owner.IsDistantRivalOnScreen(transform.position)", init)
         self.assertIn("if (playerDistanceSqr < 55f * 55f || cameraRelevant)", update)
         self.assertIn("bool farBand = cameraRelevant &&", update)
-        self.assertIn("bool needsPhysicalReceiver = !virtualBody ||", update)
+        self.assertIn("bool needsPhysicalReceiver = !virtualBody;", update)
 
         # 98 distant rivals on a delayed-camera Android startup get no rigs,
         # mesh draws, or physical receivers; close threats still appear.
@@ -80,7 +80,7 @@ class RemoteCameraFailClosed(unittest.TestCase):
         full_rigs = sum(permitted_full_rig(d, False) for d in distances)
         distant_meshes = sum(permitted_distant_mesh(d, False) for d in distances)
         remote_receivers = sum(not virtual_physics(d, False, False)
-                               for d in distances if d >= 155)
+                               for d in distances if d >= 120)
         self.assertEqual((full_rigs, distant_meshes, remote_receivers), (2, 0, 0))
 
     def test_camera_recovers_remote_rendering_without_combat_restart(self):
@@ -90,8 +90,9 @@ class RemoteCameraFailClosed(unittest.TestCase):
             close_rig = permitted_full_rig(distance, True)
             self.assertTrue(close_rig or
                             permitted_distant_mesh(distance, True, close_rig))
-        self.assertFalse(virtual_physics(300, True, True))
+        self.assertTrue(virtual_physics(300, True, True))
         self.assertTrue(virtual_physics(300, False, False))
+        self.assertIn("internal bool HasLogicalHitReceiver => IsAlive &&", RIVAL)
         self.assertIn("TickVirtualCombat(now, dt, playerPosition);", RIVAL)
         self.assertIn("owner.ReportRivalElimination(attacker, gameObject);", RIVAL)
 
