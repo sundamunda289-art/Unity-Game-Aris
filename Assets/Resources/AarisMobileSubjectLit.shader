@@ -129,6 +129,7 @@ Shader "Aaris/Mobile Subject Lit"
             #pragma shader_feature_local_fragment _AARIS_AIRFRAME
             #pragma shader_feature_local_fragment _ _AARIS_HERO_FACE _AARIS_HERO_GEAR
             #pragma shader_feature_local_fragment _AARIS_GT_TREAD
+            #pragma shader_feature_local_fragment _AARIS_VEHICLE_BODY
             #pragma require derivatives : _AARIS_GT_TREAD _AARIS_HERO_GEAR _AARIS_ICE_ARMOR
             #pragma shader_feature_local _NORMALMAP
             #pragma shader_feature_local _PARALLAXMAP

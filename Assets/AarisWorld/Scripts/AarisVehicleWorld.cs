@@ -1058,6 +1058,29 @@ namespace Aaris.MapReview
                 source.shader.name == "Aaris/Mobile Subject Lit") return source;
             if (authoredMaterialCache.TryGetValue(source, out Material cached) &&
                 cached != null) return cached;
+            string label = source.name.ToLowerInvariant();
+            bool gtHeadlampCover = label == "aarisroadgt_clearlens";
+            // These windows have separate geometry and complete cabins.
+            // The GT headlamp also has a reflector behind its separate lens.
+            if (gtHeadlampCover || label == "aarisroadgt_glass" ||
+                label.Contains("_window_glass_x"))
+            {
+                Shader glazing = AarisShaderCache.Find("Aaris/Automotive Glazing");
+                if (glazing != null && glazing.isSupported)
+                {
+                    var window = new Material(glazing)
+                    {
+                        name = "Aaris Automotive " + source.name,
+                        enableInstancing = true
+                    };
+                    Color tint = new Color(.075f, .12f, .16f, .41f);
+                    if (gtHeadlampCover) tint = new Color(.30f, .36f, .40f, .39f);
+                    else if (label == "aarisroadgt_glass") tint.a = .40f;
+                    window.SetColor("_BaseColor", tint);
+                    authoredMaterialCache[source] = window;
+                    return window;
+                }
+            }
             // Most vendor FBXs already import valid URP Lit PBR textures.
             // Their separate paint/glazing material slots can be polished,
             // but never change an asset or clear-coat a mixed tyre/paint
@@ -1116,6 +1139,8 @@ namespace Aaris.MapReview
                         polished.SetFloat("_ClearCoatMask", .42f);
                         if (polished.HasProperty("_ClearCoatSmoothness"))
                             polished.SetFloat("_ClearCoatSmoothness", .82f);
+                        if (polished.shader == subject)
+                            polished.EnableKeyword("_AARIS_VEHICLE_BODY");
                     }
                 }
                 else if (separateGlass)
@@ -1146,7 +1171,6 @@ namespace Aaris.MapReview
                 authoredMaterialCache[source] = polished;
                 return polished;
             }
-            string label = source.name.ToLowerInvariant();
             bool paint = label.Contains("aarispaint");
             Shader shader = paint ? AarisShaderCache.Find("Aaris/Mobile Subject Lit") : null;
             if (shader == null || !shader.isSupported)
@@ -1199,9 +1223,11 @@ namespace Aaris.MapReview
             bool darkTrim = label.Contains("dark") || label.Contains("black") ||
                 label.Contains("grey") || label.Contains("tire") ||
                 label.Contains("tyre") || label.Contains("rubber") ||
-                label.Contains("seat") || label.Contains("interior");
+                label.Contains("seat") || label.Contains("interior") ||
+                label.Contains("_trim_");
             bool bareMetal = label.Contains("aarismetal") ||
-                label.Contains("chrome") || label.Contains("alloy");
+                label.Contains("chrome") || label.Contains("alloy") ||
+                label.Contains("_rim_") || label.Contains("_hubcap_");
             bool headlight = label.Contains("headlight");
             bool taillight = label.Contains("taillight") ||
                 label.Contains("tail_light");
@@ -1268,6 +1294,8 @@ namespace Aaris.MapReview
                     result.SetFloat("_ClearCoatMask", .34f);
                     if (result.HasProperty("_ClearCoatSmoothness"))
                         result.SetFloat("_ClearCoatSmoothness", .74f);
+                    if (shader.name == "Aaris/Mobile Subject Lit")
+                        result.EnableKeyword("_AARIS_VEHICLE_BODY");
                 }
             }
             authoredMaterialCache[source] = result;

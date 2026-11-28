@@ -108,7 +108,7 @@ class BikeVisuals(unittest.TestCase):
         source = SCRIPT.read_text()
         setup = source.split("private void SetupMaterials()", 1)[1].split(
             "private void Update()", 1)[0]
-        self.assertIn('surfaces[0].SetFloat("_ClearCoatMask", .27f)', setup)
+        self.assertIn('surfaces[0].SetFloat("_ClearCoatMask", .36f)', setup)
         self.assertIn('surfaces[0].SetFloat("_ClearCoatSmoothness", .75f)', setup)
         self.assertEqual(setup.count('EnableKeyword("_CLEARCOAT")'), 1)
         self.assertIn("paintVariants[i] = new Material(surfaces[0])", setup)

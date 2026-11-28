@@ -25,6 +25,11 @@ half4 AarisSubjectPBR(InputData inputData, SurfaceData surfaceData)
     // a dark painted gun/vehicle no longer loses all silhouette in shade.
     half gloss = smoothness * smoothness;
     half coat = saturate(_ClearCoatMask * _ClearCoatSmoothness);
+#if defined(_AARIS_VEHICLE_BODY)
+    // A baked atlas shares paint, trim and lenses. Only its smooth areas
+    // receive the extra clearcoat lobe. Matte trim retains its original BRDF.
+    coat *= smoothstep(0.22h, 0.58h, smoothness);
+#endif
     half skyLobe = gloss * (0.035h + 0.19h * horizon + 0.12h * rim);
     // Clearcoat has a stronger, pale grazing and horizon response. It is
     // independent of the base pigment and uses the same reflected direction.
