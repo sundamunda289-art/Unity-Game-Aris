@@ -122,7 +122,7 @@ class SharedStreamingAdmission(unittest.TestCase):
         self.assertLess(body.index("if (!bikePrewarm.isDone) return;"),
                         body.index(CLAIM))
         self.assertLess(body.index(CLAIM), body.index("SetupMaterials();"))
-        self.assertLess(body.index("TryParkingSpot(nearest.point, out Vector3 spot)"),
+        self.assertLess(body.index("TryParkingSpot(nearest.point, out Vector3 spot, out Vector3 normal)"),
                         body.rindex(CLAIM))
         self.assertIn("parkedVictim == null && parkedBikePool.Count == 0", body)
         self.assertIn("nearest.nextProbe = now + .4f;", body)

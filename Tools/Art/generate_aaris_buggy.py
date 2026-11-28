@@ -22,6 +22,8 @@ PALETTE=OrderedDict((
  ("AarisGlass",(.08,.12,.15)),
  ("AarisHeadlight",(.84,.89,.85)),
  ("AarisTaillight",(.60,.04,.027)),
+ ("AarisLampClearCover",(.64,.72,.78)),
+ ("AarisLampRedCover",(.68,.055,.03)),
 ))
 vertices=[]
 faces={name:[] for name in PALETTE}
@@ -74,8 +76,8 @@ def slant(mat,front,rear,frontY,rearY,width,height=.045):
        (2,3,6),(3,7,6),(0,4,1),(1,4,5))
     mesh(mat,v,t)
 
-# Low-slung original buggy chassis, drawn WITHOUT visual wheels.
-# Wheel centers are supplied by the existing wheel-truck FBX and WheelColliders.
+# Low-slung original buggy chassis. A separate shared wheel mesh below
+# is instantiated at the four existing WheelCollider poses.
 box("AarisDark",(0,.48,0),(1.25,.21,2.76))
 box("AarisMetal",(0,.35,0),(1.17,.13,2.68))
 slant("AarisPaint",1.48,.52,.66,.83,1.53,.12)  # hood
@@ -85,8 +87,19 @@ box("AarisDark",(0,.91,-1.23),(1.12,.28,.30))
 # Widened but open fender lips sit above the separate physical wheel art.
 for sign in (-1,1):
     x=sign*.70
-    box("AarisPaint",(x,.67,1.13),(.27,.10,.68))
-    box("AarisPaint",(x,.67,-1.12),(.27,.10,.68))
+    # Recessed curved mudguards follow the swept tyre rather than
+    # leaving a bright gap through flat hovering fender blocks.
+    for axle in (1.10,-1.10):
+        for i in range(11):
+            a=.18+i*(2.78/11);b=.18+(i+1)*(2.78/11)
+            def lip(theta, lateral, radius):
+                return (sign*lateral,.36+sin(theta)*radius,axle+cos(theta)*radius)
+            v=[lip(a,.57,.47),lip(b,.57,.47),lip(a,.93,.47),lip(b,.93,.47),
+               lip(a,.57,.445),lip(b,.57,.445),lip(a,.93,.445),lip(b,.93,.445)]
+            tris=((0,1,2),(2,1,3),(4,6,5),(6,7,5),
+                  (0,2,4),(2,6,4),(3,1,7),(1,5,7),(0,4,1),(1,4,5),
+                  (2,3,6),(3,7,6))
+            mesh("AarisPaint",v,tris if sign>0 else tuple((i,k,j) for i,j,k in tris))
     box("AarisDark",(x,.47,0),(.21,.22,1.14))
     box("AarisMetal",(sign*.74,.48,1.52),(.20,.15,.18))
     box("AarisMetal",(sign*.74,.48,-1.53),(.20,.15,.18))
@@ -123,9 +136,16 @@ tube("AarisMetal",(-.67,.49,1.58),(.67,.49,1.58),.043)
 tube("AarisMetal",(-.67,.51,-1.59),(.67,.51,-1.59),.040)
 for sign in (-1,1):
     box("AarisDark",(sign*.57,.74,1.474),(.30,.21,.061))
-    box("AarisHeadlight",(sign*.57,.75,1.514),(.24,.12,.025))
+    for delta in (-.058,.058):
+        x=sign*.57+delta
+        tube("AarisMetal",(x,.748,1.492),(x,.748,1.522),.045,12)
+        tube("AarisHeadlight",(x,.748,1.520),(x,.748,1.532),.018,10)
+    box("AarisLampClearCover",(sign*.57,.75,1.541),(.245,.123,.010))
     box("AarisDark",(sign*.56,.76,-1.487),(.30,.18,.04))
-    box("AarisTaillight",(sign*.56,.77,-1.516),(.24,.095,.024))
+    for delta in (-.048,.048):
+        x=sign*.56+delta
+        tube("AarisTaillight",(x,.766,-1.517),(x,.766,-1.533),.031,10)
+    box("AarisLampRedCover",(sign*.56,.765,-1.545),(.244,.099,.011))
     # Bright mechanical shock struts behind wheels (visual only).
     tube("AarisMetal",(sign*.53,.45,-1.0),(sign*.63,.79,-.73),.021)
     tube("AarisMetal",(sign*.53,.45,1.07),(sign*.63,.79,.79),.021)
@@ -159,3 +179,67 @@ Path(str(MTL)+".meta").write_text(mtl_meta)
 print("AARIS_ORIGINAL_BUGGY",len(vertices),"vertices",
       sum(map(len,faces.values())),"triangles",
       len(PALETTE),"materials",OBJ.stat().st_size,"bytes")
+
+# Shared symmetric wheel with real sidewall / crown, staggered mud tread,
+# cast spokes and five lugs on each face. WheelCollider uses the real mesh
+# diameter; the mesh stays centred at the origin for correct steering.
+wheel = OUT / "AarisBuggyWheel.obj"
+wheel_mtl = OUT / "AarisBuggyWheel.mtl"
+vertices.clear()
+faces = {name: [] for name in ("AarisTyre", "AarisAlloy", "AarisDark", "AarisMetal")}
+profile = [(-.135,.236),(-.175,.290),(-.176,.336),(-.144,.378),
+           (-.085,.390),(0,.392),(.085,.390),(.144,.378),(.176,.336),
+           (.175,.290),(.135,.236)]
+points=[]
+segments=48
+for turn in range(segments):
+    a=turn*2*pi/segments
+    for j,(x,r) in enumerate(profile):
+        if 3 <= j <= 7 and (turn+abs(j-5))%4 == 0:
+            r-=.010
+        points.append((x,sin(a)*r,cos(a)*r))
+n=len(profile)
+tris=[]
+for i in range(segments):
+    for j in range(n-1):
+        a=i*n+j;b=((i+1)%segments)*n+j
+        tris.extend(((a,a+1,b),(b,a+1,b+1)))
+mesh("AarisTyre",points,tris)
+
+for side in (-1,1):
+    # Circumferential bevels stay open between the spokes. The dished
+    # backing visible through them is the darker stamped brake rotor.
+    lip=[(.115,.219),(.142,.232),(.160,.231),(.165,.218),(.148,.205)]
+    n=len(lip)
+    points=[(side*x,sin(i*2*pi/32)*r,cos(i*2*pi/32)*r)
+            for i in range(32) for x,r in lip]
+    tris=[]
+    for i in range(32):
+        for j in range(n-1):
+            a=i*n+j;b=((i+1)%32)*n+j
+            t=((a,a+1,b),(b,a+1,b+1))
+            tris.extend(t if side==-1 else ((a,c,b) for a,b,c in t))
+    mesh("AarisAlloy",points,tris)
+    tube("AarisDark",(side*.113,0,0),(side*.128,0,0),.159,24)
+    tube("AarisAlloy",(side*.129,0,0),(side*.175,0,0),.074,16)
+    for i in range(5):
+        a=i*2*pi/5
+        tube("AarisAlloy",(side*.148,sin(a)*.053,cos(a)*.053),
+             (side*.147,sin(a+.20)*.208,cos(a+.20)*.208),.021,7)
+        tube("AarisMetal",(side*.177,sin(a)*.045,cos(a)*.045),
+             (side*.188,sin(a)*.045,cos(a)*.045),.010,6)
+lines=["# Original Aaris off-road wheel","mtllib AarisBuggyWheel.mtl","o AarisBuggyWheel"]
+lines.extend("v %.6f %.6f %.6f"%v for v in vertices)
+for name,tris in faces.items():
+    lines.extend(("usemtl "+name,"s 1"))
+    lines.extend("f %d %d %d"%tri for tri in tris)
+wheel.write_text("\n".join(lines)+"\n")
+wheel_mtl.write_text("newmtl AarisTyre\nKd .063 .068 .072\n\n"
+                     "newmtl AarisAlloy\nKd .47 .50 .53\n\n"
+                     "newmtl AarisDark\nKd .13 .14 .15\n\n"
+                     "newmtl AarisMetal\nKd .39 .42 .45\n")
+for path in (wheel,wheel_mtl):
+    guid=uuid5(NAMESPACE_URL,"aaris-original-buggy-wheel-"+path.suffix).hex
+    metadata=re.sub(r"(?m)^guid: [a-f0-9]{32}$","guid: "+guid,template) if path==wheel \
+             else "fileFormatVersion: 2\nguid: "+guid+"\n"
+    Path(str(path)+".meta").write_text(metadata)

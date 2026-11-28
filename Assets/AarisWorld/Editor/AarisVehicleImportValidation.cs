@@ -111,15 +111,19 @@ namespace Aaris.MapReview.Editor
                     throw new InvalidOperationException("Bad model mesh triangle count: " + name + "=" + triangles);
                 Debug.Log("AARIS_VEHICLE_IMPORT " + name + " triangles=" + triangles);
             }
-            // Offline-authored buggy has a genuine independent chassis.
-            // Wheels remain sourced from the already verified truck FBX.
-            GameObject buggy = Resources.Load<GameObject>(
-                "AarisVehicles/Authored/AarisBuggy");
-            if (buggy == null ||
-                buggy.GetComponentInChildren<MeshFilter>(true) == null ||
-                buggy.GetComponentInChildren<Renderer>(true) == null)
-                throw new InvalidOperationException(
-                    "Original off-road buggy OBJ failed Unity import.");
+            string[] productionModels =
+            {
+                "PremiumRoadGT/AarisRoadGT", "Authored/1990s-suv",
+                "Authored/AarisBuggy", "Authored/AarisBuggyWheel", "Authored/AarisRoadBike"
+            };
+            foreach (string model in productionModels)
+            {
+                GameObject imported = Resources.Load<GameObject>("AarisVehicles/" + model);
+                if (imported == null ||
+                    imported.GetComponentInChildren<MeshFilter>(true) == null ||
+                    imported.GetComponentInChildren<Renderer>(true) == null)
+                    throw new InvalidOperationException("Production vehicle art failed Unity import: " + model);
+            }
 
             Texture2D palette = Resources.Load<Texture2D>("AarisVehicles/Models/colormap");
             if (palette == null || palette.width < 16 || palette.height < 16)

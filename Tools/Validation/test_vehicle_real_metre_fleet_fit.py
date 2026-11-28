@@ -15,15 +15,12 @@ MOTOR = (ROOT / "Assets/AarisWorld/Scripts/AarisVehicleMotor.cs").read_text()
 CATALOG = json.loads((ROOT / "Assets/Resources/AarisVehicles/vehicle_catalog.json").read_text())
 
 DIMENSIONS = {
-    "Sedan": (1.96, 4.50), "SUV": (2.10, 4.80),
-    "Sports": (1.99, 4.46), "GT": (2.08, 4.48),
-    "Hatchback": (1.81, 3.90), "Van": (2.05, 5.08),
-    "Utility": (2.10, 5.42), "Buggy": (1.90, 3.45),
+    "SUV": (2.10, 4.80), "GT": (2.08, 4.48), "Buggy": (1.90, 3.45),
 }
 
 
 class RealMetreVehicleFit(unittest.TestCase):
-    def test_all_eight_vehicle_archetypes_fit_road_without_flattening(self):
+    def test_drivable_archetypes_fit_road_without_flattening(self):
         self.assertEqual({v["id"] for v in CATALOG["vehicles"]}, set(DIMENSIONS))
         for v in CATALOG["vehicles"]:
             width, length = DIMENSIONS[v["id"]]
@@ -38,9 +35,8 @@ class RealMetreVehicleFit(unittest.TestCase):
             self.assertGreater(width / 1.78, .90)
             self.assertLess(width / 1.78, 1.18)
             self.assertLess(width / length, .60)
-        self.assertLess(DIMENSIONS["Hatchback"][1], DIMENSIONS["Sedan"][1])
-        self.assertGreater(DIMENSIONS["Van"][1], DIMENSIONS["Sedan"][1])
-        self.assertGreater(DIMENSIONS["SUV"][0], DIMENSIONS["Hatchback"][0])
+        self.assertLess(DIMENSIONS["Buggy"][1], DIMENSIONS["GT"][1])
+        self.assertGreater(DIMENSIONS["SUV"][1], DIMENSIONS["GT"][1])
 
     def test_uniform_scale_preserves_body_and_axle_aspect(self):
         fit = WORLD.split("private bool Build(", 1)[1].split(
@@ -54,8 +50,7 @@ class RealMetreVehicleFit(unittest.TestCase):
         self.assertIn("mesh.transform.localScale *= Mathf.Clamp(scale, .01f, 50f)", fit)
         self.assertNotIn("mesh.transform.localScale = new Vector3(", fit)
         for name, body_w, body_l in (
-            ("Hatchback", 2.00, 4.10), ("SUV", 2.15, 5.30),
-            ("GT", 2.09, 4.63), ("Van", 2.10, 5.10),
+            ("SUV", 2.15, 5.30), ("GT", 2.09, 4.63),
             ("Buggy", 1.81, 3.25)):
             desired_w, desired_l = DIMENSIONS[name]
             factor = min(desired_w / body_w, desired_l / body_l)
@@ -142,7 +137,7 @@ class RealMetreVehicleFit(unittest.TestCase):
             detected = y > 2.75 and y > max(x, z) * 1.30 and x > .8 and z > .7
             self.assertEqual(detected, expected)
 
-    def test_map_clearance_tracks_long_pickups_not_only_sedans(self):
+    def test_map_clearance_tracks_the_current_roster(self):
         resolver = WORLD.split("private bool TryResolve(", 1)[1].split(
             "private bool TryResolvePlanned(", 1)[0]
         for fragment in (
@@ -165,7 +160,7 @@ class RealMetreVehicleFit(unittest.TestCase):
             self.assertGreaterEqual(half_l * 2, length)
             self.assertLess(half_w * 2, 2.55)
             self.assertLess(half_l * 2, 6.0)
-        self.assertGreater(DIMENSIONS["Utility"][1], DIMENSIONS["SUV"][1])
+        self.assertGreater(DIMENSIONS["SUV"][1], DIMENSIONS["Buggy"][1])
 
 
 if __name__ == "__main__":

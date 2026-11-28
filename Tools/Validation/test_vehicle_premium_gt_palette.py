@@ -12,14 +12,13 @@ CATALOG = json.loads((ROOT / 'Assets/Resources/AarisVehicles/vehicle_catalog.jso
 class PremiumVehicleFleet(unittest.TestCase):
     def test_distinct_gt_uses_existing_licensed_body(self):
         vehicles = {x['id']: x for x in CATALOG['vehicles']}
-        self.assertEqual(len(vehicles), 8)
+        self.assertEqual(set(vehicles), {"GT", "SUV", "Buggy"})
         gt = vehicles['GT']
         self.assertEqual(gt['authoredModelResource'],
                          'AarisVehicles/PremiumRoadGT/AarisRoadGT')
-        self.assertEqual(gt['fallbackAuthoredModelResource'],
-                         'AarisVehicles/Authored/QuaterniusSports')
-        self.assertEqual(gt['modelResource'], 'AarisVehicles/Models/sedan-sports')
-        self.assertEqual(gt['wheelResource'], 'AarisVehicles/Models/wheel-racing')
+        self.assertNotIn('fallbackAuthoredModelResource', gt)
+        self.assertNotIn('modelResource', gt)
+        self.assertNotIn('wheelResource', gt)
         self.assertEqual(gt['drivetrain'], 'RWD')
         self.assertTrue(0.8 < gt['suspensionTravelScale'] < 1)
         asset = ROOT / 'Assets/Resources/AarisVehicles/Authored/QuaterniusSports.obj'
@@ -36,9 +35,7 @@ class PremiumVehicleFleet(unittest.TestCase):
             self.assertTrue(Path(str(part)+'.meta').exists())
         self.assertIn('AarisPaint_RoadGT',
                       (premium / 'AarisRoadGT.mtl').read_text())
-        self.assertGreaterEqual(gt['weight'] + vehicles['Sports']['weight'], 8)
-        self.assertLess(vehicles['Sedan']['weight'],
-                        gt['weight'] + vehicles['Sports']['weight'])
+        self.assertGreater(gt['weight'], 0)
 
     def test_premium_palette_readable_and_not_neon(self):
         section = WORLD.split('private static readonly Color[] BodyPaintColours =',1)[1].split(

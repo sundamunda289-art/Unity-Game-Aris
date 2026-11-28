@@ -1,0 +1,22 @@
+fileFormatVersion: 2
+guid: 266d5b1b73b050b19f77353340ae8a3c
+ModelImporter:
+  serializedVersion: 22200
+  externalObjects: {}
+  materials:
+    materialImportMode: 1
+    materialName: 0
+    materialSearch: 1
+    materialLocation: 0
+  meshes:
+    globalScale: 1
+    useFileScale: 1
+    meshCompression: 1
+    isReadable: 0
+  tangentSpace:
+    normalImportMode: 0
+    tangentImportMode: 2
+  animations:
+    importAnimation: 0
+  importAnimation: 0
+  importMaterials: 1

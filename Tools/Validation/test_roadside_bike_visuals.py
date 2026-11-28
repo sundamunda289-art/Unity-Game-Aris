@@ -12,10 +12,11 @@ class BikeVisuals(unittest.TestCase):
         vertices = [tuple(map(float, l.split()[1:])) for l in lines if l.startswith("v ")]
         triangles = [l for l in lines if l.startswith("f ")]
         materials = {l.split()[1] for l in lines if l.startswith("usemtl ")}
-        self.assertTrue(3000 <= len(vertices) <= 5000)
-        self.assertTrue(6000 <= len(triangles) <= 8500)
+        self.assertTrue(3000 <= len(vertices) <= 6600)
+        self.assertTrue(6000 <= len(triangles) <= 12000)
         self.assertEqual(materials, {"Paint", "Tyre", "Rim", "Engine",
-                                     "Seat", "Headlamp", "TailLamp", "Amber"})
+                                     "Seat", "Headlamp", "TailLamp", "Amber",
+                                     "ClearCover", "RedCover"})
         self.assertIn("mtllib AarisRoadBike.mtl", lines)
         self.assertTrue(all(len(f.split()) == 4 for f in triangles))
         for axis, (lower, upper) in enumerate(((-.6, .6), (0, 1.6), (-1.3, 1.3))):
@@ -36,14 +37,15 @@ class BikeVisuals(unittest.TestCase):
 
     def test_body_paint_variants_preserve_wheel_and_light_materials(self):
         source = SCRIPT.read_text()
-        self.assertIn("int[] fallbackOrder = {1,2,3,4,0,7,5,6};", source)
+        self.assertIn("int[] fallbackOrder = {1,2,3,4,0,7,5,8,6,9};", source)
         mesh = (ASSET / "AarisRoadBike.obj").read_text()
         sections = [line.split()[1] for line in mesh.splitlines()
                     if line.startswith("usemtl ")]
         mapping = {"Paint": 0, "Tyre": 1, "Rim": 2, "Engine": 3,
-                   "Seat": 4, "Headlamp": 5, "TailLamp": 6, "Amber": 7}
+                   "Seat": 4, "Headlamp": 5, "TailLamp": 6, "Amber": 7,
+                   "ClearCover": 8, "RedCover": 9}
         expected = [mapping[label] for label in sections]
-        self.assertEqual(expected, [1,2,3,4,0,7,5,6])
+        self.assertEqual(expected, [1,2,3,4,0,7,5,8,6,9])
         self.assertIn("private readonly Material[] paintVariants = new Material[4];", source)
         self.assertIn("paintVariants[0] = surfaces[0];", source)
         self.assertIn("paintVariants[i] = new Material(surfaces[0])", source)
@@ -133,7 +135,7 @@ class BikeVisuals(unittest.TestCase):
         source = SCRIPT.read_text()
         builder = source.split("private GameObject CreateBike(", 1)[1].split(
             "private void OnDestroy()", 1)[0]
-        self.assertIn("imported.transform.localRotation *= Quaternion.Euler(0f, 0f, 3.5f)", builder)
+        self.assertIn("imported.transform.localRotation *= Quaternion.Euler(0f, 0f, ParkedLeanDegrees)", builder)
         self.assertIn("root.AddComponent<LODGroup>()", builder)
         self.assertIn("lod.SetLODs(new[] { new LOD(.012f, renderers) });", builder)
         self.assertIn("lod.RecalculateBounds();", builder)

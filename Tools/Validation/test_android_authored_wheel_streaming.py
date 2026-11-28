@@ -71,10 +71,11 @@ class AuthoredWheelAsyncRegression(unittest.TestCase):
         self.assertIn("if (pendingWheel != null && !pendingWheel.isDone) inFlight++;",
                       self.prefetch)
 
-    def test_original_visual_models_and_limits_retained(self):
-        sedan = next(t for t in CATALOG["vehicles"] if t["id"] == "Sedan")
-        self.assertTrue(sedan["authoredModelResource"])
-        self.assertTrue(sedan["authoredWheelResource"])
+    def test_production_wheels_and_streaming_limits(self):
+        fleet = {t["id"]: t for t in CATALOG["vehicles"]}
+        self.assertEqual(set(fleet), {"GT", "SUV", "Buggy"})
+        self.assertTrue(fleet["GT"]["authoredModelResource"])
+        self.assertEqual(fleet["Buggy"]["wheelResource"], "AarisVehicles/Authored/AarisBuggyWheel")
         self.assertIn("MaximumNearbyVehicles = 10", SOURCE)
         self.assertIn("LoadRadius = 105f", SOURCE)
         self.assertIn("UnloadRadius = 160f", SOURCE)

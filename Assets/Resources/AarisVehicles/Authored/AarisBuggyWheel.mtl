@@ -1,0 +1,11 @@
+newmtl AarisTyre
+Kd .063 .068 .072
+
+newmtl AarisAlloy
+Kd .47 .50 .53
+
+newmtl AarisDark
+Kd .13 .14 .15
+
+newmtl AarisMetal
+Kd .39 .42 .45

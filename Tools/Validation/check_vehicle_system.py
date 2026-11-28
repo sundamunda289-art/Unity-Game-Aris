@@ -69,41 +69,21 @@ def test():
                    for box in source["buildings"])
 
     types=catalog["vehicles"]
-    assert {x["modelResource"].split("/")[-1] for x in types}==set(HASHES)-{
-        "wheel-default","wheel-racing","wheel-truck"}
-    assert {x["wheelResource"].split("/")[-1] for x in types}=={
-        "wheel-default","wheel-racing","wheel-truck"}
+    fleet={x["id"]: x for x in types}
+    assert len(types)==3 and set(fleet)=={"GT","SUV","Buggy"}
     assert all(8<=x["maxSpeedMetres"]<=28 and 800<x["massKg"]<2400
                and x["weight"]>0 for x in types)
-    # The new sedan art replaces one catalog presentation, keeping the
-    # existing FBX pair available as a unit if its authored import fails.
-    sedan = next(x for x in types if x["id"] == "Sedan")
-    assert sedan["modelResource"] == "AarisVehicles/Models/sedan"
-    assert sedan["wheelResource"] == "AarisVehicles/Models/wheel-default"
-    for key, mesh, maximum in (("authoredModelResource", "AarisCivilSedan", 1700),
-                               ("authoredWheelResource", "AarisCivilWheel", 300)):
-        prefab = ROOT / "Assets/Resources" / (sedan[key] + ".prefab")
-        assert prefab.is_file() and prefab.with_suffix(".prefab.meta").is_file()
-        path = RES / "Authored" / (mesh + ".obj")
-        lines = path.read_text().splitlines()
-        assert 100 < sum(line.startswith("f ") for line in lines) <= maximum
-        assert [line for line in lines if line.startswith("usemtl ")] == ["usemtl SedanSurface"]
-        assert path.with_suffix(".obj.meta").is_file()
-    for texture in ("SedanSurface", "SedanMetalSmoothness"):
-        png = (RES / "Authored" / (texture + ".png")).read_bytes()
-        assert int.from_bytes(png[16:20], "big") == int.from_bytes(png[20:24], "big") == 128
-    authored_by_type = {
-        "SUV":"1990s-suv",
-        "Sports":"1990s-sports-car",
-        "Hatchback":"1990s-hatchback",
-        "Van":"1980s-van",
-        "Utility":"1990s-pickup-truck",
-    }
-    for vehicle_id, slug in authored_by_type.items():
-        item = next(x for x in types if x["id"] == vehicle_id)
-        assert item["authoredModelResource"] == f"AarisVehicles/Authored/{slug}"
+    assert fleet["GT"]["authoredModelResource"]=="AarisVehicles/PremiumRoadGT/AarisRoadGT"
+    assert not {"modelResource","fallbackAuthoredModelResource","wheelResource"} & fleet["GT"].keys()
+    assert fleet["SUV"]["modelResource"]=="AarisVehicles/Models/suv"
+    assert fleet["SUV"]["authoredModelResource"]=="AarisVehicles/Authored/1990s-suv"
+    assert fleet["Buggy"]["modelResource"]==fleet["Buggy"]["authoredModelResource"]=="AarisVehicles/Authored/AarisBuggy"
+    assert fleet["Buggy"]["wheelResource"]=="AarisVehicles/Authored/AarisBuggyWheel"
+    for original in ("AarisRoadBike", "AarisBuggy", "AarisBuggyWheel"):
+        mesh = RES / "Authored" / (original + ".obj")
+        assert mesh.is_file() and mesh.with_suffix(".obj.meta").is_file()
+    for slug, (expected, size) in AUTHORED.items():
         body = RES / "Authored" / f"{slug}.fbx"
-        expected, size = AUTHORED[slug]
         assert body.is_file() and body.stat().st_size == size, ("authored FBX missing", slug)
         assert hashlib.sha256(body.read_bytes()).hexdigest() == expected, ("authored FBX changed", slug)
         assert body.read_bytes().startswith(b"Kaydara FBX Binary"), slug
@@ -112,15 +92,9 @@ def test():
     assert "CC0-1.0" in source_note and "never downloaded at game runtime" in source_note
     for slug, (expected, _) in AUTHORED.items():
         assert slug in source_note and expected in source_note
-    # Three real-proportion CC0 Quaternius bodies replace the stylized
-    # legacy presentation while retaining the existing WheelCollider/wheel art.
     realistic = {
         "SUV": ("AarisVehicles/Authored/QuaterniusSUV", "QuaterniusSUV", 1000,
                 (2.111102, 1.527851, 4.209349)),
-        "Sports": ("AarisVehicles/Authored/QuaterniusSports", "QuaterniusSports", 900,
-                   (1.804519, 1.155404, 3.968707)),
-        "Hatchback": ("AarisVehicles/Authored/QuaterniusCompact", "QuaterniusCompact", 900,
-                      (1.638448, 1.145616, 3.309623)),
     }
     for vehicle_id, (resource, mesh, max_faces, expected_size) in realistic.items():
         item = next(x for x in types if x["id"] == vehicle_id)
@@ -244,9 +218,10 @@ def test():
     assert "internal bool HasPotentialInactiveObstacle(" in nearby
     assert "cells.TryGetValue(Key(xCell, zCell)" in nearby
     assert "bool includeActive = false" in nearby
-    assert "streamed[i] && c != null && (includeActive" in nearby
-    assert ": !c.enabled))" in nearby
-    assert "worldBounds[i].Intersects(probe)" in nearby
+    assert "if (!streamed[index]) return false;" in nearby
+    assert ": !collider.enabled);" in nearby
+    assert "Bounds bounds = worldBounds[index];" in nearby
+    assert "if (!bounds.Intersects(first))" in nearby
     assert "new Bounds(center, 2f * extents)" in nearby
     assert "Physics.OverlapBoxNonAlloc" in world
     assert "Physics.RaycastNonAlloc" in world
@@ -311,7 +286,7 @@ def test():
     assert "prefabs[i].GetComponentInChildren<Renderer>(true) == null" in world
     assert "wheelPrefabs[i].GetComponentInChildren<Renderer>(true) == null" in world
     # Weighted map planning must use only *validated* imported meshes.
-    assert "if (prefabs[i] != null && wheelPrefabs[i] != null)" in world
+    assert "if (!CanPlanVehicleType(i)) continue;" in world
     assert "if (total <= 0) return false;" in world
     assert "GameObject.CreatePrimitive" not in world
     assert "Resources.Load<Texture2D>" in world
@@ -415,7 +390,7 @@ def test():
     assert "paletteMaterial.enableInstancing = true;" in world
     assert "wheelPaletteMaterial.enableInstancing = true;" in world
     assert "if (wheelPaletteMaterial != null) Destroy(wheelPaletteMaterial);" in world
-    assert "record.type.preserveAuthoredUrpMaterials)" in world
+    assert "record.type.preserveAuthoredUrpMaterials," in world
     assert "public bool preserveAuthoredUrpMaterials;" in world
     assert "if (!record.type.preserveAuthoredUrpMaterials)" in build
     assert "if (!preserveAuthoredUrpMaterials)" in wheels
@@ -651,7 +626,7 @@ def test():
         assert len(seen)>=14
         assert 40<=len(selected)<=44,(seed,len(selected))
     print("PASS: 45 real garages +33 authored roadside points, 14 500m sectors, "
-          "300 balanced 44-car plans, 6 real car + 3 real wheel FBX models, "
+          "300 balanced 44-car plans, 3 drivable archetypes and parked motorcycle, "
           "WheelCollider physics, safe enter/exit and 4-arrow mobile UX.")
     print("NOT TESTED: Unity Editor FBX import, in-game car handling, Android rendering/FPS.")
 

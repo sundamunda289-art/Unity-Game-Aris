@@ -76,7 +76,7 @@ class BikePredictivePrewarm(unittest.TestCase):
             "parkedBikePool.Push(retired);",
             "ReuseBike(parkedBikePool.Pop(), nearest.point, spot)",
             "if (plan.visible != null || now < plan.nextProbe) continue;",
-            "TryParkingSpot(nearest.point, out Vector3 spot)",
+            "TryParkingSpot(nearest.point, out Vector3 spot, out Vector3 normal)",
         ):
             self.assertIn(invariant, SOURCE)
 

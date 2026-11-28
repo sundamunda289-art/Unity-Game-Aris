@@ -45,3 +45,15 @@ Kd 0.920 0.450 0.040
 Ka 0 0 0
 Ks 0.2 0.2 0.2
 Ns 60
+
+newmtl ClearCover
+Kd 0.670 0.740 0.800
+Ka 0 0 0
+Ks 0.2 0.2 0.2
+Ns 60
+
+newmtl RedCover
+Kd 0.740 0.080 0.060
+Ka 0 0 0
+Ks 0.2 0.2 0.2
+Ns 60

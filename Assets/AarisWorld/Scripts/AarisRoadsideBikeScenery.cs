@@ -24,7 +24,9 @@ namespace Aaris.MapReview
         private readonly RaycastHit[] denseSupportHits = new RaycastHit[96];
         private readonly Collider[] blockingHits = new Collider[24];
         private readonly Collider[] denseBlockingHits = new Collider[96];
-        private readonly Material[] surfaces = new Material[8];
+        private const float ParkedLeanDegrees = 6f;
+        private const float HalfWheelbase = .78f;
+        private readonly Material[] surfaces = new Material[10];
         private readonly Material[] paintVariants = new Material[4];
         // Pool at most three original motorcycle rigs instead of destroying
         // and re-importing their meshes every time the player changes roads.
@@ -166,11 +168,14 @@ namespace Aaris.MapReview
             if (shader == null) { enabled = false; yield break; }
             Shader coatShader = AarisShaderCache.Find("Aaris/Mobile Subject Lit");
             if (coatShader == null || !coatShader.isSupported) coatShader = shader;
+            Shader glazing = AarisShaderCache.Find("Aaris/Automotive Glazing");
+            if (glazing == null || !glazing.isSupported) glazing = shader;
             Color[] tones = {
                 new Color(.08f,.23f,.40f), new Color(.034f,.039f,.048f),
                 new Color(.57f,.61f,.67f), new Color(.15f,.17f,.20f),
                 new Color(.055f,.062f,.075f), new Color(.94f,.91f,.72f),
-                new Color(.78f,.038f,.02f), new Color(.98f,.43f,.035f)
+                new Color(.78f,.038f,.02f), new Color(.98f,.43f,.035f),
+                new Color(.24f,.33f,.39f,.24f), new Color(.62f,.024f,.017f,.45f)
             };
             for (int i = 0; i < surfaces.Length; i++)
             {
@@ -186,12 +191,14 @@ namespace Aaris.MapReview
                     if (!isActiveAndEnabled) yield break;
                 }
 #endif
-                surfaces[i] = new Material(i == 0 || i == 2 ? coatShader : shader)
+                Shader finish = i >= 8 ? glazing : i == 0 || i == 2 ? coatShader : shader;
+                surfaces[i] = new Material(finish)
                 {
                     name = "Aaris Road Bike " + i,
                     enableInstancing = true
                 };
                 surfaces[i].SetColor("_BaseColor", tones[i]);
+                if (i >= 8) continue;
                 // Separate rubber, satin bodywork, exposed alloy, leather
                 // and glass; eight shared URP Lit materials for all bikes.
                 surfaces[i].SetFloat("_Metallic",
@@ -487,7 +494,7 @@ namespace Aaris.MapReview
 #endif
             // The parked model stays until the new bay and real mesh validate.
             nearest.nextProbe = now + 3f;
-            if (!TryParkingSpot(nearest.point, out Vector3 spot)) return;
+            if (!TryParkingSpot(nearest.point, out Vector3 spot, out Vector3 normal)) return;
 #if UNITY_ANDROID && !UNITY_EDITOR
             // Pooled-bike movement stays immediate. Gate only a brand-new
             // model, after validating floor and collision placement.
@@ -508,6 +515,8 @@ namespace Aaris.MapReview
                     ? ReuseBike(parkedBikePool.Pop(), nearest.point, spot)
                     : CreateBike(nearest.point, spot);
             if (candidate == null) return;
+            Vector3 tangent = Vector3.ProjectOnPlane(candidate.transform.forward, normal);
+            candidate.transform.rotation = Quaternion.LookRotation(tangent, normal);
             if (parkedVictim != null)
             {
                 parkedVictim.visible = null;
@@ -540,9 +549,10 @@ namespace Aaris.MapReview
             return root;
         }
 
-        private bool TryParkingSpot(AarisVehiclePoint point, out Vector3 spot)
+        private bool TryParkingSpot(AarisVehiclePoint point, out Vector3 spot, out Vector3 normal)
         {
             spot = default;
+            normal = Vector3.up;
             Quaternion rotation = Quaternion.Euler(0f, point.yaw, 0f);
             Vector3 right = rotation * (Vector3.right * 3.8f);
             for (int side = 1; side >= -1; side -= 2)
@@ -573,7 +583,7 @@ namespace Aaris.MapReview
                     }
                 }
                 float nearestError = 1.5f;
-                Vector3 ground = default;
+                Vector3 ground = default, supportNormal = Vector3.up;
                 bool found = false;
                 for (int i = 0; i < count; i++)
                 {
@@ -583,6 +593,7 @@ namespace Aaris.MapReview
                     if (error >= nearestError) continue;
                     nearestError = error;
                     ground = hit.point;
+                    supportNormal = hit.normal;
                     found = true;
                 }
                 if (!found) continue;
@@ -621,7 +632,8 @@ namespace Aaris.MapReview
                     }
                 }
                 if (blocked) continue;
-                spot = ground + Vector3.up * .035f;
+                spot = ground;
+                normal = supportNormal;
                 return true;
             }
             return false;
@@ -639,6 +651,8 @@ namespace Aaris.MapReview
             if (name.Contains("headlamp")) return 5;
             if (name.Contains("taillamp")) return 6;
             if (name.Contains("amber")) return 7;
+            if (name.Contains("clearcover")) return 8;
+            if (name.Contains("redcover")) return 9;
             return fallback;
         }
 
@@ -708,7 +722,7 @@ namespace Aaris.MapReview
 
             // Preserve the original authored OBJ usemtl order, including
             // metallic parts, tyre rubber, lamps and four body paint finishes.
-            int[] fallbackOrder = {1,2,3,4,0,7,5,6};
+            int[] fallbackOrder = {1,2,3,4,0,7,5,8,6,9};
             var layouts = new Material[paintVariants.Length][][];
             for (int paint = 0; paint < paintVariants.Length; paint++)
                 layouts[paint] = new Material[renderers.Length][];
@@ -766,13 +780,16 @@ namespace Aaris.MapReview
                 Destroy(root);
                 return null;
             }
-            // Static left-side kickstand pose; do not rotate or tilt the
-            // physics root / parking test. Preserve importer axis correction.
-            imported.transform.localRotation *= Quaternion.Euler(0f, 0f, 3.5f);
+            // The wheel centres are .36 m high above a .29 m ring with a
+            // .065 m crown. Keep the tyre crown on the support plane as the
+            // visible assembly leans onto its stand.
+            float leanCos = Mathf.Cos(ParkedLeanDegrees * Mathf.Deg2Rad);
+            imported.transform.localRotation *= Quaternion.Euler(0f, 0f, ParkedLeanDegrees);
+            imported.transform.localPosition += Vector3.up * (.065f - .07f * leanCos);
             // One shared URP material per authored surface, reused across
             // all visible bikes. No per-bike Material instances or per-frame GC.
             // This matches OBJ usemtl section order, NOT palette declaration
-            // order: Tyre, Rim, Engine, Seat, Paint, Amber, Headlamp, TailLamp.
+            // order: Tyre, Rim, Engine, Seat, Paint, Amber and lamp optics.
             int paintIndex = StablePaintIndex(point.id);
             Material[][][] layouts = GetBikePaintLayouts(renderers);
             for (int r = 0; r < renderers.Length; r++)
@@ -804,7 +821,9 @@ namespace Aaris.MapReview
                 renderers = renderers, paintLayouts = layouts
             });
             AarisSubjectContacts.Register(root.transform,
-                new Vector2(1.10f, 2.35f), .24f, 26f);
+                new Vector2(1.10f, 2.35f), .24f, 26f,
+                parkedTyreOffset: new Vector2(-.36f * Mathf.Sin(ParkedLeanDegrees *
+                    Mathf.Deg2Rad), HalfWheelbase));
             return root;
         }
 
