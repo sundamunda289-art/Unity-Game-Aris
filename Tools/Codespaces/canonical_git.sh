@@ -32,7 +32,9 @@ else
 fi
 
 export GIT_TERMINAL_PROMPT=0 GIT_LFS_SKIP_SMUDGE=1
-KEY_FILE="$HOME/.config/aaris-ai/canonical-deploy-key"
+OWNER_HOME="$(getent passwd "$(id -u)" | cut -d: -f6)"
+[[ -n "$OWNER_HOME" && -d "$OWNER_HOME" ]] || { echo AARIS_SYNC_OWNER_HOME_UNAVAILABLE; exit 23; }
+KEY_FILE="$OWNER_HOME/.config/aaris-ai/canonical-deploy-key"
 
 set_push_auth() {
   if [[ ! -f "$KEY_FILE" || -L "$KEY_FILE" || ! -s "$KEY_FILE" ]]; then
@@ -92,7 +94,7 @@ case "$mode" in
       echo "AARIS_SYNC_DIRTY_TRACKED_WORK: fetched only; no merge to protect other agents"
       exit 27
     fi
-    if git merge --ff-only refs/remotes/aaris-master/main; then
+    if git merge --ff-only --no-overwrite-ignore refs/remotes/aaris-master/main; then
       echo "AARIS_SYNC_FAST_FORWARD_OK"
     else
       echo "AARIS_SYNC_DIVERGED: no reset/rebase/force merge; review conflicts or use a PR"
@@ -162,3 +164,4 @@ case "$mode" in
     exit 2
     ;;
 esac
+

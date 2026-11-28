@@ -5,8 +5,8 @@ set -euo pipefail
 umask 077
 REPO="sundamunda289-art/Unity-Game-Aris"
 BASE="$HOME/.config/aaris-ai"
-MASTER="$BASE/master-gh"
-WORKER="$BASE/codespace-gh"
+MASTER="${AARIS_MASTER_AUTH_DIR:-$BASE/master-gh}"
+WORKER="${AARIS_CODESPACE_AUTH_DIR:-$BASE/codespace-gh}"
 
 command -v pkg >/dev/null || { echo "AARIS_GIT_BRIDGE_TERMUX_REQUIRED"; exit 2; }
 for tool in gh curl jq base64; do
@@ -32,7 +32,10 @@ PERM="$(GH_CONFIG_DIR="$MASTER" gh repo view "$REPO" --json viewerPermission -q 
   echo "AARIS_GIT_BRIDGE_DEPLOY_KEY_REQUIRES_REPO_ADMIN"; exit 7;
 }
 
-SOURCE_SHA="$(GH_CONFIG_DIR="$MASTER" gh api "repos/$REPO/git/ref/heads/main" --jq .object.sha)"
+SOURCE_SHA="${AARIS_SOURCE_SHA:-}"
+if [[ -z "$SOURCE_SHA" ]]; then
+  SOURCE_SHA="$(GH_CONFIG_DIR="$MASTER" gh api "repos/$REPO/git/ref/heads/main" --jq .object.sha)"
+fi
 [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 8
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -41,31 +44,20 @@ curl -fsSL --retry 3 \
   -o "$TMP/canonical_git.sh"
 bash -n "$TMP/canonical_git.sh" || exit 9
 
-# Exactly one available Codespace under the currently chosen hosting account.
-MACHINE=""
-for attempt in $(seq 1 18); do
-  GH_CONFIG_DIR="$WORKER" gh codespace list --limit 100 --json name,state,repository > "$TMP/machines.json" || {
-    echo "AARIS_GIT_BRIDGE_CANNOT_LIST_CODESPACES"; exit 10;
+# The shared controller passes its exact verified identity. Legacy manual usage
+# may select only a single unambiguous Available machine; never newest/first.
+MACHINE="${AARIS_CODESPACE_NAME:-}"
+GH_CONFIG_DIR="$WORKER" gh codespace list --limit 100 --json name,state,repository > "$TMP/machines.json"
+if [[ -n "$MACHINE" ]]; then
+  [[ "$MACHINE" =~ ^[A-Za-z0-9][A-Za-z0-9-]{2,119}$ ]] || { echo AARIS_GIT_BRIDGE_INVALID_MACHINE; exit 10; }
+  jq -e --arg m "$MACHINE" --arg r "$CS_LOGIN/Unity-Game-Aris" --arg canonical "$REPO" '.[]|select(.name==$m and .state=="Available" and (.repository==$r or .repository==$canonical))' "$TMP/machines.json" >/dev/null || {
+    echo AARIS_GIT_BRIDGE_EXACT_MACHINE_NOT_READY; exit 11;
   }
-  count="$(jq '[.[] | select(.state == "Available" and ((.repository // "") | endswith("/Unity-Game-Aris")))] | length' "$TMP/machines.json")"
-  if [[ "$count" == 1 ]]; then
-    MACHINE="$(jq -r '.[] | select(.state == "Available" and ((.repository // "") | endswith("/Unity-Game-Aris"))) | .name' "$TMP/machines.json")"
-    break
-  fi
-  if [[ "$count" -gt 1 ]]; then
-    echo "AARIS_GIT_BRIDGE_AMBIGUOUS_CODESPACE: refusing to select the wrong machine"
-    exit 11
-  fi
-  if [[ "$attempt" -lt 18 ]]; then
-    echo "AARIS_GIT_BRIDGE_WAITING_FOR_CODESPACE attempt=$attempt"
-    sleep 10
-  fi
-done
-[[ "$MACHINE" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{2,119}$ ]] || {
-  echo "AARIS_GIT_BRIDGE_CODESPACE_NOT_YET_AVAILABLE"
-  echo 'After bootstrap retry: bash "$HOME/aaris-git-bridge.sh"'
-  exit 12
-}
+else
+  count="$(jq --arg r "$CS_LOGIN/Unity-Game-Aris" --arg canonical "$REPO" '[.[]|select(.state=="Available" and (.repository==$r or .repository==$canonical))]|length' "$TMP/machines.json")"
+  [[ "$count" == 1 ]] || { echo AARIS_GIT_BRIDGE_EXACT_MACHINE_REQUIRED; exit 11; }
+  MACHINE="$(jq -r --arg r "$CS_LOGIN/Unity-Game-Aris" --arg canonical "$REPO" '.[]|select(.state=="Available" and (.repository==$r or .repository==$canonical))|.name' "$TMP/machines.json")"
+fi
 
 # SSH generates/stores a brand-new private key ONLY inside that Codespace.
 # The canonical helper (public source) is sent over SSH stdin; no password/token.
@@ -73,6 +65,7 @@ REMOTE_INSTALL="$(cat <<'PY'
 import base64
 import os
 import pathlib
+import pwd
 import subprocess
 import sys
 import tempfile
@@ -83,8 +76,9 @@ if not script.startswith(b"#!/usr/bin/env bash\n"):
     raise SystemExit("AARIS_GIT_BRIDGE_UNEXPECTED_SCRIPT")
 subprocess.run(["bash", "-n"], input=script, check=True)
 
-private = pathlib.Path.home() / ".config" / "aaris-ai"
-bin_dir = pathlib.Path.home() / ".local" / "share" / "aaris-git"
+owner_home = pathlib.Path(pwd.getpwuid(os.geteuid()).pw_dir)
+private = owner_home / ".config" / "aaris-ai"
+bin_dir = owner_home / ".local" / "share" / "aaris-git"
 for folder in (private, bin_dir):
     if folder.is_symlink():
         raise SystemExit("AARIS_GIT_BRIDGE_UNSAFE_SYMLINK_DIR")
@@ -163,8 +157,15 @@ case "$READ_ONLY" in
 esac
 
 echo "AARIS_GIT_BRIDGE_SELECTED_MACHINE=$MACHINE"
+VERIFY_REMOTE_B64="$(cat <<'PY' | base64 -w0
+import os,pathlib,pwd,subprocess
+owner_home=pathlib.Path(pwd.getpwuid(os.geteuid()).pw_dir)
+script=owner_home/'.local/share/aaris-git/canonical_git.sh'
+for mode in ('status','verify'):
+    subprocess.run(['bash',str(script),mode],check=True)
+PY
+)"
 GH_CONFIG_DIR="$WORKER" gh codespace ssh -c "$MACHINE" -- \
-  'bash "$HOME/.local/share/aaris-git/canonical_git.sh" status'
-GH_CONFIG_DIR="$WORKER" gh codespace ssh -c "$MACHINE" -- \
-  'bash "$HOME/.local/share/aaris-git/canonical_git.sh" verify'
+  "python3 -c 'import base64;exec(base64.b64decode(\"$VERIFY_REMOTE_B64\"))'"
 echo "AARIS_GIT_BRIDGE_READY: canonical fetch/pull/commit/publish/push-main available via Turbo terminal"
+

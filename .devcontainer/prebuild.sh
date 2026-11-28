@@ -5,14 +5,11 @@ set -Eeuo pipefail
 cd "$(dirname "$0")/.."
 bash .devcontainer/bootstrap.sh
 
-# Pre-hydrate LFS when the prebuild has access; defer failures to postCreate.
-# A GitHub prebuild may lack the Codespaces creator's private credentials.
+# Heavy game hydration belongs to the one resumable Termux cd provisioner.
+# Never let a lifecycle hook fetch LFS before its verified Editor stage.
 mkdir -p /tmp/aaris-codespaces
-if git lfs pull >/tmp/aaris-codespaces/prebuild-lfs.log 2>&1; then
-  echo AARIS_PREBUILD_LFS_FETCHED
-else
-  echo AARIS_PREBUILD_LFS_DEFERRED
-fi
+git lfs install --local --skip-smudge || echo AARIS_PREBUILD_LFS_INIT_DEFERRED
+echo AARIS_PREBUILD_LFS_DEFERRED_TO_PROVISIONER
 
 # The verified Editor installer is idempotent. It only downloads when missing,
 # and does NOT run Unity ID sign-in or request/store a machine license.
@@ -23,3 +20,4 @@ if bash Tools/Codespaces/install_unity.sh >/tmp/aaris-codespaces/prebuild-editor
 else
   echo AARIS_PREBUILD_EDITOR_DEFERRED_USE_CS_INSTALL
 fi
+

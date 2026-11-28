@@ -1,14 +1,35 @@
 name: Aaris Turbo Dynamic Codespace Bootstrap
+run-name: Aaris switch ${{ inputs.transaction_id || github.run_id }}
 on:
   workflow_dispatch:
     inputs:
       machine:
-        description: "auto = create if absent, otherwise reuse uniquely selected; or exact Codespace name"
+        description: "Exact Codespace, or auto only when no machine has been selected"
         required: false
         type: string
         default: "auto"
       hosting_login:
-        description: "Expected GitHub account hosting the Codespace (prevents accidental old-account use)"
+        description: "Expected Codespace hosting account"
+        required: false
+        type: string
+        default: ""
+      transaction_id:
+        description: "Controller operation ID; candidate setup does not replace the active agent"
+        required: false
+        type: string
+        default: ""
+      candidate_broker:
+        description: "Verified candidate aaris-turbo-terminal workers.dev origin"
+        required: false
+        type: string
+        default: ""
+      credential_secret:
+        description: "Operation-scoped staged credential secret name, never a token"
+        required: false
+        type: string
+        default: ""
+      source_sha:
+        description: "Immutable reviewed canonical source commit"
         required: false
         type: string
         default: ""
@@ -18,479 +39,112 @@ on:
     paths:
       - ".github/workflows/aaris-turbo-bootstrap.yml"
       - "Tools/Turbo/**"
-      - "Tools/Codespaces/termux_switch.sh"
-      - "Tools/Codespaces/termux_cloudflare_switch.sh"
+      - "Tools/Codespaces/**"
+      - ".devcontainer/**"
 permissions:
   contents: read
 env:
-  # Public non-secret URL. Updated only after the alternate Worker passes health checks.
   AARIS_BROKER: ${{ vars.AARIS_BROKER_URL || 'https://aaris-turbo-terminal.aaris-game-control-6f9c.workers.dev' }}
 jobs:
   static-check:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          lfs: false
-      - name: Security regression and command bridge syntax
-        run: |
-          set -euo pipefail
-          bash -n Tools/Turbo/remote_install.sh
-          bash -n Tools/Turbo/gui_setup.sh
-          python3 -m py_compile Tools/Turbo/gui_agent.py
-          python3 Tools/Turbo/gui_agent.py --selftest
-          bash -n Tools/Turbo/ensure_agent.sh
-          bash -n Tools/Codespaces/termux_switch.sh
-          bash -n Tools/Codespaces/termux_cloudflare_switch.sh
-          bash -n Tools/Turbo/cloudflare_account_switch_linux.sh
-          python3 - <<'PYTLSREADY'
-          from pathlib import Path
-          remote=Path("Tools/Turbo/cloudflare_account_switch_linux.sh").read_text()
-          assert 'AARIS_CF_HTTPS_HEALTH_VERIFY_START' in remote
-          assert 'for ATTEMPT in $(seq 1 18)' in remote
-          assert 'CURL_RC==60' in remote
-          assert 'AARIS_CF_HTTPS_CERTIFICATE_VERIFICATION_FAILED' in remote
-          assert 'AARIS_CF_DEPLOYED_BUT_NOT_ACTIVATED_KEEP_OLD_GITHUB_BROKER' in remote
-          assert 'cf_unauthorized_probe bootstrap' in remote
-          assert 'cf_unauthorized_probe agent/aaris-invalid-test/next' in remote
-          assert '[[ "$code" == 401 ]]' in remote
-          assert not any(option in remote for option in ('curl -k ', 'curl --insecure', '--ssl-no-revoke'))
-          print("AARIS_CF_FIRST_DEPLOY_HTTPS_READINESS_STATIC_PASS")
-          PYTLSREADY
-          python3 Tools/Turbo/device_oauth_parse.py --selftest
-          python3 Tools/Turbo/wrangler_auth_diag.py --selftest
-          python3 -m py_compile Tools/Turbo/wrangler_auth_diag.py
-          python3 - <<'PYOAUTHDIAG'
-          from pathlib import Path
-          phone=Path("Tools/Codespaces/termux_cloudflare_switch.sh").read_text()
-          remote=Path("Tools/Turbo/cloudflare_account_switch_linux.sh").read_text()
-          assert '== "--diagnose"' in phone
-          assert 'AARIS_CF_INSPECTING_RECENT_WRANGLER_AUTH_ERRORS_NO_NEW_LOGIN' in phone
-          assert 'OAUTH_STATUS=0' in remote
-          assert 'wrangler_auth_diag.py" --log "$AUTH_LOG"' in remote
-          assert 'AARIS_CF_DEVICE_LOGIN_COMMAND_PASS' in remote
-          assert 'AARIS_CF_WHOAMI_AUTHENTICATED' in remote
-          assert 'ACCOUNT="${2:-}"' in phone
-          assert 'CLOUDFLARE_REUSE_EXISTING_AUTHORIZED_LOGIN_FOR_EXPLICIT_ACCOUNT' in phone
-          assert 'LOGIN_AGAIN=1' in phone
-          assert 'AARIS_CF_ACCOUNT_NOT_AUTHORIZED' in remote
-          print("AARIS_CF_OAUTH_DIAGNOSTIC_REGRESSION_PASS")
-          PYOAUTHDIAG
-          python3 -m py_compile Tools/Turbo/device_oauth_parse.py
-          python3 - <<'PYOAUTHREGRESSION'
-          from pathlib import Path
-          phone=Path("Tools/Codespaces/termux_cloudflare_switch.sh").read_text()
-          remote=Path("Tools/Turbo/cloudflare_account_switch_linux.sh").read_text()
-          assert 'cf-login-$AARIS_CF_SESSION_ID.log' in remote
-          assert 'pty.openpty()' in remote and 'buffering=0' in remote
-          assert 'AARIS_CF_SESSION_ID=$SESSION_ID' in phone
-          assert 'device_oauth_parse.py' in phone
-          assert 'gh codespace ssh -c "$MACHINE"' in phone
-          assert 'CLOUDFLARE_LOGIN_READY' in phone
-          print("AARIS_CF_LIVE_OAUTH_PTY_STATIC_PASS")
-          PYOAUTHREGRESSION
-          python3 - <<'PYDEVICE'
-          from pathlib import Path
-          phone=Path("Tools/Codespaces/termux_cloudflare_switch.sh").read_text()
-          linux=Path("Tools/Turbo/cloudflare_account_switch_linux.sh").read_text()
-          parser=Path("Tools/Turbo/device_oauth_parse.py").read_text()
-          assert 'oauth2/device(?:/verify)?' in parser
-          assert 'CLOUDFLARE_LOGIN_READY' in phone
-          assert 'termux-clipboard-set' in phone
-          assert 'DEVICE_CODE' in phone
-          assert 'python3 "$TMP/device_oauth_parse.py"' in phone
-          assert 'AARIS_CF_OPEN_BROWSER=https://dash.cloudflare.com/oauth2/device' not in linux
-          assert 'trap cleanup EXIT' in phone
-          print("AARIS_CF_DEVICE_URL_STATIC_PASS")
-          PYDEVICE
-          python3 - <<'PYCROSS'
-          from pathlib import Path
-          phone=Path("Tools/Codespaces/termux_cloudflare_switch.sh").read_text()
-          workflow=Path(".github/workflows/aaris-turbo-bootstrap.yml").read_text()
-          assert 'gh codespace list --limit 100 --json name,state,repository' in phone
-          assert 'gh codespace list --json name,displayName,state,repository' in workflow
-          assert 'endswith("/Unity-Game-Aris")' in phone and 'endswith("/Unity-Game-Aris")' in workflow
-          assert 'gh codespace list -R "$REPO"' not in phone
-          assert not any(line.strip().startswith('gh codespace list -R ') for line in workflow.splitlines())
-          assert 'gh codespace create -R "$CS_REPO"' in workflow
-          print("AARIS_CROSS_ACCOUNT_CODESPACE_STATIC_PASS")
-          PYCROSS
-          python3 -m json.tool Tools/Turbo/wrangler.jsonc >/dev/null
-          python3 - <<'PYCONFIG'
-          import json
-          config=json.load(open('Tools/Turbo/wrangler.jsonc'))
-          assert config['main']=='./worker.mjs'
-          assert config['durable_objects']['bindings']==[{'name':'MACHINES','class_name':'TurboMachine'}]
-          assert config['exports']['TurboMachine']=={'type':'durable-object','storage':'sqlite'}
-          assert 'migrations' not in config
-          assert 'account_id' not in config
-          print('AARIS_CF_SWITCH_DEPLOY_CONFIG_PASS')
-          PYCONFIG
-          python3 -m py_compile Tools/Turbo/agent.py
-          python3 Tools/Turbo/agent.py --selftest
-          python3 Tools/Turbo/select_machine.py --selftest
-          node --check Tools/Turbo/worker.mjs
-          node --check Tools/Turbo/watch_page.mjs
-          node Tools/Turbo/watch_test.mjs
-          python3 - <<'PY'
-          from pathlib import Path
-          source = Path("Tools/Turbo/worker.mjs").read_text()
-          agent = Path("Tools/Turbo/agent.py").read_text()
-          assert "verifyActionsJWT(bearer)" in source
-          assert "claims.actor_id" in source
-          assert "claims.workflow_ref" in source
-          assert "/agent/next" in source
-          assert "subprocess.Popen(argv" in agent and "shell=True" not in agent
-          assert "start_new_session=True" in agent
-          print("AARIS_TURBO_SECURITY_STATIC_PASS")
-          PY
-      - name: Real Cloudflare HTTP smoke / reject unauthenticated commands
-        run: |
-          set -euo pipefail
-          URL="$AARIS_BROKER"
-          [[ "$URL" =~ ^https://[a-z0-9.-]+\.workers\.dev$ ]] || { echo 'TURBO_INVALID_BROKER_URL'; exit 20; }
-          curl --fail --silent --show-error --retry 3 --max-time 15 \
-            "$URL/health" > "$RUNNER_TEMP/turbo-health.json"
-          python3 - "$RUNNER_TEMP/turbo-health.json" <<'PY'
-          import json,sys
-          obj=json.load(open(sys.argv[1]))
-          assert obj['service']=='aaris-turbo' and obj['status']=='ready',obj
-          print('TURBO_LIVE_CLOUDFLARE_HEALTH_PASS')
-          PY
-          STATUS="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' \
-            -X POST "$URL/bootstrap" -H 'Authorization: Bearer invalid' \
-            -H 'Content-Type: application/json' -d '{"machine":"aaris-turbo-test"}')"
-          [[ "$STATUS" = 401 || "$STATUS" = 403 ]] || { echo "TURBO_UNAUTHORIZED_BOOTSTRAP_NOT_REJECTED"; exit 17; }
-          STATUS="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' \
-            -X POST "$URL/agent/aaris-turbo-test/next" -H 'Content-Type: application/json' -d '{}')"
-          # A 403 edge denial rejects an anonymous request, but does NOT prove authenticated agent connectivity.
-          # On an exhausted Free-tier Durable Object, even anonymous requests
-          # may fail with HTTP 5xx before application authorization can run.
-          # Log this as INCONCLUSIVE, never as authenticated connectivity.
-          LIVE_AUTH_INCONCLUSIVE=0
-          if [[ "$STATUS" != 401 && "$STATUS" != 403 ]]; then
-            if [[ "$STATUS" =~ ^5[0-9][0-9]$ ]]; then
-              echo "::warning::TURBO_AGENT_AUTH_INCONCLUSIVE_QUOTA_OR_UPSTREAM_HTTP_$STATUS"
-              LIVE_AUTH_INCONCLUSIVE=1
-            else
-              echo "TURBO_UNAUTHORIZED_AGENT_UNEXPECTED_HTTP_$STATUS"; exit 18
-            fi
-          fi
-          # The single-endpoint fallback must never accept anonymous shell calls.
-          STATUS="$(curl -sS --max-time 15 -o "$RUNNER_TEMP/turbo-denied.json" -w '%{http_code}' \
-            "$URL/health" -H 'X-Aaris-Op: ping' -H 'X-Aaris-Machine: aaris-turbo-test' \
-            -H 'X-Aaris-Token: invalid')"
-          if [[ "$STATUS" != 401 && "$STATUS" != 403 ]]; then
-            if [[ "$STATUS" =~ ^5[0-9][0-9]$ ]]; then
-              echo "::warning::TURBO_FALLBACK_AUTH_INCONCLUSIVE_QUOTA_OR_UPSTREAM_HTTP_$STATUS"
-              LIVE_AUTH_INCONCLUSIVE=1
-            else
-              echo "TURBO_FALLBACK_UNEXPECTED_HTTP_$STATUS"; exit 19
-            fi
-          fi
-          if test "$STATUS" = 401; then
-            python3 - "$RUNNER_TEMP/turbo-denied.json" <<'PY'
-          import json,sys
-          assert json.load(open(sys.argv[1])).get('error') == 'unauthorized'
-          print('TURBO_FALLBACK_AUTH_REJECTION_PASS')
-          PY
-          else
-            echo 'TURBO_EDGE_OR_QUOTA_ANONYMOUS_REQUEST_NOT_PROCESSED'
-          fi
-          if test "$LIVE_AUTH_INCONCLUSIVE" = 1; then
-            echo 'TURBO_LIVE_CLOUDFLARE_AUTH_INCONCLUSIVE_CHECK_AFTER_RESET'
-          else
-            echo 'TURBO_LIVE_CLOUDFLARE_AUTH_REJECTION_PASS'
-          fi
-  bootstrap:
-    concurrency:
-      group: aaris-turbo-bootstrap
-      cancel-in-progress: false
-    if: >-
-      (github.event_name == 'workflow_dispatch' &&
-       github.actor == 'sundamunda289-art') ||
-      (github.event_name == 'issue_comment' &&
-       github.event.issue.number == 77 &&
-       github.event.comment.user.login == 'sundamunda289-art' &&
-       (github.event.comment.body == 'TURBO START' ||
-        startsWith(github.event.comment.body, 'TURBO START ') ||
-        startsWith(github.event.comment.body, 'TURBO RESTART ')))
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    permissions:
-      id-token: write
-      contents: read
-      issues: write
-    env:
-      GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
-      ISSUE_BODY: ${{ github.event_name == 'issue_comment' && github.event.comment.body || '' }}
-      INPUT_MACHINE: ${{ inputs.machine || '' }}
-      EXPECTED_HOST_LOGIN: ${{ inputs.hosting_login || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
           lfs: false
-      - name: Select authorized Codespace dynamically; never guess among duplicates
-        shell: bash
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Transaction, cancellation, preservation and setup ordering regressions
         run: |
           set -euo pipefail
-          test -n "$GH_TOKEN" || { echo "TURBO_CODESPACE_PAT_MISSING"; exit 10; }
-          REQUEST="$INPUT_MACHINE"
-          if test -n "$ISSUE_BODY"; then
-            REQUEST="$(printf '%s' "$ISSUE_BODY" | sed -E 's/^TURBO (START|RESTART) ?//')"
-            if [[ "$ISSUE_BODY" == 'TURBO RESTART '* ]] && [[ -z "$REQUEST" || "$REQUEST" == auto ]]; then
-              echo "TURBO_RESTART_EXACT_MACHINE_REQUIRED"; exit 21
-            fi
-          fi
-          if test -n "$REQUEST" && test "$REQUEST" != auto; then
-            [[ "$REQUEST" =~ ^[A-Za-z0-9][A-Za-z0-9-]{2,119}$ ]] || {
-              echo "TURBO_INVALID_MACHINE_NAME"; exit 11;
-            }
-          fi
-          CS_LOGIN="$(gh api user --jq .login)"
-          [[ "$CS_LOGIN" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$ ]] || {
-            echo "TURBO_UNEXPECTED_CODESPACE_ACCOUNT"; exit 19;
-          }
-          if [[ -n "$EXPECTED_HOST_LOGIN" && "$CS_LOGIN" != "$EXPECTED_HOST_LOGIN" ]]; then
-            echo "TURBO_CODESPACE_ACCOUNT_MISMATCH_REFUSING_WRONG_ACCOUNT"; exit 19
-          fi
-          echo "TURBO_AUTHORIZED_CODESPACE_ACCOUNT=$CS_LOGIN"
-          # The Codespace's GitHub account/repository can differ from the main
-          # sundamunda289-art source repo. List the account selected by CODESPACE_PAT.
-          gh codespace list --json name,displayName,state,repository --limit 100 \
-            > "$RUNNER_TEMP/aaris-all-machines.json"
-          jq '[.[]|select((.repository // "")|endswith("/Unity-Game-Aris"))]' \
-            "$RUNNER_TEMP/aaris-all-machines.json" > "$RUNNER_TEMP/aaris-machines.json"
-          python3 Tools/Turbo/select_machine.py "$RUNNER_TEMP/aaris-machines.json" "$REQUEST" \
-            > "$RUNNER_TEMP/turbo-selection.json"
-          ACTION="$(jq -r .action "$RUNNER_TEMP/turbo-selection.json")"
-          if test "$ACTION" = create; then
-            test "$REQUEST" = auto || { echo "TURBO_EXPLICIT_AUTO_REQUIRED"; exit 12; }
-            # Create a lightweight SSH Codespace once; no heavy Unity bootstrap
-            # or Git LFS migration is necessary for the terminal connection.
-            CS_REPO="$CS_LOGIN/Unity-Game-Aris"
-            # If this NEW Codespaces account has no hosting fork, create exactly
-            # one from the permanent public source using its own scoped token.
-            # GitHub may initialize the fork asynchronously (HTTP 202).
-            if ! gh repo view "$CS_REPO" --json name -q .name >/dev/null 2>&1; then
-              [[ "$CS_LOGIN" != 'sundamunda289-art' ]] || {
-                echo "TURBO_MISSING_CANONICAL_REPOSITORY_REFUSING_SELF_FORK"; exit 13;
-              }
-              echo "TURBO_CREATING_MISSING_HOST_FORK"
-              gh repo fork "$GITHUB_REPOSITORY" --clone=false --default-branch-only ||
-                { echo "TURBO_HOST_FORK_CREATE_FAILED_CHECK_PERMISSIONS"; exit 13; }
-              FORK_READY=0
-              for ATTEMPT in $(seq 1 60); do
-                if gh repo view "$CS_REPO" --json name -q .name >/dev/null 2>&1 &&
-                   gh api "repos/$CS_REPO/contents/.devcontainer/minimal-ubuntu/devcontainer.json?ref=main" --jq .sha >/dev/null 2>&1; then
-                  FORK_READY=1
-                  break
-                fi
-                sleep 5
-              done
-              [[ "$FORK_READY" == 1 ]] || {
-                echo "TURBO_NEW_FORK_NOT_YET_READY"; exit 13;
-              }
-              PARENT="$(gh api "repos/$CS_REPO" --jq '.parent.full_name // ""')"
-              [[ "$PARENT" == "$GITHUB_REPOSITORY" ]] || {
-                echo "TURBO_HOST_FORK_PARENT_MISMATCH"; exit 13;
-              }
-              echo "TURBO_NEW_HOST_FORK_READY"
-            fi
-            gh api "/repos/$CS_REPO/codespaces/machines" \
-              --jq '.machines[].name' 2>/dev/null |
-              grep -qxF standardLinux32gb || {
-                echo "TURBO_4CORE_MACHINE_NOT_AVAILABLE"; exit 13;
-              }
-            NAME="$(timeout 1200 gh codespace create -R "$CS_REPO" \
-              -b main -m standardLinux32gb \
-              --devcontainer-path .devcontainer/minimal-ubuntu/devcontainer.json \
-              --idle-timeout 240m --display-name aaris-ai-ubuntu-minimal \
-              --default-permissions 2>/dev/null)" || {
-                echo "TURBO_CREATE_FAILED_CHECK_ACCOUNT_QUOTA"; exit 14;
-              }
-            echo "TURBO_NEW_CODESPACE_CREATED"
-          elif test "$ACTION" = reuse; then
-            NAME="$(jq -r .name "$RUNNER_TEMP/turbo-selection.json")"
-            echo "TURBO_EXISTING_CODESPACE_SELECTED"
-          else
-            echo "TURBO_UNKNOWN_SELECTION_ACTION"; exit 15;
-          fi
-          [[ "$NAME" =~ ^[A-Za-z0-9][A-Za-z0-9-]{2,119}$ ]] || exit 16
-          echo "CODESPACE=$NAME" >> "$GITHUB_ENV"
-          # Machine identity is not secret; report only the exact selection.
-          printf 'TURBO_MACHINE=%s\n' "$NAME"
-      - name: Reconcile lifecycle before starting Codespace
-        run: |
-          set -euo pipefail
-          STATE="$(gh codespace view -c "$CODESPACE" --json state --jq .state)"
-          printf 'TURBO_INITIAL_STATE=%s\n' "$STATE"
-          # Owner-only exact-name restart of the already selected Codespace.
-          # No creation, rebuild, reset, repository alteration or other-machine stop.
-          if [[ "$ISSUE_BODY" == 'TURBO RESTART '* ]]; then
-            case "$STATE" in
-              Available)
-                echo "TURBO_RESTART_STOP_REQUESTED"
-                gh codespace stop -c "$CODESPACE" || { echo "TURBO_RESTART_STOP_FAILED"; exit 22; }
-                STOPPED=0
-                for i in $(seq 1 60); do
-                  sleep 5
-                  STOP_STATE="$(gh codespace view -c "$CODESPACE" --json state --jq .state 2>/dev/null || true)"
-                  case "$STOP_STATE" in
-                    Shutdown|Stopped) STATE="$STOP_STATE"; STOPPED=1; break ;;
-                    Available|ShuttingDown) ;;
-                    *) echo "TURBO_RESTART_UNSAFE_STOP_STATE"; exit 23 ;;
-                  esac
-                done
-                test "$STOPPED" = 1 || { echo "TURBO_RESTART_STOP_NOT_CONFIRMED"; exit 24; }
-                echo "TURBO_RESTART_SHUTDOWN_CONFIRMED"
-                ;;
-              Shutdown|Stopped) echo "TURBO_RESTART_ALREADY_STOPPED" ;;
-              *) echo "TURBO_RESTART_UNSAFE_INITIAL_STATE"; exit 25 ;;
-            esac
-          fi
-          # Do not confuse a machine still shutting down with a machine starting.
-          if test "$STATE" = ShuttingDown; then
-            for i in $(seq 1 30); do
-              sleep 6
-              STATE="$(gh codespace view -c "$CODESPACE" --json state --jq .state 2>/dev/null || true)"
-              case "$STATE" in
-                ShuttingDown) continue ;;
-                Shutdown|Stopped|Available|Starting|Queued|Provisioning|Rebuilding) break ;;
-                *) echo "TURBO_UNSAFE_LIFECYCLE_AFTER_SHUTDOWN"; exit 17 ;;
-              esac
-            done
-          fi
-          case "$STATE" in
-            Available) echo "TURBO_CODESPACE_ALREADY_READY" ;;
-            Shutdown|Stopped)
-              # Codespaces occasionally accepts an asynchronous start yet
-              # returns an empty response that older gh clients reject as JSON.
-              # Never assume that a failed CLI response means the machine
-              # started; verify the separate, authenticated lifecycle state.
-              if gh api -X POST "/user/codespaces/$CODESPACE/start" >/dev/null; then
-                echo "TURBO_CODESPACE_START_REQUESTED"
-              else
-                echo "TURBO_START_RESPONSE_UNCONFIRMED"
-                STATE=""
-                for i in $(seq 1 6); do
-                  sleep 5
-                  STATE="$(gh codespace view -c "$CODESPACE" --json state --jq .state 2>/dev/null || true)"
-                  case "$STATE" in
-                    Available|Starting|Queued|Provisioning|Rebuilding) break ;;
-                    Shutdown|Stopped|ShuttingDown|"") continue ;;
-                    *) echo "TURBO_START_UNSAFE_RESULT_STATE"; exit 19 ;;
-                  esac
-                done
-                case "$STATE" in
-                  Available|Starting|Queued|Provisioning|Rebuilding)
-                    echo "TURBO_START_CONFIRMED_BY_LIFECYCLE"
-                    ;;
-                  *) echo "TURBO_START_NOT_CONFIRMED"; exit 20 ;;
-                esac
-              fi
-              ;;
-            Starting|Queued|Provisioning|Rebuilding) echo "TURBO_CODESPACE_START_IN_PROGRESS" ;;
-            ShuttingDown) echo "TURBO_CODESPACE_SHUTDOWN_STUCK"; exit 18 ;;
-            *) echo "TURBO_CODESPACE_UNSAFE_STATE"; exit 15 ;;
-          esac
-          for i in $(seq 1 90); do
-            STATE="$(gh codespace view -c "$CODESPACE" --json state --jq .state 2>/dev/null || true)"
-            if test "$STATE" = Available; then break; fi
-            sleep 10
-          done
-          test "$STATE" = Available || { echo "TURBO_CODESPACE_NOT_AVAILABLE"; exit 16; }
-          echo "TURBO_CODESPACE_READY"
-      - name: Mint temporary agent credential using signed GitHub OIDC
-        env:
-          OIDC_AUDIENCE: aaris-turbo-bootstrap-v1
-        run: |
-          set -euo pipefail
-          OIDC="$(curl -fsS --retry 2 \
-            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$OIDC_AUDIENCE" |
-            python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')"
-          echo "TURBO_GITHUB_OIDC_FETCH_PASS"
-          # Diagnose only claim *names*, never token bytes or actual claim values.
-          OIDC="$OIDC" python3 - <<'PYOIDCCHECK'
-          import base64,json,os,time
-          parts=os.environ["OIDC"].split(".")
-          if len(parts)!=3:
-              raise SystemExit("TURBO_OIDC_INVALID_TOKEN_FORMAT")
-          payload=parts[1]
-          claims=json.loads(base64.urlsafe_b64decode(payload+"="*(-len(payload)%4)))
-          expected={
-              "iss":"https://token.actions.githubusercontent.com",
-              "aud":"aaris-turbo-bootstrap-v1",
-              "repository_id":"1443109769",
-              "actor_id":"353065137",
-              "repository":"sundamunda289-art/Unity-Game-Aris",
-              "ref":"refs/heads/main",
-              "workflow_ref":"sundamunda289-art/Unity-Game-Aris/.github/workflows/aaris-turbo-bootstrap.yml@refs/heads/main",
-          }
-          mismatches=[key for key,value in expected.items()
-                      if str(claims.get(key))!=value]
-          if claims.get("event_name") not in ("issue_comment","workflow_dispatch"):
-              mismatches.append("event_name")
-          now=time.time()
-          for key in ("iat","exp"):
-              if not isinstance(claims.get(key),(int,float)):
-                  mismatches.append(key)
-          if isinstance(claims.get("iat"),(int,float)) and claims["iat"]>now+60:
-              mismatches.append("iat_future")
-          if isinstance(claims.get("exp"),(int,float)) and not now<claims["exp"]<=now+1800:
-              mismatches.append("exp_window")
-          if mismatches:
-              print("TURBO_OIDC_CLAIM_MISMATCH_KEYS="+",".join(mismatches))
-              raise SystemExit(28)
-          print("TURBO_OIDC_EXPECTED_CLAIMS_MATCH")
-          PYOIDCCHECK
-          python3 - "$CODESPACE" > "$RUNNER_TEMP/turbo-request.json" <<'PY'
-          import json,sys
-          print(json.dumps({"machine":sys.argv[1]}))
-          PY
-          curl --fail-with-body -sS -X POST "$AARIS_BROKER/bootstrap" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $OIDC" \
-            --data-binary "@$RUNNER_TEMP/turbo-request.json" \
-            > "$RUNNER_TEMP/turbo-grant.json"
-          python3 - "$RUNNER_TEMP/turbo-grant.json" "$CODESPACE" <<'PY'
-          import json,sys,re
-          x=json.load(open(sys.argv[1]))
-          assert x.get('machine')==sys.argv[2]
-          assert re.fullmatch('[0-9a-f]{64}',x.get('token',''))
-          assert x.get('endpoint','').startswith('https://')
-          print('TURBO_OIDC_GRANT_ACCEPTED')
-          PY
-      - name: One-time authenticated SSH to install and detach persistent agent
-        run: |
-          set -euo pipefail
-          AARIS_AGENT_TOKEN="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["token"])' "$RUNNER_TEMP/turbo-grant.json")"
-          AARIS_ENDPOINT="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["endpoint"])' "$RUNNER_TEMP/turbo-grant.json")"
-          AARIS_AGENT_EXPIRES_AT="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["expires_at"])' "$RUNNER_TEMP/turbo-grant.json")"
-          AARIS_AGENT_BASE64="$(base64 -w0 Tools/Turbo/agent.py)"
-          AARIS_GUI_BASE64="$(base64 -w0 Tools/Turbo/gui_agent.py)"
-          AARIS_GUI_SETUP_BASE64="$(base64 -w0 Tools/Turbo/gui_setup.sh)"
-          {
-            printf 'AARIS_AGENT_TOKEN=%q\n' "$AARIS_AGENT_TOKEN"
-            printf 'AARIS_ENDPOINT=%q\n' "$AARIS_ENDPOINT"
-            printf 'AARIS_AGENT_EXPIRES_AT=%q\n' "$AARIS_AGENT_EXPIRES_AT"
-            printf 'AARIS_AGENT_BASE64=%q\n' "$AARIS_AGENT_BASE64"
-            printf 'AARIS_GUI_BASE64=%q\n' "$AARIS_GUI_BASE64"
-            printf 'AARIS_GUI_SETUP_BASE64=%q\n' "$AARIS_GUI_SETUP_BASE64"
-            cat Tools/Turbo/remote_install.sh
-          } | timeout 240 gh codespace ssh -c "$CODESPACE" -- 'bash -s'
-          echo "TURBO_BOOTSTRAP_FINISHED"
-      - name: Owner-safe completion notification (no credentials)
-        if: always() && github.event_name == 'issue_comment'
+          python3 Tools/Codespaces/test_switch_controller.py
+          python3 Tools/Codespaces/test_git_bridge.py
+          python3 Tools/Codespaces/test_provision_codespace.py
+          python3 Tools/Turbo/test_transaction_install.py
+          python3 Tools/Turbo/test_bootstrap_transaction.py
+          python3 Tools/Codespaces/test_cf_runner.py
+          python3 Tools/Turbo/agent.py --selftest
+          python3 Tools/Turbo/gui_agent.py --selftest
+          python3 Tools/Turbo/select_machine.py --selftest
+          python3 Tools/Turbo/device_oauth_parse.py --selftest
+          python3 Tools/Turbo/wrangler_auth_diag.py --selftest
+          python3 Tools/Codespaces/mobile_license.py --selftest
+          node --check Tools/Turbo/worker.mjs
+          node Tools/Turbo/watch_test.mjs
+          node Tools/Turbo/transaction_test.mjs
+          bash -n Tools/Turbo/remote_install.sh
+          bash -n Tools/Turbo/ensure_agent.sh
+          bash -n Tools/Codespaces/termux_controller.sh
+          bash -n Tools/Codespaces/termux_functions.sh
+          bash -n Tools/Codespaces/install_termux_commands.sh
+          bash -n Tools/Codespaces/termux_cf_runner.sh
+          bash -n Tools/Codespaces/termux_switch.sh
+          bash -n Tools/Codespaces/termux_cloudflare_switch.sh
+          bash -n Tools/Codespaces/termux_unity_login_recover.sh
+          bash -n Tools/Codespaces/auto_provision_codespace.sh
+          bash -n Tools/Turbo/cloudflare_account_switch_linux.sh
+          python3 -m py_compile Tools/Turbo/bootstrap_transaction.py
+          python3 -m json.tool Tools/Turbo/wrangler.jsonc >/dev/null
+  bootstrap:
+    concurrency:
+      group: aaris-turbo-bootstrap
+      cancel-in-progress: false
+    if: >-
+      github.repository == 'sundamunda289-art/Unity-Game-Aris' &&
+      ((github.event_name == 'workflow_dispatch' && github.actor == 'sundamunda289-art') ||
+       (github.event_name == 'issue_comment' && github.event.issue.number == 77 &&
+        github.event.comment.user.login == 'sundamunda289-art' &&
+        (github.event.comment.body == 'TURBO START' || startsWith(github.event.comment.body, 'TURBO START '))))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      GH_TOKEN: ${{ secrets.CODESPACE_PAT }}
+      AARIS_CANDIDATE_CREDENTIAL: ${{ secrets[inputs.credential_secret || 'AARIS_UNUSED'] }}
+      INPUT_CREDENTIAL_SECRET: ${{ inputs.credential_secret || '' }}
+      INPUT_TRANSACTION_ID: ${{ inputs.transaction_id || '' }}
+      INPUT_BROKER: ${{ inputs.candidate_broker || '' }}
+      INPUT_MACHINE: ${{ inputs.machine || 'auto' }}
+      EXPECTED_HOST_LOGIN: ${{ inputs.hosting_login || '' }}
+      ISSUE_BODY: ${{ github.event_name == 'issue_comment' && github.event.comment.body || '' }}
+    steps:
+      - name: Validate immutable source against canonical main before executing it
+        id: source
         env:
           GH_TOKEN: ${{ github.token }}
-          JOB_STATUS: ${{ job.status }}
+          REQUESTED_SOURCE: ${{ inputs.source_sha || '' }}
         run: |
-          printf 'Aaris Turbo bootstrap result: **%s**.\n[Run details](https://github.com/%s/actions/runs/%s)\nNo secrets or raw terminal output were published.\n' \
-            "$JOB_STATUS" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > "$RUNNER_TEMP/turbo-comment.md"
-          gh issue comment 77 -R "$GITHUB_REPOSITORY" -F "$RUNNER_TEMP/turbo-comment.md"
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          repo = "sundamunda289-art/Unity-Game-Aris"
+          def api(path):
+              r = subprocess.run(["gh", "api", path], text=True, capture_output=True)
+              if r.returncode:
+                  raise SystemExit("Canonical source verification unavailable")
+              return json.loads(r.stdout)
+          main = api("repos/" + repo + "/git/ref/heads/main")["object"]["sha"]
+          source = os.environ["REQUESTED_SOURCE"] or main
+          if not re.fullmatch(r"[0-9a-f]{40}", source):
+              raise SystemExit("Invalid canonical source SHA")
+          comparison = api("repos/" + repo + "/compare/" + source + "..." + main)
+          if (comparison.get("status") not in ("ahead", "identical") or
+                  comparison.get("merge_base_commit", {}).get("sha") != source):
+              raise SystemExit("Source is not reviewed canonical main history")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("sha=" + source + "\n")
+          PY
+      - uses: actions/checkout@v4
+        with:
+          repository: sundamunda289-art/Unity-Game-Aris
+          ref: ${{ steps.source.outputs.sha }}
+          persist-credentials: false
+          lfs: false
+      - name: Prepare exact Codespace and candidate agent through signed canonical OIDC
+        env:
+          AARIS_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: python3 Tools/Turbo/bootstrap_transaction.py

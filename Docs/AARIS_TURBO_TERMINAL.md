@@ -1,5 +1,24 @@
 # Aaris Turbo: dynamic low-latency Codespace terminal
 
+## Current account switching: 2026-11-28
+
+Use [TERMUX_ACCOUNT_SWITCH.md](TERMUX_ACCOUNT_SWITCH.md) for the current
+one-time phone installer, `CCF` / `CF` / `cf`, `CD`, safe resume/status and
+Editor-first provisioning. The current
+[AGENTS.md policy](../AGENTS.md) supersedes older account-switch snippets.
+The compatibility `termux_switch.sh` and `termux_cloudflare_switch.sh`
+entry points delegate to one locked, receipt-based controller.
+
+The new controller prepares and verifies a candidate before explicit remote
+commit and active-configuration publication. It can save
+`CF_READY_CODESPACE_PENDING` plus `AARIS_NEXT_BROKER_URL` while preserving the
+old active selection until a Codespace is connected. A green Action or
+public health response alone does not prove the handover. Retain receipts
+when a remote outcome is uncertain; do not dispatch duplicate bootstraps or
+promise instant rollback. The legacy Issue/direct-bootstrap entry points
+below are lower-level recovery references, not the normal account-switch
+procedure.
+
 This is an opt-in, private terminal connection independent of existing Unity and
 APK workflows. It controls Codespaces visible to the currently configured
 CODESPACE_PAT account. It does not create/delete/reset workspaces, touch native
@@ -13,21 +32,25 @@ over outbound HTTPS -> durable output chunks -> Cloudflare account API.
 
 No new GitHub Actions runner is launched for each terminal command.
 
-## Initial start and recovery
+## Legacy direct initial start and recovery
 
 Owner-only Issue #77: TURBO START <exact-codespace-name>
 Or: TURBO START (only when exactly one Codespace is eligible).
 The workflow_dispatch machine input accepts the exact machine name.
 
-The isolated .github/workflows/aaris-turbo-bootstrap.yml starts an existing
+The isolated .github/workflows/aaris-turbo-bootstrap.yml can start an existing
 stopped Codespace if necessary, obtains GitHub Actions OIDC credentials,
 authenticates to the Cloudflare Worker, and installs/detaches Python agent
-through one SSH session. A new start revokes the old token. Credentials remain
-in owner-only Codespace home, not Git or public logs; they expire in 7 days.
+through SSH. The current CCF/CD transaction path stages a candidate and
+requires its verified explicit commit; do not apply a legacy immediate
+token-rotation assumption to that path. Credentials remain in owner-only
+Codespace storage, not Git or public logs; agent grants expire in 7 days.
 
 The Codespace agent uses Python standard library only (no pip); it makes outbound
 HTTPS requests. It maintains the session after Actions finishes. A stopped
-Codespace cannot answer commands and needs a new bootstrap after restart.
+Codespace cannot answer commands. On an updated minimal container, the
+startup hook can reconnect an unexpired installed grant; an absent or
+expired grant requires the authorized bootstrap/recovery path.
 Changing Codespace accounts still requires the right CODESPACE_PAT permission.
 
 ## Command submission from the existing connected Cloudflare account
@@ -93,33 +116,34 @@ timing; no fixed end-to-end latency is guaranteed.
 
 ## One Termux command for future account switches
 
-The reviewed `Tools/Codespaces/termux_switch.sh` script now rotates the
-selected account's `CODESPACE_PAT` and dispatches just ONE
-`aaris-turbo-bootstrap.yml` GitHub workflow with `machine=auto`.
-No manual Codespaces list/start commands or second workflow dispatch.
+Install the reviewed command bundle once using the
+[current Termux guide](TERMUX_ACCOUNT_SWITCH.md#install-the-commands-once-in-android-termux).
+Use `CCF` for Cloudflare, `CD` for the Codespace hosting account plus complete
+setup, `CD --resume` to reuse a saved hosting profile, and `CD --status` to
+read the recorded/current state. The old downloaded
+`bash "$HOME/aaris-switch.sh"` entry point remains a compatibility wrapper
+when refreshed from canonical main; it is no longer an independent switch
+implementation.
 
-Install/refresh the phone helper from the canonical public repository:
+The shared controller stages the hosting profile and bootstrap credentials,
+records one operation, and reconciles matching workflow and remote receipts
+before repeating a request. It publishes `CODESPACE_PAT` and active broker
+state after verified connection commit. Multiple eligible Codespaces
+require explicit selection; a stopped/multiple-machine menu also offers
+`0` for a new minimal Codespace while preserving old machines. With no
+eligible machine, the authorized bootstrap creates a minimal Codespace
+within the selected account's quota. Creation uses that hosting user's
+token directly on the canonical public repository at the reviewed runtime
+SHA, so a new fork is unnecessary. An older stopped machine with unverified
+startup hooks requires explicit review/migration before automatic start.
+The canonical codebase remains `sundamunda289-art/Unity-Game-Aris`, even when
+an existing selected Codespace was originally created from a fork.
 
-```bash
-pkg install -y gh curl jq
-curl -fsSL https://raw.githubusercontent.com/sundamunda289-art/Unity-Game-Aris/main/Tools/Codespaces/termux_switch.sh -o "$HOME/aaris-switch.sh"
-bash "$HOME/aaris-switch.sh"
-```
-
-The user authorizes a new Codespaces GitHub account in the browser once per
-switch; the main account login is reused. To reuse both saved identities
-and launch the same one-workflow bootstrap without a second browser login:
-
-```bash
-bash "$HOME/aaris-switch.sh" --resume
-```
-
-Bootstrap `auto` uses only the currently selected Codespaces token. If a
-unique machine is visible it reuses that machine, including a stopped machine.
-If none exists it creates one minimal Ubuntu SSH Codespace under the account's
-own quota, then installs the private Cloudflare agent. If the account owns
-multiple ambiguous Codespaces it fails closed, never chooses randomly.
-Use an explicit exact machine instead when selection is ambiguous.
+The same `CD` operation then verifies/installs the Editor first, starts
+single-stream canonical LFS hydration, and runs the four-step same-machine
+Unity login in parallel with that hydration. See the current guide for
+dirty-file preservation, disk checks, secure-storage consent and the
+distinction between project readiness and a rendered scene.
 
 It cannot bypass GitHub Codespaces monthly quotas, temporary GitHub
 provisioning delays, account permissions, or an absent Unity Personal license.
@@ -152,10 +176,13 @@ This is NOT a continuous WebRTC/video feed, and the chat does not run a
 background process indefinitely. A trusted assistant requests an action and
 reads the new frame from the Cloudflare Durable Object private command output.
 
-The owner-only Turbo bootstrap installs gui.py and gui_setup.sh in the private
-~/.local/share/aaris-turbo directory. The basic desktop dependencies
-(Xvfb, Fluxbox, xterm, scrot, xdotool, xclip, Python Pillow) are provisioned
-non-blockingly after the terminal handshake. An existing Unity DISPLAY is
+The owner-only Turbo bootstrap stages gui.py and gui_setup.sh in private
+Codespace storage. In the current CCF/CD transaction path it does not start
+a detached GUI package install at the terminal handshake: the sequential
+Codespace provisioner owns its dependency setup to avoid competing package
+operations. A legacy direct bootstrap may have different dependency
+handling; a terminal handshake alone does not certify GUI dependencies.
+An existing Unity DISPLAY is
 reused when set; otherwise the helper creates its own 1280x720 Xvfb :99
 virtual display. No native Unity scene changes are made.
 
@@ -387,3 +414,4 @@ Viewer-generated `watch_*` snapshots do **not** count toward the last 20
 terminal command history, so continuous screenshots do not hide ChatGPT's
 real commands. The last mirrored JPEG is retained privately for up to 24
 hours and is replaced when the next authenticated capture succeeds.
+

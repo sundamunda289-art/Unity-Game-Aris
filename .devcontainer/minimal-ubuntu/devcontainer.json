@@ -3,6 +3,9 @@
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
   "remoteUser": "vscode",
   "workspaceFolder": "/workspaces/Unity-Game-Aris",
+  "containerEnv": {
+    "GIT_LFS_SKIP_SMUDGE": "1"
+  },
   "features": {
     "ghcr.io/devcontainers/features/sshd:1": {
       "version": "latest"
@@ -10,3 +13,4 @@
   },
   "postStartCommand": "bash Tools/Turbo/ensure_agent.sh"
 }
+

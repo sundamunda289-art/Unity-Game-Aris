@@ -17,8 +17,20 @@ for cache_name in Library Logs obj; do
   fi
 done
 
-CONFIG="$HOME/.config/aaris-turbo"
-BIN="$HOME/.local/share/aaris-turbo/agent.py"
+HOME_DIR="$(python3 -c 'import os,pwd; print(pwd.getpwuid(os.geteuid()).pw_dir)')"
+CONFIG="$HOME_DIR/.config/aaris-turbo"
+BIN="$HOME_DIR/.local/share/aaris-turbo/agent.py"
+# Transaction recovery understands complete generation pointers and never
+# treats an uncommitted PREPARED candidate as authorization to switch.
+RECOVERY="$HOME_DIR/.local/share/aaris-turbo/transaction_install.py"
+if [[ -f "$RECOVERY" && ! -L "$RECOVERY" ]]; then
+  python3 "$RECOVERY" --ensure
+  exit $?
+fi
+mkdir -p "$CONFIG"
+chmod 700 "$CONFIG"
+exec 9>"$CONFIG/install.lock"
+flock -n 9 || { echo TURBO_TRANSACTION_IN_PROGRESS; exit 0; }
 TOKEN="$CONFIG/token"
 ENDPOINT_FILE="$CONFIG/endpoint"
 EXPIRY_FILE="$CONFIG/expires_at"
@@ -56,7 +68,7 @@ if test -s "$PID_FILE"; then
   fi
 fi
 nohup env AARIS_ENDPOINT="$ENDPOINT" AARIS_TOKEN_FILE="$TOKEN" \
-  python3 -u "$BIN" >> "$LOG" 2>&1 </dev/null &
+  python3 -u "$BIN" >> "$LOG" 2>&1 </dev/null 9>&- &
 PID="$!"
 printf '%s\n' "$PID" > "$PID_FILE"
 sleep 1
@@ -65,3 +77,4 @@ if kill -0 "$PID" 2>/dev/null; then
 else
   echo "TURBO_AGENT_AUTO_RESUME_FAILED"
 fi
+
