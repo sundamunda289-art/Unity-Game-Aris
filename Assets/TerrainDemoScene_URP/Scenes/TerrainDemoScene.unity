@@ -44359,6 +44359,7 @@ MonoBehaviour:
   pollSeconds: 0.25
   transitionCooldownSeconds: 0.25
   maxSpeculativeResidentCells: 2
+  useBootstrapProxiesDuringFlight: 1
 --- !u!1 &6049156
 GameObject:
   m_ObjectHideFlags: 0

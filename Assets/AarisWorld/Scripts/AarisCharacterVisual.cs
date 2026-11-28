@@ -271,7 +271,16 @@ namespace Aaris.MapReview
                 // integration on its costly Instantiate/PlayableGraph/BakeMesh
                 // frame. Already-running imports remain untouched.
                 if (AarisMobileStreamingFrameGate.ReserveNextFrameForEssentialRig())
-                    yield return null;
+                {
+                    // Check after yielding because the aircraft can reserve
+                    // its frame later than this coroutine on the previous frame.
+                    do
+                    {
+                        yield return null;
+                        if (!isActiveAndEnabled) yield break;
+                    }
+                    while (AarisMobileStreamingFrameGate.TryDeferEssentialRigOnAircraftFrame());
+                }
                 if (!isActiveAndEnabled) yield break;
                 if (TryInstantiateCharacter(candidate, source))
                 {

@@ -2078,8 +2078,10 @@ namespace Aaris.MapReview
                     return true;
                 }
             }
-            // Keep the original top-three fast path; only investigate the
-            // next three when every centered body is physically obstructed.
+            // With fewer than three hits in the shortlist, its cutoff never
+            // tightened. Every eligible body was already checked.
+            if (third == null) return false;
+            // A full shortlist can leave other eligible bodies behind it.
             return TryAcquireAimFallback(origin, cameraForward, shooter,
                 maximumRangeSqr, minimumDot, first, second, third, out aimedDirection,
                 out lockedRival);
