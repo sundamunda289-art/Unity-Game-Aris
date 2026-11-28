@@ -107,6 +107,11 @@ namespace Aaris.MapReview
         private readonly Transform[] visualWheels=new Transform[4];
         private readonly Quaternion[] visualWheelRotationOffsets=new Quaternion[4];
         private readonly Vector3[] visualWheelCenterOffsets=new Vector3[4];
+        private struct WheelShadowContact
+        {
+            public float width, radius;
+        }
+        private readonly WheelShadowContact[] wheelShadowContacts = new WheelShadowContact[4];
         private float appliedSteeringAngle;
         private int syncCalls;
         private void SyncVisibleWheels(){syncCalls++;}
@@ -123,6 +128,8 @@ namespace Aaris.MapReview
         }
         public Transform[] Attached=>visualWheels;
         public WheelCollider[] Wheels=>wheels;
+        public float ContactWidth(int index) => wheelShadowContacts[index].width;
+        public float ContactRadius(int index) => wheelShadowContacts[index].radius;
         public int SyncCalls=>syncCalls;
         public bool SteeringReset=>float.IsNaN(appliedSteeringAngle);
     }
@@ -179,6 +186,9 @@ internal static class EmbeddedWheelProductionTests
                   "authored wheel not attached to chassis exactly once");
             Check(Math.Abs(motor.Wheels[i].radius-.37f)<.00001,
                   "authored diameter changed");
+            Check(Math.Abs(motor.ContactWidth(i) - .42f) < .00001f &&
+                  Math.Abs(motor.ContactRadius(i) - motor.Wheels[i].radius) < .00001f,
+                  "tyre contact footprint does not match the authored wheel");
             foreach(var c in motor.Attached[i].colliders)
                 Check(!c.enabled,"visual-only wheel collider remains enabled");
         }
